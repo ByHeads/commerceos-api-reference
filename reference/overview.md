@@ -93,6 +93,8 @@ curl -X POST localhost:5000/oauth2/v1/token \
 curl -H "Authorization: Bearer TOKEN" localhost:5000/api/v1/void
 ```
 
+> **EPI Integration OAuth2 Requirements:** External Payment Integrations (EPI) require a confidential OAuth2 client with specific scopes for the `install` action to succeed. See [EPI Integrations & Configurations](../guide/examples/configuration.md#epi-integrations--configurations) for required scopes and setup.
+
 ---
 
 ## Resource Model and Endpoint Tree

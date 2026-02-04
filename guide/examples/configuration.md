@@ -357,6 +357,29 @@ curl -X PUT -u ":banana" "localhost:5000/api/v1/config/webshop" \
 
 ## EPI Integrations & Configurations
 
+### OAuth2 Client Prerequisites
+
+Installing an EPI integration requires a **confidential OAuth2 client** associated with the integration's user (`User.byHolder(integration)`). The install action will fail if:
+
+- No associated OAuth2 client exists
+- Multiple OAuth2 clients exist for the integration user
+- The OAuth2 client has no secret (non-confidential)
+- The OAuth2 Server is not configured
+
+**Default OAuth2 Client Configuration (from API-gen seeds):**
+
+| Field | Value |
+|-------|-------|
+| **Scopes** | `me`, `geo:read`, `orders.sales:write`, `orders.payments:write`, `payment-records:write`, `kv` |
+| **Grant Type** | `client_credentials` |
+| **Access Token Lifetime** | 3600 seconds (1 hour) |
+| **Refresh Token Lifetime** | 2592000 seconds (30 days) |
+| **Confidential** | `true` (client secret required) |
+
+> **Where these defaults come from:** EPI users are seeded via `commerceos-api-gen/src/v1/epi-users.ts` when running seed configurations (e.g., `seed/pay/seed-config.json`). The seeder creates a user with an embedded OAuth2 client using the scopes and grants listed above.
+
+### Installation Flow
+
 ```bash
 # 1) Create a payment integration (name + baseUrl required)
 curl -X POST -u ":banana" "localhost:5000/api/v1/payment-integrations" \
@@ -366,10 +389,30 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/payment-integrations" \
     "baseUrl": "https://mock-payment.example.com"
   }'
 
-# 2) Create OAuth2 client/user for the integration (manual step outside this example)
-# (Required before install)
+# 2) Create a user for the integration with an OAuth2 client
+# The user must have the integration as its holder (agent).
+# First, get the integration key:
+#   curl -X GET -u ":banana" "localhost:5000/api/v1/epi-integrations/name=Mock/identifiers/key"
+# Then create the user with embedded OAuth2 client:
+curl -X POST -u ":banana" "localhost:5000/api/v1/users" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "identifiers": {"com.myapp.userId": "user-mock-integration"},
+    "agent": {"identifiers": {"key": "<integration-db-key>"}},
+    "oauth2Clients": [{
+      "identifiers": {"clientID": "mock-integration-client"},
+      "scopes": ["me", "geo:read", "orders.sales:write", "orders.payments:write", "payment-records:write", "kv"],
+      "secret": "your-secure-client-secret",
+      "accessTokenLifetimeSeconds": 3600,
+      "refreshTokenLifetimeSeconds": 2592000,
+      "grants": ["client_credentials"],
+      "isConfidential": true,
+      "node": {"identifiers": {"com.heads.seedID": "ourcompany"}}
+    }]
+  }'
 
 # 3) Install the integration
+# The install action sends installation payload to the integration's baseUrl
 curl -X PATCH -u ":banana" "localhost:5000/api/v1/epi-integrations/name=Mock" \
   -H "Content-Type: application/json" \
   -d '{"install": true}'
