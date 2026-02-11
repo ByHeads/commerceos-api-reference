@@ -251,6 +251,24 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/stock-adjustments" \
     ]
   }'
 
+# Create stock adjustment with instance data (serialized/IMEI-tracked product)
+# NOTE: `instance` is a single object, NOT an array
+curl -X POST -u ":banana" "localhost:5000/api/v1/stock-adjustments" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "identifiers": {"com.myapp.adjustmentId": "ADJ-004"},
+    "timestamp": "2024-03-17T11:00:00Z",
+    "items": [
+      {
+        "product": {"identifiers": {"com.heads.seedID": "iphone15-128-Black-New"}},
+        "place": {"identifiers": {"com.myapp.stockPlaceId": "WH-001"}},
+        "reason": {"identifiers": {"com.myapp.reasonId": "RESTOCK"}},
+        "quantity": 1,
+        "instance": {"imei": "123456789012345"}
+      }
+    ]
+  }'
+
 # Get stock adjustment items
 curl -X GET -u ":banana" "localhost:5000/api/v1/stock-adjustments/com.myapp.adjustmentId=ADJ-001~with(items)"
 ```
