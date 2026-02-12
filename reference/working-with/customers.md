@@ -709,7 +709,7 @@ GET /v1/trade-relationships~where(groups~any(identifiers/com.example.groupId=VIP
 Apply labels for custom segmentation:
 
 ```bash
-# Create customer label
+# Create customer label (applicable to people and companies)
 POST /v1/labels
 {
   "identifiers": {"com.example.labelId": "vip"},
@@ -718,16 +718,41 @@ POST /v1/labels
   "applicableOnlyTo": ["person", "company"]
 }
 
-# Assign label to customer
+# Assign label to a person
 POST /v1/people/com.example.customerId=CUST-001/labels
 {"identifiers": {"com.example.labelId": "vip"}}
 
-# Get customer's labels
+# Get person's labels
 GET /v1/people/com.example.customerId=CUST-001/labels
 
-# Find customers with label
+# Find people with label
 GET /v1/people~with(labels)~where(labels~any(identifiers/com.example.labelId=vip))~take(20)
 ```
+
+**Supplier/Company Labels:**
+
+```bash
+# Create a label for suppliers
+POST /v1/labels
+{
+  "identifiers": {"com.example.labelId": "preferred-supplier"},
+  "title": "Preferred Supplier",
+  "color": "#00AA00",
+  "applicableOnlyTo": ["company"]
+}
+
+# Assign label to a supplier (companies are at /v1/companies)
+POST /v1/companies/com.example.companyId=SUP-001/labels
+{"identifiers": {"com.example.labelId": "preferred-supplier"}}
+
+# Get supplier's labels
+GET /v1/companies/com.example.companyId=SUP-001/labels
+
+# Find suppliers with label
+GET /v1/companies~with(labels)~where(labels~any(identifiers/com.example.labelId=preferred-supplier))~take(20)
+```
+
+> **Note:** Labels can also be assigned to trade orders, stores, POS terminals, and users using the same `POST /{resource}/{id}/labels` pattern. See [Orders](orders.md) for order label examples.
 
 ---
 

@@ -20,14 +20,15 @@ This guide covers trade orders in CommerceOS: order creation, items, instance tr
 12. [Payments](#payments)
 13. [Shipments](#shipments)
 14. [Order Addresses](#order-addresses)
-15. [Returns and Refunds](#returns-and-refunds)
-16. [Endpoint Matrix](#endpoint-matrix)
-17. [Finder and Indexing Patterns](#finder-and-indexing-patterns)
-18. [Error Handling and Validation](#error-handling-and-validation)
-19. [Integration Playbook](#integration-playbook)
-20. [Case Study: Mobile Device Bundle Sale](#case-study-mobile-device-bundle-sale)
-21. [Business Rules and Pitfalls](#business-rules-and-pitfalls)
-22. [Related Guides](#related-guides)
+15. [Labels](#labels)
+16. [Returns and Refunds](#returns-and-refunds)
+17. [Endpoint Matrix](#endpoint-matrix)
+18. [Finder and Indexing Patterns](#finder-and-indexing-patterns)
+19. [Error Handling and Validation](#error-handling-and-validation)
+20. [Integration Playbook](#integration-playbook)
+21. [Case Study: Mobile Device Bundle Sale](#case-study-mobile-device-bundle-sale)
+22. [Business Rules and Pitfalls](#business-rules-and-pitfalls)
+23. [Related Guides](#related-guides)
 
 ---
 
@@ -158,6 +159,7 @@ GET /v1/trade-orders/com.example.orderId=ORD-001~with(status,items.statusDetails
 | Field | Type | Description |
 |-------|------|-------------|
 | `reservedUntil` | datetime | Stock reservation expiry (optional) |
+| `labels` | Label[] | Assigned labels (add/remove semantics) |
 
 ### Order Fields (Read-Only - Set via Actions)
 
@@ -1152,6 +1154,67 @@ PUT /v1/people/com.example.customerId=CUST-001
 
 ---
 
+## Labels
+
+Assign labels to orders for categorization, filtering, and workflow management.
+
+### Creating an Order Label
+
+```bash
+# Create a label restricted to trade orders
+POST /v1/labels
+{
+  "identifiers": {"com.example.labelId": "urgent"},
+  "title": "Urgent",
+  "color": "#FF0000",
+  "applicableOnlyTo": ["TradeOrder"]
+}
+```
+
+> **Note:** `applicableOnlyTo` uses Heidi type names. For trade orders, use `"TradeOrder"` (PascalCase). Labels without `applicableOnlyTo` (or with an empty array) are applicable to all entity types.
+
+### Assigning Labels
+
+```bash
+# Assign label to an existing order
+POST /v1/trade-orders/com.example.orderId=ORD-001/labels
+{"identifiers": {"com.example.labelId": "urgent"}}
+
+# Assign label during order creation
+POST /v1/trade-orders
+{
+  "identifiers": {"com.example.orderId": "ORD-002"},
+  "supplier": {"identifiers": {"com.example.companyId": "OUR-COMPANY"}},
+  "customer": {"identifiers": {"com.example.customerId": "CUST-001"}},
+  "sellers": [{"identifiers": {"com.example.storeId": "STORE-001"}}],
+  "currency": {"identifiers": {"currencyCode": "SEK"}},
+  "items": [{"product": {"identifiers": {"com.example.sku": "PROD-001"}}, "quantity": 1}],
+  "labels": [{"identifiers": {"com.example.labelId": "urgent"}}]
+}
+```
+
+### Reading and Filtering by Labels
+
+```bash
+# Get an order's labels
+GET /v1/trade-orders/com.example.orderId=ORD-001/labels
+
+# Get order with labels expanded
+GET /v1/trade-orders/com.example.orderId=ORD-001~with(labels)
+
+# Find orders with a specific label
+GET /v1/trade-orders~with(labels)~where(labels~any(identifiers/com.example.labelId=urgent))~take(50)
+```
+
+### Removing Labels
+
+```bash
+# Remove label from an order
+DELETE /v1/trade-orders/com.example.orderId=ORD-001/labels/com.example.labelId=urgent
+```
+
+---
+
 ## Returns and Refunds
 
 ### Return Flow
@@ -1210,6 +1273,9 @@ PATCH /v1/trade-orders/com.example.orderId=ORD-001/actions
 | Get payments | GET | `/v1/trade-orders/{id}/payments` | List payments |
 | Get shipments | GET | `/v1/trade-orders/{id}/shipments` | List shipments |
 | Get addresses | GET | `/v1/trade-orders/{id}/deliveryAddresses` | Delivery addresses |
+| Get labels | GET | `/v1/trade-orders/{id}/labels` | Order labels |
+| Assign label | POST | `/v1/trade-orders/{id}/labels` | Add label to order |
+| Remove label | DELETE | `/v1/trade-orders/{id}/labels/{labelId}` | Remove label from order |
 
 ### Payment Orders
 

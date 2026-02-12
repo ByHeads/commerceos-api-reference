@@ -526,12 +526,19 @@ The `createPayment` action has strict requirements:
 
 > **Important:** Payment methods with an associated `PaymentIntegration` are not supported via `createPayment`. Use the payment integration's native flow instead. Query `GET /v1/payment-methods` to discover valid method IDs for your tenant.
 
+### Labels
+
+Trade orders support labels for categorization. Labels use add/remove semantics — assign via `POST /v1/trade-orders/{id}/labels`, remove via `DELETE`.
+
+> **Note:** Labels must have `applicableOnlyTo` include `"TradeOrder"` (or be unrestricted) to be assignable to orders.
+
 ### Expansions
 
 | Expansion | Description |
 |-----------|-------------|
 | `~with(manualDiscounts)` | Manual discounts applied to order |
 | `~with(payments)` | Payment records for this order |
+| `~with(labels)` | Assigned labels |
 
 Each order item has a `discountable` flag indicating whether it accepts discounts.
 
