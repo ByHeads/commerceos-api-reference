@@ -212,7 +212,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/stock-adjustments" \
     ]
   }'
 
-# Create stock adjustment (decrease) - negative quantity
+# Create stock adjustment (decrease) - reason with direction: "Decrease"
 curl -X POST -u ":banana" "localhost:5000/api/v1/stock-adjustments" \
   -H "Content-Type: application/json" \
   -d '{
@@ -223,7 +223,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/stock-adjustments" \
         "product": {"identifiers": {"com.myapp.sku": "SKU-001"}},
         "place": {"identifiers": {"com.myapp.stockPlaceId": "WH-001"}},
         "reason": {"identifiers": {"com.myapp.reasonId": "DAMAGED"}},
-        "quantity": -5
+        "quantity": 5
       }
     ]
   }'

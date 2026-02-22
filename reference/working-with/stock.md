@@ -238,7 +238,7 @@ Company Stock Roots
 | `product` | ProductRef | Yes | Product being adjusted |
 | `place` | StockPlaceRef | Yes | Location of adjustment |
 | `reason` | ReasonRef | Yes | Why inventory changed |
-| `quantity` | decimal (string) | No | Amount (positive or negative); defaults to `"1"` |
+| `quantity` | decimal (string) | No | Amount to adjust; defaults to `"1"`. The direction (increase/decrease) is determined by the reason's `direction` field |
 | `instance` | Instance | No | Specific serialized instance |
 
 > **Note:** If `owner` is omitted from the adjustment, it is inferred from the stock place's nearest stock root. Errors occur when the owner cannot be inferred (for example, the place is unowned and not under a stock root).
@@ -550,7 +550,7 @@ POST /v1/stock-adjustments
 }
 ```
 
-### Negative Adjustments (Decrease)
+### Stock Decrease
 
 ```bash
 POST /v1/stock-adjustments
@@ -562,11 +562,13 @@ POST /v1/stock-adjustments
       "product": {"identifiers": {"com.example.sku": "PHONE-001"}},
       "place": {"identifiers": {"com.example.stockPlaceId": "WAREHOUSE-001"}},
       "reason": {"identifiers": {"com.example.reasonId": "DAMAGED"}},
-      "quantity": -2
+      "quantity": 2
     }
   ]
 }
 ```
+
+> The `DAMAGED` reason has `direction: "Decrease"`, so the quantity is subtracted from stock.
 
 ### Instance-Specific Adjustment
 
@@ -650,7 +652,7 @@ GET /v1/stock-adjustment-reasons~where(active=true)
 
 ### Inter-Location Transfer
 
-Transfer between locations using paired adjustments:
+Transfer between locations using paired adjustments. The `TRANSFER-OUT` reason has `direction: "Decrease"` and `TRANSFER-IN` has `direction: "Increase"`:
 
 ```bash
 POST /v1/stock-adjustments
@@ -663,7 +665,7 @@ POST /v1/stock-adjustments
       "product": {"identifiers": {"com.example.sku": "PHONE-001"}},
       "place": {"identifiers": {"com.example.stockPlaceId": "WAREHOUSE-001"}},
       "reason": {"identifiers": {"com.example.reasonId": "TRANSFER-OUT"}},
-      "quantity": -10
+      "quantity": 10
     },
     {
       "product": {"identifiers": {"com.example.sku": "PHONE-001"}},
@@ -1338,13 +1340,13 @@ POST /v1/shipment-orders/@find
        {
          "product": {"identifiers": {"com.example.sku": "PHONE-001"}},
          "place": {"identifiers": {"com.example.stockPlaceId": "WH-CENTRAL-RECEIVING"}},
-         "reason": {"identifiers": {"com.example.reasonId": "TRANSFER"}},
-         "quantity": -50
+         "reason": {"identifiers": {"com.example.reasonId": "TRANSFER-OUT"}},
+         "quantity": 50
        },
        {
          "product": {"identifiers": {"com.example.sku": "PHONE-001"}},
          "place": {"identifiers": {"com.example.stockPlaceId": "WH-CENTRAL-STORAGE"}},
-         "reason": {"identifiers": {"com.example.reasonId": "TRANSFER"}},
+         "reason": {"identifiers": {"com.example.reasonId": "TRANSFER-IN"}},
          "quantity": 50
        }
      ]
@@ -1436,13 +1438,13 @@ POST /v1/stock-adjustments
     {
       "product": {"identifiers": {"com.example.sku": "IPHONE-15-PRO"}},
       "place": {"identifiers": {"com.example.stockPlaceId": "WH-RECEIVING"}},
-      "reason": {"identifiers": {"com.example.reasonId": "TRANSFER"}},
-      "quantity": -50
+      "reason": {"identifiers": {"com.example.reasonId": "TRANSFER-OUT"}},
+      "quantity": 50
     },
     {
       "product": {"identifiers": {"com.example.sku": "IPHONE-15-PRO"}},
       "place": {"identifiers": {"com.example.stockPlaceId": "WH-STORAGE"}},
-      "reason": {"identifiers": {"com.example.reasonId": "TRANSFER"}},
+      "reason": {"identifiers": {"com.example.reasonId": "TRANSFER-IN"}},
       "quantity": 50
     }
   ]
@@ -1576,13 +1578,13 @@ GET /v1/stock-places/com.example.stockPlaceId=WH-STORAGE/entries
    "reason": {"identifiers": {"com.example.reasonId": "..."}}"
    ```
 
-4. **Quantity is a decimal string (positive or negative), defaulting to `"1"` if omitted:**
+4. **Quantity is a positive decimal string, defaulting to `"1"` if omitted. The reason's `direction` controls increase/decrease:**
    ```bash
-   # Increase
+   # Increase (reason with direction: "Increase")
    "quantity": "50"
 
-   # Decrease
-   "quantity": "-10"
+   # Decrease (reason with direction: "Decrease")
+   "quantity": "10"
    ```
 
 5. **Namespaced identifiers required:**
@@ -1632,17 +1634,17 @@ Transfers should be atomic to prevent stock discrepancies:
 POST /v1/stock-adjustments
 {
   "items": [
-    {"place": "A", "quantity": -10},  # Decrease source
-    {"place": "B", "quantity": 10}    # Increase destination
+    {"place": "A", "reason": "TRANSFER-OUT", "quantity": 10},  # Decrease source
+    {"place": "B", "reason": "TRANSFER-IN", "quantity": 10}    # Increase destination
   ]
 }
 
 # BAD: Separate adjustments (risk of partial failure)
 POST /v1/stock-adjustments  # First request
-{"items": [{"place": "A", "quantity": -10}]}
+{"items": [{"place": "A", "reason": "TRANSFER-OUT", "quantity": 10}]}
 
 POST /v1/stock-adjustments  # Second request (may fail)
-{"items": [{"place": "B", "quantity": 10}]}
+{"items": [{"place": "B", "reason": "TRANSFER-IN", "quantity": 10}]}
 ```
 
 ### Shipment Timing
