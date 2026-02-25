@@ -386,6 +386,29 @@ The `phoneImei` must reference an `imei` from an item that appears **earlier** i
 
 ---
 
+## 22. Clearing Array Properties
+
+To remove all items from an array property (`stockRoots`, `labels`, `assortmentRoots`, `categories`, `prices`, etc.), use `PUT` with an empty array or `PATCH` with `replace: []`:
+
+```bash
+# Clear all stock roots from a store
+PUT /v1/stores/{key}/stockRoots
+[]
+
+# Or equivalently via PATCH
+PATCH /v1/stores/{key}/stockRoots
+{"replace": []}
+
+# WRONG - DELETE on the collection path removes a single item, not all
+DELETE /v1/stores/{key}/stockRoots  # Not the same as clearing
+```
+
+This works for all `indexedArray` properties: `stockRoots`, `assortmentRoots`, `assortmentOwners`, `categories`, `labels`, `prices`, `users`, `customerGroups`, etc.
+
+> **Note:** Individual items can be removed with `DELETE /v1/{collection}/{key}/{member}/{itemKey}`.
+
+---
+
 ## API Response Behaviors
 
 ### Empty Collection Results

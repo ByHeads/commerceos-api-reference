@@ -95,6 +95,24 @@ These are separate concepts that are often confused:
 - Use `stockRoots` for stock adjustments and inventory tracking
 - Use `assortmentRoots` for product assortment and catalog visibility
 
+### Clearing stockRoots
+
+To remove all stock roots from an agent, use `PUT` with an empty array:
+
+```bash
+# Remove all stock roots from a company
+curl -X PUT -u ":banana" "localhost:5000/api/v1/companies/com.heads.seedID=ourcompany/stockRoots" \
+  -H "Content-Type: application/json" \
+  -d '[]'
+
+# Or using PATCH replace
+curl -X PATCH -u ":banana" "localhost:5000/api/v1/companies/com.heads.seedID=ourcompany/stockRoots" \
+  -H "Content-Type: application/json" \
+  -d '{"replace": []}'
+```
+
+This applies to all `indexedArray` properties (e.g., `stockRoots`, `assortmentRoots`, `labels`, `categories`).
+
 ---
 
 ## Stock Places

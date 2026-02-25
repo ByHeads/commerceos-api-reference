@@ -107,6 +107,22 @@ Notes:
 - Phone numbers are converted on set.
 - Email addresses are converted on set.
 
+### Clearing Add/Remove Collections
+
+To remove all items from an add/remove collection (e.g., `stockRoots`, `labels`, `assortmentRoots`), use `PUT` with an empty array:
+
+```bash
+# Clear all stock roots from a store
+PUT /v1/stores/{key}/stockRoots
+[]
+
+# Or using PATCH replace
+PATCH /v1/stores/{key}/stockRoots
+{"replace": []}
+```
+
+Both methods remove all existing items. Individual items can still be removed with `DELETE /v1/{collection}/{key}/{member}/{itemKey}`.
+
 ---
 
 ## Product Node Hierarchy

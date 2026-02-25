@@ -155,7 +155,27 @@ PATCH /products
 # Replace entire collection
 PATCH /products
 {"replace": [{"name": "Only Product", "identifiers": {"com.example.sku": "ONLY-001"}}]}
+
+# Clear all items from collection (replace with empty array)
+PATCH /products
+{"replace": []}
 ```
+
+**Clearing Collections:**
+
+To remove all items from an array property, use `PUT` with an empty array or `PATCH` with `replace: []`:
+
+```bash
+# Clear via PUT (empty array)
+PUT /stores/{key}/stockRoots
+[]
+
+# Clear via PATCH replace
+PATCH /stores/{key}/stockRoots
+{"replace": []}
+```
+
+Both approaches trigger the replace handler with an empty whitelist, removing all existing items.
 
 **Notes:**
 - `x-array-members` is only present on array schemas where members exist
