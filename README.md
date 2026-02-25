@@ -87,6 +87,7 @@ commerceos-api-reference/
 │       ├── bi-receipts-analytics.md # BI/analytics receipt export
 │       └── retail-implementation.md # Retail implementation patterns
 └── features/                     # Feature-specific documentation
+    ├── streaming.md              # Streaming and batch processing guide
     ├── sql-export.md             # SQL export specification
     └── config-import-export.md   # Config utility spec
 ```
@@ -115,6 +116,7 @@ commerceos-api-reference/
 | Sync Webhooks | [`reference/sync-webhooks.md`](reference/sync-webhooks.md) |
 | Type Members | [`reference/type-members.md`](reference/type-members.md) |
 | OpenAPI Extensions | [`reference/openapi-extensions.md`](reference/openapi-extensions.md) |
+| Streaming | [`features/streaming.md`](features/streaming.md) |
 | Common Gotchas | [`reference/common-gotchas.md`](reference/common-gotchas.md) |
 | Resource Patterns | [`reference/resource-patterns.md`](reference/resource-patterns.md) |
 | Task Recipes | [`guide/agent-guide.md`](guide/agent-guide.md) |

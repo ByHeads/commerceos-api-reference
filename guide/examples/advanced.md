@@ -156,6 +156,8 @@ curl -X PUT -u ":banana" "localhost:5000/api/v1/prices" \
 EOF
 ```
 
+> **Streaming guide:** For controlling transaction chunk size (`X-Transaction-Count`), streaming results back as each chunk commits, and handling mid-stream errors, see [`features/streaming.md`](../../features/streaming.md).
+
 ---
 
 ## SQL Export Serialization

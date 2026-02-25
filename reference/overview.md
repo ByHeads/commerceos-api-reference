@@ -17,7 +17,7 @@ This reference explains how to integrate with CommerceOS at a practical level. I
 2. **Learn operators** - [`operators.md`](operators.md) for query syntax and recipes
 3. **Handle pagination** - [`pagination.md`](pagination.md) for paging patterns and performance tips
 4. **See examples** - [`../guide/examples.md`](../guide/examples.md) for practical curl examples
-5. **Dive deeper** - [`mapped-types.md`](mapped-types.md), [`sync-webhooks.md`](sync-webhooks.md), [`primitives.md`](primitives.md), [`receipts.md`](receipts.md), and other reference docs
+5. **Dive deeper** - [`mapped-types.md`](mapped-types.md), [`sync-webhooks.md`](sync-webhooks.md), [`primitives.md`](primitives.md), [`receipts.md`](receipts.md), [`streaming`](../features/streaming.md), and other reference docs
 
 **Domain Guides (Working with...):**
 - [Products](working-with/products.md) — Catalog management, variants, GTIN/PLU, categories, assortments
@@ -371,3 +371,5 @@ After buffering completes, items are serialized according to the requested outpu
 **Key point:** Even streaming formats buffer all items during the database read phase. The "streaming" behavior applies only to the serialization phase, providing faster first-byte response times for large result sets while maintaining transaction consistency.
 
 **JSON streaming note:** By default, JSON arrays are fully serialized before output begins. With `stream=true`, JSON array elements are streamed individually **after** the buffering phase completes—the first byte arrives after all items are read from the database, but before the full JSON array is assembled. This is useful for large result sets where you want incremental output.
+
+> **Streaming in depth:** For transaction chunking, input streaming, `X-Transaction-Count` header, and mid-stream error handling, see [`features/streaming.md`](../features/streaming.md).

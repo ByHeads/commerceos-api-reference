@@ -24,6 +24,7 @@ Comprehensive curl examples demonstrating the full capabilities of the CommerceO
 | [Configuration](./examples/configuration.md) | Countries, languages, templates, mapped types, webhooks | System settings, integrations |
 | [Query Operators](./examples/query-operators.md) | Operators reference | Filtering, pagination, projection |
 | [Advanced Patterns](./examples/advanced.md) | Complex queries, bulk operations, SQL export | Aggregations, NDJSON, mapped types |
+| [Streaming](../features/streaming.md) | Output streaming, input streaming, transaction chunking | NDJSON, `X-Transaction-Count`, error handling |
 
 ---
 
