@@ -19,7 +19,7 @@ A discount rule defines **when** and **how** discounts apply. Key properties:
 | `currency` | Restrict to specific currencies (e.g., `{"currencyCode": "SEK"}`). |
 | `time` | Optional validity window with `start` and `end` dates (ISO format). |
 | `phase` | Determines evaluation order. Rules in lower-priority phases apply first; higher-priority phases can stack on top. Include `identifiers`, `name`, and `priority`. |
-| `items` | A **named map** of item groups. Each key (e.g., `"phone"`, `"plan"`) defines a group with `include`/`exclude` arrays and optional `atLeast`/`atMost` quantity constraints. |
+| `items` | A **named map** of item groups. Each key (e.g., `"phone"`, `"plan"`) defines a group with `include`/`exclude` arrays, optional `atLeast`/`atMost` quantity constraints, and optional `worthAtLeast`/`worthAtMost` value thresholds. |
 | `where.equals` | Links item groups by matching property paths (e.g., ensuring a phone's IMEI matches a plan's phoneImei for bundle discounts). |
 | `effects` | Array of effect objects. Each effect must include `@type`, which items it targets, and how it applies. |
 | `effects[].@type` | Effect type: `"percentage discount rule effect"`, `"fixed reduction discount rule effect"`, `"fixed price discount rule effect"`, or `"package discount rule effect"`. |
@@ -389,6 +389,97 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/discount-rules" \
     }],
     "includesTax": false,
     "reason": {"identifiers": {"com.heads.seedID": "staff"}, "name": "Staff discount"}
+  }'
+```
+
+---
+
+## Example 10: Cart Value Threshold (Spend X, Get Discount on Y)
+
+When the total cart value reaches a monetary threshold, apply a discount on specific products. This uses two item groups:
+
+- A **qualifier group** (`allTheThings`) with empty `include`/`exclude` (matches all products) and `worthAtLeast` set to the monetary threshold
+- A **target group** (`accessory`) with specific product includes that receives the discount effect
+
+The `worthAtLeast` field is a **value-based** threshold (decimal), unlike `atLeast`/`atMost` which are quantity-based. It checks the total value of matched items accumulated up to the current phase.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `worthAtLeast` | `decimal?` | Minimum total value (up to this phase) of matched products |
+| `worthAtMost` | `decimal?` | Maximum total value (up to this phase) of matched products |
+
+> **Note:** `worthAtLeast` evaluates the sum of effects applied to matched items by preceding phases. This means the threshold is based on the accumulated price after earlier discount phases have been applied, not the original list price.
+
+```bash
+# When purchasing for at least 10,000 SEK, get 10% off all accessories
+curl -X POST -u ":banana" "localhost:5000/api/v1/discount-rules" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "identifiers": {"com.heads.seedID": "cart-threshold-accessory-discount"},
+    "name": "10% off accessories when purchasing for 10 000 SEK or more",
+    "seller": {"include": [{"identifiers": {"com.heads.seedID": "ourcompany"}}]},
+    "currency": {"include": [{"identifiers": {"currencyCode": "SEK"}}]},
+    "phase": {"identifiers": {"com.heads.seedID": "promotions"}, "name": "Promotions", "priority": 400},
+    "items": {
+      "allTheThings": {
+        "include": [],
+        "exclude": [],
+        "worthAtLeast": 10000
+      },
+      "accessory": {
+        "include": [{"identifiers": {"com.heads.seedID": "mobile-accessories-group"}}],
+        "exclude": [],
+        "atLeast": 1
+      }
+    },
+    "effects": [{
+      "@type": "percentage discount rule effect",
+      "items": ["accessory"],
+      "percentage": "10",
+      "multiplicity": "PerUnit",
+      "targeting": "All"
+    }],
+    "includesTax": true,
+    "reason": {"identifiers": {"com.heads.seedID": "cart-threshold-promo"}, "name": "Cart threshold promotion"}
+  }'
+```
+
+### How It Works
+
+1. The `allTheThings` group matches **all products** (empty `include`/`exclude`). The `worthAtLeast: 10000` threshold requires their total value to be at least 10,000 SEK.
+2. The `accessory` group matches products from the accessories category with at least 1 item.
+3. **Both groups must match** for the rule to fire — the cart must contain 10,000+ SEK worth of products AND at least one accessory.
+4. The effect targets only the `accessory` group (10% off), leaving qualifier items at full price.
+
+### Simpler Variant: Whole-Cart Discount
+
+For a straightforward "spend X, get Y% off everything" rule, use a single item group:
+
+```bash
+# 10% off everything when cart exceeds 1,500 SEK
+curl -X POST -u ":banana" "localhost:5000/api/v1/discount-rules" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "identifiers": {"com.heads.seedID": "cart-discount-1500"},
+    "name": "10% off when purchasing for 1500 SEK or more",
+    "currency": {"include": [{"identifiers": {"currencyCode": "SEK"}}]},
+    "phase": {"identifiers": {"com.heads.seedID": "promotions"}, "name": "Promotions", "priority": 400},
+    "items": {
+      "everything": {
+        "include": [],
+        "exclude": [],
+        "worthAtLeast": 1500
+      }
+    },
+    "effects": [{
+      "@type": "percentage discount rule effect",
+      "items": ["everything"],
+      "percentage": "10",
+      "multiplicity": "PerUnit",
+      "targeting": "All"
+    }],
+    "includesTax": true,
+    "reason": {"identifiers": {"com.heads.seedID": "value-discount-reason"}, "name": "Cart value discount"}
   }'
 ```
 
