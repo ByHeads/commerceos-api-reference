@@ -398,8 +398,10 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/discount-rules" \
 
 When the total cart value reaches a monetary threshold, apply a discount on specific products. This uses two item groups:
 
-- A **qualifier group** (`allTheThings`) with empty `include`/`exclude` (matches all products) and `worthAtLeast` set to the monetary threshold
+- A **qualifier group** (`allTheThings`) with a broad product group in `include` (e.g., a top-level "all products" group) and `worthAtLeast` set to the monetary threshold
 - A **target group** (`accessory`) with specific product includes that receives the discount effect
+
+> **Warning:** The qualifier group's `include` must be **non-empty**. An empty `include` targets no products and the rule will never match. Use a top-level product group to match all products.
 
 The `worthAtLeast` field is a **value-based** threshold (decimal), unlike `atLeast`/`atMost` which are quantity-based. It checks the total value of matched items accumulated up to the current phase.
 
@@ -422,7 +424,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/discount-rules" \
     "phase": {"identifiers": {"com.heads.seedID": "promotions"}, "name": "Promotions", "priority": 400},
     "items": {
       "allTheThings": {
-        "include": [],
+        "include": [{"identifiers": {"com.heads.seedID": "all-products"}}],
         "exclude": [],
         "worthAtLeast": 10000
       },
@@ -446,7 +448,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/discount-rules" \
 
 ### How It Works
 
-1. The `allTheThings` group matches **all products** (empty `include`/`exclude`). The `worthAtLeast: 10000` threshold requires their total value to be at least 10,000 SEK.
+1. The `allTheThings` group matches **all products** (via a top-level product group in `include`). The `worthAtLeast: 10000` threshold requires their total value to be at least 10,000 SEK.
 2. The `accessory` group matches products from the accessories category with at least 1 item.
 3. **Both groups must match** for the rule to fire — the cart must contain 10,000+ SEK worth of products AND at least one accessory.
 4. The effect targets only the `accessory` group (10% off), leaving qualifier items at full price.
@@ -466,7 +468,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/discount-rules" \
     "phase": {"identifiers": {"com.heads.seedID": "promotions"}, "name": "Promotions", "priority": 400},
     "items": {
       "everything": {
-        "include": [],
+        "include": [{"identifiers": {"com.heads.seedID": "all-products"}}],
         "exclude": [],
         "worthAtLeast": 1500
       }
