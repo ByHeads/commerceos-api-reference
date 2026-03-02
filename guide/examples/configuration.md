@@ -240,6 +240,8 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/sales-channels" \
 
 ## Customer Groups
 
+> For full documentation on customer group management, membership assignment, and using groups with discount rules, see [Working with Customers — Customer Groups](../../reference/working-with/customers.md#customer-groups) and [Discount Rules — Buyer Conditions](./discount-rules.md#customer-groups-and-buyer-conditions).
+
 ```bash
 # List all customer groups
 curl -X GET -u ":banana" "localhost:5000/api/v1/customer-groups"
@@ -247,7 +249,7 @@ curl -X GET -u ":banana" "localhost:5000/api/v1/customer-groups"
 # Get customer group by ID
 curl -X GET -u ":banana" "localhost:5000/api/v1/customer-groups/com.myapp.groupId=vip"
 
-# Get customer group members
+# Get customer group members (trade relationships in this group)
 curl -X GET -u ":banana" "localhost:5000/api/v1/customer-groups/com.myapp.groupId=vip/members"
 
 # Create a customer group
@@ -259,8 +261,19 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/customer-groups" \
   -d '{
     "identifiers": {"com.myapp.groupId": "vip"},
     "name": "VIP Customers",
+    "memberMoniker": "VIP",
     "owner": {"identifiers": {"key": "agt123456789012345678901234567890"}}
   }'
+
+# Assign a customer to a group (via trade relationship)
+curl -X POST -u ":banana" \
+  "localhost:5000/api/v1/trade-relationships/com.myapp.relId=REL-001/groups" \
+  -H "Content-Type: application/json" \
+  -d '{"identifiers": {"com.myapp.groupId": "vip"}}'
+
+# Remove a customer from a group
+curl -X DELETE -u ":banana" \
+  "localhost:5000/api/v1/trade-relationships/com.myapp.relId=REL-001/groups/com.myapp.groupId=vip"
 ```
 
 ---

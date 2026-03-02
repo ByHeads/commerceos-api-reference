@@ -229,3 +229,10 @@ To set these relationships:
    ```
 
 Using external identifiers in `parent` or `owner` (e.g., `{"identifiers": {"com.myapp.companyId": "COMP-001"}}`) will **not resolve** the relationship correctly.
+
+### Customer Groups and Trade Relationships
+
+For customer group management (creating groups, assigning customers, using groups with discount rules), see:
+- [Working with Customers — Customer Groups](../../reference/working-with/customers.md#customer-groups)
+- [Configuration — Customer Groups](./configuration.md#customer-groups)
+- [Discount Rules — Buyer Conditions](./discount-rules.md#customer-groups-and-buyer-conditions)

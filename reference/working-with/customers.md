@@ -661,11 +661,25 @@ PUT /v1/agents/@find/results
 
 ### Customer Groups
 
-Organize customers into groups for pricing, promotions, or segmentation.
+Organize customers into groups for pricing, promotions, or segmentation. Customer groups are used to:
+
+- **Target discount rules** — scope discounts to specific buyer groups (e.g., employee discounts, VIP pricing)
+- **Segment customers** — categorize customers for reporting or marketing
+- **Apply group-based pricing** — use buyer restrictions on prices to offer group-specific rates
 
 > **Important:** The `/people|companies/{id}/customerGroups` collection lists groups **owned** by the agent, not group membership. Customer group membership is managed via the trade relationship's `groups` member.
 
-**Creating a Customer Group:**
+#### Customer Group Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `identifiers` | object | Namespaced external IDs |
+| `name` | string | Display name (e.g., "VIP Customers", "Employees") |
+| `memberMoniker` | string | Label for a single member (e.g., "Employee", "VIP") |
+| `owner` | reference | The agent (company) that owns this group |
+| `members` | array | Trade relationships in this group (read via expansion) |
+
+#### Creating a Customer Group
 
 > **Note:** The `owner` setter for customer groups uses `Agent.fromKey()` and requires `identifiers.key` (the database key).
 
@@ -677,32 +691,203 @@ GET /v1/companies/com.example.companyId=OUR-COMPANY/identifiers/key
 # Step 2: Create the group with owner using database key
 POST /v1/customer-groups
 {
-  "identifiers": {"com.example.groupId": "VIP-CUSTOMERS"},
-  "name": "VIP Customers",
+  "identifiers": {"com.example.groupId": "EMPLOYEE-GROUP"},
+  "name": "Employees",
+  "memberMoniker": "Employee",
   "owner": {"identifiers": {"key": "c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6"}}
 }
 ```
 
-**Assigning Membership via Trade Relationship:**
+Common group patterns:
 
 ```bash
-# First, ensure a trade relationship exists between supplier and customer
-# Then assign the customer to the group via the relationship's groups member
-POST /v1/trade-relationships/com.example.relId=REL-001/groups
+# VIP customer group
+POST /v1/customer-groups
+{
+  "identifiers": {"com.example.groupId": "VIP-CUSTOMERS"},
+  "name": "VIP Customers",
+  "memberMoniker": "VIP",
+  "owner": {"identifiers": {"key": "<company-database-key>"}}
+}
+
+# Wholesale customer group
+POST /v1/customer-groups
+{
+  "identifiers": {"com.example.groupId": "WHOLESALE"},
+  "name": "Wholesale Buyers",
+  "memberMoniker": "Wholesaler",
+  "owner": {"identifiers": {"key": "<company-database-key>"}}
+}
+```
+
+#### Assigning Customers to Groups
+
+Customer group membership is managed through **trade relationships**, not directly on agents. This means a customer must have a trade relationship with a supplier before they can be assigned to a group.
+
+**Step-by-step: Add a customer to a group:**
+
+```bash
+# 1. Create the customer (person)
+POST /v1/people
+{
+  "identifiers": {"com.example.customerId": "EMP-001"},
+  "givenName": "Pelle",
+  "familyName": "Personalsson",
+  "contactMethods": {"email": "pelle@company.se", "mobilePhone": "+46712345678"}
+}
+
+# 2. Create a trade relationship between your company and the customer
+POST /v1/trade-relationships
+{
+  "identifiers": {"com.example.relId": "TR-EMP-001"},
+  "supplierAgent": {"identifiers": {"com.example.companyId": "OUR-COMPANY"}},
+  "customerAgent": {"identifiers": {"com.example.customerId": "EMP-001"}},
+  "defaultCurrency": {"identifiers": {"currencyCode": "SEK"}}
+}
+
+# 3. Assign the customer to the group via the trade relationship's groups member
+POST /v1/trade-relationships/com.example.relId=TR-EMP-001/groups
+{"identifiers": {"com.example.groupId": "EMPLOYEE-GROUP"}}
+```
+
+**Assign multiple groups to one customer:**
+
+```bash
+# A customer can belong to multiple groups
+POST /v1/trade-relationships/com.example.relId=TR-EMP-001/groups
 {"identifiers": {"com.example.groupId": "VIP-CUSTOMERS"}}
 ```
 
-**Querying Group Membership:**
+**Remove a customer from a group:**
+
+```bash
+DELETE /v1/trade-relationships/com.example.relId=TR-EMP-001/groups/com.example.groupId=EMPLOYEE-GROUP
+```
+
+#### Querying Group Membership
 
 ```bash
 # Get groups a customer belongs to (via their trade relationship)
-GET /v1/trade-relationships/com.example.relId=REL-001/groups
+GET /v1/trade-relationships/com.example.relId=TR-EMP-001/groups
 
 # Find all trade relationships in a specific group
-GET /v1/trade-relationships~where(groups~any(identifiers/com.example.groupId=VIP-CUSTOMERS))
+GET /v1/trade-relationships~where(groups~any(identifiers/com.example.groupId=EMPLOYEE-GROUP))
+
+# Get group with members expanded
+GET /v1/customer-groups/com.example.groupId=EMPLOYEE-GROUP~with(members)
+
+# List all customer groups owned by a company
+GET /v1/companies/com.example.companyId=OUR-COMPANY/customerGroups
 ```
 
-**Note:** Posting to `/v1/people/{id}/customerGroups` sets the person as the group's **owner**, which is typically used for B2B scenarios where a company owns customer groups for their own customers.
+> **Note:** Posting to `/v1/people/{id}/customerGroups` sets the person as the group's **owner**, which is typically used for B2B scenarios where a company owns customer groups for their own customers. This does NOT add the person as a member.
+
+#### Using Customer Groups in Discount Rules
+
+Customer groups are referenced in discount rules via the **`buyer` condition**. When a customer group is included in a discount rule's `buyer.include`, the discount applies to orders where the buyer belongs to that group.
+
+```bash
+# Create a discount rule scoped to the employee group
+POST /v1/discount-rules
+{
+  "identifiers": {"com.example.ruleId": "employee-10pct"},
+  "name": "Employee 10% off apparel",
+  "buyer": {"include": [{"identifiers": {"com.example.groupId": "EMPLOYEE-GROUP"}}]},
+  "currency": {"include": [{"identifiers": {"currencyCode": "SEK"}}]},
+  "phase": {"identifiers": {"com.example.phaseId": "loyalty"}, "name": "Loyalty", "priority": 300},
+  "items": {
+    "apparel": {
+      "include": [{"identifiers": {"com.example.categoryId": "apparel"}}],
+      "atLeast": 1
+    }
+  },
+  "effects": [{
+    "@type": "percentage discount rule effect",
+    "items": ["apparel"],
+    "percentage": "10",
+    "multiplicity": "PerUnit",
+    "targeting": "All"
+  }],
+  "includesTax": false,
+  "reason": {"identifiers": {"com.example.reasonId": "employee"}, "name": "Employee discount"}
+}
+```
+
+> **How it works:** Customer groups are a subtype of Agent in the data model (`CustomerGroup → Cohort → Agent`), so the `buyer.include` array accepts customer group identifiers directly. When the discount engine evaluates an order, it checks whether the order's buyer agent belongs to any of the included customer groups.
+
+For more discount rule examples with buyer conditions, see [Discount Rules](../../guide/examples/discount-rules.md#example-9-staff-discount-with-floor-price).
+
+#### End-to-End Example: Staff Discount
+
+Complete workflow from creating the customer group to the discount applying at POS:
+
+```bash
+# 1. Create the "Employees" customer group
+#    (first retrieve owner database key via GET .../identifiers/key)
+POST /v1/customer-groups
+{
+  "identifiers": {"com.example.groupId": "employees"},
+  "name": "Employees",
+  "memberMoniker": "Employee",
+  "owner": {"identifiers": {"key": "<company-database-key>"}}
+}
+
+# 2. Create employee persons + trade relationships
+POST /v1/trade-relationships
+{
+  "identifiers": {"com.example.relId": "tr-employee-pelle"},
+  "customerAgent": {
+    "@type": "person",
+    "identifiers": {"com.example.customerId": "pelle"},
+    "givenName": "Pelle",
+    "familyName": "Personalsson"
+  },
+  "supplierAgent": {"identifiers": {"com.example.companyId": "our-company"}},
+  "defaultCurrency": {"identifiers": {"currencyCode": "SEK"}}
+}
+
+# 3. Add employee to the group
+POST /v1/trade-relationships/com.example.relId=tr-employee-pelle/groups
+{"identifiers": {"com.example.groupId": "employees"}}
+
+# 4. Create the employee discount rule
+POST /v1/discount-rules
+{
+  "identifiers": {"com.example.ruleId": "staff-discount"},
+  "name": "Staff 10% off clothing",
+  "buyer": {"include": [{"identifiers": {"com.example.groupId": "employees"}}]},
+  "seller": {"include": [{"identifiers": {"com.example.companyId": "our-company"}}]},
+  "currency": {"include": [{"identifiers": {"currencyCode": "SEK"}}]},
+  "items": {
+    "clothing": {
+      "include": [{"identifiers": {"com.example.categoryId": "fashion-clothes"}}],
+      "atLeast": 1
+    }
+  },
+  "effects": [{
+    "@type": "percentage discount rule effect",
+    "items": ["clothing"],
+    "percentage": "10",
+    "multiplicity": "PerUnit",
+    "targeting": "All"
+  }],
+  "reason": {"identifiers": {"com.example.reasonId": "staff"}, "name": "Staff discount"},
+  "includesTax": false
+}
+
+# 5. Verify: Pelle's order should now receive the staff discount
+#    when buying clothing items
+POST /v1/trade-orders
+{
+  "identifiers": {"com.example.orderId": "ORD-PELLE-001"},
+  "supplier": {"identifiers": {"com.example.companyId": "our-company"}},
+  "customer": {"identifiers": {"com.example.customerId": "pelle"}},
+  "sellers": [{"identifiers": {"com.example.storeId": "store-1"}}],
+  "currency": {"identifiers": {"currencyCode": "SEK"}},
+  "items": [{"product": {"identifiers": {"com.example.sku": "JACKET-001"}}, "quantity": 1}]
+}
+# The order's items should have the employee discount applied
+```
 
 ### Labels
 
@@ -1183,6 +1368,7 @@ When `gdprForgotten: true`, personal data is masked in responses.
 
 ## Related Guides
 
+- [Discount Rules](../../guide/examples/discount-rules.md) - Using customer groups in discount rules (buyer condition)
 - [Products](products.md) - Assortment contexts per owner
 - [Prices](prices.md) - Buyer-specific pricing
 - [Orders](orders.md) - Customer/supplier in trade orders

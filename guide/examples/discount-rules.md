@@ -5,7 +5,7 @@ Curl examples for discount rules, manual discounts, and trade restrictions.
 **Base URL:** `http://localhost:5000/api/v1`
 **API Key:** `banana` (passed via Basic Auth with empty username: `-u ":banana"`)
 
-> **See also:** [Examples Index](../examples.md) | [Orders & Fulfillment](./orders.md) | [Reference Documentation](../../reference/)
+> **See also:** [Examples Index](../examples.md) | [Orders & Fulfillment](./orders.md) | [Customer Groups](../../reference/working-with/customers.md#customer-groups) | [Reference Documentation](../../reference/)
 
 ---
 
@@ -15,7 +15,7 @@ A discount rule defines **when** and **how** discounts apply. Key properties:
 
 | Property | Purpose |
 |----------|---------|
-| `seller` / `buyer` | Scope the rule to specific sellers or buyer groups (e.g., employee customers). Use `include` arrays with identifier references. |
+| `seller` / `buyer` | Scope the rule to specific sellers or buyer groups. The `buyer` condition accepts **customer group** identifiers (see [Customer Groups and Buyer Conditions](#customer-groups-and-buyer-conditions)). Use `include`/`exclude` arrays with identifier references. |
 | `currency` | Restrict to specific currencies (e.g., `{"currencyCode": "SEK"}`). |
 | `time` | Optional validity window with `start` and `end` dates (ISO format). |
 | `phase` | Determines evaluation order. Rules in lower-priority phases apply first; higher-priority phases can stack on top. Include `identifiers`, `name`, and `priority`. |
@@ -482,6 +482,93 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/discount-rules" \
     "reason": {"identifiers": {"com.heads.seedID": "value-discount-reason"}, "name": "Cart value discount"}
   }'
 ```
+
+---
+
+## Customer Groups and Buyer Conditions
+
+The `buyer` condition on a discount rule scopes the discount to specific customer groups. When a customer group is included in `buyer.include`, the discount applies only to orders where the buyer is a member of that group.
+
+### How It Works
+
+Customer groups are a subtype of Agent in the data model (`CustomerGroup → Cohort → Agent`), so the `buyer.include` array accepts customer group identifiers directly. The discount engine checks whether the trade order's customer belongs to any of the included customer groups (via their trade relationship's `groups` member).
+
+### Setup Flow
+
+To use customer groups with discount rules:
+
+1. **Create a customer group** — owned by your company
+2. **Create trade relationships** — between your company and each customer
+3. **Assign customers to the group** — via the trade relationship's `groups` member
+4. **Create a discount rule** — with `buyer.include` referencing the customer group
+
+```bash
+# 1. Create the customer group (owner requires database key)
+#    First: GET /v1/companies/com.example.companyId=our-company/identifiers/key
+POST /v1/customer-groups
+{
+  "identifiers": {"com.example.groupId": "employee-customers"},
+  "name": "Employees",
+  "memberMoniker": "Employee",
+  "owner": {"identifiers": {"key": "<company-database-key>"}}
+}
+
+# 2. Create a trade relationship (embeds customer creation)
+POST /v1/trade-relationships
+{
+  "identifiers": {"com.example.relId": "tr-pelle"},
+  "customerAgent": {
+    "@type": "person",
+    "identifiers": {"com.example.customerId": "pelle"},
+    "givenName": "Pelle",
+    "familyName": "Personalsson",
+    "contactMethods": {"email": "pelle@company.se", "mobilePhone": "+46712345678"}
+  },
+  "supplierAgent": {"identifiers": {"com.example.companyId": "our-company"}},
+  "defaultCurrency": {"identifiers": {"currencyCode": "SEK"}}
+}
+
+# 3. Add the customer to the group
+POST /v1/trade-relationships/com.example.relId=tr-pelle/groups
+{"identifiers": {"com.example.groupId": "employee-customers"}}
+
+# 4. Create the discount rule with buyer condition
+#    (see Example 1 and Example 9 for full payloads)
+```
+
+### Buyer Condition Structure
+
+The `buyer` field is an **agent condition** with `include` and `exclude` arrays:
+
+```json
+{
+  "buyer": {
+    "include": [
+      {"identifiers": {"com.example.groupId": "employee-customers"}}
+    ],
+    "exclude": []
+  }
+}
+```
+
+- **`include`** — Customer groups (or individual agents) eligible for the discount
+- **`exclude`** — Customer groups (or individual agents) excluded from the discount
+- If `buyer` is omitted, the rule applies to **all buyers**
+
+### Querying Group Membership
+
+```bash
+# Which groups does a customer belong to?
+GET /v1/trade-relationships/com.example.relId=tr-pelle/groups
+
+# Which customers are in a group?
+GET /v1/customer-groups/com.example.groupId=employee-customers~with(members)
+
+# Find all trade relationships in a group
+GET /v1/trade-relationships~where(groups~any(identifiers/com.example.groupId=employee-customers))
+```
+
+> For full customer group management documentation (creating groups, assigning members, querying membership), see [Working with Customers — Customer Groups](../../reference/working-with/customers.md#customer-groups).
 
 ---
 

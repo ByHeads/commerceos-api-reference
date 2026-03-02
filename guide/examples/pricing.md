@@ -45,7 +45,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/prices" \
     "to": "2024-12-31T23:59:59Z"
   }'
 
-# Create price with buyer restriction
+# Create price with buyer restriction (individual customer)
 curl -X POST -u ":banana" "localhost:5000/api/v1/prices" \
   -H "Content-Type: application/json" \
   -d '{
@@ -140,3 +140,4 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/vat-codes" \
 - **Currencies**: `identifiers.currencyCode` plus common identifiers (e.g. `identifiers.key` and namespaced IDs) are supported — `name`, `symbol`, `decimalDigits` fields do NOT exist
 - **Denominations**: Use `/v1/currency-denominations~where(currency/identifiers/currencyCode=X)` to filter by currency
 - **VAT Codes**: Identified by `percentage` — no separate `vatCodeId`, `name`, or `country` fields
+- **Buyer restrictions**: The `buyers` array accepts individual agent identifiers. For group-based pricing, use [customer groups](../../reference/working-with/customers.md#customer-groups) with [discount rules](./discount-rules.md#customer-groups-and-buyer-conditions) to apply discounts to all members of a group

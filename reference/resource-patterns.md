@@ -88,7 +88,7 @@ Agents (person, company, store) share common members:
 | `addresses` | Object with `main`, `home`, `invoice`, `delivery`, `visiting` | Each address settable |
 | `contactMethods` | Object with `landlinePhone`, `mobilePhone`, `workPhone`, `email` | Each method settable |
 | `confirmationAttempts` | Confirmation attempts for agent | Read-only |
-| `customerGroups` | Groups owned by agent | Add/remove |
+| `customerGroups` | Groups **owned** by agent (not membership — see [Customer Groups](working-with/customers.md#customer-groups)) | Add/remove |
 | `customerRelations` | Trade relationships where agent is supplier | Read-only |
 | `supplierRelations` | Trade relationships where agent is customer | Read-only |
 | `manufacturerRelations` | Manufacturer relationships | Read-only |
