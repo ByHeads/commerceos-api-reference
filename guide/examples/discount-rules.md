@@ -283,7 +283,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/discount-rules" \
       "@type": "percentage discount rule effect",
       "items": ["bundle"],
       "percentage": "100",
-      "multiplicity": "PerApplication",
+      "multiplicity": "PerUnit",
       "targeting": "LowestValue"
     }],
     "includesTax": true,
