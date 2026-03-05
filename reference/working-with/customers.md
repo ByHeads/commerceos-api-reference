@@ -937,7 +937,7 @@ GET /v1/companies/com.example.companyId=SUP-001/labels
 GET /v1/companies~with(labels)~where(labels~any(identifiers/com.example.labelId=preferred-supplier))~take(20)
 ```
 
-> **Note:** Labels can also be assigned to trade orders, stores, POS terminals, and users using the same `POST /{resource}/{id}/labels` pattern. See [Orders](orders.md) for order label examples.
+> See the [Labels guide](../../guide/examples/labels.md) for the complete reference covering all entity types, type restrictions, filtering, and integration patterns.
 
 ---
 

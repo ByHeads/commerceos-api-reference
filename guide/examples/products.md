@@ -414,7 +414,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/products/com.myapp.sku=SKU-001/
   -d '{"identifiers": {"com.myapp.labelId": "sale"}}'
 ```
 
-> Labels can also be assigned to trade orders, companies, people, stores, POS terminals, and users using the same `POST /{resource}/{id}/labels` pattern. See [Orders](../../reference/working-with/orders.md#labels) and [Customers](../../reference/working-with/customers.md#labels) guides.
+> For the full labels guide covering all entity types, type restrictions, filtering, and integration patterns, see [Working with Labels](labels.md). For entity-specific examples, see [Orders](../../reference/working-with/orders.md#labels) and [Customers](../../reference/working-with/customers.md#labels).
 
 ---
 

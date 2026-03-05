@@ -1213,6 +1213,8 @@ GET /v1/trade-orders~with(labels)~where(labels~any(identifiers/com.example.label
 DELETE /v1/trade-orders/com.example.orderId=ORD-001/labels/com.example.labelId=urgent
 ```
 
+> See the [Labels guide](../../guide/examples/labels.md) for the complete reference including type restrictions, filtering, and integration patterns.
+
 ---
 
 ## Returns and Refunds

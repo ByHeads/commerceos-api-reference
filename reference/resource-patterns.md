@@ -546,7 +546,7 @@ The `createPayment` action has strict requirements:
 
 Trade orders support labels for categorization. Labels use add/remove semantics — assign via `POST /v1/trade-orders/{id}/labels`, remove via `DELETE`.
 
-> **Note:** Labels must have `applicableOnlyTo` include `"TradeOrder"` (or be unrestricted) to be assignable to orders.
+> **Note:** Labels must have `applicableOnlyTo` include `"TradeOrder"` (or be unrestricted) to be assignable to orders. See the [Labels guide](../guide/examples/labels.md) for the full reference.
 
 ### Expansions
 
