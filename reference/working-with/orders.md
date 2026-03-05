@@ -1193,7 +1193,7 @@ POST /v1/trade-orders
 }
 ```
 
-### Reading and Filtering by Labels
+### Reading Labels
 
 ```bash
 # Get an order's labels
@@ -1202,9 +1202,11 @@ GET /v1/trade-orders/com.example.orderId=ORD-001/labels
 # Get order with labels expanded
 GET /v1/trade-orders/com.example.orderId=ORD-001~with(labels)
 
-# Find orders with a specific label
-GET /v1/trade-orders~with(labels)~where(labels~any(identifiers/com.example.labelId=urgent))~take(50)
+# Get orders with labels expanded (filter client-side)
+GET /v1/trade-orders~with(labels)~take(50)
 ```
+
+> **Note:** There is no server-side label filtering operator. Use `~with(labels)` and filter client-side. See the [Labels guide](../../guide/examples/labels.md#known-limitations) for details.
 
 ### Removing Labels
 

@@ -578,7 +578,7 @@ These operators take no arguments - don't add `()`:
 | Wrong Pattern | Correct Alternative |
 |---------------|---------------------|
 | `~reverse()` | `~orderBy(field:desc)` |
-| `~any()` | `~where(cond)~first` then check for null |
+| `~any()` | `~where(cond)~first` for existence checks; for sub-collections use `~with(field)` and filter client-side |
 | `~contains()` | `~where(field=~pattern)` |
 | `~filter()` | `~where()` |
 | `~limit()` | `~take()` |

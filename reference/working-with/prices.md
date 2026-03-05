@@ -647,8 +647,8 @@ GET /v1/prices~just(identifiers,amount,currency)
 ### Filtering
 
 ```bash
-# Prices for a specific seller
-GET /v1/prices~where(sellers~any(identifiers/com.example.storeId=STORE-A))~take(50)
+# Prices with sellers expanded (filter client-side for specific seller)
+GET /v1/prices~with(sellers)~take(50)
 
 # Prices in a specific currency
 GET /v1/prices~with(currency)~where(currency/identifiers/currencyCode=SEK)~take(50)

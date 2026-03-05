@@ -1335,8 +1335,8 @@ POST /v1/product-categories/com.acme.cat-id=ELECTRONICS/childCategories
 # Get product with full expansion
 GET /v1/products/com.acme.pim-id=COMPLETE-PRODUCT~with(prices,categories,labels,images,assortmentContexts,stockLevels)
 
-# Get all products with specific label
-GET /v1/products~with(labels)~where(labels~any(identifiers/com.acme.label-id=new-arrival))~take(100)
+# Get products with labels expanded (filter client-side for specific label)
+GET /v1/products~with(labels)~take(100)
 
 # Get products by GTIN
 GET /v1/products~where(gtin=7312345670999)~first

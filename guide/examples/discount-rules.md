@@ -566,8 +566,8 @@ GET /v1/trade-relationships/com.example.relId=tr-pelle/groups
 # Which customers are in a group?
 GET /v1/customer-groups/com.example.groupId=employee-customers~with(members)
 
-# Find all trade relationships in a group
-GET /v1/trade-relationships~where(groups~any(identifiers/com.example.groupId=employee-customers))
+# Get trade relationships with groups expanded (filter client-side for specific group)
+GET /v1/trade-relationships~with(groups)~take(50)
 ```
 
 > For full customer group management documentation (creating groups, assigning members, querying membership), see [Working with Customers — Customer Groups](../../reference/working-with/customers.md#customer-groups).

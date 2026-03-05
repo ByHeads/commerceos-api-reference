@@ -694,8 +694,8 @@ POST /v1/products/com.example.sku=PROD-001/labels
 # Get product's labels
 GET /v1/products/com.example.sku=PROD-001/labels
 
-# Find products with label
-GET /v1/products~with(labels)~where(labels~any(identifiers/com.example.labelId=sale))~take(20)
+# Get products with labels expanded (filter client-side)
+GET /v1/products~with(labels)~take(20)
 
 # Remove label
 DELETE /v1/products/com.example.sku=PROD-001/labels/com.example.labelId=sale

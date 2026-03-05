@@ -21,6 +21,7 @@ Labels are lightweight, colored tags you can attach to entities across the API f
 6. [Type Restrictions with applicableOnlyTo](#type-restrictions-with-applicableonlyto)
 7. [Integration Patterns](#integration-patterns)
 8. [Tips and Best Practices](#tips-and-best-practices)
+9. [Known Limitations](#known-limitations)
 
 ---
 
@@ -32,7 +33,7 @@ Labels are lightweight, colored tags you can attach to entities across the API f
 | `title` | string | Display title of the label |
 | `description` | string (optional) | Longer description of the label's purpose |
 | `color` | string (optional) | Color value — any CSS-parsable string (e.g., `#FF0000`, `red`) |
-| `applicableOnlyTo` | string[] (optional) | Restricts which entity types the label can be applied to. Empty = applies to all types |
+| `applicableOnlyTo` | string[] (optional) | Restricts which entity types the label can be applied to. **Must be non-empty** — see [Known Limitations](#known-limitations) |
 | `appliedToCount` | number (read-only) | Number of entities currently using this label |
 | `owner` | agent reference (optional) | The owning agent (organization node). Uses `identifiers.key` for the setter |
 
@@ -164,84 +165,39 @@ Labels use the **same pattern** across all entity types — only the base URL ch
 All entity types use the same pattern for label operations:
 
 ```bash
-# Assign a label (by external ID)
-POST /v1/{resource}/{entityId}/labels
-{"identifiers": {"com.myapp.labelId": "my-label"}}
-
-# Remove a label (by external ID)
-DELETE /v1/{resource}/{entityId}/labels/com.myapp.labelId=my-label
-
 # Read labels on an entity
 GET /v1/{resource}/{entityId}/labels
 
 # Include labels in collection responses
 GET /v1/{resource}~with(labels)
+
+# Remove a label (by external ID)
+DELETE /v1/{resource}/{entityId}/labels/com.myapp.labelId=my-label
 ```
 
-### Trade order examples
+> **Known limitation:** `POST /v1/{resource}/{entityId}/labels` currently returns 200/201 but is a **no-op** — the label is not actually assigned. Including `labels` in creation payloads (e.g., `POST /v1/trade-orders`) also does not work. See [Known Limitations](#known-limitations) for details and workarounds.
 
-**Assign during order creation:**
-
-```bash
-curl -X POST -u ":banana" "localhost:5000/api/v1/trade-orders" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "identifiers": {"com.myapp.orderId": "ORD-001"},
-    "supplier": {"identifiers": {"com.myapp.companyId": "our-company"}},
-    "customer": {"identifiers": {"com.myapp.customerId": "CUST-001"}},
-    "sellers": [{"identifiers": {"com.myapp.storeId": "store-1"}}],
-    "currency": {"identifiers": {"currencyCode": "SEK"}},
-    "items": [{"product": {"identifiers": {"com.myapp.sku": "PHONE-001"}}, "quantity": "1"}],
-    "labels": [{"identifiers": {"com.myapp.labelId": "urgent"}}]
-  }'
-```
-
-**Assign to an existing order:**
+### Reading labels
 
 ```bash
-curl -X POST -u ":banana" "localhost:5000/api/v1/trade-orders/com.myapp.orderId=ORD-001/labels" \
-  -H "Content-Type: application/json" \
-  -d '{"identifiers": {"com.myapp.labelId": "urgent"}}'
-```
-
-**Get order labels:**
-
-```bash
+# Get order labels
 curl -X GET -u ":banana" "localhost:5000/api/v1/trade-orders/com.myapp.orderId=ORD-001/labels"
+
+# Get product labels
+curl -X GET -u ":banana" "localhost:5000/api/v1/products/com.myapp.sku=SKU-001/labels"
+
+# Get orders with labels expanded
+curl -X GET -u ":banana" "localhost:5000/api/v1/trade-orders~with(labels)~take(50)"
 ```
 
-**Remove a label:**
+### Removing labels
 
 ```bash
+# Remove label from an order
 curl -X DELETE -u ":banana" "localhost:5000/api/v1/trade-orders/com.myapp.orderId=ORD-001/labels/com.myapp.labelId=urgent"
-```
 
-### Product examples
-
-```bash
-# Label a product as seasonal
-curl -X POST -u ":banana" "localhost:5000/api/v1/products/com.myapp.sku=SKU-001/labels" \
-  -H "Content-Type: application/json" \
-  -d '{"identifiers": {"com.myapp.labelId": "seasonal"}}'
-
-# Label a product category
-curl -X POST -u ":banana" "localhost:5000/api/v1/product-categories/com.myapp.catId=accessories/labels" \
-  -H "Content-Type: application/json" \
-  -d '{"identifiers": {"com.myapp.labelId": "clearance"}}'
-```
-
-### People and company examples
-
-```bash
-# Label a customer as VIP
-curl -X POST -u ":banana" "localhost:5000/api/v1/people/com.myapp.customerId=CUST-001/labels" \
-  -H "Content-Type: application/json" \
-  -d '{"identifiers": {"com.myapp.labelId": "vip"}}'
-
-# Label a supplier as preferred
-curl -X POST -u ":banana" "localhost:5000/api/v1/companies/com.myapp.companyId=SUP-001/labels" \
-  -H "Content-Type: application/json" \
-  -d '{"identifiers": {"com.myapp.labelId": "preferred-supplier"}}'
+# Remove label from a product
+curl -X DELETE -u ":banana" "localhost:5000/api/v1/products/com.myapp.sku=SKU-001/labels/com.myapp.labelId=seasonal"
 ```
 
 ### Clearing all labels
@@ -264,28 +220,37 @@ curl -X PATCH -u ":banana" "localhost:5000/api/v1/trade-orders/com.myapp.orderId
 
 ## Filtering and Querying by Labels
 
-Use `~where(labels~any(...))` to filter entities by their labels:
+> **Important:** There is no `~any` sub-collection filter operator. The `~where` operator works on flat (scalar) properties only — it cannot filter by nested sub-collection contents like label identifiers. To filter by labels, fetch with `~with(labels)` and filter client-side.
 
 ```bash
-# Orders with a specific label
+# Get orders with labels expanded, then filter client-side
 curl -X GET -u ":banana" \
-  "localhost:5000/api/v1/trade-orders~with(labels)~where(labels~any(identifiers/com.myapp.labelId=urgent))"
+  "localhost:5000/api/v1/trade-orders~with(labels)~take(50)"
+# → Client-side: filter results where labels[].identifiers contains your target
 
-# Combine label filter with other conditions
+# Get products with labels expanded
 curl -X GET -u ":banana" \
-  "localhost:5000/api/v1/trade-orders~with(labels)~where(labels~any(identifiers/com.myapp.labelId=urgent))~orderBy(timestamp:desc)~take(20)"
+  "localhost:5000/api/v1/products~with(labels,prices)~take(50)"
 
-# Products with seasonal label
+# Get people with labels expanded
 curl -X GET -u ":banana" \
-  "localhost:5000/api/v1/products~with(labels,prices)~where(labels~any(identifiers/com.myapp.labelId=seasonal))"
+  "localhost:5000/api/v1/people~with(labels)~take(50)"
 
-# VIP customers
+# Get companies with labels expanded
 curl -X GET -u ":banana" \
-  "localhost:5000/api/v1/people~with(labels)~where(labels~any(identifiers/com.myapp.labelId=vip))~take(50)"
+  "localhost:5000/api/v1/companies~with(labels)~take(20)"
+```
 
-# Suppliers with preferred label
+### Reading labels on a single entity
+
+```bash
+# Get labels for a specific order
 curl -X GET -u ":banana" \
-  "localhost:5000/api/v1/companies~with(labels)~where(labels~any(identifiers/com.myapp.labelId=preferred-supplier))~take(20)"
+  "localhost:5000/api/v1/trade-orders/com.myapp.orderId=ORD-001/labels"
+
+# Get labels for a specific product
+curl -X GET -u ":banana" \
+  "localhost:5000/api/v1/products/com.myapp.sku=SKU-001/labels"
 ```
 
 ---
@@ -296,8 +261,8 @@ Labels can be restricted to specific entity types using `applicableOnlyTo`. When
 
 ### How it works
 
-- **Empty or absent:** The label applies to any entity type
 - **Set to type names:** Only entities of those types (or subtypes) can receive the label
+- **Empty or absent:** The label is applicable to **nothing** (see [Known Limitations](#known-limitations)) — always specify at least one type
 - **Error on mismatch:** `"Label 'X' is not applicable for objects of this type"`
 
 ### Type names
@@ -374,15 +339,10 @@ curl -X PUT -u ":banana" "localhost:5000/api/v1/labels/com.myapp.labelId=fulfill
 Assign labels based on business rules, then let downstream systems poll for orders with specific labels:
 
 ```bash
-# Label high-value orders
-# (Integration logic: if order total > 10000 SEK, assign "high-value")
-curl -X POST -u ":banana" "localhost:5000/api/v1/trade-orders/com.myapp.orderId=ORD-001/labels" \
-  -H "Content-Type: application/json" \
-  -d '{"identifiers": {"com.myapp.labelId": "high-value"}}'
-
-# Downstream: poll for high-value orders
+# Downstream: poll for orders with labels, then filter client-side for "high-value"
 curl -X GET -u ":banana" \
-  "localhost:5000/api/v1/trade-orders~with(labels)~where(labels~any(identifiers/com.myapp.labelId=high-value))~take(100)"
+  "localhost:5000/api/v1/trade-orders~with(labels)~take(100)"
+# → Client-side: filter for orders where labels contain "high-value"
 ```
 
 ### Sync status tracking
@@ -390,37 +350,27 @@ curl -X GET -u ":banana" \
 Track integration sync state using labels — assign "pending-sync" on creation, replace with "synced" or "sync-failed":
 
 ```bash
-# Mark as pending sync
-curl -X POST -u ":banana" "localhost:5000/api/v1/trade-orders/com.myapp.orderId=ORD-001/labels" \
-  -H "Content-Type: application/json" \
-  -d '{"identifiers": {"com.myapp.sync": "pending"}}'
-
 # After successful sync — remove pending, add synced
 curl -X DELETE -u ":banana" \
   "localhost:5000/api/v1/trade-orders/com.myapp.orderId=ORD-001/labels/com.myapp.sync=pending"
 
-curl -X POST -u ":banana" "localhost:5000/api/v1/trade-orders/com.myapp.orderId=ORD-001/labels" \
-  -H "Content-Type: application/json" \
-  -d '{"identifiers": {"com.myapp.sync": "synced"}}'
-
-# Query failed syncs
+# Query orders with labels, then filter client-side for sync state
 curl -X GET -u ":banana" \
-  "localhost:5000/api/v1/trade-orders~with(labels)~where(labels~any(identifiers/com.myapp.sync=failed))~take(100)"
+  "localhost:5000/api/v1/trade-orders~with(labels)~take(100)"
+# → Client-side: filter for orders where labels contain "sync-failed"
 ```
+
+> **Note:** Sub-resource POST for label assignment is currently a no-op (see [Known Limitations](#known-limitations)). The sync status tracking pattern will work fully once label assignment is fixed.
 
 ### Data segmentation for exports
 
 Label entities for targeted exports, then combine with `~map()` for custom formats:
 
 ```bash
-# Label products for export
-curl -X POST -u ":banana" "localhost:5000/api/v1/products/com.myapp.sku=SKU-001/labels" \
-  -H "Content-Type: application/json" \
-  -d '{"identifiers": {"com.myapp.labelId": "export-ready"}}'
-
-# Export labeled products with a mapped type
+# Export products with labels, then filter client-side for "export-ready"
 curl -X GET -u ":banana" \
-  "localhost:5000/api/v1/products~where(labels~any(identifiers/com.myapp.labelId=export-ready))~map(product-export)"
+  "localhost:5000/api/v1/products~with(labels)~map(product-export)~take(100)"
+# → Client-side: filter for products with the "export-ready" label
 ```
 
 ### Webhook-based workflows
@@ -451,9 +401,51 @@ When configuring sync webhooks with `~with(labels)` expansion, downstream system
 
 5. **Labels are lightweight** — Prefer many specific labels over few overloaded generic ones. "sync-pending" + "sync-complete" + "sync-failed" is better than a single "sync-status" label.
 
-6. **Single-label-per-state pattern** — For state tracking, remove the old state label before adding the new one. This keeps queries simple (`~where(labels~any(...))` returns entities currently in that state).
+6. **Single-label-per-state pattern** — For state tracking, remove the old state label before adding the new one. This keeps client-side filtering simple (each entity has at most one state label at a time).
 
 7. **Labels are non-essential** — They won't appear in default GET responses. Always use `~with(labels)` when you need them.
+
+---
+
+## Known Limitations
+
+The following label behaviors are confirmed bugs or limitations in the current API:
+
+### 1. Sub-resource POST is a no-op
+
+`POST /v1/{resource}/{entityId}/labels` returns 200/201 (success) but the label is **never actually assigned**. This affects all resource types: trade orders, people, companies, products, etc.
+
+**Workaround:** None currently available via the API. Labels can be assigned through seed data (e.g., `seed/shade-mobile-orders/seed-config.json` shows `"labels": [...]` on seeded orders).
+
+### 2. Labels in creation payloads are ignored
+
+Including `labels` in a `POST /v1/trade-orders` (or any resource creation) body does not assign the labels. The `create()` function does not process the `labels` property.
+
+**Workaround:** None currently available via the API.
+
+### 3. Empty `applicableOnlyTo` means applicable to nothing
+
+Labels created without `applicableOnlyTo` (or with an empty array) are applicable to **no entity types** — not all types. `Label.isApplicable()` returns `false` when `applicableTo` is empty.
+
+**Workaround:** Always specify at least one type in `applicableOnlyTo` when creating labels:
+```bash
+POST /v1/labels
+{
+  "identifiers": {"com.myapp.labelId": "my-label"},
+  "title": "My Label",
+  "applicableOnlyTo": ["TradeOrder", "person", "company", "product"]
+}
+```
+
+### 4. No server-side label filtering
+
+There is no `~any` or similar sub-collection filter operator. The `~where` operator works on flat (scalar) properties only — it cannot filter by label identifiers or other nested sub-collection contents.
+
+**Workaround:** Fetch entities with `~with(labels)` and filter client-side:
+```bash
+GET /v1/trade-orders~with(labels)~take(100)
+# → Filter results in your application code
+```
 
 ---
 

@@ -37,16 +37,20 @@ GET /agents/{key}/customer-relations  # Will not work
 
 ```bash
 # WRONG - ~reverse() doesn't exist
-GET /products~orderBy(name)~reverse()
+GET /v1/products~orderBy(name)~reverse()
 
 # RIGHT - Use :desc suffix
-GET /products~orderBy(name:desc)
+GET /v1/products~orderBy(name:desc)
 
-# WRONG - ~any() doesn't exist
-GET /products~any(status=Active)
+# WRONG - ~any() doesn't exist (neither standalone nor inside ~where)
+GET /v1/products~any(status=Active)
+GET /v1/products~where(labels~any(identifiers/labelId=sale))
 
-# RIGHT - Use ~where() + ~first or ~count
-GET /products~where(status=Active)~first
+# RIGHT - Use ~where() for flat property filtering
+GET /v1/products~where(status=Active)~first
+
+# RIGHT - For sub-collection filtering (e.g. labels), expand and filter client-side
+GET /v1/products~with(labels)~take(50)
 ```
 
 ---

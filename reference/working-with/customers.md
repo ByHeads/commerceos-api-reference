@@ -770,8 +770,8 @@ DELETE /v1/trade-relationships/com.example.relId=TR-EMP-001/groups/com.example.g
 # Get groups a customer belongs to (via their trade relationship)
 GET /v1/trade-relationships/com.example.relId=TR-EMP-001/groups
 
-# Find all trade relationships in a specific group
-GET /v1/trade-relationships~where(groups~any(identifiers/com.example.groupId=EMPLOYEE-GROUP))
+# Get all trade relationships with groups expanded (filter client-side for specific group)
+GET /v1/trade-relationships~with(groups)~take(50)
 
 # Get group with members expanded
 GET /v1/customer-groups/com.example.groupId=EMPLOYEE-GROUP~with(members)
@@ -910,8 +910,8 @@ POST /v1/people/com.example.customerId=CUST-001/labels
 # Get person's labels
 GET /v1/people/com.example.customerId=CUST-001/labels
 
-# Find people with label
-GET /v1/people~with(labels)~where(labels~any(identifiers/com.example.labelId=vip))~take(20)
+# Get people with labels expanded (filter client-side)
+GET /v1/people~with(labels)~take(20)
 ```
 
 **Supplier/Company Labels:**
@@ -933,8 +933,8 @@ POST /v1/companies/com.example.companyId=SUP-001/labels
 # Get supplier's labels
 GET /v1/companies/com.example.companyId=SUP-001/labels
 
-# Find suppliers with label
-GET /v1/companies~with(labels)~where(labels~any(identifiers/com.example.labelId=preferred-supplier))~take(20)
+# Get companies with labels expanded (filter client-side)
+GET /v1/companies~with(labels)~take(20)
 ```
 
 > See the [Labels guide](../../guide/examples/labels.md) for the complete reference covering all entity types, type restrictions, filtering, and integration patterns.
@@ -1268,8 +1268,8 @@ GET /v1/companies/com.example.companyId=WHOLESALE-001~with(addresses,contactMeth
 # Check relationship with group membership
 GET /v1/trade-relationships/com.example.relId=REL-WS001~with(supplierAgent,customerAgent,groups)
 
-# Verify pricing
-GET /v1/prices~where(buyers~any(identifiers/com.example.companyId=WHOLESALE-001))~take(10)
+# Get prices with buyers expanded (filter client-side for specific buyer)
+GET /v1/prices~with(buyers)~take(10)
 ```
 
 ---
