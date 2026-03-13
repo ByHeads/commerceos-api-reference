@@ -407,48 +407,6 @@ When configuring sync webhooks with `~with(labels)` expansion, downstream system
 
 ---
 
-## Known Limitations
-
-The following label behaviors are confirmed bugs or limitations in the current API:
-
-### 1. Sub-resource POST is a no-op
-
-`POST /v1/{resource}/{entityId}/labels` returns 200/201 (success) but the label is **never actually assigned**. This affects all resource types: trade orders, people, companies, products, etc.
-
-**Workaround:** None currently available via the API. Labels can be assigned through seed data (e.g., `seed/shade-mobile-orders/seed-config.json` shows `"labels": [...]` on seeded orders).
-
-### 2. Labels in creation payloads are ignored
-
-Including `labels` in a `POST /v1/trade-orders` (or any resource creation) body does not assign the labels. The `create()` function does not process the `labels` property.
-
-**Workaround:** None currently available via the API.
-
-### 3. Empty `applicableOnlyTo` means applicable to nothing
-
-Labels created without `applicableOnlyTo` (or with an empty array) are applicable to **no entity types** — not all types. `Label.isApplicable()` returns `false` when `applicableTo` is empty.
-
-**Workaround:** Always specify at least one type in `applicableOnlyTo` when creating labels:
-```bash
-POST /v1/labels
-{
-  "identifiers": {"com.myapp.labelId": "my-label"},
-  "title": "My Label",
-  "applicableOnlyTo": ["TradeOrder", "person", "company", "product"]
-}
-```
-
-### 4. No server-side label filtering
-
-There is no `~any` or similar sub-collection filter operator. The `~where` operator works on flat (scalar) properties only — it cannot filter by label identifiers or other nested sub-collection contents.
-
-**Workaround:** Fetch entities with `~with(labels)` and filter client-side:
-```bash
-GET /v1/trade-orders~with(labels)~take(100)
-# → Filter results in your application code
-```
-
----
-
 ## See Also
 
 - [Product label examples](products.md#labels) — Creating and assigning labels to products
