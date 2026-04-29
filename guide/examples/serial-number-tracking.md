@@ -2,7 +2,7 @@
 
 Track individual units by serial number across stock, orders, and receipts.
 
-**Base URL:** `http://localhost:5000/api/v1`
+**Base URL:** `https://example.app.heads.com/api/v1`
 **API Key:** `banana` (passed via Basic Auth with empty username: `-u ":banana"`)
 
 > **Full guide:** [Product Instances & Tracking Guide](./product-instances-tracking.md) covers all instance types, batch tracking, integration patterns, and field references.
@@ -15,7 +15,7 @@ Track individual units by serial number across stock, orders, and receipts.
 2. **Include `productInstances`** with a `serialNumber` on each transaction (stock adjustments, orders, etc.)
 3. **Read back** instance data using `~with(productInstances)` or `~with(items~with(productInstances))`
 
-Stock adjustments, trade orders, and receipts use `productInstances` to carry per-unit detail. Stock transfers and stock count observations use `instances`; stock count items split the data across `expectedInstances`/`countedInstances`/`overageInstances`/`shortageInstances`. The per-entry structure is the same in every case. When serial number tracking is enabled, each entry must carry a `serialNumber`. See the [full guide](./product-instances-tracking.md#part-4-working-with-product-instances-in-transactions) for transfer and count examples.
+Stock adjustments, trade orders, and receipts use `productInstances` to carry per-unit detail. Stock transfers and stock count observations use `instances`; stock count items split the data across `expectedInstances`/`countedInstances`/`overageInstances`/`shortageInstances`. Stock transfer record item actions also expose `instances` for audit-trail visibility (read-only). The per-entry structure is the same in every case. When serial number tracking is enabled, each entry must carry a `serialNumber`. See the [full guide](./product-instances-tracking.md#part-4-working-with-product-instances-in-transactions) for transfer and count examples.
 
 ---
 
@@ -24,7 +24,7 @@ Stock adjustments, trade orders, and receipts use `productInstances` to carry pe
 Set `instanceType` and `tracking` when creating or updating the product:
 
 ```bash
-curl -X POST -u ":banana" "localhost:5000/api/v1/products" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/products" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.sku": "ROUTER-AX6000" },
@@ -50,7 +50,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/products" \
 Each serial-tracked unit has `quantity: 1` and its own `serialNumber`:
 
 ```bash
-curl -X POST -u ":banana" "localhost:5000/api/v1/stock-adjustments" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-adjustments" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "recv-routers-001" },
@@ -78,7 +78,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/stock-adjustments" \
 Reference the serial number in the order's `productInstances`:
 
 ```bash
-curl -X POST -u ":banana" "localhost:5000/api/v1/trade-orders" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/trade-orders" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.orderId": "ORD-2026-100" },

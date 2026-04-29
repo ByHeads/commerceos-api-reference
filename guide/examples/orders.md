@@ -2,7 +2,7 @@
 
 Curl examples for trade orders, trade relationships, shipments, and payments.
 
-**Base URL:** `http://localhost:5000/api/v1`
+**Base URL:** `https://example.app.heads.com/api/v1`
 **API Key:** `banana` (passed via Basic Auth with empty username: `-u ":banana"`)
 
 > **See also:** [Examples Index](../examples.md) | [Discount Rules](./discount-rules.md) | [Reference Documentation](../../reference/)
@@ -19,28 +19,28 @@ Curl examples for trade orders, trade relationships, shipments, and payments.
 
 ```bash
 # List all trade orders
-curl -X GET -u ":banana" "localhost:5000/api/v1/trade-orders"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/trade-orders"
 
 # Get trade order by ID
-curl -X GET -u ":banana" "localhost:5000/api/v1/trade-orders/com.myapp.orderId=ORD-2024-001"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-2024-001"
 
 # Get trade order with items
-curl -X GET -u ":banana" "localhost:5000/api/v1/trade-orders/com.myapp.orderId=ORD-2024-001~with(items)"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-2024-001~with(items)"
 
 # Get trade order with customer and supplier
-curl -X GET -u ":banana" "localhost:5000/api/v1/trade-orders/com.myapp.orderId=ORD-2024-001~with(customer,supplier)"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-2024-001~with(customer,supplier)"
 
 # Get trade order items
-curl -X GET -u ":banana" "localhost:5000/api/v1/trade-orders/com.myapp.orderId=ORD-2024-001/items"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-2024-001/items"
 
 # Get trade order payments
-curl -X GET -u ":banana" "localhost:5000/api/v1/trade-orders/com.myapp.orderId=ORD-2024-001/payments"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-2024-001/payments"
 
 # Get trade order shipments
-curl -X GET -u ":banana" "localhost:5000/api/v1/trade-orders/com.myapp.orderId=ORD-2024-001/shipments"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-2024-001/shipments"
 
 # Create a sales order (sellers REQUIRED, amounts are read-only)
-curl -X POST -u ":banana" "localhost:5000/api/v1/trade-orders" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/trade-orders" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.orderId": "ORD-2024-001"},
@@ -57,7 +57,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/trade-orders" \
   }'
 
 # Create purchase order (with sellers)
-curl -X POST -u ":banana" "localhost:5000/api/v1/trade-orders" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/trade-orders" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.orderId": "PO-2024-001"},
@@ -74,22 +74,22 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/trade-orders" \
   }'
 
 # Order actions - approve order (use tryApprove, not confirm)
-curl -X PATCH -u ":banana" "localhost:5000/api/v1/trade-orders/com.myapp.orderId=ORD-2024-001/actions" \
+curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-2024-001/actions" \
   -H "Content-Type: application/json" \
   -d '{"tryApprove": true}'
 
 # Order actions - cancel order (use tryCancel, not cancel)
-curl -X PATCH -u ":banana" "localhost:5000/api/v1/trade-orders/com.myapp.orderId=ORD-2024-001/actions" \
+curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-2024-001/actions" \
   -H "Content-Type: application/json" \
   -d '{"tryCancel": true}'
 
 # Order actions - create shipment
-curl -X PATCH -u ":banana" "localhost:5000/api/v1/trade-orders/com.myapp.orderId=ORD-2024-001/actions" \
+curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-2024-001/actions" \
   -H "Content-Type: application/json" \
   -d '{"createShipment": true}'
 
 # Order actions - create payment (requires currency and methodId from /v1/payment-methods)
-curl -X PATCH -u ":banana" "localhost:5000/api/v1/trade-orders/com.myapp.orderId=ORD-2024-001/actions" \
+curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-2024-001/actions" \
   -H "Content-Type: application/json" \
   -d '{
     "createPayment": {
@@ -101,7 +101,7 @@ curl -X PATCH -u ":banana" "localhost:5000/api/v1/trade-orders/com.myapp.orderId
   }'
 
 # Delete order
-curl -X DELETE -u ":banana" "localhost:5000/api/v1/trade-orders/com.myapp.orderId=ORD-2024-001"
+curl -X DELETE -u ":banana" "example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-2024-001"
 ```
 
 ---
@@ -110,16 +110,16 @@ curl -X DELETE -u ":banana" "localhost:5000/api/v1/trade-orders/com.myapp.orderI
 
 ```bash
 # List all trade relationships
-curl -X GET -u ":banana" "localhost:5000/api/v1/trade-relationships"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/trade-relationships"
 
 # Get trade relationship by ID
-curl -X GET -u ":banana" "localhost:5000/api/v1/trade-relationships/com.heads.seedID=rel-001"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/trade-relationships/com.heads.seedID=rel-001"
 
 # Get relationship with agents
-curl -X GET -u ":banana" "localhost:5000/api/v1/trade-relationships/com.heads.seedID=rel-001~with(supplierAgent,customerAgent)"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/trade-relationships/com.heads.seedID=rel-001~with(supplierAgent,customerAgent)"
 
 # Create a trade relationship (supplier-customer)
-curl -X POST -u ":banana" "localhost:5000/api/v1/trade-relationships" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/trade-relationships" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.relId": "REL-001"},
@@ -129,7 +129,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/trade-relationships" \
   }'
 
 # Create relationship with payment and delivery terms
-curl -X POST -u ":banana" "localhost:5000/api/v1/trade-relationships" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/trade-relationships" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.relId": "REL-002"},
@@ -141,7 +141,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/trade-relationships" \
   }'
 
 # Update relationship
-curl -X PATCH -u ":banana" "localhost:5000/api/v1/trade-relationships/com.myapp.relId=REL-001" \
+curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/trade-relationships/com.myapp.relId=REL-001" \
   -H "Content-Type: application/json" \
   -d '{"creditAllowed": true}'
 ```
@@ -154,22 +154,22 @@ curl -X PATCH -u ":banana" "localhost:5000/api/v1/trade-relationships/com.myapp.
 
 ```bash
 # List all shipment orders
-curl -X GET -u ":banana" "localhost:5000/api/v1/shipment-orders"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/shipment-orders"
 
 # Get shipment order by ID
-curl -X GET -u ":banana" "localhost:5000/api/v1/shipment-orders/com.myapp.shipmentId=SHIP-001"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/shipment-orders/com.myapp.shipmentId=SHIP-001"
 
 # Get shipment with items
-curl -X GET -u ":banana" "localhost:5000/api/v1/shipment-orders/com.myapp.shipmentId=SHIP-001~with(items)"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/shipment-orders/com.myapp.shipmentId=SHIP-001~with(items)"
 
 # Get shipment's related trade orders
-curl -X GET -u ":banana" "localhost:5000/api/v1/shipment-orders/com.myapp.shipmentId=SHIP-001/orders"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/shipment-orders/com.myapp.shipmentId=SHIP-001/orders"
 
 # Get shipment records
-curl -X GET -u ":banana" "localhost:5000/api/v1/shipment-orders/com.myapp.shipmentId=SHIP-001/records"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/shipment-orders/com.myapp.shipmentId=SHIP-001/records"
 
 # Create a shipment order directly
-curl -X POST -u ":banana" "localhost:5000/api/v1/shipment-orders" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/shipment-orders" \
   -H "Content-Type: application/json" \
   -d '[{
     "identifiers": {"com.myapp.shipmentOrderId": "SHIP-002"},
@@ -181,12 +181,12 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/shipment-orders" \
   }]'
 
 # Shipment finder (only modifiedTag filter is supported)
-curl -X POST -u ":banana" "localhost:5000/api/v1/shipment-orders/@find" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/shipment-orders/@find" \
   -H "Content-Type: application/json" \
   -d '{"modifiedTag": "abc123"}'
 
 # Release shipment order (only available action)
-curl -X PATCH -u ":banana" "localhost:5000/api/v1/shipment-orders/com.myapp.shipmentId=SHIP-001/actions" \
+curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/shipment-orders/com.myapp.shipmentId=SHIP-001/actions" \
   -H "Content-Type: application/json" \
   -d '{"release": true}'
 ```
@@ -199,10 +199,10 @@ curl -X PATCH -u ":banana" "localhost:5000/api/v1/shipment-orders/com.myapp.ship
 
 ```bash
 # List all picking orders
-curl -X GET -u ":banana" "localhost:5000/api/v1/picking-orders"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/picking-orders"
 
 # Get picking order by ID
-curl -X GET -u ":banana" "localhost:5000/api/v1/picking-orders/pickingOrderId=PICK-001"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/picking-orders/pickingOrderId=PICK-001"
 ```
 
 ---
@@ -213,10 +213,10 @@ curl -X GET -u ":banana" "localhost:5000/api/v1/picking-orders/pickingOrderId=PI
 
 ```bash
 # List all payment orders
-curl -X GET -u ":banana" "localhost:5000/api/v1/payment-orders"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/payment-orders"
 
 # Create a payment order directly
-curl -X POST -u ":banana" "localhost:5000/api/v1/payment-orders" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/payment-orders" \
   -H "Content-Type: application/json" \
   -d '[{
     "identifiers": {"com.myapp.paymentOrderId": "PAY-002"},
@@ -228,10 +228,10 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/payment-orders" \
   }]'
 
 # Get payment order by ID
-curl -X GET -u ":banana" "localhost:5000/api/v1/payment-orders/com.myapp.paymentOrderId=PAY-001"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/payment-orders/com.myapp.paymentOrderId=PAY-001"
 
 # Get payment orders for a trade order
-curl -X GET -u ":banana" "localhost:5000/api/v1/trade-orders/com.myapp.orderId=ORD-2024-001/payments"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-2024-001/payments"
 ```
 
 ---
@@ -242,7 +242,7 @@ Override computed pricing with manual unit amounts (excluding VAT):
 
 ```bash
 # Create order with manual unit amount
-curl -X POST -u ":banana" "localhost:5000/api/v1/trade-orders" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/trade-orders" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.orderId": "ORD-MANUAL-001"},
@@ -260,12 +260,12 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/trade-orders" \
   }'
 
 # Update item unit amount (PATCH to item)
-curl -X PATCH -u ":banana" "localhost:5000/api/v1/trade-orders/com.myapp.orderId=ORD-MANUAL-001/items/key=abc12345678901234567890123456" \
+curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-MANUAL-001/items/key=abc12345678901234567890123456" \
   -H "Content-Type: application/json" \
   -d '{"unitAmountExclVat": "149.50"}'
 
 # Free promotional item (zero amount)
-curl -X POST -u ":banana" "localhost:5000/api/v1/trade-orders" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/trade-orders" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.orderId": "ORD-PROMO-001"},
@@ -305,7 +305,7 @@ Create an order with a device (tracked by IMEI) and a linked phone plan:
 
 ```bash
 # Device sale with linked phone plan
-curl -X POST -u ":banana" "localhost:5000/api/v1/trade-orders" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/trade-orders" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.heads.seedID": "example-ord-001" },
@@ -335,7 +335,7 @@ Trade-in order where the old device's value is applied as a mobilbytte payment. 
 
 ```bash
 # Trade-in order with mobilbytte payment
-curl -X POST -u ":banana" "localhost:5000/api/v1/trade-orders" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/trade-orders" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.heads.seedID": "example-ord-002" },
@@ -376,7 +376,7 @@ Mobilpant uses manual discounts (voucher-style) applied across multiple items. E
 
 ```bash
 # Order with mobilpant manual discounts across multiple items
-curl -X POST -u ":banana" "localhost:5000/api/v1/trade-orders" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/trade-orders" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.heads.seedID": "example-ord-003" },
@@ -452,7 +452,7 @@ A mobilpant payment with an explicit amount, applied to a specific item:
 
 ```bash
 # Order with mobilpant payment
-curl -X POST -u ":banana" "localhost:5000/api/v1/trade-orders" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/trade-orders" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.heads.seedID": "example-ord-004" },
@@ -491,7 +491,7 @@ Split payment across both trade-in (mobilbytte) and installment (mobilpant) meth
 
 ```bash
 # Combined trade-in + installment payment
-curl -X POST -u ":banana" "localhost:5000/api/v1/trade-orders" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/trade-orders" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.heads.seedID": "example-ord-005" },
@@ -552,7 +552,7 @@ Click-and-collect orders use the `reservedUntil` field to reserve stock for in-s
 
 ```bash
 # Create a click-and-collect order with stock reservation
-curl -X POST -u ":banana" "localhost:5000/api/v1/trade-orders" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/trade-orders" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.orderId": "CC-2024-001"},

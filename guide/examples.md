@@ -2,7 +2,7 @@
 
 Comprehensive curl examples demonstrating the full capabilities of the CommerceOS API.
 
-**Base URL:** `http://localhost:5000/api/v1`
+**Base URL:** `https://example.app.heads.com/api/v1`
 **API Key:** `banana` (passed via Basic Auth with empty username: `-u ":banana"`)
 
 > **See also:** The [reference documentation](../reference/) for detailed API specifications.
@@ -19,6 +19,7 @@ Comprehensive curl examples demonstrating the full capabilities of the CommerceO
 | [Orders & Fulfillment](./examples/orders.md) | Trade orders, relationships, shipments, payments | Order lifecycle, fulfillment |
 | [Labels](./examples/labels.md) | Labels across all entity types | Type restrictions, filtering, integration patterns |
 | [Discount Rules](./examples/discount-rules.md) | Discount rules, manual discounts, trade restrictions | Promotions, bundles, volume tiers |
+| [Discount Coupons](./examples/discount-coupons.md) | Coupon codes that activate discount rules | Literal codes, regex patterns, redemption caps, stackable |
 | [Surcharge Rules](./examples/surcharge-rules.md) | Surcharge rules, surcharge reasons, pant (deposits) | Bottle deposits, environmental fees, tariffs |
 | [Receipt Discounts & Surcharges](./examples/receipt-discounts-surcharges.md) | Extracting discount/surcharge data from receipts | Field expansion, per-rule breakdown, ERP integration |
 | [Product Packages](./examples/product-packages.md) | Package classes, product packages, supply relations | Cartons, pallets, manifests, package discount rules |

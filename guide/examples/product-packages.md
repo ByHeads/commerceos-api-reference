@@ -2,7 +2,7 @@
 
 Curl examples for product packages, package classes, product compositions, supply relations, and package discount rules. Product packages model how products are physically packaged for trade — cartons, pallets, 6-packs, sleeves — and how those packages flow through supply relations, trade orders, and discount rules.
 
-**Base URL:** `http://localhost:5000/api/v1`
+**Base URL:** `https://example.app.heads.com/api/v1`
 **API Key:** `banana` (passed via Basic Auth with empty username: `-u ":banana"`)
 
 > **See also:** [Examples Index](../examples.md) | [Discount Rules](./discount-rules.md) | [Orders & Fulfillment](./orders.md) | [Products & Catalog](./products.md) | [Reference Documentation](../../reference/)
@@ -54,7 +54,7 @@ The system ships with 7 predefined classes:
 ### Create a package class
 
 ```bash
-curl -X POST -u ":banana" "localhost:5000/api/v1/product-package-classes" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/product-package-classes" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "product package class",
@@ -67,7 +67,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/product-package-classes" \
 
 ```bash
 # Shrink-wrap (custom class not in the predefined set)
-curl -X POST -u ":banana" "localhost:5000/api/v1/product-package-classes" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/product-package-classes" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "product package class",
@@ -76,7 +76,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/product-package-classes" \
   }'
 
 # Display box
-curl -X POST -u ":banana" "localhost:5000/api/v1/product-package-classes" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/product-package-classes" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "product package class",
@@ -88,13 +88,13 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/product-package-classes" \
 ### List all package classes
 
 ```bash
-curl -X GET -u ":banana" "localhost:5000/api/v1/product-package-classes"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/product-package-classes"
 ```
 
 ### Get a specific package class
 
 ```bash
-curl -X GET -u ":banana" "localhost:5000/api/v1/product-package-classes/com.example.id=carton"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/product-package-classes/com.example.id=carton"
 ```
 
 > **Note:** Package classes are immutable after creation. To use a different name, create a new package class.
@@ -108,7 +108,7 @@ A product package requires two things: (1) a package class, and (2) a manifest l
 ### Create a simple package — Carton of 10
 
 ```bash
-curl -X POST -u ":banana" "localhost:5000/api/v1/product-packages" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/product-packages" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "product package",
@@ -128,7 +128,7 @@ This is a **simple package** — one manifest entry. The manifest references a p
 ### Create a 6-pack of soda
 
 ```bash
-curl -X POST -u ":banana" "localhost:5000/api/v1/product-packages" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/product-packages" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "product package",
@@ -149,7 +149,7 @@ Here an explicit `name` is set. Without it, the name may inherit from the packag
 ### Create a complex package — Mixed Snack Pallet
 
 ```bash
-curl -X POST -u ":banana" "localhost:5000/api/v1/product-packages" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/product-packages" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "product package",
@@ -174,19 +174,19 @@ This is a **complex package** — multiple manifest entries. Automatic unit-to-p
 ### List all product packages
 
 ```bash
-curl -X GET -u ":banana" "localhost:5000/api/v1/product-packages"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/product-packages"
 ```
 
 ### Get a specific package with full manifest
 
 ```bash
-curl -X GET -u ":banana" "localhost:5000/api/v1/product-packages/com.example.id=levis-501-carton?fields=all"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/product-packages/com.example.id=levis-501-carton?fields=all"
 ```
 
 ### Update a package manifest
 
 ```bash
-curl -X PATCH -u ":banana" "localhost:5000/api/v1/product-packages/com.example.id=6pack-cola" \
+curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/product-packages/com.example.id=6pack-cola" \
   -H "Content-Type: application/json" \
   -d '{
     "manifest": [
@@ -217,7 +217,7 @@ Both `product package` and `product set` extend `product composition` and share 
 ### Create a product set (for comparison)
 
 ```bash
-curl -X POST -u ":banana" "localhost:5000/api/v1/product-sets" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/product-sets" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "product set",
@@ -258,7 +258,7 @@ Supply relations specify the terms under which a product is traded between parti
 ### Create a supply relation with carton packaging
 
 ```bash
-curl -X POST -u ":banana" "localhost:5000/api/v1/supply-relations" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/supply-relations" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "supply relation",
@@ -283,7 +283,7 @@ This means: "Levis 501 products are traded with ACME supplier in cartons of 10, 
 ### Create a pallet-level supply relation
 
 ```bash
-curl -X POST -u ":banana" "localhost:5000/api/v1/supply-relations" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/supply-relations" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "supply relation",
@@ -299,13 +299,13 @@ This means: "Sparkling water is supplied by Nordic Beverages on full pallets, mi
 ### List all supply relations
 
 ```bash
-curl -X GET -u ":banana" "localhost:5000/api/v1/supply-relations"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/supply-relations"
 ```
 
 ### Query supply relations with specific fields
 
 ```bash
-curl -X GET -u ":banana" "localhost:5000/api/v1/supply-relations?fields=product,package,moq"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/supply-relations?fields=product,package,moq"
 ```
 
 ---
@@ -330,7 +330,7 @@ This means 30 units ordered as 3 cartons of 10.
 ### Creating an order with packaged items
 
 ```bash
-curl -X POST -u ":banana" "localhost:5000/api/v1/trade-orders" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/trade-orders" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.orderId": "PO-2026-001" },
@@ -375,7 +375,7 @@ The `package discount rule effect` sets a **total price for a group of matched i
 This is a real production rule. When a customer buys any 2 qualifying Barebells protein bars, they pay 55 SEK total instead of individual prices.
 
 ```bash
-curl -X POST -u ":banana" "localhost:5000/api/v1/discount-rules" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/discount-rules" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "discount rule",
@@ -434,7 +434,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/discount-rules" \
 This pattern is used in production for coupon-based promotions. A coupon product (scanned at checkout) triggers a deal where the entire bundle costs 0 SEK — effectively making the glass ice cream free when redeemed with the coupon.
 
 ```bash
-curl -X POST -u ":banana" "localhost:5000/api/v1/discount-rules" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/discount-rules" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "discount rule",
@@ -513,43 +513,43 @@ The `package discount rule effect` is the only effect type where `amount` repres
 
 ```bash
 # List all package classes
-curl -X GET -u ":banana" "localhost:5000/api/v1/product-package-classes"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/product-package-classes"
 
 # Get a specific class
-curl -X GET -u ":banana" "localhost:5000/api/v1/product-package-classes/com.example.id=carton"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/product-package-classes/com.example.id=carton"
 ```
 
 ### Product packages
 
 ```bash
 # List all packages
-curl -X GET -u ":banana" "localhost:5000/api/v1/product-packages"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/product-packages"
 
 # Get a specific package with full manifest
-curl -X GET -u ":banana" "localhost:5000/api/v1/product-packages/com.example.id=levis-501-carton?fields=all"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/product-packages/com.example.id=levis-501-carton?fields=all"
 
 # Get only package names and classes
-curl -X GET -u ":banana" "localhost:5000/api/v1/product-packages?fields=name,packageClass"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/product-packages?fields=name,packageClass"
 ```
 
 ### Product sets
 
 ```bash
 # List all product sets
-curl -X GET -u ":banana" "localhost:5000/api/v1/product-sets"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/product-sets"
 
 # Get a specific set with manifest
-curl -X GET -u ":banana" "localhost:5000/api/v1/product-sets/com.example.id=lunch-combo?fields=all"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/product-sets/com.example.id=lunch-combo?fields=all"
 ```
 
 ### Supply relations
 
 ```bash
 # List all supply relations
-curl -X GET -u ":banana" "localhost:5000/api/v1/supply-relations"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/supply-relations"
 
 # Filter supply relations by specific fields
-curl -X GET -u ":banana" "localhost:5000/api/v1/supply-relations?fields=product,package,moq"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/supply-relations?fields=product,package,moq"
 ```
 
 ---
@@ -563,7 +563,7 @@ This walkthrough sets up supply for a new juice product that comes in cases of 1
 The predefined classes may not cover your needs. Here we create a "Case" class:
 
 ```bash
-curl -X POST -u ":banana" "localhost:5000/api/v1/product-package-classes" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/product-package-classes" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "product package class",
@@ -577,7 +577,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/product-package-classes" \
 Define how the juice is packaged — cases of 12:
 
 ```bash
-curl -X POST -u ":banana" "localhost:5000/api/v1/product-packages" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/product-packages" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "product package",
@@ -598,7 +598,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/product-packages" \
 Link the package to the supplier agreement:
 
 ```bash
-curl -X POST -u ":banana" "localhost:5000/api/v1/supply-relations" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/supply-relations" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "supply relation",
@@ -614,7 +614,7 @@ This means: minimum order 576 units (= 48 cases of 12), traded in case packaging
 ### Step 4: Place a supplier order
 
 ```bash
-curl -X POST -u ":banana" "localhost:5000/api/v1/trade-orders" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/trade-orders" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.orderId": "PO-2026-JUICE-001" },
@@ -642,7 +642,7 @@ This orders 576 total units: 288 mango (24 cases) + 288 passion fruit (24 cases)
 ### Step 5: Verify the order
 
 ```bash
-curl -X GET -u ":banana" "localhost:5000/api/v1/trade-orders/com.example.orderId=PO-2026-JUICE-001?fields=all"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/trade-orders/com.example.orderId=PO-2026-JUICE-001?fields=all"
 ```
 
 ---

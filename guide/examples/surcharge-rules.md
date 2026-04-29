@@ -2,7 +2,7 @@
 
 Curl examples for surcharge rules, surcharge reasons, and how surcharges appear on receipts. Surcharge rules are the mirror image of discount rules — where discounts reduce prices, surcharges add automatic fees like bottle deposits ("pant"), environmental charges, bag handling fees, and tariffs.
 
-**Base URL:** `http://localhost:5000/api/v1`
+**Base URL:** `https://example.app.heads.com/api/v1`
 **API Key:** `banana` (passed via Basic Auth with empty username: `-u ":banana"`)
 
 > **See also:** [Examples Index](../examples.md) | [Discount Rules](./discount-rules.md) | [Orders & Fulfillment](./orders.md) | [Point of Sale](./pos.md) | [Reference Documentation](../../reference/)
@@ -39,7 +39,7 @@ Surcharge reasons explain **why** a fee is applied. They appear on receipts and 
 ### Create a surcharge reason
 
 ```bash
-curl -X POST -u ":banana" "localhost:5000/api/v1/surcharge-reasons" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/surcharge-reasons" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "surcharge reason",
@@ -52,7 +52,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/surcharge-reasons" \
 
 ```bash
 # Environmental Fee
-curl -X POST -u ":banana" "localhost:5000/api/v1/surcharge-reasons" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/surcharge-reasons" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "surcharge reason",
@@ -61,7 +61,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/surcharge-reasons" \
   }'
 
 # Bag Handling Fee
-curl -X POST -u ":banana" "localhost:5000/api/v1/surcharge-reasons" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/surcharge-reasons" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "surcharge reason",
@@ -70,7 +70,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/surcharge-reasons" \
   }'
 
 # Service Charge
-curl -X POST -u ":banana" "localhost:5000/api/v1/surcharge-reasons" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/surcharge-reasons" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "surcharge reason",
@@ -79,7 +79,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/surcharge-reasons" \
   }'
 
 # Tariff
-curl -X POST -u ":banana" "localhost:5000/api/v1/surcharge-reasons" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/surcharge-reasons" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "surcharge reason",
@@ -91,19 +91,19 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/surcharge-reasons" \
 ### List all surcharge reasons
 
 ```bash
-curl -X GET -u ":banana" "localhost:5000/api/v1/surcharge-reasons"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/surcharge-reasons"
 ```
 
 ### Get a specific surcharge reason
 
 ```bash
-curl -X GET -u ":banana" "localhost:5000/api/v1/surcharge-reasons/com.example.surchargeReasonId=pant"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/surcharge-reasons/com.example.surchargeReasonId=pant"
 ```
 
 ### Rename a surcharge reason
 
 ```bash
-curl -X PATCH -u ":banana" "localhost:5000/api/v1/surcharge-reasons/com.example.surchargeReasonId=pant" \
+curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/surcharge-reasons/com.example.surchargeReasonId=pant" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Bottle & Can Deposit (Pant)"
@@ -119,7 +119,7 @@ This is the primary use case for surcharge rules. Swedish "pant" adds a fixed de
 ### Create a pant surcharge rule (1 SEK deposit)
 
 ```bash
-curl -X POST -u ":banana" "localhost:5000/api/v1/surcharge-rules" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/surcharge-rules" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "surcharge rule",
@@ -179,13 +179,13 @@ Formula: `amount = consumer_facing_price / (1 + vat_rate)`
 ### Get a surcharge rule
 
 ```bash
-curl -X GET -u ":banana" "localhost:5000/api/v1/surcharge-rules/com.example.surchargeRuleId=pant-1kr"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/surcharge-rules/com.example.surchargeRuleId=pant-1kr"
 ```
 
 ### Update a surcharge rule
 
 ```bash
-curl -X PATCH -u ":banana" "localhost:5000/api/v1/surcharge-rules/com.example.surchargeRuleId=pant-1kr" \
+curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/surcharge-rules/com.example.surchargeRuleId=pant-1kr" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Pant 1kr - Cans"
@@ -195,7 +195,7 @@ curl -X PATCH -u ":banana" "localhost:5000/api/v1/surcharge-rules/com.example.su
 ### Delete a surcharge rule
 
 ```bash
-curl -X DELETE -u ":banana" "localhost:5000/api/v1/surcharge-rules/com.example.surchargeRuleId=pant-1kr"
+curl -X DELETE -u ":banana" "example.app.heads.com/api/v1/surcharge-rules/com.example.surchargeRuleId=pant-1kr"
 ```
 
 ---
@@ -208,7 +208,7 @@ A tiered pant system uses separate surcharge rules per tier, all sharing the sam
 
 ```bash
 # Tier 1: Small cans (33cl) — 1 SEK deposit
-curl -X POST -u ":banana" "localhost:5000/api/v1/surcharge-rules" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/surcharge-rules" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "surcharge rule",
@@ -239,7 +239,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/surcharge-rules" \
   }'
 
 # Tier 2: Large bottles (PET 50cl–150cl) — 2 SEK deposit
-curl -X POST -u ":banana" "localhost:5000/api/v1/surcharge-rules" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/surcharge-rules" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "surcharge rule",
@@ -270,7 +270,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/surcharge-rules" \
   }'
 
 # Tier 3: Multi-packs / large containers — 4 SEK deposit
-curl -X POST -u ":banana" "localhost:5000/api/v1/surcharge-rules" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/surcharge-rules" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "surcharge rule",
@@ -312,7 +312,7 @@ Percentage surcharges add a fee calculated as a percentage of the item's value. 
 ### Create a percentage-based environmental fee (5% on electronics)
 
 ```bash
-curl -X POST -u ":banana" "localhost:5000/api/v1/surcharge-rules" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/surcharge-rules" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "surcharge rule",
@@ -354,7 +354,7 @@ Like discount rules, surcharge rules can be scoped by seller, currency, time per
 A bag handling fee that only applies at a specific store:
 
 ```bash
-curl -X POST -u ":banana" "localhost:5000/api/v1/surcharge-rules" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/surcharge-rules" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "surcharge rule",
@@ -391,7 +391,7 @@ Pant amounts are currency-specific. If you operate in multiple currencies, creat
 
 ```bash
 # SEK rule: 1 SEK pant at 12% VAT
-curl -X POST -u ":banana" "localhost:5000/api/v1/surcharge-rules" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/surcharge-rules" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "surcharge rule",
@@ -422,7 +422,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/surcharge-rules" \
   }'
 
 # NOK rule: 2 NOK deposit at 15% VAT (Norwegian equivalent)
-curl -X POST -u ":banana" "localhost:5000/api/v1/surcharge-rules" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/surcharge-rules" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "surcharge rule",
@@ -458,7 +458,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/surcharge-rules" \
 A summer bag fee active only during a specific period:
 
 ```bash
-curl -X POST -u ":banana" "localhost:5000/api/v1/surcharge-rules" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/surcharge-rules" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "surcharge rule",
@@ -495,7 +495,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/surcharge-rules" \
 A tariff scoped to a specific store, in SEK, during a defined period:
 
 ```bash
-curl -X POST -u ":banana" "localhost:5000/api/v1/surcharge-rules" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/surcharge-rules" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "surcharge rule",
@@ -666,38 +666,38 @@ Both levels use the `receipt item surcharge` type with the same fields. The diff
 ### List all surcharge rules
 
 ```bash
-curl -X GET -u ":banana" "localhost:5000/api/v1/surcharge-rules"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/surcharge-rules"
 ```
 
 ### Get a specific surcharge rule by identifier
 
 ```bash
-curl -X GET -u ":banana" "localhost:5000/api/v1/surcharge-rules/com.example.surchargeRuleId=pant-1kr"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/surcharge-rules/com.example.surchargeRuleId=pant-1kr"
 ```
 
 ### Get specific fields only
 
 ```bash
-curl -X GET -u ":banana" "localhost:5000/api/v1/surcharge-rules?fields=name,effects,reason"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/surcharge-rules?fields=name,effects,reason"
 ```
 
 ### List all surcharge reasons
 
 ```bash
-curl -X GET -u ":banana" "localhost:5000/api/v1/surcharge-reasons"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/surcharge-reasons"
 ```
 
 ### List all surcharge rule effects
 
 ```bash
 # All effect types
-curl -X GET -u ":banana" "localhost:5000/api/v1/surcharge-rule-effects"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/surcharge-rule-effects"
 
 # Fixed effects only
-curl -X GET -u ":banana" "localhost:5000/api/v1/fixed-surcharge-rule-effects"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/fixed-surcharge-rule-effects"
 
 # Percentage effects only
-curl -X GET -u ":banana" "localhost:5000/api/v1/percentage-surcharge-rule-effects"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/percentage-surcharge-rule-effects"
 ```
 
 ---
@@ -754,5 +754,5 @@ After creating surcharge rules, verify the setup by creating a test trade order 
 
 ```bash
 # Check that surcharges appear on the receipt
-curl -X GET -u ":banana" "localhost:5000/api/v1/receipts/receiptID=RCP-TEST-001?fields=items.surcharges,surcharges"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/receipts/receiptID=RCP-TEST-001?fields=items.surcharges,surcharges"
 ```

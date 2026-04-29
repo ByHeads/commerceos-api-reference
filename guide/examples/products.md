@@ -2,7 +2,7 @@
 
 Curl examples for products, categories, families, groups, labels, images, and the complete catalog hierarchy including product variants.
 
-**Base URL:** `http://localhost:5000/api/v1`
+**Base URL:** `https://example.app.heads.com/api/v1`
 **API Key:** `banana` (passed via Basic Auth with empty username: `-u ":banana"`)
 
 > **See also:** [Examples Index](../examples.md) | [Reference Documentation](../../reference/) | [Working with Products](../../reference/working-with/products.md)
@@ -34,37 +34,37 @@ Product Node (base type)
 
 ```bash
 # List all products
-curl -X GET -u ":banana" "localhost:5000/api/v1/products"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/products"
 
 # Get product by external ID
-curl -X GET -u ":banana" "localhost:5000/api/v1/products/com.heads.seedID=iphone16"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/products/com.heads.seedID=iphone16"
 
 # Get product by GTIN (use ~where, NOT direct indexer)
-curl -X GET -u ":banana" "localhost:5000/api/v1/products~where(gtin=7311250449246)~first"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/products~where(gtin=7311250449246)~first"
 
 # Get product by PLU
-curl -X GET -u ":banana" "localhost:5000/api/v1/products~where(plu=4011)~first"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/products~where(plu=4011)~first"
 
 # Get product with prices
-curl -X GET -u ":banana" "localhost:5000/api/v1/products/com.heads.seedID=iphone16~with(prices)"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/products/com.heads.seedID=iphone16~with(prices)"
 
 # Get product with categories
-curl -X GET -u ":banana" "localhost:5000/api/v1/products/com.heads.seedID=iphone16~with(categories)"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/products/com.heads.seedID=iphone16~with(categories)"
 
 # Get product with assortment contexts
-curl -X GET -u ":banana" "localhost:5000/api/v1/products/com.heads.seedID=iphone16/assortmentContexts"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/products/com.heads.seedID=iphone16/assortmentContexts"
 
 # Get product's specific assortment context (by owner)
-curl -X GET -u ":banana" "localhost:5000/api/v1/products/com.heads.seedID=iphone16/assortmentContexts/com.heads.seedID=ourcompany"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/products/com.heads.seedID=iphone16/assortmentContexts/com.heads.seedID=ourcompany"
 
 # Get product's images
-curl -X GET -u ":banana" "localhost:5000/api/v1/products/com.heads.seedID=iphone16/images"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/products/com.heads.seedID=iphone16/images"
 
 # Get product's labels
-curl -X GET -u ":banana" "localhost:5000/api/v1/products/com.heads.seedID=iphone16/labels"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/products/com.heads.seedID=iphone16/labels"
 
 # Create a simple product
-curl -X POST -u ":banana" "localhost:5000/api/v1/products" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/products" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.sku": "SKU-001"},
@@ -73,7 +73,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/products" \
   }'
 
 # Create product with GTIN and PLU
-curl -X POST -u ":banana" "localhost:5000/api/v1/products" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/products" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.sku": "SKU-002"},
@@ -84,7 +84,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/products" \
   }'
 
 # Create product with assortment context
-curl -X POST -u ":banana" "localhost:5000/api/v1/products" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/products" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.sku": "SKU-003"},
@@ -99,22 +99,22 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/products" \
   }'
 
 # Update product
-curl -X PATCH -u ":banana" "localhost:5000/api/v1/products/com.myapp.sku=SKU-001" \
+curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/products/com.myapp.sku=SKU-001" \
   -H "Content-Type: application/json" \
   -d '{"name": "Premium T-Shirt", "status": "Active"}'
 
 # Assign product to category
-curl -X POST -u ":banana" "localhost:5000/api/v1/products/com.myapp.sku=SKU-001/categories" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/products/com.myapp.sku=SKU-001/categories" \
   -H "Content-Type: application/json" \
   -d '{"category": {"identifiers": {"com.myapp.catId": "CAT-001"}}}'
 
 # Add product to assortment owner
-curl -X POST -u ":banana" "localhost:5000/api/v1/products/com.myapp.sku=SKU-001/assortmentOwners" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/products/com.myapp.sku=SKU-001/assortmentOwners" \
   -H "Content-Type: application/json" \
   -d '{"@type": "store", "identifiers": {"com.heads.seedID": "store1"}}'
 
 # Delete product
-curl -X DELETE -u ":banana" "localhost:5000/api/v1/products/com.myapp.sku=SKU-001"
+curl -X DELETE -u ":banana" "example.app.heads.com/api/v1/products/com.myapp.sku=SKU-001"
 ```
 
 ---
@@ -123,19 +123,19 @@ curl -X DELETE -u ":banana" "localhost:5000/api/v1/products/com.myapp.sku=SKU-00
 
 ```bash
 # List all product categories
-curl -X GET -u ":banana" "localhost:5000/api/v1/product-categories"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/product-categories"
 
 # Get category by external ID
-curl -X GET -u ":banana" "localhost:5000/api/v1/product-categories/com.heads.seedID=electronics"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/product-categories/com.heads.seedID=electronics"
 
 # Get category with child categories
-curl -X GET -u ":banana" "localhost:5000/api/v1/product-categories/com.heads.seedID=electronics~with(childCategories)"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/product-categories/com.heads.seedID=electronics~with(childCategories)"
 
 # Get category members (products)
-curl -X GET -u ":banana" "localhost:5000/api/v1/product-categories/com.heads.seedID=electronics/members"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/product-categories/com.heads.seedID=electronics/members"
 
 # Create a root category
-curl -X POST -u ":banana" "localhost:5000/api/v1/product-categories" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/product-categories" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.catId": "CAT-001"},
@@ -143,7 +143,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/product-categories" \
   }'
 
 # Create a child category (two-step: create category, then add to parent's childCategories)
-curl -X POST -u ":banana" "localhost:5000/api/v1/product-categories" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/product-categories" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.catId": "CAT-002"},
@@ -151,12 +151,12 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/product-categories" \
   }'
 
 # Add the child category to parent's childCategories collection
-curl -X POST -u ":banana" "localhost:5000/api/v1/product-categories/com.myapp.catId=CAT-001/childCategories" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/product-categories/com.myapp.catId=CAT-001/childCategories" \
   -H "Content-Type: application/json" \
   -d '{"identifiers": {"com.myapp.catId": "CAT-002"}}'
 
 # Update category
-curl -X PATCH -u ":banana" "localhost:5000/api/v1/product-categories/com.myapp.catId=CAT-001" \
+curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/product-categories/com.myapp.catId=CAT-001" \
   -H "Content-Type: application/json" \
   -d '{"name": "Electronics & Gadgets"}'
 ```
@@ -173,13 +173,13 @@ Product families group products that are variants of each other (same base produ
 
 ```bash
 # List all product families
-curl -X GET -u ":banana" "localhost:5000/api/v1/product-families"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/product-families"
 
 # Get product family with variants
-curl -X GET -u ":banana" "localhost:5000/api/v1/product-families/com.heads.seedID=iphone-family~with(variants)"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/product-families/com.heads.seedID=iphone-family~with(variants)"
 
 # Create a product family with parent group
-curl -X POST -u ":banana" "localhost:5000/api/v1/product-families" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/product-families" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.familyId": "tshirt-basic"},
@@ -189,14 +189,14 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/product-families" \
   }'
 
 # Set variant dimensions (MUST be a comma+space separated string)
-curl -X PATCH -u ":banana" "localhost:5000/api/v1/product-families/com.myapp.familyId=tshirt-basic" \
+curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/product-families/com.myapp.familyId=tshirt-basic" \
   -H "Content-Type: application/json" \
   -d '{
     "variantDimensions": "Apparel::size, Apparel::color"
   }'
 
 # Clear variant dimensions by setting to null
-curl -X PATCH -u ":banana" "localhost:5000/api/v1/product-families/com.myapp.familyId=tshirt-basic" \
+curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/product-families/com.myapp.familyId=tshirt-basic" \
   -H "Content-Type: application/json" \
   -d '{"variantDimensions": null}'
 ```
@@ -209,7 +209,7 @@ Variants are regular `product` entities with their `parentGroup` set to the fami
 
 ```bash
 # Create variant product attached to family
-curl -X POST -u ":banana" "localhost:5000/api/v1/products" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/products" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.sku": "tshirt-basic-s-red"},
@@ -224,7 +224,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/products" \
   }'
 
 # Create another variant
-curl -X POST -u ":banana" "localhost:5000/api/v1/products" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/products" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.sku": "tshirt-basic-m-blue"},
@@ -243,22 +243,22 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/products" \
 
 ```bash
 # List family variants
-curl -X GET -u ":banana" "localhost:5000/api/v1/product-families/com.myapp.familyId=tshirt-basic~with(variants)"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/product-families/com.myapp.familyId=tshirt-basic~with(variants)"
 
 # Get variants with specific fields
-curl -X GET -u ":banana" "localhost:5000/api/v1/product-families/com.myapp.familyId=tshirt-basic~with(variants/identifiers,variants/name)"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/product-families/com.myapp.familyId=tshirt-basic~with(variants/identifiers,variants/name)"
 
 # Get variants with prices
-curl -X GET -u ":banana" "localhost:5000/api/v1/product-families/com.myapp.familyId=tshirt-basic~with(variants/prices)"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/product-families/com.myapp.familyId=tshirt-basic~with(variants/prices)"
 
 # Get variants with stock levels
-curl -X GET -u ":banana" "localhost:5000/api/v1/product-families/com.myapp.familyId=tshirt-basic~with(variants/stockLevels)"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/product-families/com.myapp.familyId=tshirt-basic~with(variants/stockLevels)"
 
 # Access variants collection directly
-curl -X GET -u ":banana" "localhost:5000/api/v1/product-families/com.myapp.familyId=tshirt-basic/variants"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/product-families/com.myapp.familyId=tshirt-basic/variants"
 
 # Count variants
-curl -X GET -u ":banana" "localhost:5000/api/v1/product-families/com.myapp.familyId=tshirt-basic/variants~count"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/product-families/com.myapp.familyId=tshirt-basic/variants~count"
 ```
 
 ### Instance Properties Write Rules
@@ -270,7 +270,7 @@ curl -X GET -u ":banana" "localhost:5000/api/v1/product-families/com.myapp.famil
 
 ```bash
 # Valid: string values
-curl -X PATCH -u ":banana" "localhost:5000/api/v1/products/com.myapp.sku=tshirt-basic-s-red" \
+curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/products/com.myapp.sku=tshirt-basic-s-red" \
   -H "Content-Type: application/json" \
   -d '{
     "instanceProperties": {
@@ -280,7 +280,7 @@ curl -X PATCH -u ":banana" "localhost:5000/api/v1/products/com.myapp.sku=tshirt-
   }'
 
 # Valid: numeric value (number type)
-curl -X PATCH -u ":banana" "localhost:5000/api/v1/products/com.myapp.sku=widget-001" \
+curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/products/com.myapp.sku=widget-001" \
   -H "Content-Type: application/json" \
   -d '{
     "instanceProperties": {
@@ -304,16 +304,16 @@ Product groups organize products and families in a tree structure. They can hold
 
 ```bash
 # List all product groups
-curl -X GET -u ":banana" "localhost:5000/api/v1/product-groups"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/product-groups"
 
 # Get product group with members
-curl -X GET -u ":banana" "localhost:5000/api/v1/product-groups/com.myapp.groupId=GRP-001~with(members)"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/product-groups/com.myapp.groupId=GRP-001~with(members)"
 
 # Get group's members (products, families, and sub-groups)
-curl -X GET -u ":banana" "localhost:5000/api/v1/product-groups/com.myapp.groupId=GRP-001/members"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/product-groups/com.myapp.groupId=GRP-001/members"
 
 # Create a root product group
-curl -X POST -u ":banana" "localhost:5000/api/v1/product-groups" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/product-groups" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.groupId": "apparel"},
@@ -322,7 +322,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/product-groups" \
   }'
 
 # Create child group (use parentGroup, not parent)
-curl -X POST -u ":banana" "localhost:5000/api/v1/product-groups" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/product-groups" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.groupId": "apparel-summer"},
@@ -331,7 +331,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/product-groups" \
   }'
 
 # Assign product to group (via parentGroup on the product, NOT group's members)
-curl -X PATCH -u ":banana" "localhost:5000/api/v1/products/com.myapp.sku=SKU-001" \
+curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/products/com.myapp.sku=SKU-001" \
   -H "Content-Type: application/json" \
   -d '{"parentGroup": {"identifiers": {"com.myapp.groupId": "apparel-summer"}}}'
 ```
@@ -342,7 +342,7 @@ Groups can store **default** `variantDimensions` intended for families created w
 
 ```bash
 # Set variant dimensions on a group (applies to families in the group)
-curl -X PATCH -u ":banana" "localhost:5000/api/v1/product-groups/com.myapp.groupId=apparel" \
+curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/product-groups/com.myapp.groupId=apparel" \
   -H "Content-Type: application/json" \
   -d '{
     "variantDimensions": "Apparel::size, Apparel::color"
@@ -355,7 +355,7 @@ VAT codes can be assigned at any level in the group hierarchy. VAT calculations 
 
 ```bash
 # Set default VAT for entire group
-curl -X PATCH -u ":banana" "localhost:5000/api/v1/product-groups/com.myapp.groupId=apparel" \
+curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/product-groups/com.myapp.groupId=apparel" \
   -H "Content-Type: application/json" \
   -d '{
     "defaultVatCode": {"identifiers": {"percentage": "25"}}
@@ -368,13 +368,13 @@ curl -X PATCH -u ":banana" "localhost:5000/api/v1/product-groups/com.myapp.group
 
 ```bash
 # Get group with parent reference
-curl -X GET -u ":banana" "localhost:5000/api/v1/product-groups/com.myapp.groupId=apparel-summer~with(parentGroup)"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/product-groups/com.myapp.groupId=apparel-summer~with(parentGroup)"
 
 # Find root groups (those without a parent)
-curl -X GET -u ":banana" "localhost:5000/api/v1/product-groups~where(!parentGroup)~take(20)"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/product-groups~where(!parentGroup)~take(20)"
 
 # Count members in a group
-curl -X GET -u ":banana" "localhost:5000/api/v1/product-groups/com.myapp.groupId=apparel/members~count"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/product-groups/com.myapp.groupId=apparel/members~count"
 ```
 
 ---
@@ -383,13 +383,13 @@ curl -X GET -u ":banana" "localhost:5000/api/v1/product-groups/com.myapp.groupId
 
 ```bash
 # List all labels
-curl -X GET -u ":banana" "localhost:5000/api/v1/labels"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/labels"
 
 # Get label by ID
-curl -X GET -u ":banana" "localhost:5000/api/v1/labels/com.myapp.labelId=sale"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/labels/com.myapp.labelId=sale"
 
 # Create a label
-curl -X POST -u ":banana" "localhost:5000/api/v1/labels" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/labels" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.labelId": "sale"},
@@ -399,7 +399,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/labels" \
   }'
 
 # Create label restricted to specific types
-curl -X POST -u ":banana" "localhost:5000/api/v1/labels" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/labels" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.labelId": "vip-customer"},
@@ -409,7 +409,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/labels" \
   }'
 
 # Assign label to entity
-curl -X POST -u ":banana" "localhost:5000/api/v1/products/com.myapp.sku=SKU-001/labels" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/products/com.myapp.sku=SKU-001/labels" \
   -H "Content-Type: application/json" \
   -d '{"identifiers": {"com.myapp.labelId": "sale"}}'
 ```
@@ -424,20 +424,20 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/products/com.myapp.sku=SKU-001/
 
 ```bash
 # Get product's images
-curl -X GET -u ":banana" "localhost:5000/api/v1/products/com.myapp.sku=SKU-001/images"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/products/com.myapp.sku=SKU-001/images"
 
 # Add image to product (use identifiers.url only)
-curl -X POST -u ":banana" "localhost:5000/api/v1/products/com.myapp.sku=SKU-001/images" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/products/com.myapp.sku=SKU-001/images" \
   -H "Content-Type: application/json" \
   -d '{"identifiers": {"url": "https://example.com/images/product-001.jpg"}}'
 
 # Add another image (insertion order determines display order)
-curl -X POST -u ":banana" "localhost:5000/api/v1/products/com.myapp.sku=SKU-001/images" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/products/com.myapp.sku=SKU-001/images" \
   -H "Content-Type: application/json" \
   -d '{"identifiers": {"url": "https://example.com/images/product-001-back.jpg"}}'
 
 # Remove image by URL
-curl -X DELETE -u ":banana" "localhost:5000/api/v1/products/com.myapp.sku=SKU-001/images/url=https%3A%2F%2Fexample.com%2Fimages%2Fproduct-001.jpg"
+curl -X DELETE -u ":banana" "example.app.heads.com/api/v1/products/com.myapp.sku=SKU-001/images/url=https%3A%2F%2Fexample.com%2Fimages%2Fproduct-001.jpg"
 ```
 
 ---
@@ -448,7 +448,7 @@ This example shows the complete flow for creating a product group, family, and v
 
 ```bash
 # Step 1: Create the product group
-curl -X POST -u ":banana" "localhost:5000/api/v1/product-groups" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/product-groups" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.groupId": "apparel"},
@@ -457,7 +457,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/product-groups" \
   }'
 
 # Step 2: Create the product family with variant dimensions
-curl -X POST -u ":banana" "localhost:5000/api/v1/product-families" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/product-families" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.familyId": "tshirt-basic"},
@@ -468,7 +468,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/product-families" \
   }'
 
 # Step 3: Create variant products
-curl -X POST -u ":banana" "localhost:5000/api/v1/products" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/products" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.sku": "tshirt-basic-s-red"},
@@ -482,7 +482,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/products" \
     "status": "Active"
   }'
 
-curl -X POST -u ":banana" "localhost:5000/api/v1/products" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/products" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.sku": "tshirt-basic-m-blue"},
@@ -497,7 +497,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/products" \
   }'
 
 # Step 4: Verify the family with its variants
-curl -X GET -u ":banana" "localhost:5000/api/v1/product-families/com.myapp.familyId=tshirt-basic~with(variants)"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/product-families/com.myapp.familyId=tshirt-basic~with(variants)"
 ```
 
 ---
@@ -508,18 +508,18 @@ Sales channels control where products are available (POS, webshop, mobile). The 
 
 ```bash
 # Get product's sales channels
-curl -X GET -u ":banana" "localhost:5000/api/v1/products/com.myapp.sku=SKU-001~with(salesChannels)"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/products/com.myapp.sku=SKU-001~with(salesChannels)"
 
 # Get family's sales channels
-curl -X GET -u ":banana" "localhost:5000/api/v1/product-families/com.myapp.familyId=tshirt-basic~with(salesChannels)"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/product-families/com.myapp.familyId=tshirt-basic~with(salesChannels)"
 
 # Assign product to sales channel
-curl -X POST -u ":banana" "localhost:5000/api/v1/products/com.myapp.sku=SKU-001/salesChannels" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/products/com.myapp.sku=SKU-001/salesChannels" \
   -H "Content-Type: application/json" \
   -d '{"identifiers": {"com.myapp.channelId": "webshop"}}'
 
 # Get assortment contexts (per-owner article numbers)
-curl -X GET -u ":banana" "localhost:5000/api/v1/products/com.myapp.sku=SKU-001/assortmentContexts"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/products/com.myapp.sku=SKU-001/assortmentContexts"
 ```
 
 ---

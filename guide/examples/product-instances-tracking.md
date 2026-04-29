@@ -2,7 +2,7 @@
 
 A comprehensive guide to product instance management in CommerceOS — covering serial number tracking, batch tracking, instance types, and how tracking interacts with stock adjustments, orders, receipts, stock counts, and stock transfers.
 
-**Base URL:** `http://localhost:5000/api/v1`
+**Base URL:** `https://example.app.heads.com/api/v1`
 **API Key:** `banana` (passed via Basic Auth with empty username: `-u ":banana"`)
 
 > **See also:** [Stock & Inventory Guide](./stock-inventory-guide.md) | [Products & Catalog](./products.md) | [Orders & Fulfillment](./orders.md) | [Examples Index](../examples.md) | [Common Gotchas](../../reference/common-gotchas.md)
@@ -57,7 +57,19 @@ Products can have:
 - **Both** — each unit has a serial number AND belongs to a batch (medical devices, high-value perishables)
 - **Neither** — no tracking at all (generic retail, commodities)
 
-Every inventory document carries instance data alongside quantities, but the field name varies by document type. Stock adjustments, trade orders, and receipts use `productInstances`. Stock transfers and stock count observations use `instances`. Stock count items split the data across `expectedInstances`, `countedInstances`, `overageInstances`, and `shortageInstances`. The structure inside is the same in every case — see [Section 4](#part-4-working-with-product-instances-in-transactions) for the per-document field name and [Pitfalls 11–12](#11-stock-transfer-instances-use-the-instances-field) for the full mapping. For tracked products, entries provide per-unit or per-batch detail (serial numbers, batches). For non-tracked products, expanded entries contain just `quantity` and auto-generated `identifiers` — `serialNumber` and `batch` are omitted entirely, and `domain` is an empty object. Instance fields are non-essential, so they only appear in responses when explicitly expanded with `~with()`.
+Every inventory document carries instance data alongside quantities, but the field name varies by document type. Stock adjustments, trade orders, and receipts use `productInstances`. Stock transfers and stock count observations use `instances`. Stock count items split the data across `expectedInstances`, `countedInstances`, `overageInstances`, and `shortageInstances`. Stock transfer record item actions also expose `instances` for audit-trail visibility (read-only). The structure inside is the same in every case — see [Section 4](#part-4-working-with-product-instances-in-transactions) for the per-document field name and [Pitfalls 11–12](#11-stock-transfer-instances-use-the-instances-field) for the full mapping. For tracked products, entries provide per-unit or per-batch detail (serial numbers, batches). For non-tracked products, expanded entries contain just `quantity` and auto-generated `identifiers` — `serialNumber` and `batch` are omitted entirely, and `domain` is an empty object.
+
+Whether instance fields appear in default responses depends on the document type:
+
+| Document type | Instance field | Default behaviour |
+|---|---|---|
+| Stock adjustment item | `productInstances` | Included by default |
+| Stock transfer item | `instances` | Included by default |
+| Stock count observation | `instances` | Included by default |
+| Trade order item | `productInstances` | Non-essential — expand with `~with(productInstances)` |
+| Receipt item | `productInstances` | Non-essential — expand with `~with(productInstances)` |
+| Stock count item | `expectedInstances` / `countedInstances` / `overageInstances` / `shortageInstances` | Non-essential — included when items are expanded |
+| Stock transfer record item action | `instances` | Non-essential — expand with `~with(instances)` |
 
 ### The productInstances Pattern
 
@@ -98,7 +110,7 @@ Before tracking can work, products need to be configured with an **instance type
 
 ```bash
 # Create a serial-tracked product using Artifact
-curl -X POST -u ":banana" "localhost:5000/api/v1/products" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/products" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.sku": "LAPTOP-PRO-15" },
@@ -123,7 +135,7 @@ Key points:
 
 ```bash
 # Create a phone product using MobileDevice
-curl -X POST -u ":banana" "localhost:5000/api/v1/products" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/products" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.sku": "IPHONE-15-128" },
@@ -148,7 +160,7 @@ Key points:
 
 ```bash
 # Create a plan product using MobilePlan
-curl -X POST -u ":banana" "localhost:5000/api/v1/products" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/products" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.sku": "PLAN-UNLIMITED-12M" },
@@ -171,7 +183,7 @@ Batch tracking groups product instances by production batch. Unlike serial numbe
 
 ```bash
 # Create a batch-tracked product (no serial numbers)
-curl -X POST -u ":banana" "localhost:5000/api/v1/products" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/products" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.sku": "MILK-WHOLE-1L" },
@@ -216,7 +228,7 @@ Before referencing a batch in stock operations, create it:
 
 ```bash
 # Create a production batch
-curl -X POST -u ":banana" "localhost:5000/api/v1/batches" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/batches" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "batch-milk-2026-03" },
@@ -257,13 +269,13 @@ Batch fields:
 
 ```bash
 # List all batches
-curl -X GET -u ":banana" "localhost:5000/api/v1/batches"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/batches"
 
 # Get a specific batch
-curl -X GET -u ":banana" "localhost:5000/api/v1/batches/com.example.id=batch-milk-2026-03"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/batches/com.example.id=batch-milk-2026-03"
 
 # Find batches for a product
-curl -X GET -u ":banana" "localhost:5000/api/v1/batches~where(product.identifiers.com.example.sku==MILK-WHOLE-1L)"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/batches~where(product.identifiers.com.example.sku==MILK-WHOLE-1L)"
 ```
 
 ### 2.5 Combining Serial Number and Batch Tracking
@@ -272,7 +284,7 @@ A product can have both serial number and batch tracking enabled. Each unit gets
 
 ```bash
 # Medical device: both serial and batch tracked
-curl -X POST -u ":banana" "localhost:5000/api/v1/products" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/products" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.sku": "INSULIN-PEN-3ML" },
@@ -392,7 +404,7 @@ When receiving serial-tracked products into stock, provide a `productInstances` 
 
 ```bash
 # Receive 3 iPhones with unique IMEIs
-curl -X POST -u ":banana" "localhost:5000/api/v1/stock-adjustments" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-adjustments" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "adj-phones-001" },
@@ -423,7 +435,7 @@ You can set type-specific properties via the `domain` field:
 
 ```bash
 # Receive a phone with additional properties
-curl -X POST -u ":banana" "localhost:5000/api/v1/stock-adjustments" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-adjustments" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "adj-phones-002" },
@@ -456,7 +468,7 @@ When removing serial-tracked items from stock (e.g., damaged, stolen), reference
 
 ```bash
 # Remove a damaged iPhone by IMEI
-curl -X POST -u ":banana" "localhost:5000/api/v1/stock-adjustments" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-adjustments" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "adj-damaged-001" },
@@ -480,7 +492,7 @@ For batch-tracked products, each `productInstances` entry can have `quantity` gr
 
 ```bash
 # Receive 100 units of milk from a specific batch
-curl -X POST -u ":banana" "localhost:5000/api/v1/stock-adjustments" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-adjustments" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "adj-milk-001" },
@@ -507,7 +519,7 @@ If a delivery includes units from different batches, include multiple entries:
 
 ```bash
 # Receive milk from two different batches
-curl -X POST -u ":banana" "localhost:5000/api/v1/stock-adjustments" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-adjustments" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "adj-milk-multi-batch" },
@@ -538,7 +550,7 @@ For products with both tracking types enabled (e.g., medical devices):
 
 ```bash
 # Receive tracked medical devices with serial numbers AND batch
-curl -X POST -u ":banana" "localhost:5000/api/v1/stock-adjustments" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-adjustments" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "adj-pens-001" },
@@ -578,7 +590,7 @@ When creating orders for serial-tracked products, specify which instances are be
 
 ```bash
 # Create an order selling a specific iPhone by IMEI
-curl -X POST -u ":banana" "localhost:5000/api/v1/trade-orders" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/trade-orders" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.orderId": "ORD-2026-001" },
@@ -606,7 +618,7 @@ When selling a phone together with a cellular plan, the items must be in the cor
 
 ```bash
 # CORRECT: Phone before plan, plan links to phone via serialNumber
-curl -X POST -u ":banana" "localhost:5000/api/v1/trade-orders" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/trade-orders" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.orderId": "ORD-2026-002" },
@@ -657,7 +669,7 @@ When transferring serial-tracked products between logical stocks, specify which 
 
 ```bash
 # Transfer a specific iPhone to display stock
-curl -X POST -u ":banana" "localhost:5000/api/v1/stock-transfers" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-transfers" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "transfer-phone-display" },
@@ -677,7 +689,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/stock-transfers" \
   }'
 
 # Fulfill the transfer
-curl -X PATCH -u ":banana" "localhost:5000/api/v1/stock-transfers/com.example.id=transfer-phone-display" \
+curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/stock-transfers/com.example.id=transfer-phone-display" \
   -H "Content-Type: application/json" \
   -d '{ "actions": { "tryFulfill": true } }'
 ```
@@ -686,7 +698,7 @@ With domain properties:
 
 ```bash
 # Transfer with full instance metadata
-curl -X POST -u ":banana" "localhost:5000/api/v1/stock-transfers" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-transfers" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "transfer-phone-display-2" },
@@ -725,7 +737,7 @@ When counting serial-tracked products, stock count observations carry instance-l
 # Count observation: staff scanned 3 phones
 # Observations are created via the nested resource path on the stock count item
 curl -X POST -u ":banana" \
-  "localhost:5000/api/v1/stock-count-items/com.example.id=count-item-phones/observations/new" \
+  "example.app.heads.com/api/v1/stock-count-items/com.example.id=count-item-phones/observations/new" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "obs-phones-anna" },
@@ -744,7 +756,7 @@ After observations are recorded, the stock count item shows both quantity-level 
 
 ```bash
 # Get count items with instance details
-curl -X GET -u ":banana" "localhost:5000/api/v1/stock-counts/com.example.id=count-phones~with(items)"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/stock-counts/com.example.id=count-phones~with(items)"
 ```
 
 Response:
@@ -789,7 +801,7 @@ Receipts contain instance data for tracked products. Use `~with(items~with(produ
 
 ```bash
 # Get a receipt with product instance details
-curl -X GET -u ":banana" "localhost:5000/api/v1/receipts/com.example.receiptId=RCP-2026-001~with(items~with(productInstances))"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/receipts/com.example.receiptId=RCP-2026-001~with(items~with(productInstances))"
 ```
 
 Response (excerpt):
@@ -853,7 +865,7 @@ Notice:
 
 ```bash
 # Get recent receipts with full instance data
-curl -X GET -u ":banana" "localhost:5000/api/v1/receipts/after/2026-03-01T00:00:00.000Z~with(items~with(productInstances))~take(100)"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/receipts/after/2026-03-01T00:00:00.000Z~with(items~with(productInstances))~take(100)"
 ```
 
 > **See also:** [Receipt Discounts & Surcharges Guide](./receipt-discounts-surcharges.md) for how to combine instance expansion with discount/surcharge expansion.
@@ -868,16 +880,16 @@ Product instances are expandable fields on transaction items. They're not includ
 
 ```bash
 # Stock adjustment with instances expanded
-curl -X GET -u ":banana" "localhost:5000/api/v1/stock-adjustments/com.example.id=adj-phones-001~with(items~with(productInstances))"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/stock-adjustments/com.example.id=adj-phones-001~with(items~with(productInstances))"
 
 # Trade order with instances expanded
-curl -X GET -u ":banana" "localhost:5000/api/v1/trade-orders/com.example.orderId=ORD-2026-001~with(items~with(productInstances))"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/trade-orders/com.example.orderId=ORD-2026-001~with(items~with(productInstances))"
 
 # Receipt with instances expanded
-curl -X GET -u ":banana" "localhost:5000/api/v1/receipts/com.example.receiptId=RCP-2026-001~with(items~with(productInstances))"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/receipts/com.example.receiptId=RCP-2026-001~with(items~with(productInstances))"
 
 # Stock count with instances on items
-curl -X GET -u ":banana" "localhost:5000/api/v1/stock-counts/com.example.id=count-phones~with(items)"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/stock-counts/com.example.id=count-phones~with(items)"
 ```
 
 For stock count items, the instance fields (`expectedInstances`, `countedInstances`, `overageInstances`, `shortageInstances`) are included when items are expanded — no additional nested `~with()` is needed.
@@ -921,17 +933,17 @@ When reading transaction items in bulk, expand instances across all items:
 
 ```bash
 # Get all stock adjustment items with instances
-curl -X GET -u ":banana" "localhost:5000/api/v1/stock-adjustment-items~with(productInstances)~take(100)"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/stock-adjustment-items~with(productInstances)~take(100)"
 
 # Get all items for a specific product with instances
-curl -X GET -u ":banana" "localhost:5000/api/v1/stock-adjustments~with(items~with(productInstances))~take(50)"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/stock-adjustments~with(items~with(productInstances))~take(50)"
 ```
 
 You can also use `~just()` to limit the response to only instance-related fields:
 
 ```bash
 # Get just the product and instances for each adjustment item
-curl -X GET -u ":banana" "localhost:5000/api/v1/stock-adjustment-items~just(product,productInstances)~take(100)"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/stock-adjustment-items~just(product,productInstances)~take(100)"
 ```
 
 ---
@@ -946,7 +958,7 @@ curl -X GET -u ":banana" "localhost:5000/api/v1/stock-adjustment-items~just(prod
 
 ```bash
 # Check if the product has tracking configured
-curl -X GET -u ":banana" "localhost:5000/api/v1/products/com.example.sku=IPHONE-15-128~just(identifiers,name,instanceType,tracking)"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/products/com.example.sku=IPHONE-15-128~just(identifiers,name,instanceType,tracking)"
 ```
 
 Expected response:
@@ -968,7 +980,7 @@ Expected response:
 For each WMS goods-receipt event, create a stock adjustment with `productInstances`:
 
 ```bash
-curl -X POST -u ":banana" "localhost:5000/api/v1/stock-adjustments" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-adjustments" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "wms-receipt-2026-0325-001" },
@@ -991,7 +1003,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/stock-adjustments" \
 #### Step 3: Verify stock entries
 
 ```bash
-curl -X GET -u ":banana" "localhost:5000/api/v1/stock-places/com.example.id=stockholm-store/entries"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/stock-places/com.example.id=stockholm-store/entries"
 ```
 
 #### Step 4: Handle outbound movements (sales, returns, damages)
@@ -1000,7 +1012,7 @@ For each WMS dispatch/return event, create a corresponding adjustment with the s
 
 ```bash
 # WMS reports a sale — decrease stock with specific IMEI
-curl -X POST -u ":banana" "localhost:5000/api/v1/stock-adjustments" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-adjustments" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "wms-dispatch-2026-0326-001" },
@@ -1025,7 +1037,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/stock-adjustments" \
 #### Step 1: Create the order without instances
 
 ```bash
-curl -X POST -u ":banana" "localhost:5000/api/v1/trade-orders" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/trade-orders" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.orderId": "WEB-ORD-2026-001" },
@@ -1046,7 +1058,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/trade-orders" \
 When the warehouse picks a specific unit, update the order item with the serial number:
 
 ```bash
-curl -X PATCH -u ":banana" "localhost:5000/api/v1/trade-orders/com.example.orderId=WEB-ORD-2026-001" \
+curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/trade-orders/com.example.orderId=WEB-ORD-2026-001" \
   -H "Content-Type: application/json" \
   -d '{
     "items": [
@@ -1070,7 +1082,7 @@ curl -X PATCH -u ":banana" "localhost:5000/api/v1/trade-orders/com.example.order
 #### Step 1: Receive goods with batch tracking
 
 ```bash
-curl -X POST -u ":banana" "localhost:5000/api/v1/stock-adjustments" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-adjustments" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "adj-yogurt-delivery-001" },
@@ -1106,7 +1118,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/stock-adjustments" \
 
 ```bash
 # Find all adjustments for the recalled product
-curl -X GET -u ":banana" "localhost:5000/api/v1/stock-adjustments~with(items~with(productInstances))~where(items.product.identifiers.com.example.sku==YOGURT-VANILLA-200G)"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/stock-adjustments~with(items~with(productInstances))~where(items.product.identifiers.com.example.sku==YOGURT-VANILLA-200G)"
 ```
 
 Inspect the `productInstances` on each item to identify which stock places received the recalled batch.
@@ -1157,12 +1169,13 @@ Inspect the `productInstances` on each item to identify which stock places recei
 
 | Transaction | Instance Field (Create) | Instance Field (Read) | Notes |
 |-------------|------------------------|----------------------|-------|
-| Stock adjustment item | `productInstances` | `productInstances` (via `~with`) | Use `productInstances` exclusively |
-| Trade order item | `productInstances` | `productInstances` (via `~with`) | Use `productInstances` exclusively |
-| Receipt item | — | `productInstances` (via `~with`) | Read-only on receipts |
-| Stock transfer item | `instances` | `instances` (via `~with`) | Transfer-specific field name |
-| Stock count observation | `instances` | `instances` | Count-specific field name |
-| Stock count item | — | `expectedInstances`, `countedInstances`, `overageInstances`, `shortageInstances` | Computed variance fields |
+| Stock adjustment item | `productInstances` | `productInstances` (default) | Included by default in responses |
+| Trade order item | `productInstances` | `productInstances` (via `~with`) | Non-essential — expand to read |
+| Receipt item | — | `productInstances` (via `~with`) | Read-only; non-essential — expand to read |
+| Stock transfer item | `instances` | `instances` (default) | Transfer-specific field name; included by default |
+| Stock count observation | `instances` | `instances` (default) | Count-specific field name; included by default |
+| Stock count item | — | `expectedInstances`, `countedInstances`, `overageInstances`, `shortageInstances` | Non-essential — included when items are expanded |
+| Stock transfer record item action | — | `instances` (via `~with`) | Read-only audit trail; non-essential — expand to read |
 
 ---
 
@@ -1172,9 +1185,14 @@ Inspect the `productInstances` on each item to identify which stock places recei
 
 When selling a phone with a plan, the phone item **must** appear before the plan item in the `items` array. The plan's `domain.device.serialNumber` references the phone's IMEI, which must already exist in the transaction context. If the order is reversed, the device lookup fails.
 
-### 2. Use productInstances, not instance
+### 2. Use productInstances, not the legacy instance / instances fields
 
-The `productInstances` field is the current, supported way to provide instance data on stock adjustments and trade orders. The `instance` field (singular, containing raw domain properties like `{ "imei": "..." }`) is a legacy pattern. Always use `productInstances` with the structured format (`quantity`, `serialNumber`, `batch`, `domain`).
+The `productInstances` field is the current, supported way to provide instance data on stock adjustments, trade orders, and receipts. Two legacy fields still parse for backwards compatibility:
+
+- **`instance`** (singular dynamic on stock adjustment items) accepts raw domain properties like `{ "imei": "..." }`.
+- **`instances`** (plural array on trade order items) accepts ICE-era entries shaped like `[{ "imei": "..." }, { "phoneImei": "..." }]`. ICE-era integrators sending `phoneImei` directly on this legacy field will keep working until the field is removed. On `productInstances`, `phoneImei` is read-only and the canonical input form is `domain.device.serialNumber` (see [Section 3](#part-3-the-serialnumber-field--a-universal-accessor)).
+
+For new code, always use `productInstances` with the structured format (`quantity`, `serialNumber`, `batch`, `domain`).
 
 ### 3. Serial-tracked instances always have quantity 1
 

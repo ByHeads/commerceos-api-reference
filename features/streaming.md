@@ -24,7 +24,7 @@ Streaming uses the same JSON format — results are delivered as newline-delimit
 To stream a `GET` response, add `;stream=true` to the `Accept` header:
 
 ```bash
-curl -fsSL http://localhost:5000/api/v1/products \
+curl -fsSL https://example.app.heads.com/api/v1/products \
   -H "Accept: application/json;stream=true" \
   -u ":banana"
 ```
@@ -34,7 +34,7 @@ The response is sent as `application/x-ndjson` — one JSON object per line, str
 You can also request NDJSON directly:
 
 ```bash
-curl -fsSL http://localhost:5000/api/v1/products \
+curl -fsSL https://example.app.heads.com/api/v1/products \
   -H "Accept: application/x-ndjson" \
   -u ":banana"
 ```
@@ -67,7 +67,7 @@ When sending large arrays in `PUT`, `POST`, or `PATCH` requests, the API splits 
 By default, all chunks are processed and results are buffered before the response is sent. To stream results back as each chunk commits, add `;stream=true` to the `Content-Type` header:
 
 ```bash
-curl -fsSL -X PATCH http://localhost:5000/api/v1/products -u ":banana" \
+curl -fsSL -X PATCH https://example.app.heads.com/api/v1/products -u ":banana" \
   -H "Content-Type: application/json;stream=true" \
   -H "Accept: application/json;stream=true" \
   -d '[{"identifiers":{"com.example.id":"1"},"name":"A"}, {"identifiers":{"com.example.id":"2"},"name":"B"}]'
@@ -76,7 +76,7 @@ curl -fsSL -X PATCH http://localhost:5000/api/v1/products -u ":banana" \
 You can also send input as NDJSON, which always streams:
 
 ```bash
-curl -fsSL -X PATCH http://localhost:5000/api/v1/products -u ":banana" \
+curl -fsSL -X PATCH https://example.app.heads.com/api/v1/products -u ":banana" \
   -H "Content-Type: application/x-ndjson" \
   -H "Accept: application/json;stream=true" \
   --data-binary @- << 'EOF'
@@ -110,12 +110,12 @@ Use the `X-Transaction-Count` header to control how many items are processed per
 
 ```bash
 # Process 50 items per transaction
-curl -X PATCH http://localhost:5000/api/v1/products -u ":banana" \
+curl -X PATCH https://example.app.heads.com/api/v1/products -u ":banana" \
   -H "X-Transaction-Count: 50" \
   -d '[...]'
 
 # Process all items in a single transaction (all succeed or all fail)
-curl -X PATCH http://localhost:5000/api/v1/products -u ":banana" \
+curl -X PATCH https://example.app.heads.com/api/v1/products -u ":banana" \
   -H "X-Transaction-Count: all" \
   -d '[...]'
 ```
@@ -225,12 +225,12 @@ Need to process > 1000 items?
 
 ```bash
 # NDJSON output
-curl -fsSL http://localhost:5000/api/v1/products \
+curl -fsSL https://example.app.heads.com/api/v1/products \
   -H "Accept: application/x-ndjson" \
   -u ":banana"
 
 # JSON with streaming
-curl -fsSL http://localhost:5000/api/v1/products \
+curl -fsSL https://example.app.heads.com/api/v1/products \
   -H "Accept: application/json;stream=true" \
   -u ":banana"
 ```
@@ -239,7 +239,7 @@ curl -fsSL http://localhost:5000/api/v1/products \
 
 ```bash
 # NDJSON input + output
-curl -fsSL -X PUT http://localhost:5000/api/v1/products -u ":banana" \
+curl -fsSL -X PUT https://example.app.heads.com/api/v1/products -u ":banana" \
   -H "Content-Type: application/x-ndjson" \
   -H "Accept: application/x-ndjson" \
   --data-binary @- << 'EOF'
@@ -252,7 +252,7 @@ EOF
 ### Bulk Import in a Single Transaction
 
 ```bash
-curl -fsSL -X PUT http://localhost:5000/api/v1/products -u ":banana" \
+curl -fsSL -X PUT https://example.app.heads.com/api/v1/products -u ":banana" \
   -H "Content-Type: application/x-ndjson" \
   -H "Accept: application/x-ndjson" \
   -H "X-Transaction-Count: all" \
@@ -266,7 +266,7 @@ EOF
 
 ```bash
 # 50 items per transaction, streamed
-curl -fsSL -X PATCH http://localhost:5000/api/v1/products -u ":banana" \
+curl -fsSL -X PATCH https://example.app.heads.com/api/v1/products -u ":banana" \
   -H "Content-Type: application/json;stream=true" \
   -H "Accept: application/json;stream=true" \
   -H "X-Transaction-Count: 50" \

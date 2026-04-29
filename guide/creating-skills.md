@@ -104,10 +104,10 @@ description: Expert assistant for the CommerceOS ERP/POS API
 1. **Authentication**
 ```markdown
 ### API Key
-curl -H "X-Api-Key: MySecretKey" localhost:5000/api/v1/void
+curl -H "X-Api-Key: MySecretKey" example.app.heads.com/api/v1/void
 
 ### OAuth 2.0
-curl -X POST localhost:5000/oauth2/v1/token \
+curl -X POST example.app.heads.com/oauth2/v1/token \
   -d "grant_type=client_credentials&client_id=ID&client_secret=SECRET"
 ```
 
@@ -205,7 +205,7 @@ description: Quick reference for CommerceOS API basics
 # CommerceOS API Quick Reference
 
 ## Authentication
-curl -H "X-Api-Key: KEY" localhost:5000/api/v1/products
+curl -H "X-Api-Key: KEY" example.app.heads.com/api/v1/products
 
 ## Common Endpoints
 - /api/v1/products - Products

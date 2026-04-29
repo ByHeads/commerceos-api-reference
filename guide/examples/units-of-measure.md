@@ -2,7 +2,7 @@
 
 Curl examples for setting and using the `unit` property on products, product groups, and product families. The unit determines how quantities are measured — `"Piece"` for discrete items, `"Kilogram"` for weight-based goods, `"Liter"` for liquids, `"Meter"` for length, etc. This affects order quantities, receipt display, and inventory tracking.
 
-**Base URL:** `http://localhost:5000/api/v1`
+**Base URL:** `https://example.app.heads.com/api/v1`
 **API Key:** `banana` (passed via Basic Auth with empty username: `-u ":banana"`)
 
 > **See also:** [Examples Index](../examples.md) | [Products & Catalog](./products.md) | [Orders & Fulfillment](./orders.md) | [Point of Sale](./pos.md) | [Reference Documentation](../../reference/)
@@ -16,7 +16,7 @@ The `unit` property is a string field on `product group node` — the shared par
 ### Create a weight-based product
 
 ```bash
-curl -X POST -u ":banana" "localhost:5000/api/v1/products" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/products" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "product",
@@ -31,7 +31,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/products" \
 ### Update the unit on an existing product
 
 ```bash
-curl -X PATCH -u ":banana" "localhost:5000/api/v1/products/sku=DELI-SALAMI-001" \
+curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/products/sku=DELI-SALAMI-001" \
   -H "Content-Type: application/json" \
   -d '{ "unit": "Kilogram" }'
 ```
@@ -41,7 +41,7 @@ curl -X PATCH -u ":banana" "localhost:5000/api/v1/products/sku=DELI-SALAMI-001" 
 Most products are sold by the piece. `"Piece"` is the standard unit:
 
 ```bash
-curl -X POST -u ":banana" "localhost:5000/api/v1/products" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/products" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "product",
@@ -170,7 +170,7 @@ All valid `unit` values, organized by system. Values are **case-sensitive Pascal
 The vast majority of retail products use `"Piece"`. A packaged bottle of soda is `"Piece"`, not `"Liter"` — the unit describes how you **sell** the item, not what's inside.
 
 ```bash
-curl -X POST -u ":banana" "localhost:5000/api/v1/products" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/products" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "product",
@@ -187,7 +187,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/products" \
 Deli counters selling sliced salami or loose vegetables by weight. Quantities are decimal (e.g., `"0.350"` for 350g):
 
 ```bash
-curl -X POST -u ":banana" "localhost:5000/api/v1/products" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/products" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "product",
@@ -214,7 +214,7 @@ When ordering 350g of brie, the trade order item quantity is `"0.350"`:
 Fabric rolls, electrical cable, rope — sold by the meter:
 
 ```bash
-curl -X POST -u ":banana" "localhost:5000/api/v1/products" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/products" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "product",
@@ -231,7 +231,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/products" \
 Tiles, laminate, carpet — sold by the square meter:
 
 ```bash
-curl -X POST -u ":banana" "localhost:5000/api/v1/products" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/products" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "product",
@@ -248,7 +248,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/products" \
 Fountain drinks or bulk liquids sold by the liter. Note: pre-packaged bottles are `"Piece"` — use `"Liter"` only for measured dispensing:
 
 ```bash
-curl -X POST -u ":banana" "localhost:5000/api/v1/products" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/products" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "product",
@@ -265,7 +265,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/products" \
 Consulting, repair services, parking — sold by the hour:
 
 ```bash
-curl -X POST -u ":banana" "localhost:5000/api/v1/products" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/products" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "product",
@@ -282,7 +282,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/products" \
 Energy sold by the kilowatt-hour:
 
 ```bash
-curl -X POST -u ":banana" "localhost:5000/api/v1/products" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/products" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "product",
@@ -303,7 +303,7 @@ The `unit` is typically set on the **product group** and inherited by all descen
 ### Create a product group with a unit
 
 ```bash
-curl -X POST -u ":banana" "localhost:5000/api/v1/product-groups" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/product-groups" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "product group",
@@ -330,7 +330,7 @@ Product Group (unit: "Kilogram")     ← set here
 Product families can also have a unit that overrides the parent group:
 
 ```bash
-curl -X POST -u ":banana" "localhost:5000/api/v1/product-families" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/product-families" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "product family",
@@ -347,7 +347,7 @@ Individual products can override the inherited unit, but this is uncommon and sh
 
 ```bash
 # The "deli-meats" group uses "Kilogram", but pre-sliced packs are sold by the piece
-curl -X POST -u ":banana" "localhost:5000/api/v1/products" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/products" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "product",

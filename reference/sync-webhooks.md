@@ -159,6 +159,322 @@ Both `in` and `out` use a request object with the following structure:
 
 ---
 
+## Pagination (for `in` requests)
+
+External APIs typically split large collections across many HTTP responses. Configure pagination on the `in` request and the webhook will follow the chain page by page, mapping and pushing items as it goes — so progress is visible after each page rather than after the whole sync.
+
+> Pagination is configured under `in.pagination`. It is **only honored on `in` requests**; setting it on `out` has no effect.
+
+### Choose a strategy
+
+| Strategy     | When to use it                                           | Typical APIs                              |
+|--------------|----------------------------------------------------------|-------------------------------------------|
+| `cursor`     | Response carries an opaque cursor (token / last item ID) | Stripe, Square, HubSpot                   |
+| `nextUrl`    | Response body contains a full URL for the next page      | Salesforce, Dynamics 365 BC (OData)       |
+| `linkHeader` | Server returns RFC 8288 `Link` header with `rel="next"`  | Shopify REST, GitHub REST, WooCommerce    |
+| `pageNumber` | Client increments a page counter (`?page=1`, `?page=2`)  | Fortnox, Visma eAccounting, WooCommerce, Xero |
+| `offset`     | Client increments a row offset by page size              | QuickBooks Online, NetSuite               |
+
+Place exactly **one** of these keys on `in.pagination`. Setting more than one is a configuration error.
+
+```jsonc
+{
+  "in": {
+    "url": "https://api.example.com/items",
+    "resultSelector": "data",
+    "pagination": {
+      "cursor": { /* strategy-specific config */ }
+    }
+  }
+}
+```
+
+### Common fields
+
+Every strategy supports the same set of common fields (in addition to its strategy-specific fields):
+
+| Field        | Type      | Description |
+|--------------|-----------|-------------|
+| `parameters` | object    | Key-value pairs sent as query string parameters. See [Parameter value types](#parameter-value-types) below. |
+| `headers`    | object    | Key-value pairs sent as HTTP headers. Same value types as `parameters`. |
+| `body`       | object    | Key-value pairs shallow-merged into the request body each page. Same value types as `parameters`. Use this for POST-based search APIs. |
+| `maxPages`   | number    | Safety cap on the number of pages fetched. **Default: 500.** |
+| `maxItems`   | number    | Stop after accumulating this many items across all pages. |
+| `delayMs`    | number    | Milliseconds to wait between page fetches. **Default: 0.** Use to respect rate limits. |
+| `while`      | string    | Predicate expression evaluated against each page response; pagination continues while this resolves to a truthy value. See [The `while` expression](#the-while-expression). |
+
+Strategy-specific fields:
+
+| Field      | Strategy     | Description |
+|------------|--------------|-------------|
+| `selector` | `nextUrl`    | **Required.** Path in the response body to the next-page URL (e.g., `nextRecordsUrl`, `@odata.nextLink`). |
+| `rel`      | `linkHeader` | Link relation to follow. **Default: `"next"`.** |
+
+### Parameter value types
+
+Each entry in `parameters`, `headers`, and `body` accepts one of three value shapes:
+
+| Value form                   | Example                                  | Behaviour                                                                                                                                |
+|------------------------------|------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------|
+| **Number** (literal)         | `"limit": 100`                           | Sent as-is on **every** page request.                                                                                                    |
+| **String** (resolver)        | `"starting_after": "data~last/id"`       | Skipped on the first request (no previous response). On subsequent requests, evaluated against the previous page response. If it resolves to `null`/`undefined`, pagination stops. |
+| **Object** (counter)         | `"page": { "from": 1, "step": 1 }`       | Auto-incrementing counter. Sent on **every** request, starting at `from`, advancing by `step` (default `1`) after each page.             |
+
+**Parameters vs body — first-request scope:**
+- For `nextUrl` and `linkHeader` strategies, `parameters` are sent on the **first** request only — subsequent requests follow the URL returned by the response/header (which already encodes the right params).
+- `body` fields are sent on **every** page request for all strategies.
+
+### Resolver and predicate syntax
+
+Resolver expressions in `parameters` / `headers` / `body` and the `while` predicate use the same path syntax as `resultSelector`. A few notes:
+
+- `/` separates path segments: `paging/next/after` walks `response.paging.next.after`.
+- `~last` and `~first` pick the last/first element of an array: `data~last/id` resolves to the `id` of the last item in `data`.
+- `length` returns array length: `Articles/length` resolves to the size of the `Articles` array.
+- The expression is evaluated against the **full response body**, **before** `resultSelector` is applied — cursors and stop signals are usually siblings of the items array, not inside it.
+
+### The `while` expression
+
+`while` continues paging while a predicate is truthy on each page response. The predicate grammar:
+
+| Form                          | Meaning                                  |
+|-------------------------------|------------------------------------------|
+| `path`                        | Truthy at `path`                         |
+| `!path`                       | Falsy at `path` (e.g., `!done`)          |
+| `path=value`, `path!=value`   | Equality / inequality                    |
+| `path>value`, `path>=value`   | Numeric / lexicographic comparison       |
+| `path<value`, `path<=value`   | Numeric / lexicographic comparison       |
+
+**Examples:**
+- `has_more` — continue while `response.has_more` is truthy.
+- `!done` — continue while `response.done` is falsy (Salesforce inverts).
+- `Articles/length>=500` — continue while the page returned at least 500 items (heuristic: a "full" page suggests more).
+- `paging/next/after` — continue while a next-cursor field is present (truthy).
+
+> **Operator placement.** Operators must directly follow the path (`length>=500`, no `/` before `>=`). `Articles/length>=500` ✓, `Articles/length/>=500` ✗.
+
+### Stop conditions
+
+Pagination stops as soon as **any** of the following becomes true (checked after each page):
+
+1. `maxPages` reached.
+2. `maxItems` reached (accumulated count ≥ `maxItems`).
+3. **Strategy signal:**
+   - `cursor` — a string resolver in `parameters` resolved to `null` / `undefined`.
+   - `nextUrl` — `selector` resolved to `null` / `undefined` / empty.
+   - `linkHeader` — no link with the configured `rel` was returned.
+   - `pageNumber` / `offset` — no inherent stop signal; rely on `while` or an empty page.
+4. `while` resolved to a falsy value.
+5. The page returned **0 items** (always checked as a final fallback).
+
+### Per-page streaming
+
+The webhook **streams one page at a time**: each page is mapped, pushed to `out`, and then `then.set` is applied — before the next page is fetched. This means:
+
+- Memory stays bounded regardless of total result size.
+- Progress is durable: if page 7 fails, items from pages 1–6 are already synced and marked.
+- On retry, a status-based `in` query (e.g., `~where(syncStatus!=synced)`) naturally skips already-processed items.
+
+### Examples
+
+#### Cursor (Stripe)
+
+Stripe returns a `data` array with `has_more`. The cursor is the ID of the last item — passed as `starting_after` on the next request.
+
+```json
+{
+  "in": {
+    "method": "GET",
+    "url": "https://api.stripe.com/v1/customers",
+    "auth": { "basic": { "username": "sk_live_...", "password": "" } },
+    "resultSelector": "data",
+    "pagination": {
+      "cursor": {
+        "parameters": {
+          "limit": 100,
+          "starting_after": "data~last/id"
+        },
+        "while": "has_more",
+        "maxPages": 200
+      }
+    }
+  }
+}
+```
+
+- **First request:** `?limit=100` (the `starting_after` resolver is skipped — no previous response).
+- **Subsequent requests:** `?limit=100&starting_after=cus_Z9` (resolved from the previous page's last item).
+- **Stops** when `has_more` is `false`.
+
+#### Next URL (Dynamics 365 BC, Salesforce)
+
+OData returns `@odata.nextLink` containing an absolute URL with an opaque `$skiptoken`. The field is absent on the last page.
+
+```json
+{
+  "in": {
+    "method": "GET",
+    "url": "https://api.businesscentral.dynamics.com/v2.0/env/api/v2.0/items",
+    "auth": { "customHeader": { "Authorization": "Bearer ..." } },
+    "resultSelector": "value",
+    "pagination": {
+      "nextUrl": {
+        "selector": "@odata.nextLink",
+        "maxPages": 500
+      }
+    }
+  }
+}
+```
+
+Salesforce variant — relative URL plus an inverted `done` flag:
+
+```json
+{
+  "in": {
+    "method": "GET",
+    "url": "https://myorg.salesforce.com/services/data/v59.0/query/?q=SELECT+Id,Name+FROM+Account",
+    "auth": { "clientCredentials": { "tokenUrl": "...", "client_id": "...", "client_secret": "...", "scope": "..." } },
+    "resultSelector": "records",
+    "pagination": {
+      "nextUrl": {
+        "selector": "nextRecordsUrl",
+        "while": "!done"
+      }
+    }
+  }
+}
+```
+
+Relative URLs in the `selector` are resolved against the original request URL.
+
+#### Link header (Shopify)
+
+Shopify returns an RFC 8288 `Link` header with `rel="next"`. `parameters` are sent on the first request only — subsequent requests follow the URL from the header (which already encodes `limit`).
+
+```json
+{
+  "in": {
+    "method": "GET",
+    "url": "https://mystore.myshopify.com/admin/api/2024-01/products.json",
+    "auth": { "customHeader": { "X-Shopify-Access-Token": "shpat_..." } },
+    "resultSelector": "products",
+    "pagination": {
+      "linkHeader": {
+        "parameters": { "limit": 250 },
+        "maxPages": 200
+      }
+    }
+  }
+}
+```
+
+To follow a different relation, set `rel` (default is `"next"`).
+
+#### Page number (Fortnox)
+
+A page counter starting at `1`, incrementing by `1`, plus a heuristic stop: continue while the page returned a full batch.
+
+```json
+{
+  "in": {
+    "method": "GET",
+    "url": "https://api.fortnox.se/3/articles",
+    "auth": { "customHeader": { "Access-Token": "your-access-token" } },
+    "resultSelector": "Articles",
+    "pagination": {
+      "pageNumber": {
+        "parameters": {
+          "page": { "from": 1 },
+          "limit": 500
+        },
+        "while": "Articles/length>=500"
+      }
+    }
+  }
+}
+```
+
+- **Request sequence:** `?page=1&limit=500`, `?page=2&limit=500`, `?page=3&limit=500`, …
+- **Stops** the first time `Articles` returns fewer than 500 items, or after `maxPages` (default 500).
+
+#### Offset (NetSuite)
+
+An offset counter starting at `0`, advancing by the page size, with a `hasMore` flag from the response.
+
+```json
+{
+  "in": {
+    "method": "GET",
+    "url": "https://xxx.suitetalk.api.netsuite.com/services/rest/record/v1/customer",
+    "auth": { "customHeader": { "Authorization": "OAuth ..." } },
+    "resultSelector": "items",
+    "pagination": {
+      "offset": {
+        "parameters": {
+          "offset": { "from": 0, "step": 1000 },
+          "limit": 1000
+        },
+        "while": "hasMore",
+        "maxPages": 100
+      }
+    }
+  }
+}
+```
+
+- **Request sequence:** `?offset=0&limit=1000`, `?offset=1000&limit=1000`, `?offset=2000&limit=1000`, …
+- For 1-based offsets (e.g., QuickBooks `STARTPOSITION`), use `{ "from": 1, "step": 1000 }`.
+
+#### Body-based pagination (POST search)
+
+Some APIs accept pagination fields in the request body rather than the query string (e.g., a `POST /SearchProducts` endpoint). Use `body` instead of `parameters`:
+
+```json
+{
+  "in": {
+    "method": "POST",
+    "url": "https://omnium.example.com/api/Products/SearchProducts",
+    "auth": { "customHeader": { "Authorization": "Bearer ..." } },
+    "body": {
+      "storeId": "example-store",
+      "marketId": "SE",
+      "isDeleted": false
+    },
+    "resultSelector": "items",
+    "pagination": {
+      "pageNumber": {
+        "body": {
+          "page": { "from": 1 },
+          "take": 100
+        },
+        "while": "items/length>=100",
+        "maxPages": 500
+      }
+    }
+  }
+}
+```
+
+`body` fields are shallow-merged on top of the request's base body each page (`{ ...baseBody, ...paginationBody }`) and sent on **every** page — including the first.
+
+### Troubleshooting
+
+| Symptom                                              | Likely cause                                                                                  | Fix                                                                                                              |
+|------------------------------------------------------|-----------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------|
+| Sync stops after exactly 500 pages with more data    | Hit the default `maxPages` safety cap                                                         | Raise `maxPages` explicitly. Confirm you actually want to fetch this much in one run.                            |
+| Sync stops after page 1 even though more data exists | First-page resolver returned `null`, or `while` is falsy on page 1                            | Inspect the response with `verboseLogging: true`. Verify the path you used in the resolver / `while`.            |
+| Sync loops forever (rate-limited / 429s)             | No stop condition is firing on a `pageNumber` / `offset` strategy                             | Add a `while` expression (e.g., `Items/length>=100`) and/or a tighter `maxPages`. Use `delayMs` for rate limits. |
+| `cursor` strategy refetches the same page            | Resolver path doesn't actually advance (e.g., points at the request param, not a response field) | Verify the cursor field exists on the response. Walk it with the same path syntax you'd use in `resultSelector`. |
+| `nextUrl` strategy fetches the wrong host            | Response returned a relative URL the engine can't resolve                                     | Check `selector` resolves to a full URL or a path. Relative paths are resolved against the original request URL.  |
+| `linkHeader` doesn't advance                         | Wrong `rel` (server uses something other than `next`), or the header isn't returned at all    | Inspect headers with `verboseLogging: true`. Set `rel` to whatever the server uses.                              |
+| `while` expression always falsy / always truthy      | Operator placement (e.g., `length/>=500` instead of `length>=500`) or wrong path              | Operators must directly follow the path: `Articles/length>=500`, not `Articles/length/>=500`.                    |
+| Items from later pages aren't marked synced          | A page failed; everything before it is synced, the failing page and after aren't              | This is by design — the next run resumes (status-based `in` query skips already-marked items).                   |
+
+Use `verboseLogging: true` while developing — each page fetch is logged with its URL, response size, and the running totals.
+
+---
+
 ## Execution Flow
 
 ### 1. Fetch Source Data (`in`)
@@ -561,4 +877,5 @@ PATCH /v1/sync-webhooks/com.myapp.id=my-webhook
 
 - [Mapped Types](mapped-types.md) - Data transformation for sync webhooks
 - [Query Operators](operators.md) - Filter and transform data in `in` requests
+- [Pagination](pagination.md) - Pagination for the CommerceOS API itself (vs. external API pagination configured on `in` requests)
 - [Overview](overview.md) - API authentication and basics

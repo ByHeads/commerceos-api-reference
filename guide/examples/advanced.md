@@ -2,7 +2,7 @@
 
 Complex filtering, deep path navigation, aggregations, mapped types, bulk operations, and SQL export.
 
-**Base URL:** `http://localhost:5000/api/v1`
+**Base URL:** `https://example.app.heads.com/api/v1`
 **API Key:** `banana` (passed via Basic Auth with empty username: `-u ":banana"`)
 
 > **See also:** [Examples Index](../examples.md) | [Query Operators](./query-operators.md) | [Reference Documentation](../../reference/)
@@ -13,13 +13,13 @@ Complex filtering, deep path navigation, aggregations, mapped types, bulk operat
 
 ```bash
 # Filter with multiple conditions (AND logic via chaining)
-curl -X GET -u ":banana" "localhost:5000/api/v1/products~where(status=Active)~where(name=~Premium)~take(10)"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/products~where(status=Active)~where(name=~Premium)~take(10)"
 
 # Filter by nested property
-curl -X GET -u ":banana" "localhost:5000/api/v1/trade-orders~where(supplier/name=~Acme)"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/trade-orders~where(supplier/name=~Acme)"
 
 # Filter by count
-curl -X GET -u ":banana" "localhost:5000/api/v1/receipts~where(items~count>5)~take(10)"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/receipts~where(items~count>5)~take(10)"
 ```
 
 ---
@@ -28,13 +28,13 @@ curl -X GET -u ":banana" "localhost:5000/api/v1/receipts~where(items~count>5)~ta
 
 ```bash
 # Navigate through relationships
-curl -X GET -u ":banana" "localhost:5000/api/v1/trade-orders/com.myapp.orderId=ORD-001/customer/addresses/main"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-001/customer/addresses/main"
 
 # Get nested count
-curl -X GET -u ":banana" "localhost:5000/api/v1/product-categories/com.heads.seedID=electronics/members~count"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/product-categories/com.heads.seedID=electronics/members~count"
 
 # Deep with clause
-curl -X GET -u ":banana" "localhost:5000/api/v1/trade-orders~with(items~with(product~just(name)))~take(5)"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/trade-orders~with(items~with(product~just(name)))~take(5)"
 ```
 
 ---
@@ -43,16 +43,16 @@ curl -X GET -u ":banana" "localhost:5000/api/v1/trade-orders~with(items~with(pro
 
 ```bash
 # Count by status
-curl -X GET -u ":banana" "localhost:5000/api/v1/products~where(status=Active)~count"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/products~where(status=Active)~count"
 
 # Get distinct statuses (navigate to the field, then apply ~distinct)
-curl -X GET -u ":banana" "localhost:5000/api/v1/products/status~distinct"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/products/status~distinct"
 
 # Get one product per status
-curl -X GET -u ":banana" "localhost:5000/api/v1/products~distinctBy(status)~take(10)"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/products~distinctBy(status)~take(10)"
 
 # Count items per receipt
-curl -X GET -u ":banana" "localhost:5000/api/v1/receipts~just(receiptId:identifiers/receiptID,itemCount:items~count)~take(20)"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/receipts~just(receiptId:identifiers/receiptID,itemCount:items~count)~take(20)"
 ```
 
 ---
@@ -61,13 +61,13 @@ curl -X GET -u ":banana" "localhost:5000/api/v1/receipts~just(receiptId:identifi
 
 ```bash
 # Simple alias
-curl -X GET -u ":banana" "localhost:5000/api/v1/products~just(sku:identifiers/key,productName:name)"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/products~just(sku:identifiers/key,productName:name)"
 
 # Nested alias
-curl -X GET -u ":banana" "localhost:5000/api/v1/trade-orders~just(orderId:identifiers/key,customerName:customer/name,supplierName:supplier/name)~take(10)"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/trade-orders~just(orderId:identifiers/key,customerName:customer/name,supplierName:supplier/name)~take(10)"
 
 # Alias with aggregation
-curl -X GET -u ":banana" "localhost:5000/api/v1/receipts~just(id:identifiers/receiptID,items:items~count,total:totalAmount)"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/receipts~just(id:identifiers/receiptID,items:items~count,total:totalAmount)"
 ```
 
 ---
@@ -97,7 +97,7 @@ Resources with find endpoints:
 
 ```bash
 # Create a mapped type using variables and null coalescing
-curl -X POST -u ":banana" "localhost:5000/api/v1/mapped-types" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/mapped-types" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"mappedTypeName": "com.myapp.receipt-summary"},
@@ -111,11 +111,11 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/mapped-types" \
   }'
 
 # Apply the mapped type to a collection
-curl -X GET -u ":banana" "localhost:5000/api/v1/receipts~map(com.myapp.receipt-summary)~take(5)"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/receipts~map(com.myapp.receipt-summary)~take(5)"
 
 # Bundle receipts + items with array-body and "$first" pattern
 # Note: ~map returns one result per source item; for aggregation use an array body ending with "$first"
-curl -X POST -u ":banana" "localhost:5000/api/v1/mapped-types" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/mapped-types" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"mappedTypeName": "com.myapp.receipt-bundle"},
@@ -130,7 +130,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/mapped-types" \
   }'
 
 # Use the bundle (returns a single object due to "$first")
-curl -X GET -u ":banana" "localhost:5000/api/v1/receipts~map(com.myapp.receipt-bundle)"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/receipts~map(com.myapp.receipt-bundle)"
 ```
 
 ---
@@ -139,7 +139,7 @@ curl -X GET -u ":banana" "localhost:5000/api/v1/receipts~map(com.myapp.receipt-b
 
 ```bash
 # Bulk create products (NDJSON format)
-curl -X PUT -u ":banana" "localhost:5000/api/v1/products" \
+curl -X PUT -u ":banana" "example.app.heads.com/api/v1/products" \
   -H "Content-Type: application/x-ndjson" \
   --data-binary @- << 'EOF'
 {"identifiers":{"com.myapp.sku":"BULK-001"},"name":"Bulk Product 1","status":"Active"}
@@ -148,7 +148,7 @@ curl -X PUT -u ":banana" "localhost:5000/api/v1/products" \
 EOF
 
 # Bulk create prices
-curl -X PUT -u ":banana" "localhost:5000/api/v1/prices" \
+curl -X PUT -u ":banana" "example.app.heads.com/api/v1/prices" \
   -H "Content-Type: application/x-ndjson" \
   --data-binary @- << 'EOF'
 {"identifiers":{"com.myapp.priceId":"PRICE-BULK-001"},"products":[{"identifiers":{"com.myapp.sku":"BULK-001"}}],"sellers":[{"identifiers":{"com.heads.seedID":"ourcompany"}}],"amount":99.00,"currency":{"identifiers":{"currencyCode":"SEK"}}}
@@ -307,11 +307,11 @@ The following CSV-producing mapped types are available in `seed/default-mapped-t
 
 ```bash
 # Export receipts as CSV
-curl -X GET -u ":banana" "localhost:5000/api/v1/receipts~take(10)~map(com.heads.receipt-csv)" \
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/receipts~take(10)~map(com.heads.receipt-csv)" \
   -H "Accept: application/vnd.ms-sqlserver.csv"
 
 # Export as bundled ZIP (receipts + items + payments)
-curl -X GET -u ":banana" "localhost:5000/api/v1/receipts~take(10)~map(com.heads.receipts-zip)" \
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/receipts~take(10)~map(com.heads.receipts-zip)" \
   -H "Accept: application/json"
 ```
 
@@ -319,11 +319,11 @@ curl -X GET -u ":banana" "localhost:5000/api/v1/receipts~take(10)~map(com.heads.
 
 ```bash
 # INSERT statement (after creating com.myapp.receipt-sql-insert)
-curl -X GET -u ":banana" "localhost:5000/api/v1/receipts~take(10)~map(com.myapp.receipt-sql-insert)" \
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/receipts~take(10)~map(com.myapp.receipt-sql-insert)" \
   -H "Accept: application/sql"
 
 # DELETE statement (after creating com.myapp.receipt-sql-delete)
-curl -X GET -u ":banana" "localhost:5000/api/v1/receipts~take(10)~map(com.myapp.receipt-sql-delete)" \
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/receipts~take(10)~map(com.myapp.receipt-sql-delete)" \
   -H "Accept: application/sql"
 ```
 
@@ -333,7 +333,7 @@ The CSV serializer (`application/vnd.ms-sqlserver.csv`) accepts flat object arra
 
 ```bash
 # CSV export using existing mapped type
-curl -X GET -u ":banana" "localhost:5000/api/v1/receipts~take(10)~map(com.heads.receipt-csv)" \
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/receipts~take(10)~map(com.heads.receipt-csv)" \
   -H "Accept: application/vnd.ms-sqlserver.csv"
 ```
 

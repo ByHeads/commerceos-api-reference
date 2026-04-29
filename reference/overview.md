@@ -76,21 +76,21 @@ The CommerceOS API is a RESTful Web API using:
 ### API Key
 ```bash
 # Via header
-curl -H "X-Api-Key: MySecretKey" localhost:5000/api/v1/void
+curl -H "X-Api-Key: MySecretKey" example.app.heads.com/api/v1/void
 
 # Via Basic Auth (password only)
-curl -u ":MySecretKey" localhost:5000/api/v1/void
+curl -u ":MySecretKey" example.app.heads.com/api/v1/void
 ```
 
 ### OAuth 2.0
 ```bash
 # Get token
-curl -X POST localhost:5000/oauth2/v1/token \
+curl -X POST example.app.heads.com/oauth2/v1/token \
   -H "Content-Type: application/x-www-form-urlencoded" \
   -d "grant_type=client_credentials&client_id=ID&client_secret=SECRET"
 
 # Use token
-curl -H "Authorization: Bearer TOKEN" localhost:5000/api/v1/void
+curl -H "Authorization: Bearer TOKEN" example.app.heads.com/api/v1/void
 ```
 
 > **EPI Integration OAuth2 Requirements:** External Payment Integrations (EPI) require a confidential OAuth2 client with specific scopes for the `install` action to succeed. See [EPI Integrations & Configurations](../guide/examples/configuration.md#epi-integrations--configurations) for required scopes and setup.

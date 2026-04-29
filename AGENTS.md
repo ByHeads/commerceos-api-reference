@@ -31,6 +31,7 @@ commerceos-api-reference/
 │   │   ├── advanced.md           # Advanced query patterns
 │   │   ├── configuration.md      # System configuration examples
 │   │   ├── discount-rules.md     # Discount and pricing rules
+│   │   ├── discount-coupons.md   # Coupon codes that activate discount rules
 │   │   ├── inventory.md          # Stock and inventory management
 │   │   ├── orders.md             # Order operations
 │   │   ├── organization.md       # Agents, stores, companies

@@ -2,7 +2,7 @@
 
 Curl examples for agents, people, companies, and stores.
 
-**Base URL:** `http://localhost:5000/api/v1`
+**Base URL:** `https://example.app.heads.com/api/v1`
 **API Key:** `banana` (passed via Basic Auth with empty username: `-u ":banana"`)
 
 > **See also:** [Examples Index](../examples.md) | [Reference Documentation](../../reference/)
@@ -13,20 +13,20 @@ Curl examples for agents, people, companies, and stores.
 
 ```bash
 # List all people
-curl -X GET -u ":banana" "localhost:5000/api/v1/people"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/people"
 
 # Get person by external ID
-curl -X GET -u ":banana" "localhost:5000/api/v1/people/com.myapp.customerId=CUST-001"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/people/com.myapp.customerId=CUST-001"
 
 # Get person with addresses included
-curl -X GET -u ":banana" "localhost:5000/api/v1/people/com.myapp.customerId=CUST-001~with(addresses)"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/people/com.myapp.customerId=CUST-001~with(addresses)"
 
 # Get person's customer relationships
-curl -X GET -u ":banana" "localhost:5000/api/v1/people/com.myapp.customerId=CUST-001/customerRelations"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/people/com.myapp.customerId=CUST-001/customerRelations"
 
 # Create a person (fullName is auto-derived from givenName + familyName)
 # personalNumber is optional but recommended for Swedish/Nordic contexts
-curl -X POST -u ":banana" "localhost:5000/api/v1/people" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/people" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.customerId": "CUST-001"},
@@ -36,7 +36,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/people" \
 
 # Create person with full details
 # fullName will be auto-computed as "Jane Smith" from givenName + familyName
-curl -X POST -u ":banana" "localhost:5000/api/v1/people" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/people" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.customerId": "CUST-002"},
@@ -58,12 +58,12 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/people" \
   }'
 
 # Update person (partial)
-curl -X PATCH -u ":banana" "localhost:5000/api/v1/people/com.myapp.customerId=CUST-001" \
+curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/people/com.myapp.customerId=CUST-001" \
   -H "Content-Type: application/json" \
   -d '{"familyName": "Doe-Smith"}'
 
 # Delete person
-curl -X DELETE -u ":banana" "localhost:5000/api/v1/people/com.myapp.customerId=CUST-001"
+curl -X DELETE -u ":banana" "example.app.heads.com/api/v1/people/com.myapp.customerId=CUST-001"
 ```
 
 ---
@@ -72,19 +72,19 @@ curl -X DELETE -u ":banana" "localhost:5000/api/v1/people/com.myapp.customerId=C
 
 ```bash
 # List all companies
-curl -X GET -u ":banana" "localhost:5000/api/v1/companies"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/companies"
 
 # Get company by external ID
-curl -X GET -u ":banana" "localhost:5000/api/v1/companies/com.heads.seedID=ourcompany"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/companies/com.heads.seedID=ourcompany"
 
 # Get company with supplier relations
-curl -X GET -u ":banana" "localhost:5000/api/v1/companies/com.heads.seedID=ourcompany~with(supplierRelations)"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/companies/com.heads.seedID=ourcompany~with(supplierRelations)"
 
 # Get company's assortment roots (product categories it owns)
-curl -X GET -u ":banana" "localhost:5000/api/v1/companies/com.heads.seedID=ourcompany/assortmentRoots"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/companies/com.heads.seedID=ourcompany/assortmentRoots"
 
 # Create a company
-curl -X POST -u ":banana" "localhost:5000/api/v1/companies" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/companies" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.companyId": "COMP-001"},
@@ -95,11 +95,11 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/companies" \
 # Create company with parent (subsidiary)
 # IMPORTANT: The parent setter requires the database key (identifiers.key), not external IDs
 # First, get the parent company to retrieve its database key
-curl -X GET -u ":banana" "localhost:5000/api/v1/companies/com.myapp.companyId=COMP-001/identifiers/key"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/companies/com.myapp.companyId=COMP-001/identifiers/key"
 # Returns: "comXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX" (32-char database key)
 
 # Then create the subsidiary using the database key
-curl -X POST -u ":banana" "localhost:5000/api/v1/companies" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/companies" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.companyId": "COMP-002"},
@@ -108,7 +108,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/companies" \
   }'
 
 # Update company
-curl -X PATCH -u ":banana" "localhost:5000/api/v1/companies/com.myapp.companyId=COMP-001" \
+curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/companies/com.myapp.companyId=COMP-001" \
   -H "Content-Type: application/json" \
   -d '{"name": "Acme Corp International"}'
 ```
@@ -119,28 +119,28 @@ curl -X PATCH -u ":banana" "localhost:5000/api/v1/companies/com.myapp.companyId=
 
 ```bash
 # List all stores
-curl -X GET -u ":banana" "localhost:5000/api/v1/stores"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/stores"
 
 # Get store by external ID
-curl -X GET -u ":banana" "localhost:5000/api/v1/stores/com.heads.seedID=store1"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/stores/com.heads.seedID=store1"
 
 # Get store with opening hours
-curl -X GET -u ":banana" "localhost:5000/api/v1/stores/com.heads.seedID=store1~with(openingHours)"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/stores/com.heads.seedID=store1~with(openingHours)"
 
 # Get store's assortment (products it carries)
-curl -X GET -u ":banana" "localhost:5000/api/v1/stores/com.heads.seedID=store1/assortment"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/stores/com.heads.seedID=store1/assortment"
 
 # Get store's stock roots (warehouses/stock places)
-curl -X GET -u ":banana" "localhost:5000/api/v1/stores/com.heads.seedID=store1/stockRoots"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/stores/com.heads.seedID=store1/stockRoots"
 
 # Create a store (uses "owner" not "parent" for ownership relationship)
 # IMPORTANT: The owner setter requires the database key (identifiers.key), not external IDs
 # First, get the owning company's database key
-curl -X GET -u ":banana" "localhost:5000/api/v1/companies/com.heads.seedID=ourcompany/identifiers/key"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/companies/com.heads.seedID=ourcompany/identifiers/key"
 # Returns: "comXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX" (32-char database key)
 
 # Then create the store using the database key
-curl -X POST -u ":banana" "localhost:5000/api/v1/stores" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/stores" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.storeId": "STORE-001"},
@@ -157,7 +157,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/stores" \
   }'
 
 # Create store with organization number
-curl -X POST -u ":banana" "localhost:5000/api/v1/stores" \
+curl -X POST -u ":banana" "example.app.heads.com/api/v1/stores" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.storeId": "STORE-002"},
@@ -167,7 +167,7 @@ curl -X POST -u ":banana" "localhost:5000/api/v1/stores" \
   }'
 
 # Update store
-curl -X PATCH -u ":banana" "localhost:5000/api/v1/stores/com.myapp.storeId=STORE-001" \
+curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/stores/com.myapp.storeId=STORE-001" \
   -H "Content-Type: application/json" \
   -d '{"name": "Downtown Flagship Store"}'
 ```
@@ -178,25 +178,25 @@ curl -X PATCH -u ":banana" "localhost:5000/api/v1/stores/com.myapp.storeId=STORE
 
 ```bash
 # List all agents (people, companies, stores combined)
-curl -X GET -u ":banana" "localhost:5000/api/v1/agents"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/agents"
 
 # Filter agents by type
-curl -X GET -u ":banana" "localhost:5000/api/v1/agents~where(@type=person)"
-curl -X GET -u ":banana" "localhost:5000/api/v1/agents~where(@type=company)"
-curl -X GET -u ":banana" "localhost:5000/api/v1/agents~where(@type=store)"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/agents~where(@type=person)"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/agents~where(@type=company)"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/agents~where(@type=store)"
 
 # Get agent by database key
-curl -X GET -u ":banana" "localhost:5000/api/v1/agents/key=abc123def456"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/agents/key=abc123def456"
 
 # Get agent's addresses
-curl -X GET -u ":banana" "localhost:5000/api/v1/agents/com.heads.seedID=ourcompany/addresses"
-curl -X GET -u ":banana" "localhost:5000/api/v1/agents/com.heads.seedID=ourcompany/addresses/main"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/agents/com.heads.seedID=ourcompany/addresses"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/agents/com.heads.seedID=ourcompany/addresses/main"
 
 # Get agent's contact methods
-curl -X GET -u ":banana" "localhost:5000/api/v1/agents/com.heads.seedID=ourcompany/contactMethods"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/agents/com.heads.seedID=ourcompany/contactMethods"
 
 # Get agent's labels
-curl -X GET -u ":banana" "localhost:5000/api/v1/agents/com.heads.seedID=ourcompany/labels"
+curl -X GET -u ":banana" "example.app.heads.com/api/v1/agents/com.heads.seedID=ourcompany/labels"
 ```
 
 ---
@@ -217,7 +217,7 @@ To set these relationships:
 
 1. **Get the target entity's database key:**
    ```bash
-   curl -X GET -u ":banana" "localhost:5000/api/v1/companies/com.myapp.companyId=COMP-001/identifiers/key"
+   curl -X GET -u ":banana" "example.app.heads.com/api/v1/companies/com.myapp.companyId=COMP-001/identifiers/key"
    # Returns the 32-character database key, e.g., "comXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
    ```
 
