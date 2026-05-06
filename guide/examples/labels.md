@@ -44,7 +44,7 @@ Labels are lightweight, colored tags you can attach to entities across the API f
 ### Create a label
 
 ```bash
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/labels" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/labels" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.labelId": "urgent"},
@@ -57,7 +57,7 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/labels" \
 ### Upsert a label by external identifier
 
 ```bash
-curl -X PUT -u ":banana" "example.app.heads.com/api/v1/labels/com.myapp.labelId=urgent" \
+curl -X PUT -u ":banana" "https://example.app.heads.com/api/v1/labels/com.myapp.labelId=urgent" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.labelId": "urgent"},
@@ -69,7 +69,7 @@ curl -X PUT -u ":banana" "example.app.heads.com/api/v1/labels/com.myapp.labelId=
 ### Create a type-restricted label
 
 ```bash
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/labels" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/labels" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.labelId": "order-flagged"},
@@ -82,7 +82,7 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/labels" \
 ### Create a label with an owner
 
 ```bash
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/labels" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/labels" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.labelId": "seasonal"},
@@ -96,25 +96,25 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/labels" \
 
 ```bash
 # Basic list
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/labels"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/labels"
 
 # With pagination and ordering
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/labels~orderBy(title)~skip(20)~take(20)"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/labels~orderBy(title)~skip(20)~take(20)"
 
 # Include type restrictions and applied count
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/labels~with(applicableOnlyTo,appliedToCount)"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/labels~with(applicableOnlyTo,appliedToCount)"
 ```
 
 ### Get a single label
 
 ```bash
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/labels/com.myapp.labelId=urgent"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/labels/com.myapp.labelId=urgent"
 ```
 
 ### Update a label
 
 ```bash
-curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/labels/com.myapp.labelId=urgent" \
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/labels/com.myapp.labelId=urgent" \
   -H "Content-Type: application/json" \
   -d '{"color": "#CC0000", "description": "Updated description"}'
 ```
@@ -123,10 +123,10 @@ curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/labels/com.myapp.labelI
 
 ```bash
 # Check usage before deleting
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/labels/com.myapp.labelId=urgent~with(appliedToCount)"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/labels/com.myapp.labelId=urgent~with(appliedToCount)"
 
 # Delete
-curl -X DELETE -u ":banana" "example.app.heads.com/api/v1/labels/com.myapp.labelId=urgent"
+curl -X DELETE -u ":banana" "https://example.app.heads.com/api/v1/labels/com.myapp.labelId=urgent"
 ```
 
 > Deleting a label removes it from all entities it was applied to.
@@ -181,23 +181,23 @@ DELETE /v1/{resource}/{entityId}/labels/com.myapp.labelId=my-label
 
 ```bash
 # Get order labels
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-001/labels"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-001/labels"
 
 # Get product labels
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/products/com.myapp.sku=SKU-001/labels"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/products/com.myapp.sku=SKU-001/labels"
 
 # Get orders with labels expanded
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/trade-orders~with(labels)~take(50)"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/trade-orders~with(labels)~take(50)"
 ```
 
 ### Removing labels
 
 ```bash
 # Remove label from an order
-curl -X DELETE -u ":banana" "example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-001/labels/com.myapp.labelId=urgent"
+curl -X DELETE -u ":banana" "https://example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-001/labels/com.myapp.labelId=urgent"
 
 # Remove label from a product
-curl -X DELETE -u ":banana" "example.app.heads.com/api/v1/products/com.myapp.sku=SKU-001/labels/com.myapp.labelId=seasonal"
+curl -X DELETE -u ":banana" "https://example.app.heads.com/api/v1/products/com.myapp.sku=SKU-001/labels/com.myapp.labelId=seasonal"
 ```
 
 ### Clearing all labels
@@ -206,12 +206,12 @@ Use `PUT` with an empty array or `PATCH` with `replace`:
 
 ```bash
 # Clear all labels from an order
-curl -X PUT -u ":banana" "example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-001/labels" \
+curl -X PUT -u ":banana" "https://example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-001/labels" \
   -H "Content-Type: application/json" \
   -d '[]'
 
 # Or via PATCH replace
-curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-001/labels" \
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-001/labels" \
   -H "Content-Type: application/json" \
   -d '{"replace": []}'
 ```
@@ -225,20 +225,20 @@ curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/trade-orders/com.myapp.
 ```bash
 # Get orders with labels expanded, then filter client-side
 curl -X GET -u ":banana" \
-  "example.app.heads.com/api/v1/trade-orders~with(labels)~take(50)"
+  "https://example.app.heads.com/api/v1/trade-orders~with(labels)~take(50)"
 # → Client-side: filter results where labels[].identifiers contains your target
 
 # Get products with labels expanded
 curl -X GET -u ":banana" \
-  "example.app.heads.com/api/v1/products~with(labels,prices)~take(50)"
+  "https://example.app.heads.com/api/v1/products~with(labels,prices)~take(50)"
 
 # Get people with labels expanded
 curl -X GET -u ":banana" \
-  "example.app.heads.com/api/v1/people~with(labels)~take(50)"
+  "https://example.app.heads.com/api/v1/people~with(labels)~take(50)"
 
 # Get companies with labels expanded
 curl -X GET -u ":banana" \
-  "example.app.heads.com/api/v1/companies~with(labels)~take(20)"
+  "https://example.app.heads.com/api/v1/companies~with(labels)~take(20)"
 ```
 
 ### Reading labels on a single entity
@@ -246,11 +246,11 @@ curl -X GET -u ":banana" \
 ```bash
 # Get labels for a specific order
 curl -X GET -u ":banana" \
-  "example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-001/labels"
+  "https://example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-001/labels"
 
 # Get labels for a specific product
 curl -X GET -u ":banana" \
-  "example.app.heads.com/api/v1/products/com.myapp.sku=SKU-001/labels"
+  "https://example.app.heads.com/api/v1/products/com.myapp.sku=SKU-001/labels"
 ```
 
 ---
@@ -290,7 +290,7 @@ Use Heidi type names in `applicableOnlyTo`:
 
 ```bash
 # Create a label restricted to orders only
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/labels" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/labels" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.labelId": "fulfillment-hold"},
@@ -300,12 +300,12 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/labels" \
   }'
 
 # This succeeds — trade orders are in the allowed types
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-001/labels" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-001/labels" \
   -H "Content-Type: application/json" \
   -d '{"identifiers": {"com.myapp.labelId": "fulfillment-hold"}}'
 
 # This fails — products are not in the allowed types
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/products/com.myapp.sku=SKU-001/labels" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/products/com.myapp.sku=SKU-001/labels" \
   -H "Content-Type: application/json" \
   -d '{"identifiers": {"com.myapp.labelId": "fulfillment-hold"}}'
 # → 400: Label 'Fulfillment Hold' is not applicable for objects of this type
@@ -317,15 +317,15 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/products/com.myapp.sku=S
 
 ```bash
 # Add a type to an existing label's restrictions
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/labels/com.myapp.labelId=fulfillment-hold/applicableOnlyTo" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/labels/com.myapp.labelId=fulfillment-hold/applicableOnlyTo" \
   -H "Content-Type: application/json" \
   -d '"ShipmentOrder"'
 
 # Remove a type from restrictions
-curl -X DELETE -u ":banana" "example.app.heads.com/api/v1/labels/com.myapp.labelId=fulfillment-hold/applicableOnlyTo/TradeOrder"
+curl -X DELETE -u ":banana" "https://example.app.heads.com/api/v1/labels/com.myapp.labelId=fulfillment-hold/applicableOnlyTo/TradeOrder"
 
 # Replace all restrictions
-curl -X PUT -u ":banana" "example.app.heads.com/api/v1/labels/com.myapp.labelId=fulfillment-hold/applicableOnlyTo" \
+curl -X PUT -u ":banana" "https://example.app.heads.com/api/v1/labels/com.myapp.labelId=fulfillment-hold/applicableOnlyTo" \
   -H "Content-Type: application/json" \
   -d '["TradeOrder", "ShipmentOrder"]'
 ```
@@ -341,7 +341,7 @@ Assign labels based on business rules, then let downstream systems poll for orde
 ```bash
 # Downstream: poll for orders with labels, then filter client-side for "high-value"
 curl -X GET -u ":banana" \
-  "example.app.heads.com/api/v1/trade-orders~with(labels)~take(100)"
+  "https://example.app.heads.com/api/v1/trade-orders~with(labels)~take(100)"
 # → Client-side: filter for orders where labels contain "high-value"
 ```
 
@@ -352,11 +352,11 @@ Track integration sync state using labels — assign "pending-sync" on creation,
 ```bash
 # After successful sync — remove pending, add synced
 curl -X DELETE -u ":banana" \
-  "example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-001/labels/com.myapp.sync=pending"
+  "https://example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-001/labels/com.myapp.sync=pending"
 
 # Query orders with labels, then filter client-side for sync state
 curl -X GET -u ":banana" \
-  "example.app.heads.com/api/v1/trade-orders~with(labels)~take(100)"
+  "https://example.app.heads.com/api/v1/trade-orders~with(labels)~take(100)"
 # → Client-side: filter for orders where labels contain "sync-failed"
 ```
 
@@ -369,7 +369,7 @@ Label entities for targeted exports, then combine with `~map()` for custom forma
 ```bash
 # Export products with labels, then filter client-side for "export-ready"
 curl -X GET -u ":banana" \
-  "example.app.heads.com/api/v1/products~with(labels)~map(product-export)~take(100)"
+  "https://example.app.heads.com/api/v1/products~with(labels)~map(product-export)~take(100)"
 # → Client-side: filter for products with the "export-ready" label
 ```
 

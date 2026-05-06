@@ -13,19 +13,19 @@ Curl examples for countries, languages, templates, mapped types, payment methods
 
 ```bash
 # List all countries
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/countries"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/countries"
 
 # Get country by code
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/countries/countryCode=SE"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/countries/countryCode=SE"
 
 # Get country with child places (e.g., cities, regions)
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/countries/countryCode=SE~with(children)"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/countries/countryCode=SE~with(children)"
 
 # List all cities
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/cities"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/cities"
 
 # Create/update country
-curl -X PUT -u ":banana" "example.app.heads.com/api/v1/countries/countryCode=NO" \
+curl -X PUT -u ":banana" "https://example.app.heads.com/api/v1/countries/countryCode=NO" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"countryCode": "NO"},
@@ -39,13 +39,13 @@ curl -X PUT -u ":banana" "example.app.heads.com/api/v1/countries/countryCode=NO"
 
 ```bash
 # List all languages
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/languages"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/languages"
 
 # Get language by code
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/languages/languageCode=sv"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/languages/languageCode=sv"
 
 # Create/update language
-curl -X PUT -u ":banana" "example.app.heads.com/api/v1/languages/languageCode=nb" \
+curl -X PUT -u ":banana" "https://example.app.heads.com/api/v1/languages/languageCode=nb" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"languageCode": "nb"},
@@ -59,13 +59,13 @@ curl -X PUT -u ":banana" "example.app.heads.com/api/v1/languages/languageCode=nb
 
 ```bash
 # List all templates
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/templates"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/templates"
 
 # Get template by ID
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/templates/templateId=default-receipt"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/templates/templateId=default-receipt"
 
 # Create a template (templateLanguage + mimeType required)
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/templates" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/templates" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"templateId": "custom-receipt"},
@@ -76,7 +76,7 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/templates" \
   }'
 
 # Update template
-curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/templates/templateId=custom-receipt" \
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/templates/templateId=custom-receipt" \
   -H "Content-Type: application/json" \
   -d '{"text": "RECEIPT v2\n========\n{{items}}\n--------\nTotal: {{total}}\nThank you!"}'
 ```
@@ -87,13 +87,13 @@ curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/templates/templateId=cu
 
 ```bash
 # List all mapped types
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/mapped-types"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/mapped-types"
 
 # Get mapped type by name
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/mapped-types/mappedTypeName=com.heads.receipt-csv"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/mapped-types/mappedTypeName=com.heads.receipt-csv"
 
 # Create a mapped type
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/mapped-types" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/mapped-types" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"mappedTypeName": "com.myapp.product-export"},
@@ -105,14 +105,14 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/mapped-types" \
   }'
 
 # Use mapped type in query
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/products~map(com.myapp.product-export)~take(10)"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/products~map(com.myapp.product-export)~take(10)"
 
 # Map a receipts bundle (default mapped type)
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/receipts~map(com.heads.receipts-zip)"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/receipts~map(com.heads.receipts-zip)"
 
 # Map request bodies on write (NOT CURRENTLY WORKING - see note below)
 # This example shows intended usage but X-Request-Map is blocked pending resolver changes.
-curl -X PUT -u ":banana" "example.app.heads.com/api/v1/products" \
+curl -X PUT -u ":banana" "https://example.app.heads.com/api/v1/products" \
   -H "Content-Type: application/json" \
   -H "X-Request-Map: com.myapp.product-import" \
   -d '[{"sku":"P-001","title":"Mapped Product","state":"Active"}]'
@@ -128,13 +128,13 @@ curl -X PUT -u ":banana" "example.app.heads.com/api/v1/products" \
 
 ```bash
 # List all payment methods
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/payment-methods"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/payment-methods"
 
 # Get payment method by ID
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/payment-methods/methodId=com.heads.cash"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/payment-methods/methodId=com.heads.cash"
 
 # Create a payment method (no description field supported)
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/payment-methods" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/payment-methods" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"methodId": "com.myapp.gift-card"},
@@ -142,7 +142,7 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/payment-methods" \
   }'
 
 # Update payment method
-curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/payment-methods/methodId=com.myapp.gift-card" \
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/payment-methods/methodId=com.myapp.gift-card" \
   -H "Content-Type: application/json" \
   -d '{"name": "Store Gift Card"}'
 ```
@@ -153,10 +153,10 @@ curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/payment-methods/methodI
 
 ```bash
 # List discount reasons
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/discount-reasons"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/discount-reasons"
 
 # Create discount reason (no description field supported; use name + active)
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/discount-reasons" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/discount-reasons" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.reasonId": "EMPLOYEE"},
@@ -165,10 +165,10 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/discount-reasons" \
   }'
 
 # List return reasons
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/return-reasons"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/return-reasons"
 
 # Create return reason (no description field; use usedForReturns + restock)
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/return-reasons" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/return-reasons" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.reasonId": "DEFECTIVE"},
@@ -184,13 +184,13 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/return-reasons" \
 
 ```bash
 # List delivery terms
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/delivery-terms"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/delivery-terms"
 
 # Create incoterm delivery term
 # NOTE: location setter requires a database key. First, get the place key:
-#   curl -X GET -u ":banana" "example.app.heads.com/api/v1/places/address.cityName=Stockholm/identifiers/key"
+#   curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/places/address.cityName=Stockholm/identifiers/key"
 # Then use that key in the location field:
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/incoterm-delivery-terms" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/incoterm-delivery-terms" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "incoterm delivery term",
@@ -202,10 +202,10 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/incoterm-delivery-terms"
   }'
 
 # List payment terms
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/payment-terms"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/payment-terms"
 
 # Create payment term (no description field supported)
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/payment-terms" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/payment-terms" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.termId": "NET30"},
@@ -219,16 +219,16 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/payment-terms" \
 
 ```bash
 # List all sales channels
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/sales-channels"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/sales-channels"
 
 # Get sales channel by ID
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/sales-channels/com.myapp.channelId=webshop"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/sales-channels/com.myapp.channelId=webshop"
 
 # Get sales channel products
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/sales-channels/com.myapp.channelId=webshop/products"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/sales-channels/com.myapp.channelId=webshop/products"
 
 # Create a sales channel
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/sales-channels" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/sales-channels" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.channelId": "webshop"},
@@ -244,19 +244,19 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/sales-channels" \
 
 ```bash
 # List all customer groups
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/customer-groups"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/customer-groups"
 
 # Get customer group by ID
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/customer-groups/com.myapp.groupId=vip"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/customer-groups/com.myapp.groupId=vip"
 
 # Get customer group members (trade relationships in this group)
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/customer-groups/com.myapp.groupId=vip/members"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/customer-groups/com.myapp.groupId=vip/members"
 
 # Create a customer group
 # NOTE: owner setter requires a database key. First, get the agent key:
-#   curl -X GET -u ":banana" "example.app.heads.com/api/v1/companies/com.heads.seedID=ourcompany/identifiers/key"
+#   curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/companies/com.heads.seedID=ourcompany/identifiers/key"
 # Then use that key in the owner field:
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/customer-groups" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/customer-groups" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.groupId": "vip"},
@@ -267,13 +267,13 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/customer-groups" \
 
 # Assign a customer to a group (via trade relationship)
 curl -X POST -u ":banana" \
-  "example.app.heads.com/api/v1/trade-relationships/com.myapp.relId=REL-001/groups" \
+  "https://example.app.heads.com/api/v1/trade-relationships/com.myapp.relId=REL-001/groups" \
   -H "Content-Type: application/json" \
   -d '{"identifiers": {"com.myapp.groupId": "vip"}}'
 
 # Remove a customer from a group
 curl -X DELETE -u ":banana" \
-  "example.app.heads.com/api/v1/trade-relationships/com.myapp.relId=REL-001/groups/com.myapp.groupId=vip"
+  "https://example.app.heads.com/api/v1/trade-relationships/com.myapp.relId=REL-001/groups/com.myapp.groupId=vip"
 ```
 
 ---
@@ -282,13 +282,13 @@ curl -X DELETE -u ":banana" \
 
 ```bash
 # List all sync webhooks
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/sync-webhooks"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/sync-webhooks"
 
 # Get sync webhook by ID
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/sync-webhooks/com.myapp.webhookId=product-sync"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/sync-webhooks/com.myapp.webhookId=product-sync"
 
 # Create a sync webhook
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/sync-webhooks" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/sync-webhooks" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.webhookId": "product-sync"},
@@ -313,7 +313,7 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/sync-webhooks" \
   }'
 
 # Update sync webhook
-curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/sync-webhooks/com.myapp.webhookId=product-sync" \
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/sync-webhooks/com.myapp.webhookId=product-sync" \
   -H "Content-Type: application/json" \
   -d '{"repeat": false}'
 ```
@@ -324,10 +324,10 @@ curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/sync-webhooks/com.myapp
 
 ```bash
 # List all shortened links
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/shortened-links"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/shortened-links"
 
 # Create shortened link (url + validTo required; shortenedLinkID is auto-generated)
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/shortened-links" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/shortened-links" \
   -H "Content-Type: application/json" \
   -d '{
     "url": "https://shop.example.com/promotions/summer-2024",
@@ -342,10 +342,10 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/shortened-links" \
 
 ```bash
 # Get API config (singleton)
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/config/api"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/config/api"
 
 # Update API config
-curl -X PUT -u ":banana" "example.app.heads.com/api/v1/config/api" \
+curl -X PUT -u ":banana" "https://example.app.heads.com/api/v1/config/api" \
   -H "Content-Type: application/json" \
   -d '{
     "publicBaseURL": "https://api.example.com",
@@ -354,10 +354,10 @@ curl -X PUT -u ":banana" "example.app.heads.com/api/v1/config/api" \
   }'
 
 # Get webshop config
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/config/webshop"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/config/webshop"
 
 # Update webshop config
-curl -X PUT -u ":banana" "example.app.heads.com/api/v1/config/webshop" \
+curl -X PUT -u ":banana" "https://example.app.heads.com/api/v1/config/webshop" \
   -H "Content-Type: application/json" \
   -d '{
     "siteURL": "https://shop.example.com",
@@ -395,7 +395,7 @@ Installing an EPI integration requires a **confidential OAuth2 client** associat
 
 ```bash
 # 1) Create a payment integration (name + baseUrl required)
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/payment-integrations" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/payment-integrations" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"name": "Mock"},
@@ -405,9 +405,9 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/payment-integrations" \
 # 2) Create a user for the integration with an OAuth2 client
 # The user must have the integration as its holder (agent).
 # First, get the integration key:
-#   curl -X GET -u ":banana" "example.app.heads.com/api/v1/epi-integrations/name=Mock/identifiers/key"
+#   curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/epi-integrations/name=Mock/identifiers/key"
 # Then create the user with embedded OAuth2 client:
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/users" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/users" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.userId": "user-mock-integration"},
@@ -426,18 +426,18 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/users" \
 
 # 3) Install the integration
 # The install action sends installation payload to the integration's baseUrl
-curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/epi-integrations/name=Mock" \
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/epi-integrations/name=Mock" \
   -H "Content-Type: application/json" \
   -d '{"install": true}'
 
 # 4) Create EPI configuration for a specific node
 # NOTE: Both integration and node setters require database keys.
 # First, get the integration key:
-#   curl -X GET -u ":banana" "example.app.heads.com/api/v1/epi-integrations/name=Mock/identifiers/key"
+#   curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/epi-integrations/name=Mock/identifiers/key"
 # Then, get the node (agent) key:
-#   curl -X GET -u ":banana" "example.app.heads.com/api/v1/companies/com.heads.seedID=ourcompany/identifiers/key"
+#   curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/companies/com.heads.seedID=ourcompany/identifiers/key"
 # Then use those keys:
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/epi-configurations" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/epi-configurations" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.configId": "company-mock-config"},
@@ -449,7 +449,7 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/epi-configurations" \
   }'
 
 # 5) Configure the integration for first-time setup
-curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/epi-configurations/com.myapp.configId=company-mock-config" \
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/epi-configurations/com.myapp.configId=company-mock-config" \
   -H "Content-Type: application/json" \
   -d '{"configure": true}'
 ```

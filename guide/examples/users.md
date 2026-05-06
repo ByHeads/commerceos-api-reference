@@ -13,22 +13,22 @@ Curl examples for users, user roles, role assignments, and OAuth2 clients.
 
 ```bash
 # List all users
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/users"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/users"
 
 # Get user by ID
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/users/com.heads.seedID=admin"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/users/com.heads.seedID=admin"
 
 # Get user with role assignments
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/users/com.heads.seedID=admin~with(roleAssignments)"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/users/com.heads.seedID=admin~with(roleAssignments)"
 
 # Get user's OAuth2 clients
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/users/com.heads.seedID=admin/oauth2Clients"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/users/com.heads.seedID=admin/oauth2Clients"
 
 # Create a user (linked to an existing person/agent)
 # Note: Users do NOT have a "name" field. The user's display name
 # comes from the linked agent (person). Create the person first,
 # then link them via the "agent" field.
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/users" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/users" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.userId": "USER-001"},
@@ -37,19 +37,19 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/users" \
 
 # Update user (change linked agent or credentials)
 # To change a user's display name, update the linked person instead
-curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/users/com.myapp.userId=USER-001" \
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/users/com.myapp.userId=USER-001" \
   -H "Content-Type: application/json" \
   -d '{"agent": {"identifiers": {"com.myapp.personId": "PERSON-002"}}}'
 
 # Update user to set POS mode
-curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/users/com.myapp.userId=USER-001" \
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/users/com.myapp.userId=USER-001" \
   -H "Content-Type: application/json" \
   -d '{"posMode": true}'
 
 # Delete user (deactivates the user, does not purge)
 # Note: DELETE deactivates the user (sets inactive) but does not remove the record.
 # Subsequent GET by key still resolves the user (with inactive status).
-curl -X DELETE -u ":banana" "example.app.heads.com/api/v1/users/com.myapp.userId=USER-001"
+curl -X DELETE -u ":banana" "https://example.app.heads.com/api/v1/users/com.myapp.userId=USER-001"
 ```
 
 ---
@@ -58,16 +58,16 @@ curl -X DELETE -u ":banana" "example.app.heads.com/api/v1/users/com.myapp.userId
 
 ```bash
 # List all user roles
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/user-roles"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/user-roles"
 
 # Get user role by ID
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/user-roles/userRoleID=admin"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/user-roles/userRoleID=admin"
 
 # Create a user role
 # Note: User roles only have identifiers, name, and permissions.
 # There is no "description" field.
 # Permissions are user permission objects (NOT string arrays).
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/user-roles" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/user-roles" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"userRoleID": "cashier"},
@@ -80,13 +80,13 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/user-roles" \
   }'
 
 # Update user role (name or permissions)
-curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/user-roles/userRoleID=cashier" \
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/user-roles/userRoleID=cashier" \
   -H "Content-Type: application/json" \
   -d '{"name": "Senior Cashier"}'
 
 # Update user role permissions
 # Permissions are user permission objects (NOT string arrays)
-curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/user-roles/userRoleID=cashier" \
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/user-roles/userRoleID=cashier" \
   -H "Content-Type: application/json" \
   -d '{
     "permissions": [
@@ -104,11 +104,11 @@ curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/user-roles/userRoleID=c
 
 ```bash
 # Get user's role assignments
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/users/com.myapp.userId=USER-001/roleAssignments"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/users/com.myapp.userId=USER-001/roleAssignments"
 
 # Assign role to user at a specific organizational node (e.g., store)
 # Note: The organizational scope field is "node" (not "scope")
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/users/com.myapp.userId=USER-001/roleAssignments" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/users/com.myapp.userId=USER-001/roleAssignments" \
   -H "Content-Type: application/json" \
   -d '{
     "role": {"identifiers": {"userRoleID": "cashier"}},
@@ -116,14 +116,14 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/users/com.myapp.userId=U
   }'
 
 # Assign role without a specific node (applies globally)
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/users/com.myapp.userId=USER-001/roleAssignments" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/users/com.myapp.userId=USER-001/roleAssignments" \
   -H "Content-Type: application/json" \
   -d '{
     "role": {"identifiers": {"userRoleID": "admin"}}
   }'
 
 # Remove role assignment
-curl -X DELETE -u ":banana" "example.app.heads.com/api/v1/users/com.myapp.userId=USER-001/roleAssignments/key=assignment-key"
+curl -X DELETE -u ":banana" "https://example.app.heads.com/api/v1/users/com.myapp.userId=USER-001/roleAssignments/key=assignment-key"
 ```
 
 ---
@@ -132,10 +132,10 @@ curl -X DELETE -u ":banana" "example.app.heads.com/api/v1/users/com.myapp.userId
 
 ```bash
 # Get user's OAuth2 clients
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/users/com.heads.seedID=admin/oauth2Clients"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/users/com.heads.seedID=admin/oauth2Clients"
 
 # Create OAuth2 client for user
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/users/com.heads.seedID=admin/oauth2Clients" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/users/com.heads.seedID=admin/oauth2Clients" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"clientID": "my-integration-client"},
@@ -145,5 +145,23 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/users/com.heads.seedID=a
   }'
 
 # Delete OAuth2 client
-curl -X DELETE -u ":banana" "example.app.heads.com/api/v1/users/com.heads.seedID=admin/oauth2Clients/key=client-key"
+curl -X DELETE -u ":banana" "https://example.app.heads.com/api/v1/users/com.heads.seedID=admin/oauth2Clients/key=client-key"
 ```
+
+---
+
+## Trade Relationships — Time-relative queries
+
+Trade relationships (the long-lived supplier/customer linkage between two agents — see [Trade Orders & Fulfillment](./orders.md#trade-relationships) for create examples) support `/before/` and `/after/` for picking up newly added or recently amended relationships during a CRM sync.
+
+```bash
+# Default mode: relationships modified at or after the given ISO timestamp
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/trade-relationships/after/2025-02-01T00:00:00.000Z~take(200)"
+
+# Relationships modified before a cutoff (exclusive end)
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/trade-relationships/before/2025-03-01T00:00:00.000Z~take(200)"
+```
+
+> **Default:** `modify` — and it is the **only** supported mode for trade relationships. Asking for `(create)` returns a 404 because trade relationships are not modelled as discrete events. See [Operators → Time-relative queries](../../reference/operators.md#time-relative-queries-before-and-after).
+>
+> **Recommended:** use `/after/` and `/before/` for any time-windowed read of trade relationships — they are index-backed and the canonical pattern. Use `~where(timestamp...)` only when you need to combine the time filter with a non-time predicate.

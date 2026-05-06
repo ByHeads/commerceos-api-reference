@@ -273,7 +273,7 @@ Track the last sync timestamp and fetch only newer receipts:
 # Store last sync timestamp: 2024-12-15T10:00:00.000Z
 
 # Fetch receipts after that timestamp
-GET /v1/receipts/after/2024-12-15T10:00:00.000Z~orderBy(timestamp)~take(500)~withAll
+GET /v1/receipts/after/2024-12-15T10:00:00.000Z~take(500)~withAll
 
 # Or use the finder
 POST /v1/receipts/@find
@@ -288,10 +288,10 @@ For large incremental pulls, use cursor-style pagination:
 
 ```bash
 # First batch
-GET /v1/receipts/after/2024-12-15T10:00:00.000Z~orderBy(timestamp)~take(500)
+GET /v1/receipts/after/2024-12-15T10:00:00.000Z~take(500)
 
 # Next batch: use last timestamp from previous response
-GET /v1/receipts/after/2024-12-15T10:05:32.123Z~orderBy(timestamp)~take(500)
+GET /v1/receipts/after/2024-12-15T10:05:32.123Z~take(500)
 
 # Continue until response has fewer than 500 items
 ```
@@ -1084,10 +1084,10 @@ GET /v1/receipts~orderBy(timestamp:desc)~take(100)~withAll
 GET /v1/receipts~where(seller/identifiers/com.acme.store-id=STORE-001)~orderBy(timestamp:desc)~take(100)
 
 # Get receipts for date range
-GET /v1/receipts/after/2024-12-01T00:00:00Z~orderBy(timestamp)~take(500)
+GET /v1/receipts/after/2024-12-01T00:00:00Z~take(500)
 
 # Get receipts before a date
-GET /v1/receipts/before/2024-12-31T23:59:59Z~orderBy(timestamp:desc)~take(500)
+GET /v1/receipts/before/2024-12-31T23:59:59Z~take(500)
 
 # Get single receipt by ID
 GET /v1/receipts/receiptID=MPK00000001~withAll
@@ -1100,7 +1100,7 @@ GET /v1/receipts/abc123def456~withAll
 
 ```bash
 # Incremental pull from timestamp
-GET /v1/receipts/after/2024-12-15T10:00:00.000Z~orderBy(timestamp)~take(500)~withAll
+GET /v1/receipts/after/2024-12-15T10:00:00.000Z~take(500)~withAll
 
 # Using finder with timestampFrom
 POST /v1/receipts/@find

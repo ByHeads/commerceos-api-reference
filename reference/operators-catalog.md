@@ -160,6 +160,8 @@ GET /v1/products~where(status=Active,hidden=false)
 
 #### ~orderBy(selector[:desc])
 
+> **Note (v26.1+):** the `/before/` and `/after/` time-relative endpoints already return results in timestamp order, so chaining `~orderBy(timestamp)` after them is redundant. For every other query — including `~where(timestamp...)` filters, plain collection listings, and any sort by a non-timestamp field — `~orderBy(...)` is still required when you want a specific order.
+
 Sort a collection by a selector (ascending by default).
 
 **Signature:** `~orderBy(selector)` or `~orderBy(selector:desc)`

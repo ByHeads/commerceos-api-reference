@@ -13,16 +13,16 @@ Curl examples for prices, currencies, and VAT codes.
 
 ```bash
 # List all prices
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/prices"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/prices"
 
 # Get prices for a product
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/products/com.myapp.sku=SKU-001/prices"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/products/com.myapp.sku=SKU-001/prices"
 
 # Get prices with currency info
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/prices~with(currency)~take(20)"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/prices~with(currency)~take(20)"
 
 # Create a price
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/prices" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/prices" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.priceId": "PRICE-001"},
@@ -33,7 +33,7 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/prices" \
   }'
 
 # Create price with validity period
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/prices" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/prices" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.priceId": "PRICE-002"},
@@ -46,7 +46,7 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/prices" \
   }'
 
 # Create price with buyer restriction (individual customer)
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/prices" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/prices" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.priceId": "PRICE-003"},
@@ -58,12 +58,12 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/prices" \
   }'
 
 # Update price
-curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/prices/com.myapp.priceId=PRICE-001" \
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/prices/com.myapp.priceId=PRICE-001" \
   -H "Content-Type: application/json" \
   -d '{"amount": 189.00}'
 
 # Delete price
-curl -X DELETE -u ":banana" "example.app.heads.com/api/v1/prices/com.myapp.priceId=PRICE-001"
+curl -X DELETE -u ":banana" "https://example.app.heads.com/api/v1/prices/com.myapp.priceId=PRICE-001"
 ```
 
 ---
@@ -74,13 +74,13 @@ curl -X DELETE -u ":banana" "example.app.heads.com/api/v1/prices/com.myapp.price
 
 ```bash
 # List all currencies
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/currencies"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/currencies"
 
 # Get currency by code
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/currencies/currencyCode=SEK"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/currencies/currencyCode=SEK"
 
 # Create/update currency (identifiers.currencyCode plus other identifiers)
-curl -X PUT -u ":banana" "example.app.heads.com/api/v1/currencies/currencyCode=USD" \
+curl -X PUT -u ":banana" "https://example.app.heads.com/api/v1/currencies/currencyCode=USD" \
   -H "Content-Type: application/json" \
   -d '{"identifiers": {"currencyCode": "USD"}}'
 ```
@@ -93,13 +93,13 @@ curl -X PUT -u ":banana" "example.app.heads.com/api/v1/currencies/currencyCode=U
 
 ```bash
 # List all currency denominations
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/currency-denominations"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/currency-denominations"
 
 # Get denominations for a specific currency (use ~where filter)
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/currency-denominations~where(currency/identifiers/currencyCode=SEK)"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/currency-denominations~where(currency/identifiers/currencyCode=SEK)"
 
 # Create a currency denomination
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/currency-denominations" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/currency-denominations" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.denomId": "SEK-20"},
@@ -117,18 +117,18 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/currency-denominations" 
 
 ```bash
 # List all VAT codes
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/vat-codes"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/vat-codes"
 
 # Get VAT code by percentage
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/vat-codes/percentage=25"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/vat-codes/percentage=25"
 
 # Create VAT code (use identifiers.percentage only)
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/vat-codes" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/vat-codes" \
   -H "Content-Type: application/json" \
   -d '{"identifiers": {"percentage": "25"}}'
 
 # Create VAT code with namespaced identifier
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/vat-codes" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/vat-codes" \
   -H "Content-Type: application/json" \
   -d '{"identifiers": {"com.myapp.vatId": "SE25", "percentage": "25"}}'
 ```

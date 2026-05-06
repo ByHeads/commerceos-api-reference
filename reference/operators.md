@@ -126,6 +126,8 @@ GET /v1/products~without(createdAt,updatedAt,createdBy)
     - Nested paths work as keys: `~where(addresses/main/countryCode=SE)`
   - Date coercion: Datetime values on either side are compared via `.getTime()`
 
+> **Tip:** for plain time-window reads (`timestamp > X`, `timestamp < X`, `timestamp >= X` with no other predicate), use [`/before/` or `/after/`](#time-relative-queries-before-and-after) instead. The path endpoints are index-backed; `~where` on a timestamp is a predicate scan.
+
 **Filtering Examples:**
 
 ```bash
@@ -155,6 +157,9 @@ GET /v1/products~where(status=Active)~where(hidden=false)
 ```
 
 ### Ordering & Pagination
+
+> **Note (v26.1+):** the `/before/` and `/after/` time-relative endpoints already return results in timestamp order, so chaining `~orderBy(timestamp)` after them is redundant. For every other query — including `~where(timestamp...)` filters, plain collection listings, and any sort by a non-timestamp field — `~orderBy(...)` is still required when you want a specific order.
+
 - `~orderBy(field)` or `~orderBy(field:desc)` - Order objects by selector value (single selector only).
 - `~order` / `~order(desc)` - Order primitive streams in ascending/descending order.
 - `~take(N)` - Take first N items.
@@ -290,11 +295,55 @@ This sequence is recommended because:
 
 ---
 
+## Time-relative queries (`/before/` and `/after/`)
+
+**Recommended for any time-window query on these collections.** Several collections expose path-style time filters that are the canonical way to read items by timestamp. They are index-backed (single-pass on the time field with no offset growth between pages), where `~where(timestamp>...)` falls back to a generic predicate scan that becomes progressively more expensive as page offsets grow on large collections. Use `~where(timestamp...)` only when you need to combine the time predicate with a non-time condition the path endpoint cannot express. The pattern is:
+
+```
+/v1/{collection}/{before|after}[(create|modify)]/{timestamp}
+```
+
+`{timestamp}` accepts any string `Date.parse` understands; ISO 8601 (`2025-02-01T00:00:00.000Z`) is recommended. Invalid timestamps return an empty collection or a 404 (depending on the operator).
+
+### Mode parameter
+
+The optional `(create)` or `(modify)` qualifier between the operator name and the slash selects which time field is filtered:
+
+| Mode | What it filters on |
+|---|---|
+| `(create)` | The time the underlying event happened (when the order was placed, the receipt was rung up, the stock movement was recorded). |
+| `(modify)` | The time the resource was last written to (any field change). |
+| _(omitted)_ | The collection's default — `(modify)` for resources that record a last-modified time, `(create)` otherwise. |
+
+The collections that support the pattern, and the modes each one accepts, are:
+
+| Collection | Default | Also accepts |
+|---|---|---|
+| [`/v1/trade-orders`](../guide/examples/orders.md#time-relative-queries) | `modify` | `create` |
+| [`/v1/trade-relationships`](../guide/examples/users.md#trade-relationships--time-relative-queries) | `modify` | — |
+| [`/v1/shipment-orders`](../guide/examples/orders.md#shipment-orders--time-relative-queries) | `modify` | `create` |
+| [`/v1/payment-orders`](../guide/examples/orders.md#payment-orders--time-relative-queries) | `modify` | `create` |
+| [`/v1/stock-transfers`](../guide/examples/inventory.md#stock-transfers--time-relative-queries) | `create` | — |
+| [`/v1/stock-counts`](../guide/examples/inventory.md#stock-counts--time-relative-queries) | `modify` | `create` |
+| [`/v1/stock-adjustments`](../guide/examples/inventory.md#stock-adjustments--time-relative-queries) | `create` | — |
+| [`/v1/receipts`](receipts.md#beforeafter-timestamps) | `create` | — |
+| [`/v1/z-reports`](../guide/examples/pos.md#z-reports--time-relative-queries) | `create` | — |
+
+Asking for a mode the collection does not accept returns a 404 whose message lists the supported modes.
+
+### Inclusivity and chaining
+
+The endpoint returns a half-open time range:
+
+- `/after/{timestamp}` — items with timestamp `>= {timestamp}` (inclusive start)
+- `/before/{timestamp}` — items with timestamp `< {timestamp}` (exclusive end)
+
+Results are returned as an ordinary collection, so any operator can be chained: `~orderBy(...)`, `~take(N)`, `~skip(N)`, `~with(...)`, `~just(...)`, `~map(...)`. See [`pagination.md`](pagination.md#cursor-like-patterns-resume-without-large-offsets) for the cursor-style "resume from last seen timestamp" pattern.
+
+---
+
 ## Performance Considerations
 
-- Use receipt-specific endpoints for date-based filtering on large datasets:
-  - `/v1/receipts/after/{timestamp}` — receipts after the given ISO timestamp
-  - `/v1/receipts/before/{timestamp}` — receipts before the given ISO timestamp
-  - Example: `/v1/receipts/after/2024-01-01T00:00:00Z~take(100)`
+- **Always prefer `/before/{ts}` and `/after/{ts}` over `~where(timestamp>{ts})` / `~where(timestamp<{ts})`** on any collection that supports them — see [Time-relative queries](#time-relative-queries-before-and-after) for the full list. The path endpoints use the collection's time index and stay linear in the number of returned rows; `~where` on a timestamp is a predicate scan and becomes the dominant cost on large datasets. Use `~where(timestamp...)` only when you must combine the time predicate with a non-time condition the path endpoint cannot express.
 - Use `~with`/`~just` to limit output and avoid expanding expensive relations.
 - `~orderBy` collects all items into memory before sorting—not suitable for very large collections.

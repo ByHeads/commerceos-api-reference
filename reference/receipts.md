@@ -188,7 +188,7 @@ For ongoing BI synchronization, use timestamp-based incremental pulls:
 GET /v1/receipts~orderBy(timestamp)~take(1000)
 
 # Subsequent pulls: receipts after your last sync timestamp
-GET /v1/receipts/after/2025-02-13T09:20:32.710Z~orderBy(timestamp)~take(1000)
+GET /v1/receipts/after/2025-02-13T09:20:32.710Z~take(1000)
 
 # Or use the where operator for timestamp filtering
 GET /v1/receipts~where(timestamp>2025-02-13T09:20:32.710Z)~orderBy(timestamp)~take(1000)
@@ -461,8 +461,10 @@ These return receipt collections that can be further filtered and paginated:
 
 ```bash
 # Receipts after a timestamp, ordered and paginated
-GET /v1/receipts/after/2025-02-13T00:00:00.000Z~orderBy(timestamp)~take(100)
+GET /v1/receipts/after/2025-02-13T00:00:00.000Z~take(100)
 ```
+
+> **`/before/` and `/after/` are the recommended way to read receipts (and several other collections) by timestamp** — they are index-backed and stable across pagination, where `~where(timestamp...)` falls back to a predicate scan. The same pattern accepts an optional `(create)` or `(modify)` mode qualifier and is supported on trade orders, payment orders, stock adjustments, z-reports, and more — see [Operators → Time-relative queries](operators.md#time-relative-queries-before-and-after) for the full list.
 
 ### Receipt Finder
 
@@ -472,7 +474,7 @@ For timestamp-based filtering, use the before/after endpoints shown above, or th
 
 ```bash
 # Using the after endpoint (recommended for incremental sync)
-GET /v1/receipts/after/2025-02-13T00:00:00.000Z~orderBy(timestamp)~take(100)
+GET /v1/receipts/after/2025-02-13T00:00:00.000Z~take(100)
 
 # Using the where operator
 GET /v1/receipts~where(timestamp>2025-02-13T00:00:00.000Z)~orderBy(timestamp)~take(100)
@@ -484,7 +486,7 @@ GET /v1/receipts~where(timestamp>2025-02-13T00:00:00.000Z)~orderBy(timestamp)~ta
 
 ```bash
 # Step 1: Get receipts for a date range with all fields
-GET /v1/receipts/after/2025-02-01T00:00:00.000Z~orderBy(timestamp)~take(500)~withAll
+GET /v1/receipts/after/2025-02-01T00:00:00.000Z~take(500)~withAll
 
 # Step 2: For each receipt, extract:
 # - identifiers.key (primary key)

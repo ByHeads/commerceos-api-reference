@@ -111,7 +111,7 @@ Every store has a **default stock** that is pre-created and pre-selected for sal
 
 ```bash
 # List existing stocks (the default stock is already here)
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/stocks"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stocks"
 ```
 
 Response:
@@ -131,7 +131,7 @@ To create additional stocks for special classifications:
 
 ```bash
 # Create a consignment stock (items owned by a partner, sold at your store)
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stocks" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stocks" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "consignment-stock" },
@@ -139,7 +139,7 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/stocks" \
   }'
 
 # Create a returns stock (items pending quality inspection)
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stocks" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stocks" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "returns-stock" },
@@ -147,7 +147,7 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/stocks" \
   }'
 
 # Create a display stock (showroom items not ordinarily for sale)
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stocks" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stocks" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "display-stock" },
@@ -157,10 +157,10 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/stocks" \
 
 ```bash
 # Read a stock by identifier
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/stocks/com.example.id=consignment-stock"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stocks/com.example.id=consignment-stock"
 
 # Update a stock name
-curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/stocks/com.example.id=consignment-stock" \
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/stocks/com.example.id=consignment-stock" \
   -H "Content-Type: application/json" \
   -d '{ "name": "Partner Consignment Stock" }'
 ```
@@ -179,7 +179,7 @@ A `stock place` represents a hierarchical physical location: warehouse, zone, ai
 
 ```bash
 # Create a stock place without specifying an owner (preferred approach)
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-places" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-places" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "stockholm-store" },
@@ -193,7 +193,7 @@ This is the **preferred method** for establishing ownership. The `owner` field o
 
 ```bash
 # Add the stock place to the store's stockRoots (establishes ownership)
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stores/com.example.storeId=stockholm/stockRoots" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stores/com.example.storeId=stockholm/stockRoots" \
   -H "Content-Type: application/json" \
   -d '{ "identifiers": { "com.example.id": "stockholm-store" } }'
 ```
@@ -202,7 +202,7 @@ Alternatively, you can set `owner` directly on the stock place — this manipula
 
 ```bash
 # Alternative: Create with owner shorthand
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-places" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-places" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "gothenburg-store" },
@@ -217,11 +217,11 @@ The `parent` setter requires the **database key** (the internal `identifiers.key
 
 ```bash
 # Step 1: Get the parent's database key
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/stock-places/com.example.id=stockholm-store/identifiers/key"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-places/com.example.id=stockholm-store/identifiers/key"
 # Returns the database key, e.g., "abc123def456..."
 
 # Step 2: Create the child using the database key
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-places" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-places" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "stockholm-backroom" },
@@ -232,13 +232,13 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-places" \
 
 ```bash
 # List all stock places
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/stock-places"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-places"
 
 # Get a stock place with its children (sub-locations)
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/stock-places/com.example.id=stockholm-store~with(children)"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-places/com.example.id=stockholm-store~with(children)"
 
 # Update a stock place name
-curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/stock-places/com.example.id=stockholm-store" \
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/stock-places/com.example.id=stockholm-store" \
   -H "Content-Type: application/json" \
   -d '{ "name": "Stockholm Flagship Store" }'
 ```
@@ -261,7 +261,7 @@ To remove all stock roots from an agent, use `PUT` with an empty array:
 
 ```bash
 # Remove all stock roots from a store
-curl -X PUT -u ":banana" "example.app.heads.com/api/v1/stores/com.example.storeId=stockholm/stockRoots" \
+curl -X PUT -u ":banana" "https://example.app.heads.com/api/v1/stores/com.example.storeId=stockholm/stockRoots" \
   -H "Content-Type: application/json" \
   -d '[]'
 ```
@@ -272,7 +272,7 @@ Every stock adjustment requires a reason code that explains _why_ the change is 
 
 ```bash
 # Create an Increase reason: Restock
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-adjustment-reasons" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustment-reasons" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "restock" },
@@ -282,7 +282,7 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-adjustment-reasons
   }'
 
 # Create an Increase reason: Purchase Receipt
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-adjustment-reasons" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustment-reasons" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "purchase-receipt" },
@@ -292,7 +292,7 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-adjustment-reasons
   }'
 
 # Create an Increase reason: Found (discovered during count)
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-adjustment-reasons" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustment-reasons" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "found" },
@@ -302,7 +302,7 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-adjustment-reasons
   }'
 
 # Create a Decrease reason: Damaged
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-adjustment-reasons" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustment-reasons" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "damaged" },
@@ -312,7 +312,7 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-adjustment-reasons
   }'
 
 # Create a Decrease reason: Stolen
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-adjustment-reasons" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustment-reasons" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "stolen" },
@@ -322,7 +322,7 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-adjustment-reasons
   }'
 
 # Create a Decrease reason: Expired
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-adjustment-reasons" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustment-reasons" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "expired" },
@@ -334,13 +334,13 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-adjustment-reasons
 
 ```bash
 # List all adjustment reasons
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/stock-adjustment-reasons"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustment-reasons"
 
 # Get a specific reason
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/stock-adjustment-reasons/com.example.id=restock"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustment-reasons/com.example.id=restock"
 
 # Deactivate a reason (soft-disable, doesn't delete it)
-curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/stock-adjustment-reasons/com.example.id=stolen" \
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustment-reasons/com.example.id=stolen" \
   -H "Content-Type: application/json" \
   -d '{ "active": false }'
 ```
@@ -364,7 +364,7 @@ A `stock adjustment` is the primary mechanism for changing stock quantities. Eac
 
 ```bash
 # Restock 50 units of T-Shirt Red M at the Stockholm store
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-adjustments" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustments" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "adj-restock-001" },
@@ -406,7 +406,7 @@ The direction comes from the **reason's `direction` field**, not from the quanti
 
 ```bash
 # Record 5 units damaged at the Stockholm store
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-adjustments" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustments" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "adj-damaged-001" },
@@ -430,7 +430,7 @@ Adjust multiple products in a single request:
 
 ```bash
 # Bulk restock: multiple products in one adjustment
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-adjustments" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustments" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "adj-bulk-restock-001" },
@@ -466,7 +466,7 @@ By default, adjustments go against the store's **default stock**. To target a no
 
 ```bash
 # Adjust consignment stock: 10 units received from partner brand
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-adjustments" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustments" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "adj-consignment-001" },
@@ -491,7 +491,7 @@ After adjustments, you can read the current stock levels in several ways.
 
 ```bash
 # Get current stock levels at a stock place
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/stock-places/com.example.id=stockholm-store/entries"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-places/com.example.id=stockholm-store/entries"
 ```
 
 Response:
@@ -528,7 +528,7 @@ Response:
 
 ```bash
 # Get stock levels for a specific product across all locations
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/products/com.example.sku=TSHIRT-RED-M/stockLevels"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/products/com.example.sku=TSHIRT-RED-M/stockLevels"
 ```
 
 Response:
@@ -566,23 +566,23 @@ Response:
 
 ```bash
 # List all stock adjustments
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/stock-adjustments"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustments"
 
 # Get a specific adjustment with its items expanded
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/stock-adjustments/com.example.id=adj-restock-001~with(items)"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustments/com.example.id=adj-restock-001~with(items)"
 
 # Get all stock transactions (adjustments) for a specific stock place
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/stock-places/com.example.id=stockholm-store/transactions"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-places/com.example.id=stockholm-store/transactions"
 
 # Get individual adjustment items for a specific stock place
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/stock-places/com.example.id=stockholm-store/transactionItems"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-places/com.example.id=stockholm-store/transactionItems"
 ```
 
 You can also list adjustment items globally:
 
 ```bash
 # List all stock adjustment items across all adjustments
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/stock-adjustment-items"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustment-items"
 ```
 
 ---
@@ -599,7 +599,7 @@ The stock count lifecycle is: **New → Ongoing → Completed → Approved**.
 
 ```bash
 # Create a stock count for Q1 2026 at the Stockholm store
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-counts" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-counts" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "count-2026-q1" },
@@ -630,7 +630,7 @@ You can optionally target a specific logical stock with the `stock` field:
 
 ```bash
 # Count only consignment stock
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-counts" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-counts" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "count-consignment-2026-q1" },
@@ -650,7 +650,7 @@ You can also add items to an existing stock count after creation:
 
 ```bash
 # Add a new item to an existing stock count
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-count-items" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-count-items" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "count-item-hoodie" },
@@ -666,7 +666,7 @@ Observations are the actual counts made by staff. Multiple people can count the 
 
 ```bash
 # First counter counts 43 units of T-Shirt Red M
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-count-observations" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-count-observations" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "obs-tshirt-red-counter1" },
@@ -678,7 +678,7 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-count-observations
   }'
 
 # Second counter recounts and finds 44 units
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-count-observations" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-count-observations" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "obs-tshirt-red-counter2" },
@@ -708,7 +708,7 @@ After observations are recorded, read back the count items to see computed varia
 
 ```bash
 # Get the stock count with items and their observations
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/stock-counts/com.example.id=count-2026-q1~with(items~with(observations))"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-counts/com.example.id=count-2026-q1~with(items~with(observations))"
 ```
 
 Each stock count item has these computed fields:
@@ -764,7 +764,7 @@ The status transitions are managed by the system as observations are added and t
 
 ```bash
 # Read the current status
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/stock-counts/com.example.id=count-2026-q1~just(identifiers,status)"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-counts/com.example.id=count-2026-q1~just(identifiers,status)"
 ```
 
 ### 4.5 Stock Count Records — The Source of Truth
@@ -773,13 +773,13 @@ curl -X GET -u ":banana" "example.app.heads.com/api/v1/stock-counts/com.example.
 
 ```bash
 # List all stock count records
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/stock-count-records"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-count-records"
 
 # Get a specific stock count record with items
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/stock-count-records/key=abc123~with(items)"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-count-records/key=abc123~with(items)"
 
 # Get stock count records for a specific stock count
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/stock-counts/com.example.id=count-2026-q1/records~with(items)"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-counts/com.example.id=count-2026-q1/records~with(items)"
 ```
 
 Each stock count record item shows the actual posted change:
@@ -823,7 +823,7 @@ Like stock counts, stock transfers do **not** directly post stock changes. Inste
 Example: Moving 10 units from the default stock to the consignment stock within the Stockholm store.
 
 ```bash
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-transfers" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-transfers" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "transfer-001" },
@@ -847,7 +847,7 @@ You can also add items to an existing transfer after creation:
 
 ```bash
 # Add another item to a transfer
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-transfer-items" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-transfer-items" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "transfer-item-002" },
@@ -871,17 +871,17 @@ Actions are invoked via `PATCH` on the stock transfer:
 
 ```bash
 # Commit: reserve stock for the transfer
-curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/stock-transfers/com.example.id=transfer-001" \
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/stock-transfers/com.example.id=transfer-001" \
   -H "Content-Type: application/json" \
   -d '{ "actions": { "tryCommit": true } }'
 
 # Fulfill: complete the stock movement (commits first if not already committed)
-curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/stock-transfers/com.example.id=transfer-001" \
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/stock-transfers/com.example.id=transfer-001" \
   -H "Content-Type: application/json" \
   -d '{ "actions": { "tryFulfill": true } }'
 
 # Cancel: release reserved stock (only works on committed transfers)
-curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/stock-transfers/com.example.id=transfer-001" \
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/stock-transfers/com.example.id=transfer-001" \
   -H "Content-Type: application/json" \
   -d '{ "actions": { "tryCancel": true } }'
 ```
@@ -892,14 +892,14 @@ After fulfillment, check the transfer status:
 
 ```bash
 # Verify the transfer status
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/stock-transfers/com.example.id=transfer-001~just(identifiers,status)"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-transfers/com.example.id=transfer-001~just(identifiers,status)"
 ```
 
 Each item also has its own status array:
 
 ```bash
 # Check individual item statuses
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/stock-transfers/com.example.id=transfer-001~with(items)"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-transfers/com.example.id=transfer-001~with(items)"
 ```
 
 ### 5.3 Stock Transfer Records — The Source of Truth
@@ -908,13 +908,13 @@ Stock transfer records are the immutable audit trail of actual stock movements. 
 
 ```bash
 # List all stock transfer records
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/stock-transfer-records"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-transfer-records"
 
 # Get a specific record with items and their actions
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/stock-transfer-records/key=abc123~with(items~with(actions))"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-transfer-records/key=abc123~with(items~with(actions))"
 
 # Get records for a specific transfer
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/stock-transfers/com.example.id=transfer-001/records~with(items~with(actions))"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-transfers/com.example.id=transfer-001/records~with(items~with(actions))"
 ```
 
 Each record item contains an `actions` array showing what happened:
@@ -971,7 +971,7 @@ A serial number is not a property in its own right — it's a _role_ assigned to
 
 ```bash
 # Configure a product for serial number tracking
-curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/products/com.example.sku=IPHONE-15-128" \
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/products/com.example.sku=IPHONE-15-128" \
   -H "Content-Type: application/json" \
   -d '{
     "tracking": {
@@ -990,7 +990,7 @@ curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/products/com.example.sk
 
 ```bash
 # Configure a product for batch tracking
-curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/products/com.example.sku=MILK-WHOLE-1L" \
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/products/com.example.sku=MILK-WHOLE-1L" \
   -H "Content-Type: application/json" \
   -d '{
     "tracking": {
@@ -1007,7 +1007,7 @@ Before referencing a batch in stock operations, you need to create it:
 
 ```bash
 # Create a batch
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/batches" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/batches" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "batch-milk-2026-03" },
@@ -1024,7 +1024,7 @@ For serial-number-tracked products, each adjustment item represents a single uni
 
 ```bash
 # Receive a single iPhone with IMEI tracking
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-adjustments" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustments" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "adj-iphone-001" },
@@ -1045,7 +1045,7 @@ To receive multiple serial-numbered units, include one item per unit:
 
 ```bash
 # Receive 3 iPhones, each with a unique IMEI
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-adjustments" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustments" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "adj-iphone-batch-001" },
@@ -1080,7 +1080,7 @@ You can also use the `productInstances` field for more structured instance data:
 
 ```bash
 # Using productInstances instead of instance
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-adjustments" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustments" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "adj-iphone-002" },
@@ -1110,7 +1110,7 @@ For batch-tracked products, reference the batch in the product instances:
 
 ```bash
 # Receive 100 units of milk from a specific batch
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-adjustments" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustments" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "adj-milk-batch-001" },
@@ -1135,7 +1135,7 @@ Multiple batches for the same product in one adjustment:
 
 ```bash
 # Receive two batches of milk in one adjustment
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-adjustments" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustments" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "adj-milk-multi-batch" },
@@ -1166,7 +1166,7 @@ When counting tracked products, stock count items expose instance-level variance
 
 ```bash
 # Get stock count items with instance details
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/stock-counts/com.example.id=count-phones~with(items)"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-counts/com.example.id=count-phones~with(items)"
 ```
 
 ```json
@@ -1205,7 +1205,7 @@ To record observations with tracking data:
 
 ```bash
 # Count observation with serial numbers
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-count-observations" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-count-observations" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "obs-phones-counter1" },
@@ -1225,7 +1225,7 @@ Stock transfer items support an `instances` field for tracked products:
 
 ```bash
 # Transfer a specific iPhone (by IMEI) to consignment stock
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-transfers" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-transfers" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "transfer-phone-001" },
@@ -1245,7 +1245,7 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-transfers" \
   }'
 
 # Fulfill the transfer
-curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/stock-transfers/com.example.id=transfer-phone-001" \
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/stock-transfers/com.example.id=transfer-phone-001" \
   -H "Content-Type: application/json" \
   -d '{ "actions": { "tryFulfill": true } }'
 ```
@@ -1254,7 +1254,7 @@ The stock transfer record will also include the instance data in its actions:
 
 ```bash
 # Check the record shows which instances were transferred
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/stock-transfers/com.example.id=transfer-phone-001/records~with(items~with(actions))"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-transfers/com.example.id=transfer-phone-001/records~with(items~with(actions))"
 ```
 
 ---
@@ -1269,7 +1269,7 @@ Stock reset is a **method endpoint** that creates offsetting adjustments across 
 
 ```bash
 # Reset ALL stock for a store (offsets excess/deficit across all stock places)
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-reset" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-reset" \
   -H "Content-Type: application/json" \
   -d '{
     "owner": { "identifiers": { "com.example.storeId": "stockholm" } }
@@ -1286,7 +1286,7 @@ Response:
 
 ```bash
 # Reset stock for a specific product only
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-reset" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-reset" \
   -H "Content-Type: application/json" \
   -d '{
     "owner": { "identifiers": { "com.example.storeId": "stockholm" } },
@@ -1315,7 +1315,7 @@ To verify the reset worked:
 
 ```bash
 # Check stock entries are now zero (or corrected)
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/stock-places/com.example.id=stockholm-store/entries"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-places/com.example.id=stockholm-store/entries"
 ```
 
 ---
@@ -1330,14 +1330,14 @@ When integrating CommerceOS with an existing system, follow this sequence to set
 
 ```bash
 # Create one stock place per store
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-places" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-places" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "store-stockholm" },
     "name": "Stockholm Store"
   }'
 
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-places" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-places" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "store-gothenburg" },
@@ -1348,11 +1348,11 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-places" \
 #### Step 2: Assign to stores via stockRoots
 
 ```bash
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stores/com.example.storeId=stockholm/stockRoots" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stores/com.example.storeId=stockholm/stockRoots" \
   -H "Content-Type: application/json" \
   -d '{ "identifiers": { "com.example.id": "store-stockholm" } }'
 
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stores/com.example.storeId=gothenburg/stockRoots" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stores/com.example.storeId=gothenburg/stockRoots" \
   -H "Content-Type: application/json" \
   -d '{ "identifiers": { "com.example.id": "store-gothenburg" } }'
 ```
@@ -1361,7 +1361,7 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/stores/com.example.store
 
 ```bash
 # At minimum, create an "Initial Import" increase reason
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-adjustment-reasons" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustment-reasons" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "initial-import" },
@@ -1375,7 +1375,7 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-adjustment-reasons
 
 ```bash
 # Import initial stock for the Stockholm store
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-adjustments" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustments" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "initial-import-stockholm" },
@@ -1407,7 +1407,7 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-adjustments" \
 
 ```bash
 # Confirm the imported quantities
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/stock-places/com.example.id=store-stockholm/entries"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-places/com.example.id=store-stockholm/entries"
 ```
 
 ### 8.2 Ongoing Inventory Sync
@@ -1421,7 +1421,7 @@ The recommended approach is to compute deltas in your integration layer and crea
 ```bash
 # Your integration detects that 10 units were received in the WMS
 # Create an increase adjustment to match
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-adjustments" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustments" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "wms-sync-20260325-001" },
@@ -1448,10 +1448,10 @@ Use **unique, deterministic identifiers** (e.g., based on the WMS event ID) to p
 
 ```bash
 # Get all adjustments for a stock place to reconcile
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/stock-places/com.example.id=store-stockholm/transactions~with(items)"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-places/com.example.id=store-stockholm/transactions~with(items)"
 
 # Get individual adjustment items for detailed reconciliation
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/stock-places/com.example.id=store-stockholm/transactionItems"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-places/com.example.id=store-stockholm/transactionItems"
 ```
 
 ### 8.3 Reading Current Stock for E-Commerce
@@ -1462,7 +1462,7 @@ The most common integration pattern: querying available stock for display on an 
 
 ```bash
 # Get stock levels for a single product across all locations
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/products/com.example.sku=TSHIRT-RED-M/stockLevels"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/products/com.example.sku=TSHIRT-RED-M/stockLevels"
 ```
 
 Response:
@@ -1488,7 +1488,7 @@ For e-commerce display, use `availableQuantity` — it reflects the actual sella
 
 ```bash
 # Get all stock at a specific location
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/stock-places/com.example.id=store-stockholm/entries"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-places/com.example.id=store-stockholm/entries"
 ```
 
 #### Designated stock places
@@ -1497,7 +1497,7 @@ Products can have designated stock places — the locations where they're intend
 
 ```bash
 # Get a product's designated stock places
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/products/com.example.sku=TSHIRT-RED-M/designatedStockPlaces"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/products/com.example.sku=TSHIRT-RED-M/designatedStockPlaces"
 ```
 
 ---

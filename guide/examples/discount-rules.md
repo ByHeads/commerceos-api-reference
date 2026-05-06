@@ -33,10 +33,10 @@ A discount rule defines **when** and **how** discounts apply. Key properties:
 
 ```bash
 # List all discount rules
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/discount-rules"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/discount-rules"
 
 # Get discount rule by ID
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/discount-rules/com.heads.seedID=employee-discount"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/discount-rules/com.heads.seedID=employee-discount"
 ```
 
 ---
@@ -46,7 +46,7 @@ curl -X GET -u ":banana" "example.app.heads.com/api/v1/discount-rules/com.heads.
 This rule gives employees 10% off apparel products:
 
 ```bash
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/discount-rules" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/discount-rules" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.heads.seedID": "employee-discount"},
@@ -81,7 +81,7 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/discount-rules" \
 This rule applies a fixed SEK 2,500 reduction when a phone and matching plan are purchased together. The `where.equals` ensures the phone's IMEI matches the plan's `phoneImei` property:
 
 ```bash
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/discount-rules" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/discount-rules" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.heads.seedID": "phone-plan-subsidy"},
@@ -128,7 +128,7 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/discount-rules" \
 This rule gives 25% off when two specific AirPods models are purchased together:
 
 ```bash
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/discount-rules" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/discount-rules" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.heads.seedID": "buy-together"},
@@ -169,7 +169,7 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/discount-rules" \
 A simple percentage-off campaign targeting all accessories:
 
 ```bash
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/discount-rules" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/discount-rules" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.heads.seedID": "campaign-accessories-20"},
@@ -213,7 +213,7 @@ Two rules implement tiered pricing: 5% off at 3+ items, 10% off at 5+ items. Bot
 
 ```bash
 # Tier 1: 5% off when buying 3+ items
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/discount-rules" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/discount-rules" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.heads.seedID": "tier-3plus-5pct"},
@@ -236,7 +236,7 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/discount-rules" \
   }'
 
 # Tier 2: 10% off when buying 5+ items
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/discount-rules" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/discount-rules" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.heads.seedID": "tier-5plus-10pct"},
@@ -266,7 +266,7 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/discount-rules" \
 The cheapest item is free when buying 3 from a category. Use `targeting: "LowestValue"` with 100% off:
 
 ```bash
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/discount-rules" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/discount-rules" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.heads.seedID": "bundle-3for2"},
@@ -299,7 +299,7 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/discount-rules" \
 Buy 2 coffees, get a mug free. Two item groups with a 100% discount applied only to the reward item:
 
 ```bash
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/discount-rules" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/discount-rules" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.heads.seedID": "coffee-mug-bogo"},
@@ -335,7 +335,7 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/discount-rules" \
 Clearance discount limited to a single store location using the `seller` scope:
 
 ```bash
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/discount-rules" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/discount-rules" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.heads.seedID": "stockholm-clearance"},
@@ -367,7 +367,7 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/discount-rules" \
 Employee discount using `buyer` scope. The `minimumResultingPrice` ensures the price never drops below a floor:
 
 ```bash
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/discount-rules" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/discount-rules" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.heads.seedID": "staff-apparel-30"},
@@ -415,7 +415,7 @@ The `worthAtLeast` field is a **value-based** threshold (decimal), unlike `atLea
 
 ```bash
 # When purchasing for at least 10,000 SEK, get 10% off all accessories
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/discount-rules" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/discount-rules" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.heads.seedID": "cart-threshold-accessory-discount"},
@@ -460,7 +460,7 @@ For a straightforward "spend X, get Y% off everything" rule, use a single item g
 
 ```bash
 # 10% off everything when cart exceeds 1,500 SEK
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/discount-rules" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/discount-rules" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.heads.seedID": "cart-discount-1500"},
@@ -511,7 +511,7 @@ Key behaviors:
 10% off everything when the cart total exceeds 1,500 SEK. This is the canonical `includeAll` use case — identical to the production seed rule `cart-discount-1500`:
 
 ```bash
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/discount-rules" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/discount-rules" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.example.id": "cart-discount-1500"},
@@ -547,7 +547,7 @@ Notice the `items` map: the `"everything"` group has no `include` array at all. 
 10% off everything except gift cards. The `exclude` array is the only way to exempt products when using `includeAll`:
 
 ```bash
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/discount-rules" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/discount-rules" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.example.id": "cart-discount-no-giftcards"},
@@ -578,7 +578,7 @@ Products in the "gift-cards" category are exempt even though `includeAll` matche
 15% staff discount with no value or quantity threshold. The `buyer` condition scopes the rule to staff members; `includeAll` means the discount applies to everything they buy:
 
 ```bash
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/discount-rules" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/discount-rules" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.example.id": "staff-discount"},
@@ -609,7 +609,7 @@ No `worthAtLeast` or `atLeast` — the rule is unconditional for staff buyers. S
 Rule activates when 5 or more items (of any kind) are in the cart:
 
 ```bash
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/discount-rules" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/discount-rules" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.example.id": "bulk-5-items"},
@@ -659,7 +659,7 @@ Without `atLeast`, the rule would activate for any non-empty cart.
 A fixed monetary reduction (e.g., a coupon for "250 SEK off entire purchase") applied once and distributed proportionally across all items. This uses `fixed reduction discount rule effect` with `includeAll` to target the whole cart:
 
 ```bash
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/discount-rules" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/discount-rules" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.example.id": "cart-fixed-reduction-250"},
@@ -708,7 +708,7 @@ For coupon-style "X SEK off entire purchase" scenarios, always use `PerApplicati
 Combine with `exclude` to exempt specific products from the coupon:
 
 ```bash
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/discount-rules" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/discount-rules" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.example.id": "cart-fixed-reduction-250-no-giftcards"},
@@ -745,7 +745,7 @@ Gift card items are excluded from both the match set and the proportional distri
 A variant of [Example 15](#example-15-fixed-reduction-distributed-across-cart-items) where the discount is **conditional** — it only fires when a specific trigger product is present in the cart. For example: "Buy Trigger Product, get 250 SEK off the entire cart."
 
 ```bash
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/discount-rules" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/discount-rules" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.example.id": "product-trigger-reduction"},
@@ -795,7 +795,7 @@ The `"triggerItem"` group doesn't need to appear in `effects[].items` — its pr
 If the reduction should apply to all items **except** the trigger product itself:
 
 ```bash
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/discount-rules" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/discount-rules" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.example.id": "product-trigger-reduction-excl"},
@@ -841,7 +841,7 @@ Two pieces are needed:
 ```bash
 # The coupon
 curl -X PUT -u ":banana" \
-  "example.app.heads.com/api/v1/discount-coupons/com.heads.seedID=spring-launch" \
+  "https://example.app.heads.com/api/v1/discount-coupons/com.heads.seedID=spring-launch" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.heads.seedID": "spring-launch"},
@@ -852,7 +852,7 @@ curl -X PUT -u ":banana" \
   }'
 
 # The rule that the coupon activates
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/discount-rules" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/discount-rules" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.heads.seedID": "spring-launch-rule"},
@@ -992,7 +992,7 @@ Manual discounts are applied directly to trade orders, not through discount rule
 
 ```bash
 # Create order with manual discount on an item
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/trade-orders" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/trade-orders" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.orderId": "ORD-001"},
@@ -1010,7 +1010,7 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/trade-orders" \
   }'
 
 # Query order with manual discounts expanded
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-001~with(manualDiscounts)"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-001~with(manualDiscounts)"
 ```
 
 > **Note:** Manual discounts are set at order creation; the `manualDiscount` field is read-only afterward. Check the `discountable` flag on items before applying.
@@ -1021,13 +1021,13 @@ curl -X GET -u ":banana" "example.app.heads.com/api/v1/trade-orders/com.myapp.or
 
 ```bash
 # List trade restrictions
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/trade-restrictions"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/trade-restrictions"
 
 # List trade restriction reasons
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/trade-restriction-reasons"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/trade-restriction-reasons"
 
 # Create trade restriction reason
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/trade-restriction-reasons" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/trade-restriction-reasons" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.reasonId": "AGE-RESTRICTED"},

@@ -24,7 +24,7 @@ Stock adjustments, trade orders, and receipts use `productInstances` to carry pe
 Set `instanceType` and `tracking` when creating or updating the product:
 
 ```bash
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/products" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/products" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.sku": "ROUTER-AX6000" },
@@ -50,7 +50,7 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/products" \
 Each serial-tracked unit has `quantity: 1` and its own `serialNumber`:
 
 ```bash
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-adjustments" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustments" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "recv-routers-001" },
@@ -78,7 +78,7 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-adjustments" \
 Reference the serial number in the order's `productInstances`:
 
 ```bash
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/trade-orders" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/trade-orders" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.orderId": "ORD-2026-100" },

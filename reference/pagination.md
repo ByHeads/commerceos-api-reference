@@ -82,31 +82,37 @@ GET /v1/receipts~where(timestamp<2025-02-01T10:03:00.123Z)~orderBy(timestamp:des
 This pattern avoids growing offsets and keeps scans fast. The same approach works with other sortable fields (e.g.,
 `createdAt`, `name`) as long as you maintain the same order.
 
-## Receipt relative endpoints
+## Time-relative endpoints
 
-Receipts expose convenience endpoints for time-based filtering that simplify cursor-style pagination:
+**For time-window reads, these are the recommended endpoints — use them in preference to `~where(timestamp...)` whenever the query has no non-time predicate.**
+
+Several collections expose convenience endpoints for time-based filtering that simplify cursor-style pagination. The pattern is `/v1/{collection}/{before|after}[(create|modify)]/{timestamp}` and is supported on `trade-orders`, `trade-relationships`, `shipment-orders`, `payment-orders`, `stock-transfers`, `stock-counts`, `stock-adjustments`, `receipts`, and `z-reports`. See [Operators → Time-relative queries](operators.md#time-relative-queries-before-and-after) for the full list, the supported modes per collection, and the optional `(create)`/`(modify)` qualifier.
+
+The receipts examples below use the same shape as every other supported collection.
 
 ```bash
 # Get all receipts after a specific timestamp
-GET /v1/receipts/after/2025-02-01T00:00:00.000Z~orderBy(timestamp)~take(200)
+GET /v1/receipts/after/2025-02-01T00:00:00.000Z~take(200)
 
 # Get all receipts before a specific timestamp
-GET /v1/receipts/before/2025-02-01T00:00:00.000Z~orderBy(timestamp:desc)~take(200)
+GET /v1/receipts/before/2025-02-01T00:00:00.000Z~take(200)
 ```
 
-These endpoints return receipts within a half-open time range:
-- `/after/{timestamp}` — receipts with `timestamp >= {timestamp}` (inclusive start)
-- `/before/{timestamp}` — receipts with `timestamp < {timestamp}` (exclusive end)
+These endpoints return items within a half-open time range:
+- `/after/{timestamp}` — items with `timestamp >= {timestamp}` (inclusive start)
+- `/before/{timestamp}` — items with `timestamp < {timestamp}` (exclusive end)
 
-**Cursor pagination with `/after`**:
+**Cursor pagination with `/after`** (works for any supported collection — receipts shown):
 ```bash
 # First page
-GET /v1/receipts/after/2025-01-01T00:00:00.000Z~orderBy(timestamp)~take(100)
+GET /v1/receipts/after/2025-01-01T00:00:00.000Z~take(100)
 # → Returns receipts, note the last timestamp (e.g., 2025-01-15T14:30:00.000Z)
 
 # Next page: use last timestamp + 1ms to avoid overlap
-GET /v1/receipts/after/2025-01-15T14:30:00.001Z~orderBy(timestamp)~take(100)
+GET /v1/receipts/after/2025-01-15T14:30:00.001Z~take(100)
 ```
+
+The same approach applies to other collections — substitute `/v1/trade-orders/after/...`, `/v1/payment-orders/after/...`, etc., and order by whichever timestamp field that resource exposes.
 
 Invalid timestamps return a 404 error response (not an empty array).
 
@@ -115,7 +121,7 @@ Invalid timestamps return a 404 error response (not an empty array).
 - Favor smaller, consistent page sizes (e.g., 100–500 items) and iterate until the last page is smaller than your page size.
 - Prefer date-window filtering (`timestamp` ranges) over very large offsets.
 - Sort by an indexed, unique-ish field (timestamps or identifiers) to keep page boundaries stable.
-- Use `/receipts/after/{timestamp}` or `/receipts/before/{timestamp}` for efficient time-sliced receipt exports.
+- **Use `/after/{timestamp}` and `/before/{timestamp}` for any time-sliced export** — they are the recommended pattern on every collection that supports them ([list](operators.md#time-relative-queries-before-and-after)). They use the collection's time index, stay linear in returned rows, and produce stable cursor boundaries between pages. `~where(timestamp>...)` works but is a predicate scan that gets slower as page offsets grow; reach for it only when you need to combine the time filter with a non-time condition.
 
 ## Copy-paste recipes
 

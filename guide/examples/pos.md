@@ -13,19 +13,19 @@ Curl examples for POS terminals, profiles, functions, receipts, devices, printer
 
 ```bash
 # List all POS terminals
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/pos-terminals"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/pos-terminals"
 
 # Get POS terminal by name
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/pos-terminals/posTerminalName=Kassa%201"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/pos-terminals/posTerminalName=Kassa%201"
 
 # Get terminal with profile
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/pos-terminals/posTerminalName=Kassa%201~with(profile)"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/pos-terminals/posTerminalName=Kassa%201~with(profile)"
 
 # Create a POS terminal
 # Required: identifiers.posTerminalName, associatedNode
 # Optional: profile, status, assignedDevice, receiptPrinter, etc.
 # Note: POS terminals do NOT have a `name` field; use identifiers.posTerminalName
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/pos-terminals" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/pos-terminals" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"posTerminalName": "Kassa 2"},
@@ -35,7 +35,7 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/pos-terminals" \
   }'
 
 # Update POS terminal
-curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/pos-terminals/posTerminalName=Kassa%202" \
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/pos-terminals/posTerminalName=Kassa%202" \
   -H "Content-Type: application/json" \
   -d '{"status": "Inactive"}'
 ```
@@ -46,16 +46,16 @@ curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/pos-terminals/posTermin
 
 ```bash
 # List all POS profiles
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/pos-profiles"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/pos-profiles"
 
 # Get POS profile by ID
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/pos-profiles/posProfileId=default"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/pos-profiles/posProfileId=default"
 
 # Get profile with functions
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/pos-profiles/posProfileId=default~with(functions)"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/pos-profiles/posProfileId=default~with(functions)"
 
 # Create a POS profile
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/pos-profiles" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/pos-profiles" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"posProfileId": "quick-service"},
@@ -64,7 +64,7 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/pos-profiles" \
   }'
 
 # Update POS profile
-curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/pos-profiles/posProfileId=quick-service" \
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/pos-profiles/posProfileId=quick-service" \
   -H "Content-Type: application/json" \
   -d '{"name": "Fast Food Profile"}'
 ```
@@ -75,10 +75,10 @@ curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/pos-profiles/posProfile
 
 ```bash
 # List all POS functions
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/pos-functions"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/pos-functions"
 
 # Get POS function by ID
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/pos-functions/posFunctionId=open-drawer"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/pos-functions/posFunctionId=open-drawer"
 
 # Create a POS function
 # Note: POS functions have NO `description` field
@@ -88,7 +88,7 @@ curl -X GET -u ":banana" "example.app.heads.com/api/v1/pos-functions/posFunction
 #   - "pay function" → paymentMethod
 #   - "manual discount function" → phase
 #   - "add product function" → product
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/pos-functions" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/pos-functions" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"posFunctionId": "void-sale"},
@@ -99,7 +99,7 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/pos-functions" \
   }'
 
 # Create a pay function with payment method
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/pos-functions" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/pos-functions" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "pay function",
@@ -115,45 +115,45 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/pos-functions" \
 
 ```bash
 # List all receipts
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/receipts"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/receipts"
 
 # Get receipt by ID
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/receipts/receiptID=RCP-2024-00001"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/receipts/receiptID=RCP-2024-00001"
 
 # Get receipt with items
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/receipts/receiptID=RCP-2024-00001~with(items)"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/receipts/receiptID=RCP-2024-00001~with(items)"
 
 # Get receipt items
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/receipts/receiptID=RCP-2024-00001/items"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/receipts/receiptID=RCP-2024-00001/items"
 
 # Get specific receipt item
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/receipts/receiptID=RCP-2024-00001/items/0"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/receipts/receiptID=RCP-2024-00001/items/0"
 
 # Get receipt payments
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/receipts/receiptID=RCP-2024-00001/payments"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/receipts/receiptID=RCP-2024-00001/payments"
 
 # Receipts from last 24 hours
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/receipts/after/-=24"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/receipts/after/-=24"
 
 # Receipts from last 30 minutes
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/receipts/after/-=0:30"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/receipts/after/-=0:30"
 
 # Receipts from last week with item count
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/receipts/after/-=168~with(items/count)"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/receipts/after/-=168~with(items/count)"
 
 # Receipts in date range (use ~where for timestamp filtering)
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/receipts~where(timestamp>2024-12-01T00:00:00Z,timestamp<2024-12-31T23:59:59Z)"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/receipts~where(timestamp>2024-12-01T00:00:00Z,timestamp<2024-12-31T23:59:59Z)"
 
 # Alternatively, chain ~where operators
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/receipts~where(timestamp>2024-12-01T00:00:00Z)~where(timestamp<2024-12-31T23:59:59Z)"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/receipts~where(timestamp>2024-12-01T00:00:00Z)~where(timestamp<2024-12-31T23:59:59Z)"
 
 # Map receipts to custom format
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/receipts/after/-=24~map(com.heads.receipt-csv)"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/receipts/after/-=24~map(com.heads.receipt-csv)"
 
 # Create/import a receipt (typically done by POS system)
 # Required fields: identifiers.receiptID, prefix, ordinal, seller, buyer, posTerminal, currencyCode, timestamp, items, payments
 # Payment fields: method, amount, consumerPrintout, merchantPrintout (required on create)
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/receipts" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/receipts" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"receiptID": "RCP-2024-00002"},
@@ -192,19 +192,39 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/receipts" \
 | `-=0:30` | 30 minutes ago |
 | `-=168` | 1 week ago (168 hours) |
 
+The same `/before/` and `/after/` pattern works for **nine other collections** beyond receipts (trade orders, payment orders, stock adjustments, z-reports, etc.). See [Operators → Time-relative queries](../../reference/operators.md#time-relative-queries-before-and-after) for the full list and the optional `(create)`/`(modify)` qualifier.
+
+---
+
+## Z Reports — Time-relative queries
+
+Z-reports are point-in-time POS audit events emitted at end-of-day (or end-of-shift). The `/before/` and `/after/` endpoints are the standard way to export them on a daily schedule.
+
+```bash
+# Default mode: z-reports issued at or after the given ISO timestamp
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/z-reports/after/2025-02-01T00:00:00.000Z~take(100)"
+
+# Z-reports issued before a cutoff (exclusive end), newest first
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/z-reports/before/2025-03-01T00:00:00.000Z~take(100)"
+```
+
+> **Default:** `create` — and it is the **only** supported mode. Z-reports are immutable audit events with no separate "last modified" time, so `(modify)` returns a 404. The default is what you want for daily exports. See [Operators → Time-relative queries](../../reference/operators.md#time-relative-queries-before-and-after).
+>
+> **Recommended:** use `/after/` and `/before/` for any time-windowed read of z-reports — they are index-backed and the canonical pattern. Use `~where(timestamp...)` only when you need to combine the time filter with a non-time predicate.
+
 ---
 
 ## Devices
 
 ```bash
 # List all devices
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/devices"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/devices"
 
 # Get device by ID
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/devices/com.myapp.deviceId=DEV-001"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/devices/com.myapp.deviceId=DEV-001"
 
 # Create a device
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/devices" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/devices" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.deviceId": "DEV-001"},
@@ -213,7 +233,7 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/devices" \
   }'
 
 # Update device status
-curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/devices/com.myapp.deviceId=DEV-001" \
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/devices/com.myapp.deviceId=DEV-001" \
   -H "Content-Type: application/json" \
   -d '{"status": "Inactive"}'
 ```
@@ -226,15 +246,15 @@ curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/devices/com.myapp.devic
 
 ```bash
 # List all printers
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/printers"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/printers"
 
 # Get printer by ID
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/printers/com.heads.seedID=receipt-printer-1"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/printers/com.heads.seedID=receipt-printer-1"
 
 # Create Star WebPRNT printer
 # Note: Use lowercase endpoint /v1/star-webprnt-printers
 # Alternatively use /v1/printers with @type discriminator
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/star-webprnt-printers" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/star-webprnt-printers" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "star webPRNT printer",
@@ -247,7 +267,7 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/star-webprnt-printers" \
 # Create Epson ePOS printer
 # Note: Use lowercase endpoint /v1/epson-epos-printers
 # Alternatively use /v1/printers with @type discriminator
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/epson-epos-printers" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/epson-epos-printers" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "epson ePOS printer",
@@ -259,7 +279,7 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/epson-epos-printers" \
   }'
 
 # Create serial printer
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/serial-printers" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/serial-printers" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "serial printer",
@@ -279,17 +299,17 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/serial-printers" \
 
 ```bash
 # List all payment terminals
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/payment-terminals"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/payment-terminals"
 
 # Get payment terminal by ID
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/payment-terminals/com.myapp.terminalId=TERM-001"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/payment-terminals/com.myapp.terminalId=TERM-001"
 
 # Create a payment terminal
 # Required: identifiers (with external ID)
 # Optional: name, method, directUrl, connectedDevice
 # Note: method and directUrl are in the schema but not strictly enforced on create.
 #       There is NO `associatedNode` field on payment terminals.
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/payment-terminals" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/payment-terminals" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.terminalId": "TERM-001"},
@@ -297,7 +317,7 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/payment-terminals" \
   }'
 
 # Create a payment terminal with method and directUrl
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/payment-terminals" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/payment-terminals" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.terminalId": "TERM-002"},
@@ -307,7 +327,7 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/payment-terminals" \
   }'
 
 # Update a payment terminal
-curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/payment-terminals/com.myapp.terminalId=TERM-001" \
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/payment-terminals/com.myapp.terminalId=TERM-001" \
   -H "Content-Type: application/json" \
   -d '{"name": "Main Card Terminal"}'
 ```

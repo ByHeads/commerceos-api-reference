@@ -718,7 +718,7 @@ Use `/receipts/after/` and `/receipts/before/` for efficient date queries (uses 
 GET /receipts/after/2024-12-01T00:00:00Z
 
 # Chain with operators for additional filtering
-GET /receipts/after/2024-12-01T00:00:00Z~orderBy(timestamp:desc)~take(100)
+GET /receipts/after/2024-12-01T00:00:00Z~take(100)
 ```
 
 > **Note:** Invalid timestamps return **404** (resource not found), not empty arrays. Relative shorthand like `-=24` (24 hours back) is accepted; ISO 8601 is still recommended for clarity.

@@ -18,7 +18,7 @@ Curl examples for stock places, stock adjustments, and stock resets.
 
 ```bash
 # Step 1: Create stock place (owner is optional)
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-places" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-places" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.stockPlaceId": "WH-001"},
@@ -26,12 +26,12 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-places" \
   }'
 
 # Step 2: Add to agent's stockRoots (preferred approach)
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/companies/com.heads.seedID=ourcompany/stockRoots" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/companies/com.heads.seedID=ourcompany/stockRoots" \
   -H "Content-Type: application/json" \
   -d '{"identifiers": {"com.myapp.stockPlaceId": "WH-001"}}'
 
 # Step 3: Create adjustment reason
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-adjustment-reasons" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustment-reasons" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.reasonId": "RESTOCK"},
@@ -41,7 +41,7 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-adjustment-reasons
   }'
 
 # Step 4: Create stock adjustment (owner inferred from stock root)
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-adjustments" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustments" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.adjustmentId": "ADJ-001"},
@@ -101,12 +101,12 @@ To remove all stock roots from an agent, use `PUT` with an empty array:
 
 ```bash
 # Remove all stock roots from a company
-curl -X PUT -u ":banana" "example.app.heads.com/api/v1/companies/com.heads.seedID=ourcompany/stockRoots" \
+curl -X PUT -u ":banana" "https://example.app.heads.com/api/v1/companies/com.heads.seedID=ourcompany/stockRoots" \
   -H "Content-Type: application/json" \
   -d '[]'
 
 # Or using PATCH replace
-curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/companies/com.heads.seedID=ourcompany/stockRoots" \
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/companies/com.heads.seedID=ourcompany/stockRoots" \
   -H "Content-Type: application/json" \
   -d '{"replace": []}'
 ```
@@ -119,22 +119,22 @@ This applies to all `indexedArray` properties (e.g., `stockRoots`, `assortmentRo
 
 ```bash
 # List all stock places
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/stock-places"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-places"
 
 # Get stock place by ID
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/stock-places/com.heads.seedID=warehouse1"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-places/com.heads.seedID=warehouse1"
 
 # Get stock place with children (sub-locations)
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/stock-places/com.heads.seedID=warehouse1~with(children)"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-places/com.heads.seedID=warehouse1~with(children)"
 
 # Get stock place entries (current stock levels)
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/stock-places/com.heads.seedID=warehouse1/entries"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-places/com.heads.seedID=warehouse1/entries"
 
 # Get stock transactions
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/stock-places/com.heads.seedID=warehouse1/transactions"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-places/com.heads.seedID=warehouse1/transactions"
 
 # Create a stock place (warehouse) - without owner (preferred)
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-places" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-places" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.stockPlaceId": "WH-001"},
@@ -142,12 +142,12 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-places" \
   }'
 
 # Then add to agent's stockRoots (establishes ownership)
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/companies/com.heads.seedID=ourcompany/stockRoots" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/companies/com.heads.seedID=ourcompany/stockRoots" \
   -H "Content-Type: application/json" \
   -d '{"identifiers": {"com.myapp.stockPlaceId": "WH-001"}}'
 
 # Alternative: Create with owner shorthand (manipulates stockRoots behind the scenes)
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-places" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-places" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.stockPlaceId": "WH-002"},
@@ -158,11 +158,11 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-places" \
 # Create child stock place (zone within warehouse)
 # NOTE: The parent setter requires the database key (identifiers.key), not external IDs.
 # Step 1: Get the parent's database key
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/stock-places/com.myapp.stockPlaceId=WH-001/identifiers/key"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-places/com.myapp.stockPlaceId=WH-001/identifiers/key"
 # Returns the database key, e.g., "abc123..."
 
 # Step 2: Create the child using the database key
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-places" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-places" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.stockPlaceId": "WH-001-A"},
@@ -171,7 +171,7 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-places" \
   }'
 
 # Update stock place
-curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/stock-places/com.myapp.stockPlaceId=WH-001" \
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/stock-places/com.myapp.stockPlaceId=WH-001" \
   -H "Content-Type: application/json" \
   -d '{"name": "Central Distribution Warehouse"}'
 ```
@@ -186,14 +186,14 @@ Stock adjustments use an `items[]` array to adjust one or more products in a sin
 
 ```bash
 # List all stock adjustments
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/stock-adjustments"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustments"
 
 # List stock adjustment reasons
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/stock-adjustment-reasons"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustment-reasons"
 
 # Create stock adjustment reason
 # NOTE: Only identifiers, name, active, and direction are supported - no description field.
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-adjustment-reasons" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustment-reasons" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.reasonId": "DAMAGED"},
@@ -203,7 +203,7 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-adjustment-reasons
   }'
 
 # Create another adjustment reason (increase direction)
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-adjustment-reasons" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustment-reasons" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.reasonId": "RESTOCK"},
@@ -215,7 +215,7 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-adjustment-reasons
 # Create stock adjustment (increase) - single item
 # Required fields: timestamp, items[] (each with product, place, reason)
 # Optional: owner (auto-inferred from place if omitted), items[].quantity (defaults to 1)
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-adjustments" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustments" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.adjustmentId": "ADJ-001"},
@@ -231,7 +231,7 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-adjustments" \
   }'
 
 # Create stock adjustment (decrease) - reason with direction: "Decrease"
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-adjustments" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustments" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.adjustmentId": "ADJ-002"},
@@ -247,7 +247,7 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-adjustments" \
   }'
 
 # Create stock adjustment with multiple items (bulk adjustment)
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-adjustments" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustments" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.adjustmentId": "ADJ-003"},
@@ -271,7 +271,7 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-adjustments" \
 
 # Create stock adjustment with instance data (serialized/IMEI-tracked product)
 # NOTE: `instance` is a single object, NOT an array
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-adjustments" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustments" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.adjustmentId": "ADJ-004"},
@@ -288,8 +288,24 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-adjustments" \
   }'
 
 # Get stock adjustment items
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/stock-adjustments/com.myapp.adjustmentId=ADJ-001~with(items)"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustments/com.myapp.adjustmentId=ADJ-001~with(items)"
 ```
+
+### Stock Adjustments — Time-relative queries
+
+Stock adjustments are immutable records, so the most useful sync pattern is a daily/hourly delta poll keyed off creation time. See [Operators → Time-relative queries](../../reference/operators.md#time-relative-queries-before-and-after) for shared mechanics.
+
+```bash
+# Default mode: adjustments created at or after the given ISO timestamp
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustments/after/2025-02-01T00:00:00.000Z~take(200)"
+
+# Adjustments created before a cutoff (exclusive end), newest first
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustments/before/2025-03-01T00:00:00.000Z~take(200)"
+```
+
+> **Default:** `create` — and it is the **only** supported mode. Stock adjustments do not record a separate "last modified" time, so `(modify)` returns a 404. The default is what you want for delta syncs.
+>
+> **Recommended:** use `/after/` and `/before/` for any time-windowed read of stock adjustments — they are index-backed and the canonical pattern. Use `~where(timestamp...)` only when you need to combine the time filter with a non-time predicate.
 
 > **Stock Adjustment Fields:**
 > - `timestamp` (required): The time of the adjustment (ISO 8601)
@@ -311,14 +327,14 @@ Stock reset is a method endpoint (`POST /v1/stock-reset`) that creates a StockRe
 
 ```bash
 # Reset all stock for an owner (offsets specified excess/deficit across all stock places)
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-reset" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-reset" \
   -H "Content-Type: application/json" \
   -d '{
     "owner": {"identifiers": {"com.heads.seedID": "ourcompany"}}
   }'
 
 # Reset stock for a specific product only
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-reset" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-reset" \
   -H "Content-Type: application/json" \
   -d '{
     "owner": {"identifiers": {"com.heads.seedID": "ourcompany"}},
@@ -338,3 +354,39 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-reset" \
 > - `400 Bad Request` with `"Missing argument: owner"` if owner is not provided
 > - `400 Bad Request` with `"Stock owner not found"` if the specified owner does not exist
 > - `400 Bad Request` with `"Product not found"` if the specified product does not exist
+
+---
+
+## Stock Counts — Time-relative queries
+
+Stock counts (physical inventory counts — see the [Stock & Inventory Guide](./stock-inventory-guide.md#part-4-stock-counts--physical-inventory) for the full lifecycle) support `/before/` and `/after/` for picking up newly created or recently amended counts.
+
+```bash
+# Default mode: counts modified at or after the given ISO timestamp
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-counts/after/2025-02-01T00:00:00.000Z~take(100)"
+
+# Explicit creation-time filter: counts opened at or after the given timestamp
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-counts/after(create)/2025-02-01T00:00:00.000Z~take(100)"
+```
+
+> **Default:** `modify` — captures status transitions (`Ongoing`, `Completed`, `Approved`) along with creation. Use `(create)` to enumerate counts by when they were opened. See [Operators → Time-relative queries](../../reference/operators.md#time-relative-queries-before-and-after).
+>
+> **Recommended:** use `/after/` and `/before/` for any time-windowed read of stock counts — they are index-backed and the canonical pattern. Use `~where(timestamp...)` only when you need to combine the time filter with a non-time predicate.
+
+---
+
+## Stock Transfers — Time-relative queries
+
+Stock transfers (movements between logical stocks — see the [Stock & Inventory Guide](./stock-inventory-guide.md#part-5-stock-transfers--moving-stock-between-logical-stocks) for the full lifecycle) support `/before/` and `/after/`.
+
+```bash
+# Default mode: transfers created at or after the given ISO timestamp
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-transfers/after/2025-02-01T00:00:00.000Z~take(100)"
+
+# Transfers created before a cutoff (exclusive end), newest first
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-transfers/before/2025-03-01T00:00:00.000Z~take(100)"
+```
+
+> **Default:** `create` — and it is the **only** supported mode. Stock transfers do not record a separate "last modified" time, so `(modify)` returns a 404. The default is what you want for delta syncs. See [Operators → Time-relative queries](../../reference/operators.md#time-relative-queries-before-and-after).
+>
+> **Recommended:** use `/after/` and `/before/` for any time-windowed read of stock transfers — they are index-backed and the canonical pattern. Use `~where(timestamp...)` only when you need to combine the time filter with a non-time predicate.

@@ -80,13 +80,13 @@ Get discount and surcharge totals without expanding per-item detail.
 
 ```bash
 # Get receipt with default fields (includes summary amounts)
-curl -u ":banana" "example.app.heads.com/api/v1/receipts/{key}"
+curl -u ":banana" "https://example.app.heads.com/api/v1/receipts/{key}"
 ```
 
 ```bash
 # Get just discount-related totals
 curl -u ":banana" \
-  "example.app.heads.com/api/v1/receipts/{key}~just(identifiers,totalAmount,totalDiscountAmount,totalDiscountAmountInclVat)"
+  "https://example.app.heads.com/api/v1/receipts/{key}~just(identifiers,totalAmount,totalDiscountAmount,totalDiscountAmountInclVat)"
 ```
 
 Response:
@@ -111,7 +111,7 @@ Expand items to see per-line discount and surcharge summary amounts.
 
 ```bash
 # Expand items to see per-line discount amounts
-curl -u ":banana" "example.app.heads.com/api/v1/receipts/{key}~with(items)"
+curl -u ":banana" "https://example.app.heads.com/api/v1/receipts/{key}~with(items)"
 ```
 
 Response (items excerpt):
@@ -156,7 +156,7 @@ Get the full per-rule discount breakdown for each item.
 
 ```bash
 # Expand items with their discount breakdown
-curl -u ":banana" "example.app.heads.com/api/v1/receipts/{key}~with(items~with(discounts))"
+curl -u ":banana" "https://example.app.heads.com/api/v1/receipts/{key}~with(items~with(discounts))"
 ```
 
 Each item's `discounts[]` array contains individual discount entries:
@@ -231,7 +231,7 @@ Expand the `rule` reference on each discount entry to get the complete discount 
 ```bash
 # Triple-nested: receipt → items → discounts → rule details
 curl -u ":banana" \
-  "example.app.heads.com/api/v1/receipts/{key}~with(items~with(discounts~with(rule)))"
+  "https://example.app.heads.com/api/v1/receipts/{key}~with(items~with(discounts~with(rule)))"
 ```
 
 With `rule` expanded, you get the full rule definition including phase, effects, and conditions:
@@ -295,11 +295,11 @@ Same expansion pattern applies to surcharges on items.
 
 ```bash
 # Per-item surcharge breakdown
-curl -u ":banana" "example.app.heads.com/api/v1/receipts/{key}~with(items~with(surcharges))"
+curl -u ":banana" "https://example.app.heads.com/api/v1/receipts/{key}~with(items~with(surcharges))"
 
 # With full surcharge rule expanded
 curl -u ":banana" \
-  "example.app.heads.com/api/v1/receipts/{key}~with(items~with(surcharges~with(rule)))"
+  "https://example.app.heads.com/api/v1/receipts/{key}~with(items~with(surcharges~with(rule)))"
 ```
 
 Response with pant (bottle deposit) surcharge example:
@@ -359,7 +359,7 @@ Receipt-level surcharges apply to the receipt as a whole — delivery fees, serv
 
 ```bash
 # Get receipt-level surcharges
-curl -u ":banana" "example.app.heads.com/api/v1/receipts/{key}~with(surcharges)"
+curl -u ":banana" "https://example.app.heads.com/api/v1/receipts/{key}~with(surcharges)"
 ```
 
 ```json
@@ -401,7 +401,7 @@ Expand multiple fields at once using comma-separated names inside `~with()`.
 ```bash
 # Full discount + surcharge detail in one query
 curl -u ":banana" \
-  "example.app.heads.com/api/v1/receipts/{key}~with(items~with(discounts,surcharges),surcharges)"
+  "https://example.app.heads.com/api/v1/receipts/{key}~with(items~with(discounts,surcharges),surcharges)"
 ```
 
 This expands:
@@ -413,7 +413,7 @@ To also expand the `rule` reference on every discount and surcharge:
 ```bash
 # With rule expansion on both discounts and surcharges at both levels
 curl -u ":banana" \
-  "example.app.heads.com/api/v1/receipts/{key}~with(items~with(discounts~with(rule),surcharges~with(rule)),surcharges~with(rule))"
+  "https://example.app.heads.com/api/v1/receipts/{key}~with(items~with(discounts~with(rule),surcharges~with(rule)),surcharges~with(rule))"
 ```
 
 `~with()` accepts comma-separated fields at each nesting level: `~with(discounts,surcharges)` expands both arrays on each item.
@@ -427,14 +427,14 @@ Common query patterns for integrations.
 ```bash
 # Get all receipts from today with discount totals
 curl -u ":banana" \
-  "example.app.heads.com/api/v1/receipts/after/2026-03-25T00:00:00.000Z~just(identifiers,timestamp,totalAmount,totalDiscountAmount,totalDiscountAmountInclVat)"
+  "https://example.app.heads.com/api/v1/receipts/after/2026-03-25T00:00:00.000Z~just(identifiers,timestamp,totalAmount,totalDiscountAmount,totalDiscountAmountInclVat)"
 
 # Get first 100 receipts with items and discounts
 curl -u ":banana" \
-  "example.app.heads.com/api/v1/receipts~with(items~with(discounts))~take(100)"
+  "https://example.app.heads.com/api/v1/receipts~with(items~with(discounts))~take(100)"
 
 # Get a single receipt with full expansion
-curl -u ":banana" "example.app.heads.com/api/v1/receipts/{key}~withAll"
+curl -u ":banana" "https://example.app.heads.com/api/v1/receipts/{key}~withAll"
 ```
 
 ### Expansion Operators Compared
@@ -456,7 +456,7 @@ Receipts can contain both automatic (rule-based) and manual (cashier-applied) di
 
 ```bash
 curl -u ":banana" \
-  "example.app.heads.com/api/v1/receipts/{key}~with(items~with(discounts))"
+  "https://example.app.heads.com/api/v1/receipts/{key}~with(items~with(discounts))"
 ```
 
 ```json
@@ -511,7 +511,7 @@ A complete walkthrough for exporting receipt data to an accounting system that n
 
 ```bash
 curl -u ":banana" \
-  "example.app.heads.com/api/v1/receipts/after/{startDate}~with(items~with(discounts,surcharges))~take(1000)"
+  "https://example.app.heads.com/api/v1/receipts/after/{startDate}~with(items~with(discounts,surcharges))~take(1000)"
 ```
 
 ### Step 2: Extract per-item amounts
@@ -581,14 +581,14 @@ You **cannot** access discounts via a direct path:
 
 ```bash
 # ✗ This does NOT work
-curl -u ":banana" "example.app.heads.com/api/v1/receipts/{id}/items/0/discounts"
+curl -u ":banana" "https://example.app.heads.com/api/v1/receipts/{id}/items/0/discounts"
 ```
 
 Instead, expand items inline and read discounts from the response:
 
 ```bash
 # ✓ Correct approach
-curl -u ":banana" "example.app.heads.com/api/v1/receipts/{id}~with(items~with(discounts))"
+curl -u ":banana" "https://example.app.heads.com/api/v1/receipts/{id}~with(items~with(discounts))"
 ```
 
 ### `reason` is inline, `rule` is a reference

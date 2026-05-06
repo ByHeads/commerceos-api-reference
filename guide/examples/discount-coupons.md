@@ -51,13 +51,13 @@ When a cart presents a coupon code, the engine resolves the code to a coupon, ch
 
 ```bash
 # List all discount coupons
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/discount-coupons"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/discount-coupons"
 
 # Get a coupon by seed identifier
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/discount-coupons/com.heads.seedID=summer-single"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/discount-coupons/com.heads.seedID=summer-single"
 
 # Look up a coupon by literal code (no dedicated code indexer — use ~where)
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/discount-coupons~where(code=SUMMER2026)"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/discount-coupons~where(code=SUMMER2026)"
 ```
 
 ### Code-less Coupons (Back Office Only)
@@ -67,7 +67,7 @@ A coupon does not have to carry a `code`. A coupon with only `identifiers` (and 
 ```bash
 # A code-less coupon for back-office use
 curl -X PUT -u ":banana" \
-  "example.app.heads.com/api/v1/discount-coupons/com.heads.seedID=internal-token" \
+  "https://example.app.heads.com/api/v1/discount-coupons/com.heads.seedID=internal-token" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.heads.seedID": "internal-token"},
@@ -124,7 +124,7 @@ The derived `exhausted` flag becomes `true` automatically once the cap is reache
 
 ```bash
 # Check current redemption count and exhaustion state
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/discount-coupons/com.heads.seedID=summer-single~with(redemptions,exhausted)"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/discount-coupons/com.heads.seedID=summer-single~with(redemptions,exhausted)"
 ```
 
 > **Drafts in progress do not consume redemptions.** A coupon attached to an unfinalised draft order is "tentatively applied" — it influences the running totals but only increments `redemptions` once the order finalises. The checkout client refuses to attach exhausted coupons to **new** carts, but a coupon already attached to an in-flight draft will keep applying through recalcs even if the cap is reached on another order in the meantime.
@@ -169,7 +169,7 @@ A coupon-driven rule still uses the rule machinery — its `phase`, `priority`, 
 ```bash
 # Create a dedicated phase for coupon-driven discounts
 curl -X PUT -u ":banana" \
-  "example.app.heads.com/api/v1/discount-phases/com.heads.seedID=dc-phase" \
+  "https://example.app.heads.com/api/v1/discount-phases/com.heads.seedID=dc-phase" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.heads.seedID": "dc-phase"},
@@ -190,7 +190,7 @@ A literal code, redeemable exactly once across all customers. Use case: "free pe
 
 ```bash
 curl -X PUT -u ":banana" \
-  "example.app.heads.com/api/v1/discount-coupons/com.heads.seedID=dc-single" \
+  "https://example.app.heads.com/api/v1/discount-coupons/com.heads.seedID=dc-single" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.heads.seedID": "dc-single"},
@@ -211,7 +211,7 @@ A literal code redeemable a small number of times — e.g., "first two customers
 
 ```bash
 curl -X PUT -u ":banana" \
-  "example.app.heads.com/api/v1/discount-coupons/com.heads.seedID=dc-multi" \
+  "https://example.app.heads.com/api/v1/discount-coupons/com.heads.seedID=dc-multi" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.heads.seedID": "dc-multi"},
@@ -232,7 +232,7 @@ A literal code with no redemption cap and `stackable: true`. Use case: an employ
 
 ```bash
 curl -X PUT -u ":banana" \
-  "example.app.heads.com/api/v1/discount-coupons/com.heads.seedID=dc-stackable" \
+  "https://example.app.heads.com/api/v1/discount-coupons/com.heads.seedID=dc-stackable" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.heads.seedID": "dc-stackable"},
@@ -253,7 +253,7 @@ A pattern coupon with no redemption cap. Use case: a verified-student programme 
 
 ```bash
 curl -X PUT -u ":banana" \
-  "example.app.heads.com/api/v1/discount-coupons/com.heads.seedID=dc-student" \
+  "https://example.app.heads.com/api/v1/discount-coupons/com.heads.seedID=dc-student" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.heads.seedID": "dc-student"},
@@ -278,7 +278,7 @@ A pattern coupon with a redemption cap shared across **all matching codes**. Use
 
 ```bash
 curl -X PUT -u ":banana" \
-  "example.app.heads.com/api/v1/discount-coupons/com.heads.seedID=dc-personal" \
+  "https://example.app.heads.com/api/v1/discount-coupons/com.heads.seedID=dc-personal" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.heads.seedID": "dc-personal"},
@@ -299,7 +299,7 @@ A pattern coupon that fires on every qualifying line in the cart. Use case: an e
 
 ```bash
 curl -X PUT -u ":banana" \
-  "example.app.heads.com/api/v1/discount-coupons/com.heads.seedID=dc-employee" \
+  "https://example.app.heads.com/api/v1/discount-coupons/com.heads.seedID=dc-employee" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.heads.seedID": "dc-employee"},
@@ -320,7 +320,7 @@ A single rule binds all five coupons via its `coupon.include` array. Any cart th
 
 ```bash
 curl -X PUT -u ":banana" \
-  "example.app.heads.com/api/v1/discount-rules/com.heads.seedID=dc-coupon-rule" \
+  "https://example.app.heads.com/api/v1/discount-rules/com.heads.seedID=dc-coupon-rule" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.heads.seedID": "dc-coupon-rule"},
@@ -365,7 +365,7 @@ You can equally split this into one rule per coupon — useful when each coupon 
 
 ```bash
 curl -X PUT -u ":banana" \
-  "example.app.heads.com/api/v1/discount-coupons/com.heads.seedID=spring-launch" \
+  "https://example.app.heads.com/api/v1/discount-coupons/com.heads.seedID=spring-launch" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.heads.seedID": "spring-launch"},
@@ -385,7 +385,7 @@ Either include the coupon ref at rule-create time:
 
 ```bash
 curl -X PUT -u ":banana" \
-  "example.app.heads.com/api/v1/discount-rules/com.heads.seedID=spring-launch-rule" \
+  "https://example.app.heads.com/api/v1/discount-rules/com.heads.seedID=spring-launch-rule" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.heads.seedID": "spring-launch-rule"},
@@ -408,7 +408,7 @@ curl -X PUT -u ":banana" \
 
 ```bash
 curl -X PATCH -u ":banana" \
-  "example.app.heads.com/api/v1/discount-rules/com.heads.seedID=existing-rule" \
+  "https://example.app.heads.com/api/v1/discount-rules/com.heads.seedID=existing-rule" \
   -H "Content-Type: application/json" \
   -d '{
     "coupon": {
@@ -423,12 +423,12 @@ There is no dedicated code indexer — look up by code with `~where`:
 
 ```bash
 # Exact match against the code field
-curl -X GET -u ":banana" "example.app.heads.com/api/v1/discount-coupons~where(code=SPRING2026)"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/discount-coupons~where(code=SPRING2026)"
 
 # For pattern coupons, the engine itself does the regex matching at activation time.
 # To find candidate pattern coupons (issuer-scoped) for inspection, fetch by issuer:
 curl -X GET -u ":banana" \
-  "example.app.heads.com/api/v1/discount-coupons~where(pattern=true,issuer.identifiers.com.heads.seedID=ourcompany)"
+  "https://example.app.heads.com/api/v1/discount-coupons~where(pattern=true,issuer.identifiers.com.heads.seedID=ourcompany)"
 ```
 
 A customer-supplied code is matched against **every** coupon issued in the seller's organizational scope: the engine returns each literal coupon whose `code` equals the input string and each pattern coupon whose `code` regex matches it. If a single input matches more than one coupon (for example, a literal `EMP-1234` and a pattern `EMP-\d{4}` both issued by the same company), every matching coupon is considered, and any rule whose `coupon.include` lists any of them can fire. To avoid surprises, do not issue overlapping literal-and-pattern coupons in the same issuer scope unless you intend them to fire together.
@@ -442,7 +442,7 @@ A coupon with `maxRedemptions` set will exhaust naturally. To force-disable a st
 ```bash
 # Force-disable: the next attempt will fail with exhausted
 curl -X PATCH -u ":banana" \
-  "example.app.heads.com/api/v1/discount-coupons/com.heads.seedID=summer-single" \
+  "https://example.app.heads.com/api/v1/discount-coupons/com.heads.seedID=summer-single" \
   -H "Content-Type: application/json" \
   -d '{"maxRedemptions": 0}'
 ```
@@ -461,7 +461,7 @@ Every receipt-line discount carries a `coupons` array listing the coupons that a
 
 ```bash
 curl -X GET -u ":banana" \
-  "example.app.heads.com/api/v1/receipts/com.example.receiptId=R-12345~with(items)"
+  "https://example.app.heads.com/api/v1/receipts/com.example.receiptId=R-12345~with(items)"
 ```
 
 Excerpt of the response:
@@ -486,7 +486,7 @@ A stackable coupon that fires on multiple lines appears once per line — each l
 ### Deleting a Coupon
 
 ```bash
-curl -X DELETE -u ":banana" "example.app.heads.com/api/v1/discount-coupons/com.heads.seedID=summer-single"
+curl -X DELETE -u ":banana" "https://example.app.heads.com/api/v1/discount-coupons/com.heads.seedID=summer-single"
 ```
 
 Deletion is rejected if the coupon is still referenced by any rule's `coupon.include`/`exclude`. Unlink it first (PATCH each rule) or, more typically, force-disable via `maxRedemptions: 0` and leave it linked for historical reporting.

@@ -50,7 +50,7 @@ https://example.app.heads.com/api/v1
 
 **Health Check:**
 ```bash
-curl -u ":banana" "example.app.heads.com/api/v1/void"
+curl -u ":banana" "https://example.app.heads.com/api/v1/void"
 ```
 
 A successful response confirms the API is running and your authentication works.
@@ -63,10 +63,10 @@ The simplest method for local development:
 
 ```bash
 # Via Basic Auth (recommended - password only, empty username)
-curl -u ":banana" "example.app.heads.com/api/v1/agents"
+curl -u ":banana" "https://example.app.heads.com/api/v1/agents"
 
 # Via header
-curl -H "X-Api-Key: banana" "example.app.heads.com/api/v1/agents"
+curl -H "X-Api-Key: banana" "https://example.app.heads.com/api/v1/agents"
 ```
 
 #### Option B: OAuth 2.0 (Production)
@@ -75,12 +75,12 @@ For production systems using client credentials:
 
 ```bash
 # 1. Get token
-curl -X POST "example.app.heads.com/oauth2/v1/token" \
+curl -X POST "https://example.app.heads.com/oauth2/v1/token" \
   -H "Content-Type: application/x-www-form-urlencoded" \
   -d "grant_type=client_credentials&client_id=YOUR_ID&client_secret=YOUR_SECRET"
 
 # 2. Use token
-curl -H "Authorization: Bearer YOUR_TOKEN" "example.app.heads.com/api/v1/agents"
+curl -H "Authorization: Bearer YOUR_TOKEN" "https://example.app.heads.com/api/v1/agents"
 ```
 
 #### When to Use Which
@@ -133,20 +133,20 @@ Unknown 500 errors return a simpler body without `@type`:
 **Using Operators (Recommended):**
 ```bash
 # First 10 results
-curl -u ":banana" "example.app.heads.com/api/v1/products~take(10)"
+curl -u ":banana" "https://example.app.heads.com/api/v1/products~take(10)"
 
 # Skip 20, take next 10
-curl -u ":banana" "example.app.heads.com/api/v1/products~skip(20)~take(10)"
+curl -u ":banana" "https://example.app.heads.com/api/v1/products~skip(20)~take(10)"
 ```
 
 **Using Query Parameters:**
 ```bash
-curl -u ":banana" "example.app.heads.com/api/v1/products?limit=10&offset=20"
+curl -u ":banana" "https://example.app.heads.com/api/v1/products?limit=10&offset=20"
 ```
 
 **Important:** There is no `totalCount` in list responses. To count items:
 ```bash
-curl -u ":banana" "example.app.heads.com/api/v1/products~count"
+curl -u ":banana" "https://example.app.heads.com/api/v1/products~count"
 ```
 
 ---
@@ -164,17 +164,17 @@ curl -u ":banana" "example.app.heads.com/api/v1/products~count"
 
 **Step 1: Verify stock place exists and has owner**
 ```bash
-curl -u ":banana" "example.app.heads.com/api/v1/stock-places/com.test.placeId=WAREHOUSE-001~with(owner)"
+curl -u ":banana" "https://example.app.heads.com/api/v1/stock-places/com.test.placeId=WAREHOUSE-001~with(owner)"
 ```
 
 **Step 2: Verify adjustment reason exists**
 ```bash
-curl -u ":banana" "example.app.heads.com/api/v1/stock-adjustment-reasons"
+curl -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustment-reasons"
 ```
 
 **Step 3: Create the adjustment**
 ```bash
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/stock-adjustments" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustments" \
   -H "Content-Type: application/json" \
   -d '{
     "timestamp": "2025-12-20T10:00:00Z",
@@ -224,7 +224,7 @@ Creating order?
 
 **Create order with quantity-based items:**
 ```bash
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/trade-orders" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/trade-orders" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.test.orderId": "ORD-2024-001"},
@@ -303,7 +303,7 @@ For serialized products (devices, SIM cards), use `instances` instead of `quanti
 **Via Trade Order Actions (Recommended):**
 
 ```bash
-curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/trade-orders/com.test.orderId=ORD-2024-001" \
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/trade-orders/com.test.orderId=ORD-2024-001" \
   -H "Content-Type: application/json" \
   -d '{
     "actions": {
@@ -341,7 +341,7 @@ curl -X PATCH -u ":banana" "example.app.heads.com/api/v1/trade-orders/com.test.o
 Receipt creation is used for importing receipt data from external systems. All fields below are required:
 
 ```bash
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/receipts" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/receipts" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"receiptID": "RCP-2024-00001"},
@@ -423,7 +423,7 @@ Users must be linked to an existing agent (person). First create or identify the
 
 ```bash
 # Step 1: Create the person (if not exists)
-curl -X PUT -u ":banana" "example.app.heads.com/api/v1/people/com.test.personId=PERSON-001" \
+curl -X PUT -u ":banana" "https://example.app.heads.com/api/v1/people/com.test.personId=PERSON-001" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.test.personId": "PERSON-001"},
@@ -432,7 +432,7 @@ curl -X PUT -u ":banana" "example.app.heads.com/api/v1/people/com.test.personId=
   }'
 
 # Step 2: Create the user linked to the person
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/users" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/users" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.test.userId": "USER-001"},
@@ -444,7 +444,7 @@ curl -X POST -u ":banana" "example.app.heads.com/api/v1/users" \
 
 **Assign Role to User:**
 ```bash
-curl -X POST -u ":banana" "example.app.heads.com/api/v1/users/com.test.userId=USER-001/roleAssignments" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/users/com.test.userId=USER-001/roleAssignments" \
   -H "Content-Type: application/json" \
   -d '{
     "role": {"identifiers": {"userRoleID": "cashier"}},
@@ -635,14 +635,14 @@ Body: { "modifiedTag": "2025-12-17" }
 
 **Trade Order Finder Example:**
 ```bash
-curl -X PUT -u ":banana" "example.app.heads.com/api/v1/trade-orders/@find/results" \
+curl -X PUT -u ":banana" "https://example.app.heads.com/api/v1/trade-orders/@find/results" \
   -H "Content-Type: application/json" \
   -d '{"modifiedTag": "2025-12-17"}'
 ```
 
 **Agent Finder Example (by email):**
 ```bash
-curl -X PUT -u ":banana" "example.app.heads.com/api/v1/agents/@find/results" \
+curl -X PUT -u ":banana" "https://example.app.heads.com/api/v1/agents/@find/results" \
   -H "Content-Type: application/json" \
   -d '{"email": "john@example.com"}'
 ```
@@ -691,7 +691,7 @@ For large result sets, consider using NDJSON format for streaming:
 ```bash
 # NDJSON streaming - one object per line (recommended for large result sets)
 curl -u ":banana" -H "Accept: application/x-ndjson" \
-  "example.app.heads.com/api/v1/products~take(100)"
+  "https://example.app.heads.com/api/v1/products~take(100)"
 ```
 
 **Response Format Modes:**
@@ -726,10 +726,10 @@ Transform data using mapped types:
 
 ```bash
 # Export receipts as CSV format
-curl -u ":banana" "example.app.heads.com/api/v1/receipts/after/-=24~map(com.heads.receipt-csv)"
+curl -u ":banana" "https://example.app.heads.com/api/v1/receipts/after/-=24~map(com.heads.receipt-csv)"
 
 # Bundle receipts into a single result using array-body mapped type with $first
-curl -u ":banana" "example.app.heads.com/api/v1/receipts~map(com.heads.receipts-zip)"
+curl -u ":banana" "https://example.app.heads.com/api/v1/receipts~map(com.heads.receipts-zip)"
 ```
 
 > **Note:** `~map` returns **one result per source item**. To aggregate a collection into a single result, use an array-body mapped type ending with `"$first"` (see [Mapped Types Reference](../reference/mapped-types.md)). The legacy `@merge` directive is no longer supported.
@@ -737,7 +737,7 @@ curl -u ":banana" "example.app.heads.com/api/v1/receipts~map(com.heads.receipts-
 ### 7.5 Bulk Import (NDJSON)
 
 ```bash
-curl -X PUT -u ":banana" "example.app.heads.com/api/v1/products" \
+curl -X PUT -u ":banana" "https://example.app.heads.com/api/v1/products" \
   -H "Content-Type: application/x-ndjson" \
   --data-binary @products.ndjson
 ```
@@ -807,17 +807,17 @@ When something doesn't work:
 
 1. **Authentication working?**
    ```bash
-   curl -u ":banana" "example.app.heads.com/api/v1/void"
+   curl -u ":banana" "https://example.app.heads.com/api/v1/void"
    ```
 
 2. **Endpoint exists?**
    ```bash
    # Check OpenAPI spec for available endpoints
-   curl -u ":banana" "example.app.heads.com/api/v1/openapi.json"
+   curl -u ":banana" "https://example.app.heads.com/api/v1/openapi.json"
 
    # Or query the elements API for schema introspection
-   curl -u ":banana" "example.app.heads.com/api/v1/elements/types"
-   curl -u ":banana" "example.app.heads.com/api/v1/elements/properties"
+   curl -u ":banana" "https://example.app.heads.com/api/v1/elements/types"
+   curl -u ":banana" "https://example.app.heads.com/api/v1/elements/properties"
    ```
 
 3. **Referenced objects exist?**
