@@ -47,7 +47,7 @@ GET /v1/sync-webhooks/com.myapp.hookId=product-sync
 | Field | Type | Description |
 |-------|------|-------------|
 | `in` | request | The API request to fetch source data |
-| `out` | request | The external request to send transformed data |
+| `out` | request \| webhook output | The external delivery target. Either an HTTP request (legacy flat shape with `method`/`url`/`auth`/`headers`, or the explicit `{ "http": { ... } }` form) or a direct SQL Server write via `{ "tds": { ... } }`. Use one or the other — specifying both `http` and `tds` is rejected on write. |
 | `map` | mapped type | Reference to a mapped type for data transformation |
 | `then` | object | Actions to perform on source objects after successful sync |
 
@@ -57,8 +57,13 @@ GET /v1/sync-webhooks/com.myapp.hookId=product-sync
 |-------|------|-------------|
 | `when` | string | API request URL that returns a date-time for the next run |
 | `repeat` | boolean | Whether to reschedule after each successful run |
+| `lastWhen` | string (read-only) | The previous `when` value, cached when `when` is changed or cleared due to errors. Used by [`reactivate`](#operator-methods). |
 | `next` | date-time (read-only) | The next scheduled execution time |
-| `last` | date-time (read-only) | The last execution time |
+| `last` | date-time (read-only) | Legacy alias for `lastStart`, kept for backwards compatibility. Prefer `lastStart` / `lastFinished` for new consumers. |
+| `lastStart` | date-time (read-only) | When the last successful run started fetching its `in` selection. Advances only on success — useful as the lower bound for delta queries (e.g. `{$this/lastStart}` in URL templates). |
+| `lastFinished` | date-time (read-only) | When the last run finished, regardless of success. Pair with `lastStart` for run-window observability. |
+| `lastSuccess` | date-time (read-only) | When the last successful run finished. Only advances on success — answers "when was this webhook last healthy?". |
+| `lastFailed` | date-time (read-only) | When the last failed run finished. Only advances on failure. Pair with `lastSuccess` for at-a-glance health ("last error: 12 min ago"). |
 
 ### Retry Configuration
 
@@ -73,7 +78,85 @@ GET /v1/sync-webhooks/com.myapp.hookId=product-sync
 | Field | Type | Description |
 |-------|------|-------------|
 | `authorizedScopes` | string[] | API scopes the webhook is authorized to use |
+| `oauth2Client` | object | The OAuth2 client this webhook authenticates as for internal API calls. Its `node` (tenant) and `scopes` define the identity and authorization used when resolving `in` URLs and `then.set` mutations. Required. |
 | `verboseLogging` | boolean | Enable detailed logging for debugging |
+
+### Per-webhook Configuration Store
+
+Two parallel maps hold per-webhook configuration that the webhook's URL templates and `resolveBody` selectors can read at run time:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `secrets` | map of namespaced keys → JSON values | **Sensitive** per-webhook configuration: tokens, passwords, keys. Stored in a separate secret store, **masked as `********` in API responses** unless the caller has elevated read scope. |
+| `variables` | map of namespaced keys → JSON values | **Non-sensitive** per-webhook configuration: page sizes, base URLs, tenant codes, region selectors, feature flags. Stored as a regular property and **returned verbatim in API responses — never masked**. |
+
+Both share the same shape and write semantics:
+
+- **Keys must be namespaced** (e.g. `com.example.tenantCode`). Non-namespaced keys are filtered out with a lenient skip.
+- **Values can be any JSON** (`dynamic?`).
+- **PATCH merges into the existing map.** PATCHing `{secrets: {a: 1}}` adds key `a`; existing keys stay. Same for `variables`. To clear an entry, set its value to `null` (or use the sub-resource — see below).
+- **Sub-resource:** `/v1/sync-webhooks/{id}/secrets` and `/v1/sync-webhooks/{id}/variables` both support GET / PATCH / PUT (full round-trip).
+- **Inline at create time:** `POST /v1/sync-webhooks` accepts both maps in the request body.
+- **Excluded from default reads.** Neither is part of the default `essential` field set; request them with `~with(secrets,variables)` or `~just(secrets,variables)`.
+
+Both are reachable from URL templates and `resolveBody` selectors as `{api/v1/context/webhook/secrets/<key>}` and `{api/v1/context/webhook/variables/<key>}` — see [URL Template Variables](#url-template-variables).
+
+> **When to use which.** Use `secrets` for anything you would not want logged or returned to a non-admin reader (API tokens, basic-auth passwords). Use `variables` for everything else — the values round-trip verbatim, so integrators can read them back to verify configuration.
+
+### Operator Methods
+
+The webhook resource exposes a few operator methods callable via POST against the resource (or as method-form PATCHes — see your tenant's `/api-docs`):
+
+| Method | Effect |
+|--------|--------|
+| `runOnce` | Trigger a one-shot run. Pass `true` to schedule it ~3 s from now, or a non-negative number `N` to schedule it `N` seconds from now. |
+| `reactivate` | Reactivate a paused or errored webhook by restoring its previous schedule from `lastWhen`. Clears `error` and resets `attempts` to 0. |
+| `reset` | Clear all `last*` timestamps (`last`, `lastStart`, `lastFinished`, `lastSuccess`, `lastFailed`). Forces the next run to behave as a full sync — delta queries that key off `lastStart` (e.g. `{$this/lastStart}`) will see no lower bound and re-fetch everything. |
+| `catchUp` | Mark the webhook as if it had just completed a successful run. Sets `last`, `lastStart`, `lastFinished`, and `lastSuccess` to *now*; clears `error`, `attempts`, and `lastFailed`. Use this to activate a webhook on a system with existing historical data without replaying that history. Inverse of `reset`. |
+| `clearProgress` | Clear any pending resume snapshot in `resumeState`, so the next run starts from page 1. See [Resume After Failure](#resume-after-failure). |
+
+### Sync-State Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `resumeState` | object (read-only) | The pending resume snapshot, if any. Empty when there's no interrupted run to resume — i.e. either the webhook hasn't run, the last run completed cleanly, or its `out` request isn't marked `idempotent`. When present, contains the strategy that was active and the saved continuation token (`cursor` resolved request fragments, or `linkHeader` / `nextUrl` URL). Use it to diagnose stalled paginated runs; clear with `clearProgress` to force a full restart. See [Resume After Failure](#resume-after-failure). |
+
+---
+
+## URL Template Variables
+
+The `in.url`, `out.url`, and `resolveBody` selectors support template variables resolved against API resources at run time. Use the `{path}` syntax with `/` as the path separator.
+
+**Per-item variables (in `out` requests):** resolved against the unmapped output item.
+
+```
+"url": "https://api.vendor.example.com/products/{identifiers/com.example.sku}"
+```
+
+**Global virtual paths:**
+
+| Path | Resolves to |
+|------|-------------|
+| `{api/v1/uuid}` | A random UUID. Append `..N` to truncate to the first N characters (e.g. `{api/v1/uuid/..8}`). |
+| `{api/v1/now}` | The current ISO timestamp. |
+
+**Webhook-context variables** (during execution, the running webhook is available as `$this` and via `api/v1/context/webhook/`):
+
+| Path | Resolves to |
+|------|-------------|
+| `{$this/last}` / `{api/v1/context/webhook/last}` | The legacy alias for `lastStart` — the start time of the previous successful run. Use as a lower bound for delta sync. |
+| `{$this/lastStart}` / `{api/v1/context/webhook/lastStart}` | The start time of the previous successful run. Equivalent to `last`. |
+| `{$this/lastFinished}` / `{api/v1/context/webhook/lastFinished}` | When the previous run finished, regardless of outcome. |
+| `{$this/lastSuccess}` / `{api/v1/context/webhook/lastSuccess}` | When the previous successful run finished. |
+| `{$this/lastFailed}` / `{api/v1/context/webhook/lastFailed}` | When the previous failed run finished. |
+| `{$this/name}` / `{api/v1/context/webhook/name}` | The webhook's `name`. |
+| `{$this/attempts}` / `{api/v1/context/webhook/attempts}` | The current attempt count. |
+| `{api/v1/context/webhook/secrets/<namespaced.key>}` | The value of a `secrets` entry by namespaced key. |
+| `{api/v1/context/webhook/variables/<namespaced.key>}` | The value of a `variables` entry by namespaced key. |
+
+Values are URL-encoded automatically.
+
+> **Delta sync pattern.** Combine `{$this/lastStart}` with a server-side filter to fetch only items modified since the last successful run: `https://api.vendor.example.com/products?modifiedSince={$this/lastStart}`. On the first run `lastStart` is empty; design the upstream query so an empty value behaves as "fetch everything", or pre-populate via `catchUp` to start from a known boundary.
 
 ---
 
@@ -635,8 +718,32 @@ When a webhook execution fails:
 On success:
 - `attempts` is reset to **0**
 - `error` is cleared
+- `lastStart`, `lastFinished`, and `lastSuccess` are updated
 - If `repeat` is `true`: the webhook reschedules using `when`
 - If `repeat` is `false`: `when` is set to `"never"` (one-time execution complete)
+
+### Resume After Failure
+
+When the `out` request is marked `idempotent: true` **and** the `in` request uses `cursor` or `linkHeader` pagination, the webhook can resume an interrupted run from the page boundary it failed on rather than restarting from page 1.
+
+How it works:
+
+1. After each successful page push, the engine snapshots the active continuation token into `resumeState`.
+2. If a subsequent page fails, retries pick up from the snapshot rather than re-running pages 1..N-1.
+3. On the first fully-successful run, `resumeState` is cleared.
+4. To force a full restart (e.g. after upstream data changes invalidate the cursor), call [`clearProgress`](#operator-methods).
+
+`out.idempotent` defaults to `false`. Internal COS PUTs are always idempotent regardless. External POST and TDS targets typically need explicit confirmation that re-sending items 1..N-1 of a failed page won't duplicate side-effects — opt in by setting `out.idempotent: true` (or `out.http.idempotent: true` in the explicit-shape form).
+
+```bash
+# Inspect a stalled run's resume snapshot
+curl -X GET -u ":banana" \
+  "https://example.app.heads.com/api/v1/sync-webhooks/com.myapp.id=my-webhook~with(resumeState)"
+
+# Force the next run to start from page 1
+curl -X POST -u ":banana" \
+  "https://example.app.heads.com/api/v1/sync-webhooks/com.myapp.id=my-webhook/clearProgress"
+```
 
 ### Common Failure Causes
 
@@ -806,6 +913,37 @@ For outgoing requests that require OAuth 2.0 client credentials:
 ```
 
 The webhook automatically fetches and caches access tokens, refreshing them when they expire.
+
+### Per-Webhook Variables in URL Templates
+
+Per-webhook `variables` (see [Per-webhook Configuration Store](#per-webhook-configuration-store)) let you parameterise URL templates with non-sensitive configuration that varies per environment — base URLs, page sizes, tenant codes, region selectors, feature flags. Values round-trip verbatim, so integrators can read them back to verify configuration.
+
+```bash
+# Set per-environment variables on the webhook
+curl -X PATCH -u ":banana" \
+  "https://example.app.heads.com/api/v1/sync-webhooks/com.example.id=product-sync" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "variables": {
+      "com.example.tenantCode": "ACME",
+      "com.example.pageSize": 100
+    }
+  }'
+
+# The webhook's `in.url` references them via the variables lookup
+# → resolves to:  https://api.vendor.example.com/products?tenant=ACME&limit=100
+curl -X PATCH -u ":banana" \
+  "https://example.app.heads.com/api/v1/sync-webhooks/com.example.id=product-sync" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "in": {
+      "url": "https://api.vendor.example.com/products?tenant={api/v1/context/webhook/variables/com.example.tenantCode}&limit={api/v1/context/webhook/variables/com.example.pageSize}",
+      "method": "GET"
+    }
+  }'
+```
+
+For sensitive values (tokens, passwords) use `secrets` instead — same shape, but masked in API responses.
 
 ### Pause and Stop Behavior
 
