@@ -47,7 +47,7 @@ GET /v1/sync-webhooks/com.myapp.hookId=product-sync
 | Field | Type | Description |
 |-------|------|-------------|
 | `in` | request | The API request to fetch source data |
-| `out` | request \| webhook output | The external delivery target. Either an HTTP request (legacy flat shape with `method`/`url`/`auth`/`headers`, or the explicit `{ "http": { ... } }` form) or a direct SQL Server write via `{ "tds": { ... } }`. Use one or the other — specifying both `http` and `tds` is rejected on write. |
+| `out` | request \| webhook output | The external delivery target. Either an HTTP request (legacy flat shape with `method`/`url`/`auth`/`headers`, or the explicit `{ "http": { ... } }` form) or a direct SQL Server write via `{ "tds": { ... } }`. Use one or the other — specifying both `http` and `tds` is rejected on write. **TDS targets do not support [resume-from-failure](#resume-after-failure)**: the entire batch is re-sent on retry, so make sure the target schema is idempotent (e.g. use `MERGE` rather than blind `INSERT`s). |
 | `map` | mapped type | Reference to a mapped type for data transformation |
 | `then` | object | Actions to perform on source objects after successful sync |
 
@@ -60,7 +60,7 @@ GET /v1/sync-webhooks/com.myapp.hookId=product-sync
 | `lastWhen` | string (read-only) | The previous `when` value, cached when `when` is changed or cleared due to errors. Used by [`reactivate`](#operator-methods). |
 | `next` | date-time (read-only) | The next scheduled execution time |
 | `last` | date-time (read-only) | Legacy alias for `lastStart`, kept for backwards compatibility. Prefer `lastStart` / `lastFinished` for new consumers. |
-| `lastStart` | date-time (read-only) | When the last successful run started fetching its `in` selection. Advances only on success — useful as the lower bound for delta queries (e.g. `{$this/lastStart}` in URL templates). |
+| `lastStart` | date-time (read-only) | When the last successful run started fetching its `in` selection. Advances only on success — useful as the lower bound for delta queries (e.g. `{api/v1/context/webhook/lastStart}` in URL templates). |
 | `lastFinished` | date-time (read-only) | When the last run finished, regardless of success. Pair with `lastStart` for run-window observability. |
 | `lastSuccess` | date-time (read-only) | When the last successful run finished. Only advances on success — answers "when was this webhook last healthy?". |
 | `lastFailed` | date-time (read-only) | When the last failed run finished. Only advances on failure. Pair with `lastSuccess` for at-a-glance health ("last error: 12 min ago"). |
@@ -78,7 +78,7 @@ GET /v1/sync-webhooks/com.myapp.hookId=product-sync
 | Field | Type | Description |
 |-------|------|-------------|
 | `authorizedScopes` | string[] | API scopes the webhook is authorized to use |
-| `oauth2Client` | object | The OAuth2 client this webhook authenticates as for internal API calls. Its `node` (tenant) and `scopes` define the identity and authorization used when resolving `in` URLs and `then.set` mutations. Required. |
+| `oauth2Client` | object | The OAuth2 client this webhook authenticates as for internal API calls. Its `node` (tenant) and `scopes` define the identity and authorization used when resolving `in` URLs and `then.set` mutations. Required for webhooks that touch internal COS APIs; optional for external-only webhooks. |
 | `verboseLogging` | boolean | Enable detailed logging for debugging |
 
 ### Per-webhook Configuration Store
@@ -87,7 +87,7 @@ Two parallel maps hold per-webhook configuration that the webhook's URL template
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `secrets` | map of namespaced keys → JSON values | **Sensitive** per-webhook configuration: tokens, passwords, keys. Stored in a separate secret store, **masked as `********` in API responses** unless the caller has elevated read scope. |
+| `secrets` | map of namespaced keys → JSON values | **Sensitive** per-webhook configuration: tokens, passwords, keys. Stored in a separate secret store and **masked as `********` in any API response** — secrets are only ever readable in plaintext by the webhook itself, at execution time, via `{api/v1/context/webhook/secrets/<namespaced.key>}` URL-template lookups or `"api/v1/context/webhook/secrets/<namespaced.key>"` `resolveBody` selectors. |
 | `variables` | map of namespaced keys → JSON values | **Non-sensitive** per-webhook configuration: page sizes, base URLs, tenant codes, region selectors, feature flags. Stored as a regular property and **returned verbatim in API responses — never masked**. |
 
 Both share the same shape and write semantics:
@@ -111,9 +111,23 @@ The webhook resource exposes a few operator methods callable via POST against th
 |--------|--------|
 | `runOnce` | Trigger a one-shot run. Pass `true` to schedule it ~3 s from now, or a non-negative number `N` to schedule it `N` seconds from now. |
 | `reactivate` | Reactivate a paused or errored webhook by restoring its previous schedule from `lastWhen`. Clears `error` and resets `attempts` to 0. |
-| `reset` | Clear all `last*` timestamps (`last`, `lastStart`, `lastFinished`, `lastSuccess`, `lastFailed`). Forces the next run to behave as a full sync — delta queries that key off `lastStart` (e.g. `{$this/lastStart}`) will see no lower bound and re-fetch everything. |
+| `reset` | Clear all `last*` timestamps (`last`, `lastStart`, `lastFinished`, `lastSuccess`, `lastFailed`). Forces the next run to behave as a full sync — delta queries that key off `lastStart` (e.g. `{api/v1/context/webhook/lastStart}`) will see no lower bound and re-fetch everything. |
 | `catchUp` | Mark the webhook as if it had just completed a successful run. Sets `last`, `lastStart`, `lastFinished`, and `lastSuccess` to *now*; clears `error`, `attempts`, and `lastFailed`. Use this to activate a webhook on a system with existing historical data without replaying that history. Inverse of `reset`. |
 | `clearProgress` | Clear any pending resume snapshot in `resumeState`, so the next run starts from page 1. See [Resume After Failure](#resume-after-failure). |
+
+```bash
+# Run immediately (well, ~3 s from now).
+curl -X PATCH -u ":banana" \
+  "https://example.app.heads.com/api/v1/sync-webhooks/com.myapp.id=my-webhook" \
+  -H "Content-Type: application/json" \
+  -d '{"runOnce": true}'
+
+# Run 60 seconds from now.
+curl -X PATCH -u ":banana" \
+  "https://example.app.heads.com/api/v1/sync-webhooks/com.myapp.id=my-webhook" \
+  -H "Content-Type: application/json" \
+  -d '{"runOnce": 60}'
+```
 
 ### Sync-State Fields
 
@@ -140,23 +154,23 @@ The `in.url`, `out.url`, and `resolveBody` selectors support template variables 
 | `{api/v1/uuid}` | A random UUID. Append `..N` to truncate to the first N characters (e.g. `{api/v1/uuid/..8}`). |
 | `{api/v1/now}` | The current ISO timestamp. |
 
-**Webhook-context variables** (during execution, the running webhook is available as `$this` and via `api/v1/context/webhook/`):
+**Webhook-context variables** (during execution, the running webhook is reachable via the `api/v1/context/webhook/` path):
 
 | Path | Resolves to |
 |------|-------------|
-| `{$this/last}` / `{api/v1/context/webhook/last}` | The legacy alias for `lastStart` — the start time of the previous successful run. Use as a lower bound for delta sync. |
-| `{$this/lastStart}` / `{api/v1/context/webhook/lastStart}` | The start time of the previous successful run. Equivalent to `last`. |
-| `{$this/lastFinished}` / `{api/v1/context/webhook/lastFinished}` | When the previous run finished, regardless of outcome. |
-| `{$this/lastSuccess}` / `{api/v1/context/webhook/lastSuccess}` | When the previous successful run finished. |
-| `{$this/lastFailed}` / `{api/v1/context/webhook/lastFailed}` | When the previous failed run finished. |
-| `{$this/name}` / `{api/v1/context/webhook/name}` | The webhook's `name`. |
-| `{$this/attempts}` / `{api/v1/context/webhook/attempts}` | The current attempt count. |
+| `{api/v1/context/webhook/lastStart}` | The start time of the previous successful run. Recommended lower bound for delta sync. |
+| `{api/v1/context/webhook/last}` | Legacy alias for `lastStart`. Prefer `lastStart` for new integrations. |
+| `{api/v1/context/webhook/lastFinished}` | When the previous run finished, regardless of outcome. |
+| `{api/v1/context/webhook/lastSuccess}` | When the previous successful run finished. |
+| `{api/v1/context/webhook/lastFailed}` | When the previous failed run finished. |
+| `{api/v1/context/webhook/name}` | The webhook's `name`. |
+| `{api/v1/context/webhook/attempts}` | The current attempt count. |
 | `{api/v1/context/webhook/secrets/<namespaced.key>}` | The value of a `secrets` entry by namespaced key. |
 | `{api/v1/context/webhook/variables/<namespaced.key>}` | The value of a `variables` entry by namespaced key. |
 
 Values are URL-encoded automatically.
 
-> **Delta sync pattern.** Combine `{$this/lastStart}` with a server-side filter to fetch only items modified since the last successful run: `https://api.vendor.example.com/products?modifiedSince={$this/lastStart}`. On the first run `lastStart` is empty; design the upstream query so an empty value behaves as "fetch everything", or pre-populate via `catchUp` to start from a known boundary.
+> **Delta sync pattern.** Combine `{api/v1/context/webhook/lastStart}` with a server-side filter to fetch only items modified since the last successful run: `https://api.vendor.example.com/products?modifiedSince={api/v1/context/webhook/lastStart}`. `lastStart` is the canonical delta-sync lower bound; `last` is a legacy alias and should not be used for new integrations. On the first run `lastStart` is empty; design the upstream query so an empty value behaves as "fetch everything", or pre-populate via `catchUp` to start from a known boundary.
 
 ---
 
@@ -733,7 +747,9 @@ How it works:
 3. On the first fully-successful run, `resumeState` is cleared.
 4. To force a full restart (e.g. after upstream data changes invalidate the cursor), call [`clearProgress`](#operator-methods).
 
-`out.idempotent` defaults to `false`. Internal COS PUTs are always idempotent regardless. External POST and TDS targets typically need explicit confirmation that re-sending items 1..N-1 of a failed page won't duplicate side-effects — opt in by setting `out.idempotent: true` (or `out.http.idempotent: true` in the explicit-shape form).
+`out.idempotent` defaults to `false`. Internal COS PUTs are always idempotent regardless. External POST targets need explicit confirmation that re-sending items 1..N-1 of a failed page won't duplicate side-effects: opt in by setting `out.http.idempotent: true` (or `out.idempotent: true` in the legacy flat form).
+
+**TDS targets do not support resume-from-failure** — the entire batch is re-sent on the next attempt, regardless of where in the batch it failed. Integrators using TDS should ensure their target schema is idempotent (e.g. `MERGE` statements rather than blind `INSERT`s), or accept the duplicate-write risk on retries.
 
 ```bash
 # Inspect a stalled run's resume snapshot
