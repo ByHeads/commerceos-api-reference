@@ -390,6 +390,80 @@ Or calculate from items:
 }
 ```
 
+### Coupon Uses on Receipts
+
+When a discount on a receipt item was triggered by a coupon, the discount entry carries a `couponUses` array listing the coupon (or coupons) that activated it. This is the right place to look for *"which coupon was used to get this discount on this receipt"* — no second request is required.
+
+**Where coupon uses live**
+
+```
+receipt.items[].discounts[].couponUses[]
+```
+
+**Fields**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `coupon` | reference | The discount coupon that activated this discount. Resolves to the standard discount-coupon shape; expand with `~with(coupon)` for the full coupon record. |
+| `enteredCode` | string | The literal code the customer entered or that was scanned at the POS. May differ from the coupon's canonical `code` (case, leading zeros, vendor-specific prefixes, etc.). |
+
+`couponUses` is empty (or absent) on automatic discounts and on cashier-applied manual discounts. When one — or several — coupons contributed to the same discount line, each appears as its own `couponUses` entry.
+
+> **`enteredCode` vs the coupon's own `code`.** When reconciling receipt data against an external loyalty system or CRM, prefer `enteredCode` — that is the exact string the customer presented. The coupon's canonical `code` is whatever is stored on the coupon record (for [pattern coupons](../guide/examples/discount-coupons.md#literal-codes-vs-pattern-codes), a regular expression rather than the literal customer-supplied string).
+
+**Expansion example**
+
+Fetch a receipt with its items, discounts, and the coupon record behind each coupon use in a single request:
+
+```bash
+curl -X GET -u ":banana" \
+  "https://example.app.heads.com/api/v1/receipts/com.example.receiptId=REC-2026-001~with(items~with(discounts~with(couponUses~with(coupon))))"
+```
+
+**Sample response (truncated to the relevant slice)**
+
+```jsonc
+{
+  "items": [{
+    "discounts": [{
+      "reason": { "name": "Summer 20%" },
+      "amount": "-50.00",
+      "manual": false,
+      "rule": { "identifiers": { "com.example.ruleId": "summer-20pct" } },
+      "couponUses": [{
+        "coupon": { "identifiers": { "com.example.couponId": "summer-launch" } },
+        "enteredCode": "SUMMER20"
+      }]
+    }]
+  }]
+}
+```
+
+**Listing every coupon used on a receipt**
+
+Flatten across `items[].discounts[].couponUses[]` and de-duplicate by coupon identifier:
+
+```bash
+curl -sS -u ":banana" \
+  "https://example.app.heads.com/api/v1/receipts/com.example.receiptId=REC-2026-001~with(items~with(discounts~with(couponUses~with(coupon))))" \
+  | jq '[ .items[].discounts[].couponUses[]?
+          | { enteredCode,
+              couponId: .coupon.identifiers."com.example.couponId" } ]
+        | unique_by(.couponId)'
+```
+
+The same flatten with a `select(...)` filter answers *"did the customer use coupon X on this receipt?"*:
+
+```bash
+curl -sS -u ":banana" \
+  "https://example.app.heads.com/api/v1/receipts/com.example.receiptId=REC-2026-001~with(items~with(discounts~with(couponUses~with(coupon))))" \
+  | jq '[ .items[].discounts[].couponUses[]?
+          | select(.coupon.identifiers."com.example.couponId" == "summer-launch") ]
+        | length > 0'
+```
+
+For the broader picture — what a coupon entity looks like, how literal codes differ from pattern (regex) codes, redemption counting, and the operational surface — see [Discount Coupons](../guide/examples/discount-coupons.md).
+
 ---
 
 ## Instances (IMEI/Serial Data)
