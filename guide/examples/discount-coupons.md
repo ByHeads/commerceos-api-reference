@@ -457,11 +457,11 @@ Unlinking is appropriate when the campaign is permanently over and you want the 
 
 ### Inspecting Redemption History on Receipts
 
-Every receipt-line discount carries a `coupons` array listing the coupons that activated the discount on that line:
+Every receipt-line discount carries a `couponUses` array listing the coupon (or coupons) that activated the discount on that line. Each entry pairs the coupon with the exact code string the customer presented. To surface this in a single GET, expand the chain explicitly:
 
 ```bash
 curl -X GET -u ":banana" \
-  "https://example.app.heads.com/api/v1/receipts/com.example.receiptId=R-12345~with(items)"
+  "https://example.app.heads.com/api/v1/receipts/com.example.receiptId=R-12345~with(items~with(discounts~with(couponUses~with(coupon))))"
 ```
 
 Excerpt of the response:
@@ -473,15 +473,22 @@ Excerpt of the response:
       "reason": { "name": "Discount Coupon" },
       "amountInclVat": "5.00",
       "rule": { "identifiers": { "com.heads.seedID": "dc-coupon-rule" } },
-      "coupons": [
-        { "identifiers": { "com.heads.seedID": "dc-single" } }
-      ]
+      "couponUses": [{
+        "coupon":      { "identifiers": { "com.heads.seedID": "dc-single" } },
+        "enteredCode": "DC2026"
+      }]
     }]
   }]
 }
 ```
 
-A stackable coupon that fires on multiple lines appears once per line — each line's `discounts[].coupons[]` independently lists the coupon that activated that line's discount. To aggregate "how often did this coupon redeem," consult the coupon's own `redemptions` counter (one increment per finalized order, regardless of line count).
+Each `couponUses` entry has two fields: `coupon` (a reference to the discount coupon, expandable with `~with(coupon)`) and `enteredCode` (the literal string the customer entered or that was scanned at the POS).
+
+> **`enteredCode` vs the coupon's own `code`.** When reconciling receipt data against an external loyalty system or CRM, prefer `enteredCode` — it is the exact string the customer presented. The coupon's canonical `code` is whatever is stored on the coupon record, which for [pattern coupons](#literal-codes-vs-pattern-codes) is a regular expression rather than the literal customer-supplied string.
+
+A stackable coupon that fires on multiple lines appears once per line — each line's `discounts[].couponUses[]` independently lists the coupon that activated that line's discount. To aggregate "how often did this coupon redeem," consult the coupon's own `redemptions` counter (one increment per finalized order, regardless of line count).
+
+See [Receipts → Coupon Uses on Receipts](../../reference/receipts.md#coupon-uses-on-receipts) for the integrator-facing reference shape, including worked `jq` examples for flattening and filtering.
 
 ### Deleting a Coupon
 
@@ -517,7 +524,7 @@ The first three are **coupon-level** failures and surface at code entry. The fou
 - **Forgetting to put coupon-driven rules in a dedicated phase.** Without their own phase, coupon rules compete with automatic promotions in the same phase — the engine's "minimize total price" optimisation can let one suppress the other unexpectedly. Use a dedicated `discount phase` for coupon rules (the seed uses priority 500).
 - **Reusing a coupon across multiple rules.** This is allowed — the same coupon can appear in many rules' `coupon.include`. Each rule activation increments the coupon's `redemptions` counter. Make the bookkeeping explicit so admins do not double-count.
 - **Writing `redemptions` or `exhausted`.** Both are read-only. Including them in `PUT`/`PATCH` bodies is rejected (or silently ignored — the result is the same: your value is not stored).
-- **Confusing `coupon` (rule field) with `coupons` (receipt field).** On a [discount rule](./discount-rules.md), `coupon` is a singular condition object with `include`/`exclude` arrays of coupon refs. On a [receipt](../../reference/receipts.md) item discount, `coupons` is a plural read-only array of coupon refs that activated that specific discount line.
+- **Confusing `coupon` (rule field) with `couponUses` (receipt field).** On a [discount rule](./discount-rules.md), `coupon` is a singular condition object with `include`/`exclude` arrays of coupon refs. On a [receipt](../../reference/receipts.md#coupon-uses-on-receipts) item discount, `couponUses` is a read-only array of `{ coupon, enteredCode }` entries identifying the coupon(s) that activated that specific discount line.
 
 ---
 
