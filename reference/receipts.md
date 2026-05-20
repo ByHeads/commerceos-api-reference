@@ -405,9 +405,9 @@ receipt.items[].discounts[].couponUses[]
 | Field | Type | Description |
 |-------|------|-------------|
 | `coupon` | reference | The discount coupon that activated this discount. Resolves to the standard discount-coupon shape; expand with `~with(coupon)` for the full coupon record. |
-| `enteredCode` | string | The literal code the customer entered or that was scanned at the POS. May differ from the coupon's canonical `code` (case, leading zeros, vendor-specific prefixes, etc.). |
+| `enteredCode` | string | The literal code the customer entered or that was scanned at the POS. May differ from the coupon's canonical `code` (case, leading zeros, vendor-specific prefixes, etc.). May be absent for coupon uses that were not recorded with a customer-supplied code (e.g., programmatic application). |
 
-`couponUses` is empty (or absent) on automatic discounts and on cashier-applied manual discounts. When one — or several — coupons contributed to the same discount line, each appears as its own `couponUses` entry.
+`couponUses` is populated whenever a coupon (or coupons) activated the discount — most commonly on automatic discounts (`manual: false`) whose rule requires a coupon. It is empty for cashier-applied manual discounts (`manual: true`) and for automatic discounts whose rule fires purely on conditions (no coupon required). If multiple coupons contributed to the same discount line, each is a separate entry in the array.
 
 > **`enteredCode` vs the coupon's own `code`.** When reconciling receipt data against an external loyalty system or CRM, prefer `enteredCode` — that is the exact string the customer presented. The coupon's canonical `code` is whatever is stored on the coupon record (for [pattern coupons](../guide/examples/discount-coupons.md#literal-codes-vs-pattern-codes), a regular expression rather than the literal customer-supplied string).
 
