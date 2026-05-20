@@ -427,7 +427,7 @@ curl -X GET -u ":banana" \
   "items": [{
     "discounts": [{
       "reason": { "name": "Summer 20%" },
-      "amount": "-50.00",
+      "amount": "50.00",
       "manual": false,
       "rule": { "identifiers": { "com.example.ruleId": "summer-20pct" } },
       "couponUses": [{
