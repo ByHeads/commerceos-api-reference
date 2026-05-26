@@ -284,6 +284,100 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/payment-orders/af
 
 ---
 
+## Returns
+
+Three actions drive a trade-order line through its return lifecycle: `commitReturn` (Fulfilled/New → ReturnCommitted), `fulfillReturn` (ReturnCommitted → ReturnFulfilled, with optional restock), and `cancelReturn` (ReturnCommitted → Fulfilled). Money movement is handled separately via a negative `createPayment` — see [Refund Processing](../../reference/working-with/orders.md#refund-processing).
+
+```bash
+# 1. Commit a return on one line item of a fulfilled order
+curl -X PATCH -u ":banana" \
+  "https://example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-2024-001/actions" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "commitReturn": {
+      "items": [{
+        "identifiers": { "key": "{trade-order-item-key}" },
+        "returnParameters": {
+          "reason": { "identifiers": { "com.myapp.id": "defective" } },
+          "complaint": true,
+          "restock": true,
+          "receiptNotes": "Returned per 30-day policy"
+        }
+      }]
+    }
+  }'
+
+# 2. Fulfill the committed return (restocks if restock=true at commit time)
+curl -X PATCH -u ":banana" \
+  "https://example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-2024-001/actions" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "fulfillReturn": {
+      "items": [{ "identifiers": { "key": "{trade-order-item-key}" } }]
+    }
+  }'
+
+# 3. Or, cancel the committed return (customer changed mind, item rejected at receiving, etc.)
+curl -X PATCH -u ":banana" \
+  "https://example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-2024-001/actions" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "cancelReturn": {
+      "items": [{ "identifiers": { "key": "{trade-order-item-key}" } }]
+    }
+  }'
+```
+
+### Returning a Specific IMEI From a Multi-Unit Line
+
+For IMEI-tracked phones, wallet instances, or any case where one specific unit is returned out of a multi-unit line, use the optional `productInstance` field. Resolution honours `identifiers` and `serialNumber`; omit `productInstance` to return the whole line.
+
+```bash
+curl -X PATCH -u ":banana" \
+  "https://example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-2024-001/actions" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "commitReturn": {
+      "items": [{
+        "identifiers": { "key": "{trade-order-item-key}" },
+        "returnParameters": {
+          "reason": { "identifiers": { "com.myapp.id": "defective" } }
+        },
+        "productInstance": {
+          "identifiers": { "key": "{product-instance-key}" },
+          "serialNumber": "IMEI-987654321098765"
+        }
+      }]
+    }
+  }'
+```
+
+### Exchange: Commit a Return with a Replacement Product
+
+`returnParameters.replacement` records that the customer is exchanging for a different SKU. The replacement reference is captured at commit-time alongside the rest of the return parameters.
+
+```bash
+curl -X PATCH -u ":banana" \
+  "https://example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-2024-001/actions" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "commitReturn": {
+      "items": [{
+        "identifiers": { "key": "{trade-order-item-key}" },
+        "returnParameters": {
+          "reason": { "identifiers": { "com.myapp.id": "wrong-size" } },
+          "restock": true,
+          "replacement": { "identifiers": { "com.myapp.sku": "SHIRT-L" } }
+        }
+      }]
+    }
+  }'
+```
+
+> **See also:** [Returns and Refunds reference](../../reference/working-with/orders.md#returns-and-refunds) for the full per-field breakdown, preconditions, and validation behaviour.
+
+---
+
 ## Manual Unit Amounts
 
 Override computed pricing with manual unit amounts (excluding VAT):

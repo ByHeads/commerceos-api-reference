@@ -94,15 +94,20 @@ Trade orders represent sales or purchase transactions between agents. Orders tra
       │
       │ fulfill
       ▼
-┌───────────┐
-│ Fulfilled │
-└─────┬─────┘
-      │
-      │ return flow
-      ▼
-┌────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│ ReturnCommitted│───►│ ReturnFulfilled │    │ ReturnCancelled │
-└────────────────┘    └─────────────────┘    └─────────────────┘
+┌───────────┐◄────────────────────┐
+│ Fulfilled │                     │ cancelReturn
+└─────┬─────┘                     │
+      │                           │
+      │ commitReturn              │
+      ▼                           │
+┌─────────────────┐               │
+│ ReturnCommitted │───────────────┘
+└────────┬────────┘
+         │ fulfillReturn
+         ▼
+┌─────────────────┐
+│ ReturnFulfilled │
+└─────────────────┘
 ```
 
 ### Status Reference
@@ -113,11 +118,10 @@ Trade orders represent sales or purchase transactions between agents. Orders tra
 | `Reserved` | Stock reserved for the order | Committed, Unreserved |
 | `Unreserved` | Reservation released | Reserved |
 | `Committed` | Approved via `tryApprove` | Fulfilled, Cancelled |
-| `Fulfilled` | Fully delivered to customer | ReturnCommitted |
+| `Fulfilled` | Fully delivered to customer | ReturnCommitted (via `commitReturn`) |
 | `Cancelled` | Order cancelled | (terminal) |
-| `ReturnCommitted` | Return initiated | ReturnFulfilled, ReturnCancelled |
+| `ReturnCommitted` | Return committed | ReturnFulfilled (via `fulfillReturn`), Fulfilled (via `cancelReturn`) |
 | `ReturnFulfilled` | Return completed | (terminal) |
-| `ReturnCancelled` | Return cancelled | (terminal) |
 
 > **Note:** Orders can have multiple statuses simultaneously. For example, a partially fulfilled order may show both `Committed` and `Fulfilled` statuses for different line items.
 
@@ -821,6 +825,9 @@ PATCH /v1/trade-orders/{identifier}/actions
 |--------|---------|--------|
 | `tryApprove` | `true` | Commits the order (reserves stock) |
 | `tryCancel` | `true` | Cancels the order (releases reservations) |
+| `commitReturn` | Return commit object | Commits a return for one or more items (Fulfilled/New → ReturnCommitted) |
+| `fulfillReturn` | Return ref object | Fulfills a previously-committed return (ReturnCommitted → ReturnFulfilled; restocks if `restock=true` at commit) |
+| `cancelReturn` | Return ref object | Cancels a previously-committed return (ReturnCommitted → Fulfilled) |
 | `createPayment` | Payment object | Records a payment against the order |
 | `createShipment` | `true` | Creates a shipment order unless a `New` shipment already exists |
 | `changeDeliveryAddress` | Address object | Updates delivery address |
@@ -1253,31 +1260,156 @@ DELETE /v1/trade-orders/com.example.orderId=ORD-001/labels/com.example.labelId=u
 
 ## Returns and Refunds
 
+Returns are driven by three actions on the trade-order item lifecycle (`commitReturn`, `fulfillReturn`, `cancelReturn`). Money movement is handled separately as a negative `createPayment` — see [Refund Processing](#refund-processing) below.
+
 ### Return Flow
 
 ```
 Original Order (Fulfilled)
          │
+         │ commitReturn
          ▼
 ┌─────────────────┐
-│ ReturnCommitted │  (no API action yet)
-└────────┬────────┘
-         │
-    ┌────┴────┐
-    │         │
-    ▼         ▼
-┌─────────────────┐ ┌─────────────────┐
-│ ReturnFulfilled │ │ ReturnCancelled │
-└─────────────────┘ └─────────────────┘
+│ ReturnCommitted │◄──────┐
+└────────┬────────┘       │
+         │                │
+   ┌─────┴─────┐          │
+   │           │          │
+   │ fulfillReturn         │ cancelReturn
+   ▼           ▼          │
+┌─────────────────┐       │
+│ ReturnFulfilled │  ┌────┴──────┐
+└─────────────────┘  │ Fulfilled │ (item is back in original Fulfilled state)
+                     └───────────┘
 ```
 
-### Initiating Returns
+### Committing a Return
 
-> **Note:** There is currently **no API action to initiate returns**. The `initiateReturn` action does not exist in the schema. Returns must be handled through other system workflows or manual processes. The return statuses (`ReturnCommitted`, `ReturnFulfilled`, `ReturnCancelled`) exist as order status values, but the API does not currently expose an action to trigger the return flow.
+`commitReturn` is the entry point: it moves one or more items from `Fulfilled` (or `New`) into `ReturnCommitted`, captures the `returnParameters` (reason, restock, complaint, notes, optional replacement), and locks those parameters in for the lifetime of the return. Use it to initiate any return from outside POS — for example, when an integrator processes a return through a web channel.
+
+```bash
+PATCH /v1/trade-orders/com.example.orderId=ORD-001/actions
+{
+  "commitReturn": {
+    "items": [{
+      "identifiers": { "key": "{trade-order-item-key}" },
+      "returnParameters": {
+        "reason": { "identifiers": { "com.example.id": "defective" } },
+        "complaint": true,
+        "restock": true,
+        "internalNotes": "Customer reported water damage on day 3",
+        "receiptNotes": "Returned per 30-day policy"
+      }
+    }],
+    "returnee": { "identifiers": { "com.example.storeId": "STORE-001" } },
+    "returner": { "identifiers": { "com.example.customerId": "CUST-001" } }
+  }
+}
+```
+
+**Preconditions**
+- Each referenced item must currently be in `Fulfilled` or `New`.
+- Each item must belong to the order in the URL.
+- Each item must carry a `returnParameters` object, and `returnParameters.reason` must reference an existing return reason (look up via `GET /v1/return-reasons`).
+
+**`returnParameters` fields**
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `reason` | return-reason ref | yes | Reference to a configured `ReturnReason`. |
+| `complaint` | `boolean?` | no (default `false`) | Whether the return is a complaint (Swedish: *reklamation*). |
+| `restock` | `boolean?` | no (default `true`) | Whether to restock the returnee's stock at fulfill-time. Only meaningful for `PhysicalObject` product instances. |
+| `replacement` | product ref | no | Optional product issued as a replacement (exchange flows). |
+| `manual` | `boolean?` | no (default `false`) | Whether parameters were chosen manually by a cashier. Integrations should leave this `false`. |
+| `internalNotes` | `string?` | no | Stored in the system; not printed on the customer receipt. |
+| `receiptNotes` | `string?` | no | Printed on the customer receipt. |
+
+**Returnee and returner defaults**
+
+Both `returnee` and `returner` are optional at the request level:
+- `returnee` defaults to the item's original `seller`.
+- `returner` defaults to the item's original `buyer`.
+
+Overrides apply to all items in the batch. If different items need different returnees, make separate PATCH calls.
+
+**Targeting a specific product instance**
+
+Each item entry accepts an optional `productInstance` field for IMEI-tracked or otherwise serialized lines. Resolution honours `identifiers` and `serialNumber`; other product-instance fields (`quantity`, `batch`, `domain`) are accepted in the body but ignored. Omit `productInstance` to return the whole line.
+
+```jsonc
+{
+  "commitReturn": {
+    "items": [{
+      "identifiers": { "key": "{trade-order-item-key}" },
+      "returnParameters": {
+        "reason": { "identifiers": { "com.example.id": "defective" } }
+      },
+      "productInstance": {
+        "identifiers": { "key": "{product-instance-key}" },
+        "serialNumber": "IMEI-987654321098765"
+      }
+    }]
+  }
+}
+```
+
+### Fulfilling a Return
+
+`fulfillReturn` is the completion step: items move from `ReturnCommitted` to `ReturnFulfilled`. If `returnParameters.restock` was `true` at commit-time and the product instance is a `PhysicalObject`, stock is moved back into the returnee's place as part of the same transaction. The `returnParameters` themselves are not re-supplied here — they were locked in at commit-time.
+
+```bash
+PATCH /v1/trade-orders/com.example.orderId=ORD-001/actions
+{
+  "fulfillReturn": {
+    "items": [{
+      "identifiers": { "key": "{trade-order-item-key}" }
+    }]
+  }
+}
+```
+
+**Preconditions**
+- Each referenced item must currently be in `ReturnCommitted`.
+- Each item must belong to the order in the URL.
+
+The per-item shape supports the same optional `productInstance` selector as `commitReturn`.
+
+### Cancelling a Return
+
+`cancelReturn` reverses a committed return: items move from `ReturnCommitted` back to `Fulfilled`. Use it when the customer changes their mind before the return is fulfilled, or when the return is rejected at receiving (for example, the goods returned don't match what was committed).
+
+```bash
+PATCH /v1/trade-orders/com.example.orderId=ORD-001/actions
+{
+  "cancelReturn": {
+    "items": [{
+      "identifiers": { "key": "{trade-order-item-key}" }
+    }]
+  }
+}
+```
+
+**Preconditions**
+- Each referenced item must currently be in `ReturnCommitted`.
+- Each item must belong to the order in the URL.
+
+The per-item shape supports the same optional `productInstance` selector as `commitReturn`.
+
+### Validation and Error Behaviour
+
+All preflight checks happen before any state mutation. A bad item in a batch fails the whole call without partial commits. Common 400-class errors:
+
+- `items` is empty.
+- Item not found, or matches more than one item.
+- Item belongs to a different order than the one in the URL.
+- Item is not in the required precondition state.
+- `commitReturn`: missing `returnParameters`, or missing `returnParameters.reason`.
+- Invalid `returnee`, `returner`, `reason`, or `replacement` reference (must resolve to exactly one existing entity).
+- `productInstance` does not resolve to exactly one instance on the line.
 
 ### Refund Processing
 
-Refunds are processed as negative payments:
+The return actions only handle state transitions and stock movement. Money is moved separately by recording a negative payment against the order:
 
 ```bash
 PATCH /v1/trade-orders/com.example.orderId=ORD-001/actions
