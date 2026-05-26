@@ -136,7 +136,7 @@ The API is organized around resource families like Agents, Products, Orders, Inv
 | **geo** | Currencies, languages, countries, and cities for localization. |
 | **media** | Images and other media assets attached to products and agents. |
 | **config** | System settings and serial number sequences. |
-| **advanced** | Mapped types and sync webhooks for custom data transformations and integrations. See [`mapped-types.md`](mapped-types.md) and [`sync-webhooks.md`](sync-webhooks.md). |
+| **advanced** | Mapped types and sync webhooks for custom data transformations and integrations. See [`mapped-types.md`](mapped-types.md), [`mapped-types-dry-run.md`](mapped-types-dry-run.md), and [`sync-webhooks.md`](sync-webhooks.md). |
 
 > **Note:** Scopes control what API clients can access. Most scopes have `:read` (GET-only) and `:write` (full access) variants. See your OAuth2 client configuration for assigned scopes.
 

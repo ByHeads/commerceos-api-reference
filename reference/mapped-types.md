@@ -6,6 +6,8 @@ Mapped types are named mapping definitions stored in the API and used to transfo
 
 This document covers the storage model, lookup rules, and the selector language used in mapped type bodies.
 
+> **Iterating on a new mapping?** Use [`POST /v1/mapped-types/dry-run`](mapped-types-dry-run.md) to execute a mapping inline against a sample document without installing it. The endpoint runs the production resolver statelessly — same operators, same primitives — and is the recommended way to validate a mapping before pushing it to a sync webhook.
+
 ---
 
 ## Body Formats

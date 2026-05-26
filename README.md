@@ -67,6 +67,7 @@ commerceos-api-reference/
 │   ├── primitives.md             # Primitive types and values
 │   ├── receipts.md               # Receipt data model and operations
 │   ├── mapped-types.md           # Data transformation
+│   ├── mapped-types-dry-run.md   # Stateless dry-run endpoint for mapped types
 │   ├── sync-webhooks.md          # Automated data synchronization
 │   ├── resource-patterns.md      # Common resource patterns
 │   ├── type-members.md           # Type member reference
