@@ -207,7 +207,8 @@ The API supports query operators that modify responses:
 ~just(...)     include only specified fields
 ~without(...)  exclude specified fields
 ~withAll       include all fields
-~where(...)    filter by conditions
+~where(...)    filter by conditions (AND)
+~either(...)   filter by conditions (OR)
 ~orderBy(...)  sort results
 ~take(n)       limit result count
 ~skip(n)       skip first n results

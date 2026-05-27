@@ -130,7 +130,8 @@ GET /v1/products~where(status=Active)~take(10)~with(prices)
 For example, `?orderby=name&limit=10` applies orderBy *before* skip/take internally, ensuring consistent pagination boundaries when sorting collections.
 
 Common operators:
-- `~where(predicate)` - Filter collections
+- `~where(predicate)` - Filter collections (AND across predicates)
+- `~either(predicate)` - Filter collections (OR across predicates)
 - `~take(N)` / `~skip(N)` - Pagination
 - `~with(field)` - Expand non-essential fields
 - `~just(fields)` - Project specific fields only

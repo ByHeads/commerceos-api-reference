@@ -153,6 +153,33 @@ GET /v1/products~where(status=Active,hidden=false)
 - Multiple `~where` clauses also combine as AND
 - Value parsing: `null`, `undefined`, `true`, `false` are parsed as literals; numbers and ISO dates are coerced
 - Date comparison uses `.getTime()` for both sides
+- For OR semantics across predicates, use [`~either(...)`](#eitherpredicates)
+
+---
+
+#### ~either(predicates)
+
+Filter objects by predicate conditions, combined with **OR**. The companion to `~where`: `~where(A,B,C)` keeps rows matching **all** predicates (AND); `~either(A,B,C)` keeps rows matching **any** predicate (OR).
+
+**Signature:** `~either(predicate1,predicate2,...)`
+
+**Predicate syntax:** identical to [`~where`](#wherepredicates) — the same comparison operators (`=`, `!=`, `>`, `<`, `>=`, `<=`, `=~`, `!~`), the same truthy/falsy checks, the same nested-path support, and the same value parsing.
+
+**Examples:**
+```
+GET /v1/products~either(status=Active,status=Pending)
+GET /v1/products~either(status=Inactive,name=~Apple)
+GET /v1/products~either(status=Inactive,name=~Apple)~where(name=~Pro)
+```
+
+The third example expresses `(status=Inactive OR name=~Apple) AND name=~Pro`. Operators are applied in URL order, so `~either(A,B)~where(C)` is `(A OR B) AND C`, not `A OR (B AND C)`.
+
+**Notes:**
+- Predicates within `~either(...)` are OR-ed; use `~where` for AND semantics
+- Predicates may reference the same field (set-membership) or different fields
+- An empty predicate list (`~either()`) defaults to a truthy check on `$this`, matching `~where()`
+- On a single-unit target, behaves as a pass/drop gate (returns `[]` to drop), matching `~where`
+- Chain `~either` and `~where` to express combinations of AND and OR
 
 ---
 

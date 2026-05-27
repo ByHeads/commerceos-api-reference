@@ -98,6 +98,16 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/products~where(!h
 
 # Nested path filter
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/trade-orders~where(customer/@type=person)"
+
+# ~either(...) - OR semantics: rows matching any predicate
+# (~where AND-combines predicates; ~either OR-combines them)
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/products~either(status=Active,status=Pending)"
+
+# ~either across different fields (a case ~where cannot express)
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/products~either(status=Inactive,name=~Apple)"
+
+# Combine ~either with ~where for (A OR B) AND C
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/products~either(status=Inactive,name=~Apple)~where(name=~Pro)"
 ```
 
 ---

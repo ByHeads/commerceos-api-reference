@@ -15,7 +15,8 @@ This reference documents CommerceOS API query operators.
 ~just(...)     include only specified fields
 ~without(...)  exclude specified fields
 ~withAll       include all fields
-~where(...)    filter by conditions
+~where(...)    filter by conditions (AND)
+~either(...)   filter by conditions (OR)
 ~orderBy(...)  sort results
 ~take(n)       limit result count
 ~skip(n)       skip first n results
@@ -112,7 +113,7 @@ GET /v1/products~without(createdAt,updatedAt,createdBy)
 ```
 
 ### Filtering
-- `~where(predicates)` - Filter by predicates.
+- `~where(predicates)` - Filter by predicates (AND).
   - Predicate operators: `=`, `!=`, `>`, `<`, `>=`, `<=`, `=~` (includes), `!~` (not includes)
   - Truthy/falsy: `field` (truthy check) / `!field` (falsy check, matches null/undefined/false/0/empty string)
   - Predicate separators: `,` or `&` within `~where(...)` - both are AND
@@ -125,6 +126,7 @@ GET /v1/products~without(createdAt,updatedAt,createdBy)
     - Empty strings: use `field=` (nothing after `=`) to match empty string
     - Nested paths work as keys: `~where(addresses/main/countryCode=SE)`
   - Date coercion: Datetime values on either side are compared via `.getTime()`
+- `~either(predicates)` - Filter by predicates (OR). See [`~either` below](#either-or-filtering) for details.
 
 > **Tip:** for plain time-window reads (`timestamp > X`, `timestamp < X`, `timestamp >= X` with no other predicate), use [`/before/` or `/after/`](#time-relative-queries-before-and-after) instead. The path endpoints are index-backed; `~where` on a timestamp is a predicate scan.
 
@@ -155,6 +157,38 @@ GET /v1/products~where(status=Active,hidden=false)
 # Chained where clauses (also AND)
 GET /v1/products~where(status=Active)~where(hidden=false)
 ```
+
+#### `~either` (OR filtering)
+
+`~where(A,B,C)` keeps rows matching **all** predicates (AND). `~either(A,B,C)` keeps rows matching **any** predicate (OR). Both operators share the same predicate syntax — comparison operators (`=`, `!=`, `=~`, `!~`, `>`, `<`, `>=`, `<=`), truthy/falsy checks, nested paths, and value-parsing rules from [`~where`](#filtering) all apply identically.
+
+**OR Filtering Examples:**
+
+```bash
+# Two-predicate OR on the same field (status in a set)
+GET /v1/products~either(status=Active,status=Pending)
+
+# OR across different fields (the case ~where cannot express)
+GET /v1/products~either(status=Inactive,name=~Apple)
+
+# Combined with ~where to express (A OR B) AND C
+GET /v1/products~either(status=Inactive,name=~Apple)~where(name=~Pro)
+```
+
+**Precedence note.** When combining `~either` with `~where`, each operator is applied in URL order as an independent filter step. `~either(A,B)~where(C)` evaluates as `(A OR B) AND C` — **not** `A OR (B AND C)`. To express the latter, use two separate calls or restructure the predicates.
+
+**Edge cases:**
+
+- An empty predicate list (`~either()`) defaults to a truthy check on `$this` — keeps truthy values, drops falsy ones. Same default as `~where()`.
+- On a single-unit target (not a collection), `~either` either lets the unit through or drops it to `[]`, matching the pass/drop gate behaviour of `~where`.
+
+**When to use which:**
+
+| You want… | Use |
+|---|---|
+| All predicates must hold | `~where(A,B,C)` |
+| Any predicate may hold (same or different fields) | `~either(A,B,C)` |
+| Mixed: some AND, some OR | Chain them: `~either(A,B)~where(C)` for `(A OR B) AND C` |
 
 ### Ordering & Pagination
 
@@ -218,7 +252,7 @@ GET /v1/trade-orders~distinctBy(customer/identifiers/key)
 ## Parameter Rules
 
 **Parameterized operators** (require arguments):
-- `~where(...)`, `~with(...)`, `~without(...)`, `~just(...)`, `~simpleJust(...)`
+- `~where(...)`, `~either(...)`, `~with(...)`, `~without(...)`, `~just(...)`, `~simpleJust(...)`
 - `~orderBy(...)`, `~distinctBy(...)`
 - `~map(...)`, `~join(...)`, `~take(...)`, `~skip(...)`, `~repeat(...)`
 
@@ -286,7 +320,7 @@ This sequence is recommended because:
 ## Evaluation Notes
 
 - Operators are applied in URL order (pipe semantics). The recommended sequence is filtering → sorting → field selection → expansion → pagination.
-- `~where`, `~orderBy`, `~distinctBy`, `~with`, `~just` evaluate selectors (same selector language as mapped types).
+- `~where`, `~either`, `~orderBy`, `~distinctBy`, `~with`, `~just` evaluate selectors (same selector language as mapped types).
 - `~map` resolves a mapped type by name and strips `@type` annotations from output.
 - `~map` always returns one result per source item. For single-result aggregation from a collection, use an array-body mapped type ending with `"$first"` and reference the collection via `$prior`.
 

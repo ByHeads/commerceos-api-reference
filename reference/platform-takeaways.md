@@ -10,7 +10,8 @@ Concise notes on key CommerceOS API patterns and behavior.
 
 Operators in URL paths chain left-to-right as written:
 
-- `~where(condition)` - Filter collections
+- `~where(condition)` - Filter collections (AND-combine predicates)
+- `~either(condition)` - Filter collections (OR-combine predicates)
 - `~with(field)` - Expand non-essential fields
 - `~just(fields)` - Project specific fields only
 - `~map(name)` - Apply a mapped type transformation

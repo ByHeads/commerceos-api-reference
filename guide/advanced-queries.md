@@ -11,7 +11,8 @@ This document contains 300 advanced GET query examples demonstrating nested oper
 - `~withAll` - Include all members (no parentheses; has no indexer)
 - `~without(selectors...)` - Exclude specified members
 - `~just(selectors...)` - Include ONLY specified members (projection)
-- `~where(predicates)` - Filter by conditions
+- `~where(predicates)` - Filter by conditions (AND across predicates)
+- `~either(predicates)` - Filter by conditions (OR across predicates)
 - `~orderBy(field)` / `~orderBy(field:desc)` - Sort results
 - `~distinct` - Deduplicate primitive streams (use after `~map(...)`)
 - `~distinctBy(field)` - Deduplicate object streams by field
