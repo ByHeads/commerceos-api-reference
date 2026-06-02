@@ -720,12 +720,56 @@ Invalid `when` expressions (e.g., URLs that don't return a date-time) immediatel
 
 ### Retries & Failure Handling
 
-When a webhook execution fails:
+Failures are handled in two layers — a **per-request transient retry** inside a single run (fires only for internal-target operations that hit a known-transient transactor error), and the **task-scheduler retry** that reschedules the whole webhook after the run finishes.
 
-1. **Error recorded** - The `error` field is set with `"Error while executing: <message>"`
-2. **Attempts incremented** - The `attempts` counter increases by 1
-3. **Retry scheduled** - If `attempts < maxAttempts`, a retry is scheduled for **60 seconds** later
-4. **Stopped** - If `attempts >= maxAttempts`, the webhook stops (`when` becomes `"never"`)
+#### Per-request transient retry (internal targets)
+
+When the `out.http.url` is an internal API path (starts with `api/v1/...`), each per-item operation transparently retries two known-transient transactor errors before the failure escapes to the task-scheduler layer. Both errors arrive at the webhook as a wrapped 500 response whose body looks like:
+
+```json
+{ "error": "Internal server error.", "details": "<marker>" }
+```
+
+| Marker (in `details`) | When it fires | Operator log substring |
+|---|---|---|
+| `The transaction conflicted with another transaction` | Optimistic-lock collision: two writers contended for the same target. | Same string — search logs for `"transaction conflicted"`. |
+| `Unexpected error: -2` | The per-item transaction's read snapshot aged out under load (the read-side history rolled past the transaction's start generation). | Same string — search logs for `"Unexpected error: -2"`. |
+
+Both retry up to **`webhookTransientRetryMaxAttempts`** times (default **50**) with a flat **`webhookTransientRetryDelayMs`** delay (default **3000 ms**) between attempts. The implicit per-operation ceiling is `maxAttempts × delayMs` — **150 s** at the defaults — after which the error propagates to the task-scheduler retry layer below.
+
+**External (`http://...`) targets do not engage this retry** — conflict and stale-snapshot semantics don't apply across the network. The existing 401-refresh path on external targets is independent and unaffected by these knobs.
+
+Both knobs are **system-wide** on the API configuration (no per-webhook override). Tune them via `/v1/config/api`:
+
+```bash
+# Inspect current values
+curl -X GET -u ":banana" \
+  "https://example.app.heads.com/api/v1/config/api~just(webhookTransientRetryMaxAttempts,webhookTransientRetryDelayMs)"
+
+# Update both (operators only)
+curl -X PATCH -u ":banana" \
+  "https://example.app.heads.com/api/v1/config/api" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "webhookTransientRetryMaxAttempts": 20,
+    "webhookTransientRetryDelayMs": 5000
+  }'
+```
+
+> **Don't disable the retry.** Setting `webhookTransientRetryMaxAttempts: 0` reverts to the old fail-fast behaviour, which forces the task-scheduler layer to absorb every transient flake. The scheduler's fast back-off (below) was sized assuming this inner retry catches the common case; bypassing it produces noisier pauses and more `attempts`-counter churn without any throughput gain.
+
+#### Task-scheduler retry (whole run)
+
+When a run finishes with an error — either because the failure wasn't transient, or because the per-request retry budget above was exhausted — the scheduler reschedules the whole webhook:
+
+1. **Error recorded** — The `error` field is set with `"Error while executing: <message>"`.
+2. **Attempts incremented** — The `attempts` counter increases by 1.
+3. **Retry scheduled** — If `attempts < maxAttempts`:
+   - **Transient errors** (the two markers above): retry **10 s** later.
+   - **All other errors**: retry **60 s** later.
+4. **Stopped** — If `attempts >= maxAttempts`, the webhook stops (`when` becomes `"never"`).
+
+A sustained contention storm — every per-request retry exhausted, run after run — still increments `attempts` and eventually exhausts `maxAttempts`, pausing the webhook. The two layers compose; they don't shield each other from the `maxAttempts` ceiling.
 
 ### Successful Execution
 
