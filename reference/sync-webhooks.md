@@ -302,10 +302,11 @@ Every strategy supports the same set of common fields (in addition to its strate
 
 Strategy-specific fields:
 
-| Field      | Strategy     | Description |
-|------------|--------------|-------------|
-| `selector` | `nextUrl`    | **Required.** Path in the response body to the next-page URL (e.g., `nextRecordsUrl`, `@odata.nextLink`). |
-| `rel`      | `linkHeader` | Link relation to follow. **Default: `"next"`.** |
+| Field         | Strategy                | Description |
+|---------------|-------------------------|-------------|
+| `selector`    | `nextUrl`               | **Required.** Path in the response body to the next-page URL (e.g., `nextRecordsUrl`, `@odata.nextLink`). |
+| `rel`         | `linkHeader`            | Link relation to follow. **Default: `"next"`.** |
+| `stableOrder` | `pageNumber`, `offset`  | Opt in to [resume-from-failure](#resume-after-failure) on positional strategies. **Default: `false`.** Asserts that already-paginated pages stay frozen across attempts — see the [`stableOrder` contract](#the-stableorder-contract) before enabling. Ignored on `cursor` / `linkHeader` / `nextUrl` (their resume identity is intrinsic to the server-issued continuation token). |
 
 ### Parameter value types
 
@@ -782,16 +783,91 @@ On success:
 
 ### Resume After Failure
 
-When the `out` request is marked `idempotent: true` **and** the `in` request uses `cursor` or `linkHeader` pagination, the webhook can resume an interrupted run from the page boundary it failed on rather than restarting from page 1.
+When the `out` request is marked `idempotent: true` **and** the `in` request uses a resumable pagination strategy, the webhook can resume an interrupted run from the page boundary it failed on rather than restarting from page 1.
 
-How it works:
+#### Resumable strategies
 
-1. After each successful page push, the engine snapshots the active continuation token into `resumeState`.
+| Strategy     | Resume eligibility |
+|--------------|--------------------|
+| `cursor`     | Resumable. The cursor is server-issued and intrinsically stable. |
+| `linkHeader` | Resumable. The next-link URL is server-issued and intrinsically stable. |
+| `nextUrl`    | Resumable. The next-page URL is server-issued and intrinsically stable. |
+| `pageNumber` | Resumable **only when `stableOrder: true`** is set on the strategy block. See the [`stableOrder` contract](#the-stableorder-contract) below. |
+| `offset`     | Resumable **only when `stableOrder: true`** is set on the strategy block. See the [`stableOrder` contract](#the-stableorder-contract) below. |
+
+`cursor` / `linkHeader` / `nextUrl` do **not** need `stableOrder` — their resume identity is intrinsic to the server-issued continuation token. The flag belongs on positional strategies only.
+
+#### How it works
+
+1. After each successful page push, the engine snapshots the active continuation token (or, for positional strategies, the per-counter state) into `resumeState`.
 2. If a subsequent page fails, retries pick up from the snapshot rather than re-running pages 1..N-1.
 3. On the first fully-successful run, `resumeState` is cleared.
-4. To force a full restart (e.g. after upstream data changes invalidate the cursor), call [`clearProgress`](#operator-methods).
+4. To force a full restart (e.g. after upstream data changes invalidate the cursor, or after realising `stableOrder` was set incorrectly), call [`clearProgress`](#operator-methods).
+
+#### Engagement rules
+
+For `cursor` / `linkHeader` / `nextUrl`, the single gate is `out.http.idempotent: true`. For `pageNumber` / `offset`, **both** of the following must hold — if either is absent, the next attempt restarts from page 1:
+
+1. `out.http.idempotent: true` — the operator's promise that re-posting an item is safe.
+2. `pagination.<strategy>.stableOrder: true` — the operator's promise that source-side order is stable across attempts (see the contract below).
 
 `out.idempotent` defaults to `false`. Internal COS PUTs are always idempotent regardless. External POST targets need explicit confirmation that re-sending items 1..N-1 of a failed page won't duplicate side-effects: opt in by setting `out.http.idempotent: true` (or `out.idempotent: true` in the legacy flat form).
+
+#### The `stableOrder` contract
+
+> **`stableOrder: true` is your promise that pages you've already paginated through stay frozen across attempts.** Items added to the source since the last run must appear *after* everything we've already seen — never inserted into or before an already-paginated page.
+>
+> The canonical fit is a feed sorted on **timestamp ascending** (oldest first, append-only) — newly created items land at the tail and don't affect any prior offset.
+>
+> **Reverse-chronological / descending-timestamp feeds do NOT satisfy this.** New items prepend at the head and every page shifts by one — resuming at `page=3` after such a shift silently processes items the previous attempt already saw or (worse) skips items that have moved across a page boundary. Don't enable `stableOrder` for descending feeds.
+>
+> Other unsafe shapes: alphabetically/name-sorted feeds where inserts can fall anywhere; status-filtered feeds where items can enter or leave the result set between attempts; any feed whose total page count can shrink (deletes upstream).
+>
+> Drift caused by mis-setting this flag surfaces as **silent gaps or duplicates** in the `out` target, not as an error. The flag is an operator-asserted invariant; the platform does not — and structurally cannot — verify it.
+
+**Safe — append-only feed with ascending timestamp:**
+
+```jsonc
+// GET /orders?page=N&sort=createdAt:asc — append-only feed
+{
+  "in": {
+    "url": "https://api.example.com/orders?sort=createdAt:asc",
+    "pagination": {
+      "pageNumber": {
+        "parameters": {
+          "page": { "from": 1, "step": 1 },
+          "limit": 100
+        },
+        "while": "items/length>=100",
+        "stableOrder": true
+      }
+    }
+  },
+  "out": {
+    "http": {
+      "method": "POST",
+      "url": "https://destination.example.com/orders",
+      "idempotent": true
+    }
+  }
+}
+```
+
+**Unsafe — do NOT enable on a descending feed:**
+
+```jsonc
+// GET /orders?page=N&sort=createdAt:desc — newest first
+// Item 743 created between attempts → page 3 today != page 3 yesterday.
+// Enabling stableOrder here silently corrupts the out target.
+```
+
+**Anti-patterns:**
+
+- Don't set `stableOrder` on a descending-timestamp feed.
+- Don't set `stableOrder` on a status-filtered feed where items can enter or leave the result set.
+- Don't rely on `stableOrder` for a feed that supports upstream deletes.
+
+If you realise `stableOrder` was set incorrectly, call [`clearProgress`](#operator-methods) to drop the now-misleading snapshot, then either remove the flag or re-sort the source feed before the next run.
 
 **TDS targets do not support resume-from-failure** — the entire batch is re-sent on the next attempt, regardless of where in the batch it failed. Integrators using TDS should ensure their target schema is idempotent (e.g. `MERGE` statements rather than blind `INSERT`s), or accept the duplicate-write risk on retries.
 
