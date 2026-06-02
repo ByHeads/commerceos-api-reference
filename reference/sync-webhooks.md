@@ -197,12 +197,54 @@ Both `in` and `out` use a request object with the following structure:
 | `auth` | object | Authentication configuration (used for `out` only) |
 | `headers` | object | Additional HTTP headers (used for `out` only) |
 | `body` | object | **Ignored** — sync webhooks always send the mapped item as the body |
+| `wrapBody` | string | Optional. Set to `"array"` to wrap a non-array request body in a single-element JSON array immediately before the request is sent. Honored on **both** `in` and `out.http`. See [Request Body Wrapping](#request-body-wrapping). |
 
 **Notes:**
 - **`in` uses only `url`** — `method`, `headers`, and `body` are ignored
 - **`out.body` is ignored** — the payload is always the mapped (or unmapped) item JSON
 - **Content-Type defaults to `application/json;charset=utf-8`** — but `out.headers["Content-Type"]` can override it (custom headers are merged after the default)
 - **`then.set` runs per item** even when `out` is omitted (for mutation-only workflows)
+
+### Request Body Wrapping
+
+Some target APIs require an array envelope around the request body even when sending a single item. Set `wrapBody: "array"` on the request to have the webhook wrap the body in a single-element JSON array immediately before sending.
+
+- **Only value supported:** `"array"`. Omitting `wrapBody` (or setting any other value) leaves the body unchanged.
+- **Idempotent.** A body that is already a JSON array (or absent/null) is sent unchanged. Setting `wrapBody: "array"` twice — or on an already-array body — is a no-op; the wrap happens at most once.
+- **Scope.** Honored uniformly on:
+  - The `in` request body — both `body` and `resolveBody` participate. For paginated `in` requests, pagination body-overrides are shallow-merged first and the merged object is then wrapped.
+  - The `out.http` request body — the mapped output (or `resolveBody`) is wrapped before delivery. Applies to both internal `api/v1/...` targets and external HTTP targets.
+
+**Example — `out` delivering single items in an array envelope:**
+
+```json
+{
+  "out": {
+    "http": {
+      "method": "POST",
+      "url": "https://api.example.com/v1/products/import",
+      "wrapBody": "array"
+    }
+  }
+}
+```
+
+Each mapped product `{ "sku": "X", "name": "..." }` is POSTed as `[{ "sku": "X", "name": "..." }]`.
+
+**Example — `in` POST-search whose endpoint requires an array body:**
+
+```json
+{
+  "in": {
+    "method": "POST",
+    "url": "https://api.example.com/v1/search",
+    "body": { "query": "active" },
+    "wrapBody": "array"
+  }
+}
+```
+
+The fetch is sent with body `[{ "query": "active" }]`.
 
 ### Authentication Options
 
