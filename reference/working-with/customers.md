@@ -585,6 +585,23 @@ GET /v1/companies/com.example.companyId=OUR-COMPANY/supplierRelations
 GET /v1/people/com.example.customerId=CUST-001/supplierRelations
 ```
 
+### Time-Relative Queries on Agent Relationships
+
+Both `customerRelations` and `supplierRelations` support the same `/before/` and `/after/` path filters as the top-level `/v1/trade-relationships` collection, scoped to the parent agent and their role:
+
+```bash
+# Our customers added or amended since the last sync cutoff
+GET /v1/companies/com.example.companyId=OUR-COMPANY/customerRelations/after/2025-01-01T00:00:00Z~take(200)
+
+# Our suppliers amended before a window end
+GET /v1/companies/com.example.companyId=OUR-COMPANY/supplierRelations/before/2025-03-01T00:00:00Z~take(200)
+
+# Same shape on people and stores
+GET /v1/people/com.example.customerId=CUST-001/supplierRelations/after/2025-01-01T00:00:00Z
+```
+
+Filtering is on `_modifiedTag` **AND** the agent's role on the relationship — the customer-side collection only sees relationships where the agent is the `supplierAgent`, and vice versa. The default mode is `(modify)`; `(create)` is not supported for trade relationships and returns 404. See [Resource Patterns → Trade Relationships](../resource-patterns.md#time-relative-queries-on-agent-sub-collections) for the mode-parameter rules, and [Operators → Time-relative queries](../operators.md#time-relative-queries-before-and-after) for inclusivity and chaining.
+
 ---
 
 ## Agent Finder

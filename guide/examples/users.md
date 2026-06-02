@@ -165,3 +165,17 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/trade-relationshi
 > **Default:** `modify` — and it is the **only** supported mode for trade relationships. Asking for `(create)` returns a 404 because trade relationships are not modelled as discrete events. See [Operators → Time-relative queries](../../reference/operators.md#time-relative-queries-before-and-after).
 >
 > **Recommended:** use `/after/` and `/before/` for any time-windowed read of trade relationships — they are index-backed and the canonical pattern. Use `~where(timestamp...)` only when you need to combine the time filter with a non-time predicate.
+
+### Agent-scoped variants
+
+The same `/before/` and `/after/` filters are available on an agent's `customerRelations` and `supplierRelations` sub-collections, scoped to that agent's role:
+
+```bash
+# Our customers (this company is the supplier) amended since the last sync
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/companies/com.example.companyId=OUR-COMPANY/customerRelations/after/2025-02-01T00:00:00.000Z~take(200)"
+
+# Our suppliers (this company is the customer) amended before a window end
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/companies/com.example.companyId=OUR-COMPANY/supplierRelations/before/2025-03-01T00:00:00.000Z~take(200)"
+```
+
+The mode-parameter rules are identical to the global endpoint (`modify` only; `(create)` returns 404). See [Resource Patterns → Trade Relationships → Time-Relative Queries](../../reference/resource-patterns.md#time-relative-queries-on-agent-sub-collections) for the full contract.

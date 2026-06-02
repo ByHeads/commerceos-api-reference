@@ -592,6 +592,38 @@ GET /companies/{id}/supplierRelations
 
 Use `~with` to include non-essential fields in the response.
 
+### Time-Relative Queries on Agent Sub-Collections
+
+Both `customerRelations` and `supplierRelations` accept the same `/before/` and `/after/` path filters as the global `/v1/trade-relationships` collection, scoped to the parent agent:
+
+```bash
+# Customer relationships (this agent is the supplier) modified at/after a cutoff
+GET /v1/agents/{id}/customerRelations/after/2025-01-01T00:00:00Z
+
+# Customer relationships modified strictly before a cutoff
+GET /v1/agents/{id}/customerRelations/before/2025-03-01T00:00:00Z
+
+# Supplier relationships (this agent is the customer) modified at/after a cutoff
+GET /v1/agents/{id}/supplierRelations/after/2025-01-01T00:00:00Z
+```
+
+The agent-scoped variants also work on the concrete `/people`, `/companies`, and `/stores` collections (e.g. `/v1/companies/{id}/customerRelations/after/{ts}`).
+
+The filter is on `_modifiedTag` **AND** the agent's role:
+
+- `/agents/SUPPLIER-A/customerRelations/after/{ts}` returns only relationships where `SUPPLIER-A` is the `supplierAgent` **and** `_modifiedTag >= ts`. It does **not** include relationships where some other agent is the supplier, nor relationships where this agent appears as the `customerAgent` — for that, use `supplierRelations`.
+
+**Mode parameter** — matches the global `/v1/trade-relationships` endpoint:
+
+- `before/<ts>` / `after/<ts>` (no parens) = `before(modify)/<ts>` — the default.
+- `before(modify)/<ts>` / `after(modify)/<ts>` — explicit; filters on last-modification time.
+- `(create)` is **not supported** here (returns 404) — trade relationships are not modelled as discrete events and have no creation span.
+- `(status)` returns 404 (not implemented).
+
+See [Operators → Time-relative queries](operators.md#time-relative-queries-before-and-after) for the shared mode-parameter semantics, inclusivity rules, and chaining behaviour.
+
+**Response shape:** identical to the global `/v1/trade-relationships/before|after` — a JSON array of trade-relationship objects, sorted ascending by `_modifiedTag`. The path returns an ordinary collection, so `~with(...)`, `~just(...)`, `~take(N)`, and `~skip(N)` chain in the usual way.
+
 ---
 
 ## Trade Rules

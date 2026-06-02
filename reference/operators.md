@@ -355,6 +355,8 @@ The collections that support the pattern, and the modes each one accepts, are:
 |---|---|---|
 | [`/v1/trade-orders`](../guide/examples/orders.md#time-relative-queries) | `modify` | `create` |
 | [`/v1/trade-relationships`](../guide/examples/users.md#trade-relationships--time-relative-queries) | `modify` | — |
+| [`/v1/agents/{id}/customerRelations`](resource-patterns.md#time-relative-queries-on-agent-sub-collections) | `modify` | — |
+| [`/v1/agents/{id}/supplierRelations`](resource-patterns.md#time-relative-queries-on-agent-sub-collections) | `modify` | — |
 | [`/v1/shipment-orders`](../guide/examples/orders.md#shipment-orders--time-relative-queries) | `modify` | `create` |
 | [`/v1/payment-orders`](../guide/examples/orders.md#payment-orders--time-relative-queries) | `modify` | `create` |
 | [`/v1/stock-transfers`](../guide/examples/inventory.md#stock-transfers--time-relative-queries) | `create` | — |
