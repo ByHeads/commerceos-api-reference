@@ -900,6 +900,22 @@ PATCH /v1/trade-orders/com.example.orderId=ORD-001/actions
 - If `amount` is omitted, defaults to the sum of all order items
 - If `items` is provided, amount defaults to sum of specified items only
 
+**Retry and idempotency:**
+
+`createPayment` is idempotent on the pair (`method`, `transactionId`). If a payment already exists under the same payment method with the same `transactionId`, the call is a **silent no-op** — no new payment order is recorded, no error is raised, and the response is the same shape as a fresh creation.
+
+| Aspect | Behavior |
+|--------|----------|
+| Idempotency key | (`method`, `transactionId`). The same `transactionId` under two different methods is treated as two distinct payments. |
+| Behavior on repeat | Silent no-op. No duplicate payment, no error, no side effects on order items or accounts. |
+| Property comparison | None. The other fields (`amount`, `currency`, `items`, `means`, `timestamp`, `consumerPrintout`, `merchantPrintout`, `rawData`) are **not** compared against the existing payment. If you need to detect a clash, query the existing payment order yourself (e.g. `GET /v1/payment-orders~where(transactionId=...)`). |
+| Missing `transactionId` | Still rejected with `"Payment transaction ID is required."` — only requests with a `transactionId` can benefit from idempotent retry. |
+| Integration-backed methods | Still rejected with `"createPayment is not supported for payment methods associated with an integration."` The idempotency check runs **after** this validation, so retries on integration-backed methods do not silently pass either. |
+
+This makes `createPayment` safe to retry after a network blip or partial-success response — resend the same `transactionId` (with the same args, or even different args) and you get exactly-once payment creation.
+
+> **Note:** This contract covers `createPayment` only. The sibling `createWalletPayment` action has its own semantics and is not covered here.
+
 ### Create Shipment
 
 Creates a shipment order for the order.

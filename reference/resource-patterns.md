@@ -540,7 +540,9 @@ The `createPayment` action has strict requirements:
 }
 ```
 
-> **Important:** Payment methods with an associated `PaymentIntegration` are not supported via `createPayment`. Use the payment integration's native flow instead. Query `GET /v1/payment-methods` to discover valid method IDs for your tenant.
+> **Important:** Payment methods with an associated payment integration are not supported via `createPayment`. Use the payment integration's native flow instead. Query `GET /v1/payment-methods` to discover valid method IDs for your tenant.
+
+> **Idempotent on retry.** `createPayment` is idempotent on the pair (`method`, `transactionId`): repeating the call with the same `transactionId` under the same payment method is a silent no-op (no duplicate, no error, other args ignored). This makes retries after network failures safe. See [Retry and idempotency](working-with/orders.md#create-payment) on the canonical reference for the full contract.
 
 ### Labels
 

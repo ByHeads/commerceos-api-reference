@@ -800,7 +800,7 @@ GET /v1/trade-orders/com.acme.order-id=WEB-2024-123456
 
 ### Payment Idempotency
 
-Payments use `transactionId` for idempotency:
+`createPayment` is idempotent on the pair (`method`, `transactionId`). A retry with the same `transactionId` under the same payment method is a **silent no-op** — no duplicate payment, no error, no side effects:
 
 ```bash
 # First attempt
@@ -808,14 +808,26 @@ PATCH /v1/trade-orders/com.acme.order-id=WEB-2024-123456/actions
 {
   "createPayment": {
     "transactionId": "STRIPE-PI-abc123xyz",
-    "amount": 497.50,
-    ...
+    "timestamp": "2024-12-15T14:32:00Z",
+    "method": {"identifiers": {"methodId": "com.heads.card"}},
+    "currency": {"identifiers": {"currencyCode": "SEK"}},
+    "amount": 497.50
   }
 }
 
-# Retry with same transactionId is safe
-# Same transactionId = same payment record
+# Retry after network blip — same transactionId + same method = no-op
+# Other args (amount, items, currency, timestamp, ...) are NOT compared.
+# If you need to detect a clash, look up the existing payment yourself:
+#   GET /v1/payment-orders~where(transactionId=STRIPE-PI-abc123xyz)
 ```
+
+**Notes:**
+- The idempotency key is the pair (`method`, `transactionId`). The same `transactionId` under two different methods produces two distinct payments.
+- A request without `transactionId` is still rejected (`"Payment transaction ID is required."`) and cannot benefit from idempotent retry.
+- Integration-backed payment methods are still rejected even on retry — the integration check runs before the idempotency check.
+- The sibling `createWalletPayment` action has its own semantics and is not covered by this contract.
+
+See [Retry and idempotency](../working-with/orders.md#create-payment) on the canonical reference for the full contract.
 
 ### Error Recovery Matrix
 
