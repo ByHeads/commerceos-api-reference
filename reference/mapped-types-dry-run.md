@@ -42,7 +42,7 @@ Two required fields and six optional fields. Every field is documented end-to-en
 
 ```jsonc
 {
-  "mapping":          { /* required, object */ },
+  "mapping":          <required, any non-null JSON>,
   "input":            <required, any JSON>,
   "siblingMappings":  { /* optional, object */ },
   "stubs":            { /* optional, object */ },
@@ -53,17 +53,35 @@ Two required fields and six optional fields. Every field is documented end-to-en
 }
 ```
 
-### `mapping` — required, JSON object
+### `mapping` — required, any non-null JSON
 
-The mapped type body to execute. Same JSON shape as the `body` field of an installed mapped type.
+The mapped type body to execute. Same JSON shape as the `body` field of an installed mapped type. Three forms are accepted; pick the one that matches the output you want to produce.
 
-```json
-{
-  "lineNo": "$index/+=1/%2503d",
-  "name":   "name",
-  "lines":  "items~map(com.example.line-item)"
-}
-```
+- **Object** — the per-key form. Each key is an output property; each value is a selector. By far the most common shape.
+
+  ```json
+  {
+    "lineNo": "$index/+=1/%2503d",
+    "name":   "name",
+    "lines":  "items~map(com.example.line-item)"
+  }
+  ```
+
+- **Array** — per-row record output. Used when the mapped type produces a list of objects rather than a single shaped object.
+
+  ```json
+  [
+    { "orderId": "id", "lineItemIds": "items/*[]/id" }
+  ]
+  ```
+
+- **String** — a bare selector expression. Used when the output is a single computed value rather than a structured object. Example: a Norwegian phone-number normaliser that prepends `+47` when the input does not already start with `+`.
+
+  ```json
+  "$this/0/==%2B ? $this : $this/-~%2B47"
+  ```
+
+Only `null` is rejected. All three shapes work the same way in `PUT /v1/mapped-types/{name}` and inside an installed mapped type referenced from `~map(<name>)`.
 
 ### `input` — required, any JSON value
 
@@ -77,9 +95,13 @@ The source document the mapping is applied to. May be a JSON **object**, **array
 
 Additional mapped type bodies available to `~map(<name>)` invocations in `mapping`. The endpoint never falls back to the installed mapped-type table — any `~map(<name>)` reference whose `<name>` does not appear here returns a 400.
 
+Each value follows the same shape rules as `mapping` — object (per-key form), array (per-row record), or bare string selector. Only `null` is rejected.
+
 ```json
 {
-  "com.example.line-item": { "id": "$index", "label": "name" }
+  "com.example.line-item":   { "id": "$index", "label": "name" },
+  "com.example.order-row":   [ { "orderId": "id", "lineItemIds": "items/*[]/id" } ],
+  "com.example.phone-norm":  "$this/0/==%2B ? $this : $this/-~%2B47"
 }
 ```
 
@@ -257,9 +279,9 @@ The endpoint runs inside a read-only transaction and is forbidden from reading o
 | Request body is not a JSON object | `"hello"` or `null` | `Request body must be a JSON object.` |
 | Missing `mapping` | `{ "input": {} }` | `` Request body is missing required field `mapping`. `` |
 | Missing `input` | `{ "mapping": { "name": "name" } }` | `` Request body is missing required field `input`. `` |
-| `mapping` is not an object | `{ "mapping": "x", "input": {} }` | `` `mapping` must be a JSON object (the mapped-type body). `` |
+| `mapping` is `null` | `{ "mapping": null, "input": {} }` | `` `mapping` must not be null. Pass a mapped-type body (object, array, or string selector). `` |
 | `siblingMappings` is not an object | `{ "siblingMappings": [] }` | `` `siblingMappings` must be a JSON object keyed by mappedTypeName. `` |
-| `siblingMappings.<name>` is not an object | `{ "siblingMappings": { "x": "not an object" } }` | `` `siblingMappings.x` must be a JSON object (the mapped-type body). `` |
+| `siblingMappings.<name>` is `null` | `{ "siblingMappings": { "x": null } }` | `` `siblingMappings.x` must not be null. Pass a mapped-type body (object, array, or string selector). `` |
 | `stubs` is not an object | `{ "stubs": [] }` | `` `stubs` must be a JSON object keyed by URL path. `` |
 | `templates` is not an object | `{ "templates": [] }` | `` `templates` must be a JSON object keyed by template ID. `` |
 | `templates.<name>` is not a string | `{ "templates": { "tpl": 42 } }` | `` `templates.tpl` must be a string (Liquid template source). `` |
