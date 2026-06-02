@@ -198,11 +198,13 @@ Both `in` and `out` use a request object with the following structure:
 | `headers` | object | Additional HTTP headers (used for `out` only) |
 | `body` | object | **Ignored** — sync webhooks always send the mapped item as the body |
 | `wrapBody` | string | Optional. Set to `"array"` to wrap a non-array request body in a single-element JSON array immediately before the request is sent. Honored on **both** `in` and `out.http`. See [Request Body Wrapping](#request-body-wrapping). |
+| `fail` | object | Optional per-item failure policy. Honored only on `out.http`. Maps HTTP status codes (`"404"`) or class wildcards (`"4xx"`, `"5xx"`) to `"skip"` or `"stop"`. See [Request Failure Policy](#request-failure-policy). |
 
 **Notes:**
 - **`in` uses only `url`** — `method`, `headers`, and `body` are ignored
 - **`out.body` is ignored** — the payload is always the mapped (or unmapped) item JSON
 - **Content-Type defaults to `application/json;charset=utf-8`** — but `out.headers["Content-Type"]` can override it (custom headers are merged after the default)
+- **`fail` is honored only on `out.http`** — ignored on the `in` request and on `out.tds` targets
 - **`then.set` runs per item** even when `out` is omitted (for mutation-only workflows)
 
 ### Request Body Wrapping
@@ -245,6 +247,58 @@ Each mapped product `{ "sku": "X", "name": "..." }` is POSTed as `[{ "sku": "X",
 ```
 
 The fetch is sent with body `[{ "query": "active" }]`.
+
+### Request Failure Policy
+
+By default, any 4xx or 5xx response from the `out.http` target aborts the entire webhook run — the failing item and every remaining item in the batch are left undelivered, and the task scheduler retries the whole run (see [Retries & Failure Handling](#retries--failure-handling)). Some integrations need to tolerate specific statuses instead — e.g. a `404 Not Found` on a target where the upstream resource has been removed should typically be skipped, not abort the rest of the batch.
+
+Set `fail` on the `out.http` request to declare which statuses skip vs. stop:
+
+```json
+{
+  "out": {
+    "http": {
+      "method": "PUT",
+      "url": "https://api.example.com/v1/products/{identifiers/com.example.sku}",
+      "fail": { "404": "skip", "4xx": "stop", "5xx": "stop" }
+    }
+  }
+}
+```
+
+**Keys** are either an exact HTTP status code as a string (e.g. `"404"`, `"409"`, `"503"`) or a status-class wildcard (`"4xx"`, `"5xx"`, lowercase).
+
+**Values** are one of:
+
+| Value | Behaviour |
+|-------|-----------|
+| `"skip"` | Log the failure and continue with the next item. The failed item is **not** delivered, and its `then.set` is **not** applied. |
+| `"stop"` | Abort the whole webhook run. This is the historical / default behavior. |
+
+**Precedence.** An exact status code wins over a wildcard. Any status not matched by an exact key or a wildcard key defaults to `"stop"`. Omitting `fail` entirely ⇒ every 4xx/5xx stops (the unchanged default, equivalent to `{ "4xx": "stop", "5xx": "stop" }`).
+
+**Scope and limits:**
+
+- **`out.http` only.** Set on the `in` request or on `out.tds`, `fail` is ignored.
+- **Network-level failures always stop.** Connection refused, DNS resolution failures, request timeouts — anything that prevents an HTTP response from coming back — abort the run regardless of `fail`. The policy is about HTTP status codes, not transport errors.
+- **TDS targets always stop.** The `out.tds` writer has no per-item failure granularity.
+- **401 refresh runs first.** For auth schemes that cache credentials (e.g. [`clientCredentials`](#authentication-options), [`customSignin`](#authentication-options)), a `401 Unauthorized` first triggers a one-shot credential refresh + retry. `fail` is only consulted if the *retried* response is still an error.
+
+**Example — best-effort delivery (skip all client errors, stop on server errors):**
+
+```json
+{
+  "out": {
+    "http": {
+      "method": "POST",
+      "url": "https://api.example.com/v1/ingest",
+      "fail": { "4xx": "skip", "5xx": "stop" }
+    }
+  }
+}
+```
+
+> **Skipped items don't get `then.set` applied.** If `then.set` is what marks items as synced, a skipped delivery means the source object will be picked up again by the next run's `in` query. Scope the `in` query so items that will be skipped (e.g. a deleted-upstream 404) are also filtered out of future runs, or accept that they re-appear and re-skip on each run.
 
 ### Authentication Options
 
