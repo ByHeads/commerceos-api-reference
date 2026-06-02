@@ -254,6 +254,80 @@ Both `in` and `out` use a request object with the following structure:
 }
 ```
 
+**Custom Signin (vendor-specific handshake):**
+
+Use `customSignin` when the vendor requires a signin handshake that returns credentials to be replayed on subsequent requests — e.g. a token endpoint that returns an access token plus a TTL, or a non-OAuth login that returns a session key. The webhook performs the signin request, evaluates the `scheme` expressions against the JSON response, then writes the resulting `Authorization` header on every subsequent request to `out.url` (or `in.url`).
+
+```json
+{
+  "auth": {
+    "customSignin": {
+      "method": "POST",
+      "signinUrl": "https://api.example.com/oauth/token",
+      "headers": { "Content-Type": "application/x-www-form-urlencoded" },
+      "body": "grant_type=password&username=...&password=...",
+      "scheme": { "bearer": "accessToken" },
+      "tokenExpirationSeconds": "expiresIn"
+    }
+  }
+}
+```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `method` | yes | HTTP method for the signin request (e.g. `GET`, `POST`, `PUT`). |
+| `signinUrl` | yes | The signin endpoint URL. |
+| `headers` | no | Headers sent with the signin request. |
+| `body` | no | Request body sent with the signin request. |
+| `scheme` | yes | How to format the response into the outgoing `Authorization` header — see below. |
+| `tokenExpirationSeconds` | no | Expression evaluated against the signin response for the cache TTL (in seconds). Defaults to **3600** when omitted or when the expression doesn't resolve to a positive number. |
+
+**`scheme` variants — exactly one must be set:**
+
+| Variant | Outgoing header | Use when |
+|---------|-----------------|----------|
+| `scheme.bearer: "<expression>"` | `Authorization: Bearer <resolved>` | The vendor returns a token that should ride on a bearer header. |
+| `scheme.basic: { user: "<expression>", password: "<expression>" }` | `Authorization: Basic <base64(user:password)>` | The vendor expects the dynamically-fetched credential on a Basic header — e.g. the token as the password with a fixed username. |
+
+Setting neither (or both) is rejected at execution time.
+
+**Expression mini-language.** Each expression slot in `scheme` and `tokenExpirationSeconds` is evaluated against the **signin response JSON** using the same path syntax as `resultSelector`:
+
+| Expression | Resolves to |
+|------------|-------------|
+| `accessToken` | The top-level `accessToken` field of the response. |
+| `data/token` | Nested path: `response.data.token`. |
+| `'0'` (single-quoted) | The literal string `"0"`. |
+| `'7200'` | The literal string `"7200"` (used in `tokenExpirationSeconds` for a fixed TTL). |
+
+If an expression fails to resolve, the webhook records an error and the run stops.
+
+**Example — token as the Basic password, literal `"0"` as the username:**
+
+Some vendors (e.g. Tripletex) issue a session token via a signin endpoint and expect it as the password on a Basic header, with a fixed username (often `"0"`). The signin response carries the token at `value/token`:
+
+```json
+{
+  "auth": {
+    "customSignin": {
+      "method": "PUT",
+      "signinUrl": "https://api.tripletex.io/v2/token/session/:create?consumerToken=...&employeeToken=...&expirationDate=...",
+      "scheme": {
+        "basic": {
+          "user": "'0'",
+          "password": "value/token"
+        }
+      },
+      "tokenExpirationSeconds": "'3600'"
+    }
+  }
+}
+```
+
+Given a response of `{ "value": { "token": "abc123", ... } }`, the webhook resolves `user` to `"0"` (literal) and `password` to `"abc123"` (path lookup), then sends `Authorization: Basic <base64("0:abc123")>` on every subsequent request.
+
+**Token caching.** The full `Authorization` header value (`Bearer ...` or `Basic ...`) is cached per `out.url` for `tokenExpirationSeconds` seconds (default 3600). The cache is invalidated on a 401 from the target — a fresh signin handshake runs and the next request is retried with the new header.
+
 ---
 
 ## Pagination (for `in` requests)
