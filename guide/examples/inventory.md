@@ -180,6 +180,82 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/stock-places/co
 
 ---
 
+## Stock Entries (set target stock)
+
+Stock entries are the **target-based** counterpart to stock adjustments. Submit a desired physical quantity at one or more `(product, place)` pairs, and the server reads the current level, computes the delta, and writes a stock-adjustment record under the hood. Use this when you have a known *target* inventory (e.g. a reconciled count or an upstream source-of-truth) rather than a known *movement*. See the [Stock Entries reference](../../reference/stock-entries.md) for the full field list and error matrix.
+
+```bash
+# Drive a single (product, place) to a target — owner inferred from the place's stock root
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-entries" \
+  -H "Content-Type: application/json" \
+  -d '[{
+    "identifiers": {"com.myapp.id": "ENT-001"},
+    "timestamp": "2024-03-15T10:30:00Z",
+    "entries": [
+      {
+        "product": {"identifiers": {"com.myapp.sku": "SKU-001"}},
+        "place":   {"identifiers": {"com.myapp.stockPlaceId": "WH-001"}},
+        "physicalQuantity": 100
+      }
+    ]
+  }]'
+# If physical at (SKU-001, WH-001) is 73, the underlying stock-adjustment carries one item with quantity +27.
+# If it's already 100, no items are emitted — the submission still succeeds.
+
+# Multi-pair submission — all places must share the same owner
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-entries" \
+  -H "Content-Type: application/json" \
+  -d '[{
+    "identifiers": {"com.myapp.id": "ENT-002"},
+    "timestamp": "2024-03-15T10:31:00Z",
+    "entries": [
+      {
+        "product": {"identifiers": {"com.myapp.sku": "SKU-001"}},
+        "place":   {"identifiers": {"com.myapp.stockPlaceId": "WH-001"}},
+        "physicalQuantity": 100
+      },
+      {
+        "product": {"identifiers": {"com.myapp.sku": "SKU-002"}},
+        "place":   {"identifiers": {"com.myapp.stockPlaceId": "WH-001"}},
+        "physicalQuantity": 50
+      }
+    ]
+  }]'
+
+# Product-scoped variant — product is implicit (taken from the URL)
+# Useful for drift-correction across many places for one SKU. Body `product` values are ignored.
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/products/com.myapp.sku=SKU-001/stockEntries" \
+  -H "Content-Type: application/json" \
+  -d '[{
+    "identifiers": {"com.myapp.id": "ENT-PROD-001"},
+    "timestamp": "2024-03-15T10:30:00Z",
+    "entries": [
+      {
+        "place": {"identifiers": {"com.myapp.stockPlaceId": "WH-001"}},
+        "physicalQuantity": 100,
+        "productInstances": [
+          {"quantity": 1, "serialNumber": "IMEI-AAA-111"},
+          {"quantity": 1, "serialNumber": "IMEI-AAA-112"}
+        ]
+      }
+    ]
+  }]'
+
+# Read back a submission with the computed adjustment items expanded
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-entries/com.myapp.id=ENT-001~with(items,transactionId,owner,stock,timestamp,identifiers)"
+
+# The same record is also readable via the stock-adjustments resource by the same identifiers
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustments/com.myapp.id=ENT-001~with(items,productInstances)"
+```
+
+> **Heads up:**
+>
+> - All entries in a submission must resolve to the same owner. Mixing places across owners fails atomically with `"All entries in a stock entry submission must be owned by the same owner. ..."`.
+> - `availableQuantity` on an entry is accepted for back-compat parity with the legacy `PATCH /v1/stock-places/<key>` nested-array shape but is **informational only** — it does not steer effective stock separately from `physicalQuantity`.
+> - Every `/v1/stock-entries` POST emits a stock-adjustment record. Don't double-bookkeep against `/v1/stock-adjustments` or you'll count the same movement twice.
+
+---
+
 ## Stock Adjustments
 
 Stock adjustments use an `items[]` array to adjust one or more products in a single transaction. Each item specifies a `product`, `place`, `reason`, and optional `quantity` (defaults to 1).

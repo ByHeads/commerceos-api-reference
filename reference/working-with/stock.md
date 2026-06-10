@@ -500,6 +500,8 @@ GET /v1/stock-places/com.example.stockPlaceId=WAREHOUSE-001/entries~where(availa
 
 Stock adjustments record inventory changes with reasons for audit trail.
 
+> **Compared to `/v1/stock-entries`:** `/v1/stock-adjustments` is **delta-based** — callers say "increase by 5". `/v1/stock-entries` is **target-based** — callers say "land at 42, regardless of where we are now". The target-based resource computes the deltas server-side and writes them as a regular stock-adjustment record under the hood, so the same data shows up in both reads. Reach for `/v1/stock-entries` when you have a known target inventory (e.g. a reconciled count or an upstream truth); reach for `/v1/stock-adjustments` when you have a known movement (received, damaged, transferred). See the [Stock Entries reference](../stock-entries.md).
+
 ### Creating an Adjustment
 
 ```bash

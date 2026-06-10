@@ -143,6 +143,7 @@ GET /v1/products~where(status=Pending)~orderBy(createdAt:desc)~take(100)
 | `assortmentContexts` | array | Per-owner settings |
 | `prices` | array | Associated price definitions |
 | `stockLevels` | array | Inventory at locations |
+| `stockEntries` | array | Target-based stock-update submissions for this product (see [Stock Entries](../stock-entries.md)). Listing this sub-collection returns submissions whose underlying stock-adjustment touched this product. Posting to it accepts the same body as `/v1/stock-entries`, but `product` on each entry is implicit (taken from the URL — body `product` values are ignored). |
 | `designatedStockPlaces` | array | Preferred stocking locations |
 | `categories` | array | Category assignments |
 | `labels` | array | Custom tags |
