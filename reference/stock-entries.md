@@ -45,7 +45,7 @@ Once the submission is committed, the same record is readable via `/v1/stock-adj
 `/v1/products/<product-key>/stockEntries` is a convenience for callers that drive one product at a time across many places. On this endpoint:
 
 - The `product` field on each entry is **implicit** (taken from the URL).
-- If a caller sends `product` in the body anyway, **the URL wins** — this is a deliberate guardrail, not a quirk. Body `product` values are silently ignored so an inconsistent submission cannot land on a different product than the URL implies.
+- If a caller sends `product` in the body anyway, **the URL wins** — this is a deliberate guardrail, not a quirk. Body `product` values are silently ignored so an inconsistent submission cannot land on a different product than the URL implies. **No diagnostic is returned** — the body `product` is silently dropped before any validation step. If you need to catch a misrouted client, validate the URL/body match before posting.
 - Listing this collection is filtered to submissions whose underlying stock-adjustment extent involves the URL-scoped product.
 
 ---
@@ -75,6 +75,8 @@ Each element of `entries`:
 | `availableQuantity` | number | no | Accepted for parity with the legacy nested `stock-place.entries` shape, but **informational only**. A single stock-adjustment item moves owner-stock and place-stock by the same delta, so effective stock follows `physicalQuantity`. See the anti-pattern callout in [Anti-Patterns](#anti-patterns). |
 | `productInstances` | array of `{ quantity, serialNumber?, identifiers?, batch?, domain? }` | no | New-style instance list, identical to the shape on `stock-adjustment` items. Use this for serial-tracked products to record which specific units are being driven to the target. Round-trips through the read path (`~with(productInstances)`). |
 | `instance` | object (e.g. `{ imei: "..." }`) | no | **Deprecated** single-instance form, kept for compatibility with the stock-adjustment item shape. Prefer `productInstances` in new code. |
+
+> **Heads up — duplicate `(product, place)` entries are not deduped.** A submission containing two or more entries that resolve to the same `(product, place)` pair processes each one independently. Each entry's delta is computed against the **pre-submission** current physical (not against any intermediate post-first-entry state), and each becomes a separate adjustment item on the underlying stock-adjustment record. The resulting final physical level is the sum of every delta applied — the last entry does **not** "win". If you intend a single target per pair, dedupe client-side before posting. See [Anti-Patterns](#anti-patterns).
 
 ### Worked example — single (product, place) to a target
 
@@ -169,6 +171,8 @@ The owner mismatch is checked atomically — one offending entry fails the entir
 - **Don't mix places across owners in one submission.** The call fails atomically; split into one submission per owner instead.
 - **Don't double-bookkeep against `/v1/stock-adjustments`.** Every `/v1/stock-entries` POST already emits a stock-adjustment record. Consuming both endpoints will count the same movement twice.
 - **Don't rely on `transactionId` for client-side idempotency.** It's a system-allocated value (read-only). For caller-driven idempotency, use the caller's own namespaced keys under `identifiers.<namespace>`.
+- **Don't rely on entry deduplication.** Passing two entries for the same `(product, place)` pair does not "overwrite" to the last target — both deltas are computed against the pre-submission current physical and land as separate adjustment items, so the resulting final physical level is the sum of every delta applied. Dedupe client-side before posting if you intend a single target per pair.
+- **Don't expect a server-side error on a misrouted product-scoped POST.** On `/v1/products/<key>/stockEntries`, body `product` values that disagree with the URL are silently dropped — there is no 400 and no diagnostic in the response. A misrouted client is only detectable by reading the resulting record. Validate URL/body parity client-side before posting.
 
 ---
 

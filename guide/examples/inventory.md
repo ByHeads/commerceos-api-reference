@@ -222,8 +222,33 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-entries" \
     ]
   }]'
 
+# Duplicate (product, place) entries are NOT deduped — each one becomes a separate adjustment item.
+# Each delta is computed against the same pre-submission current physical, not against an intermediate
+# post-first-entry state, so the resulting final level is the sum of every delta applied (not "last wins").
+# Dedupe client-side: same (product, place) twice yields two adjustment items, not one.
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-entries" \
+  -H "Content-Type: application/json" \
+  -d '[{
+    "identifiers": {"com.myapp.id": "ENT-DUP-001"},
+    "timestamp": "2024-03-15T10:32:00Z",
+    "entries": [
+      {
+        "product": {"identifiers": {"com.myapp.sku": "SKU-001"}},
+        "place":   {"identifiers": {"com.myapp.stockPlaceId": "WH-001"}},
+        "physicalQuantity": 100
+      },
+      {
+        "product": {"identifiers": {"com.myapp.sku": "SKU-001"}},
+        "place":   {"identifiers": {"com.myapp.stockPlaceId": "WH-001"}},
+        "physicalQuantity": 90
+      }
+    ]
+  }]'
+
 # Product-scoped variant — product is implicit (taken from the URL)
-# Useful for drift-correction across many places for one SKU. Body `product` values are ignored.
+# Useful for drift-correction across many places for one SKU. Body `product` values are silently
+# dropped — no 400, no diagnostic — so validate URL/body parity client-side if you need to catch
+# misrouted clients.
 curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/products/com.myapp.sku=SKU-001/stockEntries" \
   -H "Content-Type: application/json" \
   -d '[{
@@ -251,6 +276,8 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustments
 > **Heads up:**
 >
 > - All entries in a submission must resolve to the same owner. Mixing places across owners fails atomically with `"All entries in a stock entry submission must be owned by the same owner. ..."`.
+> - Two entries that resolve to the same `(product, place)` pair are **not deduped** — each computes its delta against the pre-submission current physical and lands as a separate adjustment item, so the final level is the sum of every delta applied (not "last entry wins"). Dedupe client-side.
+> - On the product-scoped endpoint (`/v1/products/<key>/stockEntries`), body `product` values that disagree with the URL are silently dropped — there is no 400 and no diagnostic. Validate URL/body parity client-side if you need to catch misrouted clients.
 > - `availableQuantity` on an entry is accepted for back-compat parity with the legacy `PATCH /v1/stock-places/<key>` nested-array shape but is **informational only** — it does not steer effective stock separately from `physicalQuantity`.
 > - Every `/v1/stock-entries` POST emits a stock-adjustment record. Don't double-bookkeep against `/v1/stock-adjustments` or you'll count the same movement twice.
 
