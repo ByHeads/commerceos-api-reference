@@ -278,6 +278,7 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustments
 > - All entries in a submission must resolve to the same owner. Mixing places across owners fails atomically with `"All entries in a stock entry submission must be owned by the same owner. ..."`.
 > - Two entries that resolve to the same `(product, place)` pair are **not deduped** — each computes its delta against the pre-submission current physical and lands as a separate adjustment item, so the final level is the sum of every delta applied (not "last entry wins"). Dedupe client-side.
 > - On the product-scoped endpoint (`/v1/products/<key>/stockEntries`), body `product` values that disagree with the URL are silently dropped — there is no 400 and no diagnostic. Validate URL/body parity client-side if you need to catch misrouted clients.
+> - There is **no direction concept here**. A per-entry `direction` is ignored, and the submission's `reason` is recorded for audit without steering the movement — a `Decrease` reason used to raise a level from 4 to 8 simply increases to 8. `physicalQuantity` may also be **negative**: it's a signed absolute level, so `-5` drives the level to −5 (not "decrease by 5") and a later `5` recovers it. Direction only applies to the delta-based `/v1/stock-adjustments`.
 > - `availableQuantity` on an entry is accepted for back-compat parity with the legacy `PATCH /v1/stock-places/<key>` nested-array shape but is **informational only** — it does not steer effective stock separately from `physicalQuantity`.
 > - Every `/v1/stock-entries` POST emits a stock-adjustment record. Don't double-bookkeep against `/v1/stock-adjustments` or you'll count the same movement twice.
 
@@ -390,8 +391,38 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustment
     ]
   }'
 
+# Create stock adjustment with an explicit per-item direction
+# Direction precedence: item `direction` > reason `direction` > sign of `quantity`.
+# "COUNT" here is a reason created without a direction, so each item decides for itself.
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustments" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "identifiers": {"com.myapp.adjustmentId": "ADJ-005"},
+    "timestamp": "2024-03-18T08:00:00Z",
+    "items": [
+      {
+        "product": {"identifiers": {"com.myapp.sku": "SKU-001"}},
+        "place": {"identifiers": {"com.myapp.stockPlaceId": "WH-001"}},
+        "reason": {"identifiers": {"com.myapp.reasonId": "COUNT"}},
+        "quantity": 3,
+        "direction": "Decrease"
+      },
+      {
+        "product": {"identifiers": {"com.myapp.sku": "SKU-002"}},
+        "place": {"identifiers": {"com.myapp.stockPlaceId": "WH-001"}},
+        "reason": {"identifiers": {"com.myapp.reasonId": "COUNT"}},
+        "quantity": -2
+      }
+    ]
+  }'
+# SKU-001 decreases by 3 (explicit direction beats the positive sign);
+# SKU-002 decreases by 2 (the negative sign decides, nothing above it did).
+
 # Get stock adjustment items
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustments/com.myapp.adjustmentId=ADJ-001~with(items)"
+
+# Read back the resolved direction of each item (read-only, not returned by default)
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustments/com.myapp.adjustmentId=ADJ-005/items~with(direction)"
 ```
 
 ### Stock Adjustments — Time-relative queries
@@ -415,10 +446,15 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustments
 > - `items[]` (required): Array of adjustment items, each containing:
 >   - `product` (required): Product reference
 >   - `place` (required): Stock place reference
->   - `reason` (required): Stock adjustment reason reference
->   - `quantity` (optional, defaults to 1): Positive for increase, negative for decrease
+>   - `reason` (required): Stock adjustment reason reference — supplies the default direction
+>   - `quantity` (optional, defaults to 1): The change, signed or unsigned. The applied magnitude is always `|quantity|`
+>   - `direction` (optional): `"Increase"` or `"Decrease"` — per-item override. Read-only on read-back; expand with `~with(direction)`
 >   - `instance` (optional): Instance data for serialized products
 > - `owner` (optional): Auto-inferred from the first item's place if omitted
+>
+> **Direction precedence** (highest first): the item's `direction` → the reason's `direction` → the sign of `quantity` (positive ⇒ increase, negative ⇒ decrease). A positive quantity with a `Decrease` reason means "decrease by N"; a negative quantity with an `Increase` direction is rejected with `400`. See [Working with Stock → Direction and Sign Rules](../../reference/working-with/stock.md#direction-and-sign-rules).
+>
+> **Not applicable to `/v1/stock-entries`:** that resource takes an absolute target level and computes the delta itself — a per-entry `direction` is ignored, and the reason's `direction` is audit metadata only.
 
 ---
 

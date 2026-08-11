@@ -238,7 +238,8 @@ Company Stock Roots
 | `product` | ProductRef | Yes | Product being adjusted |
 | `place` | StockPlaceRef | Yes | Location of adjustment |
 | `reason` | ReasonRef | Yes | Why inventory changed |
-| `quantity` | decimal (string) | No | Amount to adjust; defaults to `"1"`. The direction (increase/decrease) is determined by the reason's `direction` field |
+| `quantity` | decimal (string) | No | Amount to adjust; defaults to `"1"`. May be signed. The applied magnitude is always `\|quantity\|`, moved in the resolved direction — see [Direction and Sign Rules](#direction-and-sign-rules) |
+| `direction` | string | No | `Increase` or `Decrease`. Overrides the reason's own `direction` for this item. Read-only on read-back — request it with `~with(direction)` |
 | `instance` | Instance | No | Specific serialized instance |
 
 > **Note:** If `owner` is omitted from the adjustment, it is inferred from the stock place's nearest stock root. Errors occur when the owner cannot be inferred (for example, the place is unowned and not under a stock root).
@@ -571,6 +572,64 @@ POST /v1/stock-adjustments
 ```
 
 > The `DAMAGED` reason has `direction: "Decrease"`, so the quantity is subtracted from stock.
+
+### Direction and Sign Rules
+
+Every adjustment item moves stock in one direction — `Increase` or `Decrease` — by the magnitude `|quantity|`. Three inputs can decide that direction, and they are consulted in this order (highest precedence first):
+
+| # | Source | Wins over |
+|---|--------|-----------|
+| 1 | The item's own `direction` (`"Increase"` / `"Decrease"`) | everything below |
+| 2 | The `direction` on the item's `reason` | the sign of `quantity` |
+| 3 | The sign of `quantity` — positive ⇒ `Increase`, negative ⇒ `Decrease` | — |
+
+So a reason with no `direction` (a bidirectional reason such as `COUNT`) lets each item decide for itself, either by setting `direction` explicitly or by signing the quantity:
+
+```bash
+POST /v1/stock-adjustments
+{
+  "timestamp": "2024-12-15T10:00:00Z",
+  "items": [
+    {
+      "product": {"identifiers": {"com.example.sku": "PHONE-001"}},
+      "place": {"identifiers": {"com.example.stockPlaceId": "WAREHOUSE-001"}},
+      "reason": {"identifiers": {"com.example.reasonId": "COUNT"}},
+      "quantity": 3,
+      "direction": "Decrease"
+    },
+    {
+      "product": {"identifiers": {"com.example.sku": "CASE-001"}},
+      "place": {"identifiers": {"com.example.stockPlaceId": "WAREHOUSE-001"}},
+      "reason": {"identifiers": {"com.example.reasonId": "COUNT"}},
+      "quantity": -2
+    }
+  ]
+}
+```
+
+The first item decreases `PHONE-001` by 3 (explicit `direction` beats the positive sign); the second decreases `CASE-001` by 2 (no explicit direction, no reason direction, so the negative sign decides).
+
+**Magnitude is always `|quantity|`.** A `quantity` of `-5` with a `Decrease` direction decreases by 5, not by −5 — the sign is only ever read as a direction hint, never applied twice.
+
+**A positive `quantity` with a `Decrease` reason or direction is allowed** and means "decrease by N". This is the historical shape: quantities were always positive and the reason carried the direction, and that continues to work unchanged.
+
+**A negative `quantity` combined with an `Increase` direction is rejected with `400`** — whether the `Increase` came from the item's `direction` or from the reason. A negative quantity can only ever decrease, so the combination is contradictory rather than resolvable:
+
+```bash
+# 400 Bad Request — negative quantity cannot increase stock
+{
+  "reason": {"identifiers": {"com.example.reasonId": "RECEIVED"}},  # direction: Increase
+  "quantity": -5
+}
+```
+
+Reading `direction` back: it is **read-only** on the response and not returned by default. Expand it explicitly:
+
+```bash
+GET /v1/stock-adjustments/com.example.adjustmentId=ADJ-001/items~with(direction)
+```
+
+> **`/v1/stock-entries` has no direction concept.** The target-based resource takes an absolute level, not a movement, so there is nothing to resolve: it computes the signed delta itself against the current stock. A `direction` on an entry is ignored, and the `reason`'s direction is recorded for audit but does **not** steer the movement — a `Decrease` reason used to raise a level from 4 to 8 simply increases to 8. See [Stock Entries](../stock-entries.md#no-direction-on-stock-entries).
 
 ### Instance-Specific Adjustment
 
@@ -1582,13 +1641,22 @@ GET /v1/stock-places/com.example.stockPlaceId=WH-STORAGE/entries
    "reason": {"identifiers": {"com.example.reasonId": "..."}}"
    ```
 
-4. **Quantity is a positive decimal string, defaulting to `"1"` if omitted. The reason's `direction` controls increase/decrease:**
+4. **Quantity is a decimal string, defaulting to `"1"` if omitted. Direction resolves from the item's `direction`, then the reason's `direction`, then the sign of the quantity** (see [Direction and Sign Rules](#direction-and-sign-rules)):
    ```bash
    # Increase (reason with direction: "Increase")
    "quantity": "50"
 
    # Decrease (reason with direction: "Decrease")
    "quantity": "10"
+
+   # Decrease, overriding a bidirectional reason on this item only
+   "quantity": "10", "direction": "Decrease"
+
+   # Decrease by 2, direction taken from the sign (no reason/item direction)
+   "quantity": "-2"
+
+   # 400 — a negative quantity cannot increase
+   "quantity": "-2", "direction": "Increase"
    ```
 
 5. **Namespaced identifiers required:**

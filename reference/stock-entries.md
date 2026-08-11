@@ -24,6 +24,7 @@ A `stock-entries` submission *is* a stock-adjustment under the hood:
 - The submission's `timestamp`, `owner`, and `stock` become the stock-adjustment's `timestamp`, `owner`, and `stock`.
 - Each `(product, place, target)` becomes a stock-adjustment item carrying the computed delta.
 - Zero-delta entries (target already matches current physical) emit **no item**; the submission still succeeds.
+- The direction of each generated item follows the sign of the computed delta. Callers never resolve a direction themselves — the `direction` field and the reason-direction precedence that apply to `/v1/stock-adjustments` items have no counterpart here. See [No direction on stock entries](#no-direction-on-stock-entries).
 
 Once the submission is committed, the same record is readable via `/v1/stock-adjustments` by the same identifiers — see [Cross-Linking to Stock Adjustments](#cross-linking-to-stock-adjustments) below.
 
@@ -60,7 +61,7 @@ Once the submission is committed, the same record is readable via `/v1/stock-adj
 | `timestamp` | ISO timestamp | yes | The event timestamp recorded on the resulting stock-adjustment record. Submissions without a valid timestamp are rejected — see [Errors](#errors). |
 | `owner` | agent ref | no | The stock owner. If omitted, inferred from `entries[0].place` via the nearest root place. If the inference returns multiple owners, the POST is rejected — pass `owner` explicitly. |
 | `stock` | stock ref | no | The logical stock being adjusted. Defaults to the owner's default stock. |
-| `reason` | stock-adjustment-reason ref | no | The reason applied to every generated stock-adjustment item. Defaults to a system-managed `StockEntry` reason that is auto-created on first use and reused thereafter. |
+| `reason` | stock-adjustment-reason ref | no | The reason applied to every generated stock-adjustment item, recorded for audit. Its `direction` does **not** steer the movement — see [No direction on stock entries](#no-direction-on-stock-entries). Defaults to a system-managed `StockEntry` reason that is auto-created on first use and reused thereafter. |
 | `entries` | array of entry objects | yes | One or more target entries. An empty array is rejected. See the entry shape below. |
 
 ### Entry object fields
@@ -71,12 +72,33 @@ Each element of `entries`:
 |---|---|---|---|
 | `product` | product ref | yes on `/v1/stock-entries`; implicit (URL) on `/v1/products/.../stockEntries` | The product to drive. On the product-scoped endpoint, any `product` field present in the body is ignored — the URL is authoritative. |
 | `place` | place ref (stock-place) | yes | The stock-place to drive. All entries in one submission must resolve to the same owner — mixing places across owners is rejected. |
-| `physicalQuantity` | number or numeric-string | yes | The **target** physical quantity at `(product, place)` after the submission lands. The resource reads the current physical level, computes the delta, and emits a stock-adjustment item carrying that delta. Zero-delta entries emit no item but the submission still succeeds. Decimal targets are preserved (`"2.5"` ⇒ 2.5). |
+| `physicalQuantity` | number or numeric-string | yes | The **target** physical quantity at `(product, place)` after the submission lands. The resource reads the current physical level, computes the delta, and emits a stock-adjustment item carrying that delta. Zero-delta entries emit no item but the submission still succeeds. Decimal targets are preserved (`"2.5"` ⇒ 2.5). May be **negative** — see [No direction on stock entries](#no-direction-on-stock-entries). |
 | `availableQuantity` | number | no | Accepted for parity with the legacy nested `stock-place.entries` shape, but **informational only**. A single stock-adjustment item moves owner-stock and place-stock by the same delta, so effective stock follows `physicalQuantity`. See the anti-pattern callout in [Anti-Patterns](#anti-patterns). |
 | `productInstances` | array of `{ quantity, serialNumber?, identifiers?, batch?, domain? }` | no | New-style instance list, identical to the shape on `stock-adjustment` items. Use this for serial-tracked products to record which specific units are being driven to the target. Round-trips through the read path (`~with(productInstances)`). |
 | `instance` | object (e.g. `{ imei: "..." }`) | no | **Deprecated** single-instance form, kept for compatibility with the stock-adjustment item shape. Prefer `productInstances` in new code. |
 
 > **Heads up — duplicate `(product, place)` entries are not deduped.** A submission containing two or more entries that resolve to the same `(product, place)` pair processes each one independently. Each entry's delta is computed against the **pre-submission** current physical (not against any intermediate post-first-entry state), and each becomes a separate adjustment item on the underlying stock-adjustment record. The resulting final physical level is the sum of every delta applied — the last entry does **not** "win". If you intend a single target per pair, dedupe client-side before posting. See [Anti-Patterns](#anti-patterns).
+
+### No direction on stock entries
+
+`/v1/stock-entries` has **no direction concept**. `physicalQuantity` is an absolute target level, not a movement, so the resource computes the signed delta against the current stock and applies it. There is nothing for a caller to specify and nothing that can conflict:
+
+- **There is no per-entry `direction` field.** Don't send one — it is ignored. Direction only exists on the delta-based `/v1/stock-adjustments` items, where the caller supplies the movement rather than the target. See [Direction and Sign Rules](working-with/stock.md#direction-and-sign-rules).
+- **The submission's `reason` is recorded for audit, but its `direction` does not affect the movement.** A reason declared `direction: "Decrease"` used to *raise* a level from 4 to 8 simply increases it to 8. Pick the reason for what it says in the audit trail, not for the direction you want.
+- **`physicalQuantity` may be negative.** It is a signed absolute level, and negative stock balances are permitted, so a target of `-5` drives the level to −5 and a subsequent submission of `5` recovers it to 5. A negative target is not a "decrease by 5" instruction — for that, post a delta to `/v1/stock-adjustments`.
+
+```jsonc
+// Drive (SKU-001, WH-001) to −5 — a signed absolute level, not a decrease of 5
+[{
+  "identifiers": { "com.example.id": "ENT-NEG-001" },
+  "timestamp": "2024-03-15T10:30:00Z",
+  "entries": [{
+    "product": { "identifiers": { "com.example.sku": "SKU-001" } },
+    "place":   { "identifiers": { "com.example.stockPlaceId": "WH-001" } },
+    "physicalQuantity": -5
+  }]
+}]
+```
 
 ### Worked example — single (product, place) to a target
 
@@ -172,6 +194,8 @@ The owner mismatch is checked atomically — one offending entry fails the entir
 - **Don't double-bookkeep against `/v1/stock-adjustments`.** Every `/v1/stock-entries` POST already emits a stock-adjustment record. Consuming both endpoints will count the same movement twice.
 - **Don't rely on `transactionId` for client-side idempotency.** It's a system-allocated value (read-only). For caller-driven idempotency, use the caller's own namespaced keys under `identifiers.<namespace>`.
 - **Don't rely on entry deduplication.** Passing two entries for the same `(product, place)` pair does not "overwrite" to the last target — both deltas are computed against the pre-submission current physical and land as separate adjustment items, so the resulting final physical level is the sum of every delta applied. Dedupe client-side before posting if you intend a single target per pair.
+- **Don't try to steer the movement with `direction` or with the reason's direction.** Stock entries take an absolute target and compute the delta themselves; a per-entry `direction` is ignored and the reason's `direction` is audit metadata only. If you need to express a movement rather than a level, post to `/v1/stock-adjustments` instead — see [No direction on stock entries](#no-direction-on-stock-entries).
+- **Don't read a negative `physicalQuantity` as "decrease by N".** It's a signed absolute level: `-5` drives the level to −5 from wherever it currently sits.
 - **Don't expect a server-side error on a misrouted product-scoped POST.** On `/v1/products/<key>/stockEntries`, body `product` values that disagree with the URL are silently dropped — there is no 400 and no diagnostic in the response. A misrouted client is only detectable by reading the resulting record. Validate URL/body parity client-side before posting.
 
 ---

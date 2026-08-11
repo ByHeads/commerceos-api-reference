@@ -459,6 +459,35 @@ Related: [gotcha 9](#9-parameterless-operators-no-empty-parentheses) — a param
 
 ---
 
+## 25. Stock Direction Works Differently on Adjustments and Entries
+
+The two stock-writing resources take opposite kinds of input, and only one of them has a direction.
+
+**`/v1/stock-adjustments` is delta-based and resolves a direction** from three inputs, highest precedence first:
+
+1. the item's own `direction` (`"Increase"` / `"Decrease"`),
+2. the `direction` on the item's `reason`,
+3. the sign of `quantity` (positive ⇒ increase, negative ⇒ decrease).
+
+The applied magnitude is always `|quantity|` — the sign is only ever read as a direction hint, never applied twice. A positive quantity with a `Decrease` reason means "decrease by N" and is perfectly valid. A **negative** quantity with an **`Increase`** direction — from the item or from the reason — is rejected with `400`, because a negative quantity can only decrease.
+
+```bash
+# RIGHT - explicit override on a bidirectional reason
+{"reason": {...}, "quantity": 3, "direction": "Decrease"}   # removes 3
+
+# RIGHT - sign decides when nothing above it does
+{"reason": {...}, "quantity": -2}                            # removes 2
+
+# WRONG - 400 Bad Request
+{"reason": {...}, "quantity": -5, "direction": "Increase"}
+```
+
+**`/v1/stock-entries` is target-based and has no direction at all.** `physicalQuantity` is an absolute level; the server computes the signed delta against current stock. Sending a `direction` on an entry does nothing, and the submission's `reason` is audit metadata whose `direction` does **not** steer the movement — a `Decrease` reason used to raise a level from 4 to 8 simply increases to 8. `physicalQuantity` may itself be negative (negative balances are permitted): `-5` drives the level to −5, and a later `5` recovers it to 5. It is not a "decrease by 5" instruction.
+
+Full rules: [Working with Stock → Direction and Sign Rules](working-with/stock.md#direction-and-sign-rules) and [Stock Entries → No direction on stock entries](stock-entries.md#no-direction-on-stock-entries).
+
+---
+
 ## API Response Behaviors
 
 ### Empty Collection Results

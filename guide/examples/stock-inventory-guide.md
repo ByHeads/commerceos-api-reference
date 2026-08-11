@@ -358,7 +358,7 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustmen
 
 ## Part 3: Stock Adjustments — Changing Inventory Levels
 
-A `stock adjustment` is the primary mechanism for changing stock quantities. Each adjustment pertains to exactly one store and stock, and contains one or more items. The adjustment's direction (increase or decrease) is determined by the **reason code**, not by a negative quantity — quantities are always positive.
+A `stock adjustment` is the primary mechanism for changing stock quantities. Each adjustment pertains to exactly one store and stock, and contains one or more items. Each item moves stock by the magnitude of its `quantity` in a direction resolved from — in order — the item's own `direction` field, the **reason code**'s `direction`, and finally the sign of `quantity`. The common shape is a positive quantity plus a directional reason; see [3.2 Decreasing Stock](#32-decreasing-stock) for the full precedence.
 
 ### 3.1 Basic Stock Adjustment — Increasing Stock
 
@@ -402,7 +402,7 @@ Response:
 
 ### 3.2 Decreasing Stock
 
-The direction comes from the **reason's `direction` field**, not from the quantity. Quantities are always positive.
+In the usual shape the direction comes from the **reason's `direction` field** and the quantity is a plain positive magnitude:
 
 ```bash
 # Record 5 units damaged at the Stockholm store
@@ -423,6 +423,57 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustment
 ```
 
 After this, Stockholm has 45 units of TSHIRT-RED-M (50 restocked minus 5 damaged).
+
+#### Direction precedence
+
+Three inputs can decide an item's direction. They are consulted in this order:
+
+1. **The item's own `direction`** (`"Increase"` or `"Decrease"`) — an optional per-item override that beats everything below.
+2. **The reason's `direction`** — the usual source, and the reason a positive quantity can mean "remove 5 units".
+3. **The sign of `quantity`** — positive ⇒ increase, negative ⇒ decrease. Only consulted when neither of the above says anything (i.e. a bidirectional reason such as an inventory-count reason with no `direction`).
+
+The applied magnitude is always `|quantity|`; the sign is only ever a direction hint, never applied a second time.
+
+```bash
+# "count" here is a reason created without a `direction` (bidirectional), so each item decides for itself
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustments" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "identifiers": { "com.example.id": "adj-count-001" },
+    "timestamp": "2026-03-25T18:00:00Z",
+    "items": [
+      {
+        "product": { "identifiers": { "com.example.sku": "TSHIRT-RED-M" } },
+        "place": { "identifiers": { "com.example.id": "stockholm-store" } },
+        "reason": { "identifiers": { "com.example.id": "count" } },
+        "quantity": 3,
+        "direction": "Decrease"
+      },
+      {
+        "product": { "identifiers": { "com.example.sku": "TSHIRT-BLUE-L" } },
+        "place": { "identifiers": { "com.example.id": "stockholm-store" } },
+        "reason": { "identifiers": { "com.example.id": "count" } },
+        "quantity": -2
+      }
+    ]
+  }'
+```
+
+The first item removes 3 (explicit `direction` wins over the positive sign); the second removes 2 (the negative sign decides, since nothing above it did).
+
+Two rules worth memorising:
+
+- **A positive quantity with a `Decrease` reason or direction is fine** — it means "decrease by N". This is the historical shape and still works exactly as before.
+- **A negative quantity with an `Increase` direction is rejected with `400`**, whether the `Increase` came from the item or from the reason. A negative quantity can only ever decrease, so the combination is contradictory rather than resolvable.
+
+`direction` is read-only on read-back and not returned by default:
+
+```bash
+# Read the resolved direction of each item
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustments/com.example.id=adj-count-001/items~with(direction)"
+```
+
+> **Note:** none of this applies to `/v1/stock-entries`, which takes an absolute target level instead of a movement and computes the delta itself. A `direction` on a stock entry is ignored, and the entry reason's `direction` does not steer the movement. See the [Stock Entries reference](../../reference/stock-entries.md#no-direction-on-stock-entries).
 
 ### 3.3 Multi-Item Adjustments
 
@@ -1551,8 +1602,9 @@ Inherits from `stock transaction` (has `timestamp`, `owner`).
 | `identifiers` | common identifiers | No | No | External identifiers |
 | `product` | product reference | Yes | No | The product being adjusted |
 | `place` | place reference | Yes | No | The stock place being adjusted |
-| `reason` | stock adjustment reason reference | Yes | No | Reason code (determines direction) |
-| `quantity` | decimal | No (default: 1) | No | Magnitude of the change (always positive) |
+| `reason` | stock adjustment reason reference | Yes | No | Reason code (supplies the default direction) |
+| `quantity` | decimal | No (default: 1) | No | The change; may be signed. Applied magnitude is always `\|quantity\|` |
+| `direction` | `"Increase"` or `"Decrease"` | No | Yes (on read-back) | Per-item direction override; beats the reason's direction and the sign of `quantity`. Request with `~with(direction)` |
 | `instance` | dynamic | No | No | Single instance data for tracked products |
 | `productInstances` | product instance[] | No | No | Structured instance data |
 
@@ -1744,7 +1796,9 @@ Inherits from `stock transaction` (has `timestamp`, `owner`).
 
 - **Stock reset doesn't delete transactions.** It creates new offsetting adjustment items with a "StockReset" reason. The full history — including all pre-reset adjustments — remains intact and queryable.
 
-- **Adjustment `quantity` is always positive.** The direction (increase or decrease) is determined by the reason's `direction` field, not by the sign of the quantity.
+- **Adjustment direction has a precedence order, and the sign of `quantity` comes last.** The item's own `direction` wins, then the reason's `direction`, then the sign. A positive quantity with a `Decrease` reason still decreases — that's the historical shape and it hasn't changed. A negative quantity with an `Increase` direction is a `400`. See [3.2 Decreasing Stock → Direction precedence](#32-decreasing-stock).
+
+- **`/v1/stock-entries` ignores direction entirely.** It takes an absolute target level and computes the delta itself, so a per-entry `direction` is ignored and the reason's `direction` is audit metadata only. `physicalQuantity` may be negative — a signed target level, not a decrease instruction.
 
 - **`stockRoots` vs `assortmentRoots` are different things.** `stockRoots` = inventory locations (stock places). `assortmentRoots` = product catalog (product nodes/categories). Confusing them is a common mistake.
 
