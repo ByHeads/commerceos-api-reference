@@ -144,6 +144,19 @@ curl -u ":banana" "https://example.app.heads.com/api/v1/products~skip(20)~take(1
 curl -u ":banana" "https://example.app.heads.com/api/v1/products?limit=10&offset=20"
 ```
 
+**Using a Cursor (for whole-collection walks):**
+```bash
+# First page - orderby is required, and must be a field with unique values
+curl -u ":banana" -D - "https://example.app.heads.com/api/v1/products?limit=100&orderby=identifiers/key"
+
+# Follow X-Cursor-Next from the response headers; repeat while X-Has-More is true
+curl -u ":banana" -D - "https://example.app.heads.com/api/v1/products?limit=100&orderby=identifiers/key&after=<token>"
+```
+
+Cursor pages stay stable while the collection is being written to, and don't slow down as you go deeper. Two things to
+watch: sorting on a non-unique field (e.g. `status`) silently skips items, and streamed responses never emit the cursor
+headers — see [`reference/pagination.md`](../reference/pagination.md#cursor-pagination).
+
 **Important:** There is no `totalCount` in list responses. To count items:
 ```bash
 curl -u ":banana" "https://example.app.heads.com/api/v1/products~count"

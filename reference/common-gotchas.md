@@ -488,6 +488,37 @@ Full rules: [Working with Stock → Direction and Sign Rules](working-with/stock
 
 ---
 
+## 26. Cursor Pagination Silently Skips Items on a Non-Unique Sort Field
+
+A cursor walk asks for the next page with a strict `field > lastValue` filter and no secondary tiebreaker. Sort on a
+field where several items share a value and every item on a page boundary except the last one is dropped — with no
+error, and often with `X-Has-More: false` while records remain. The export just comes up short.
+
+```bash
+# WRONG - hundreds of products share each status value
+GET /v1/products?limit=50&orderby=status
+
+# RIGHT - unique per resource
+GET /v1/products?limit=50&orderby=identifiers/key
+```
+
+`name` is not a safe substitute either: the same name can exist per currency or per store. Compound sorting is not a
+workaround — an `orderby` listing more than one field is rejected with `400` once an `after` token is present.
+
+Two related surprises in the same feature:
+
+- **Streaming turns the walk off.** With `Accept: application/json;stream=true` the body starts before the pagination
+  headers could be computed, so `Link` / `X-Cursor-Next` / `X-Has-More` are never sent. An `after` token is still
+  honored, so the request succeeds and returns `limit` items — it just gives you nothing to continue from. Page walks
+  must use buffered requests.
+- **A `fields` projection may omit the sort field.** The API fetches it internally to compute the cursor and strips it
+  back out, so `?orderby=identifiers/key&fields=name,status` paginates correctly and still returns only `name` and
+  `status`.
+
+Full rules: [Pagination → Cursor pagination](pagination.md#cursor-pagination).
+
+---
+
 ## API Response Behaviors
 
 ### Empty Collection Results

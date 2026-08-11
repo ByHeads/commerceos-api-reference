@@ -49,6 +49,11 @@ Items are read from the database in batches (default 200 items per batch), each 
 
 > **Note:** Because each batch uses a separate read transaction, the result set may not reflect a single point-in-time snapshot when data is changing concurrently. For snapshot-consistent reads, use the default buffered mode.
 
+> **Streaming responses carry no pagination headers.** The body starts before `Link`, `X-Cursor-Next` and `X-Has-More`
+> could be computed, so a streamed response never emits them. An `after` cursor token is still honored — the response
+> is exactly `limit` items starting after that token — but there is no next cursor to continue from, so a page walk
+> must use buffered requests. See [Cursor pagination](../reference/pagination.md#cursor-pagination).
+
 ### Output Formats
 
 | Accept Header | Behavior |
@@ -207,6 +212,7 @@ All data preceding the error object is valid and committed. The `processedCount`
 - **Atomic error handling:** When you need a clean HTTP status code on failure, use buffered mode. Or use `X-Transaction-Count: all` to ensure all-or-nothing semantics.
 - **Snapshot consistency:** Streaming reads use batched transactions; for a consistent point-in-time view, use the default buffered mode.
 - **Client libraries that don't support NDJSON:** Standard JSON parsers expect a complete JSON array. Streaming requires a line-by-line parser.
+- **Cursor-paginated walks:** streamed responses never emit `Link` / `X-Cursor-Next` / `X-Has-More`, so there is no token to follow. Use buffered requests for the walk (see [Cursor pagination](../reference/pagination.md#cursor-pagination)).
 
 ### Decision Guide
 
@@ -280,3 +286,6 @@ curl -fsSL -X PATCH https://example.app.heads.com/api/v1/products -u ":banana" \
 | `Accept` | Response format | `application/json`, `application/json;stream=true`, `application/x-ndjson` | `application/json` |
 | `Content-Type` | Request format | `application/json`, `application/json;stream=true`, `application/x-ndjson` | `application/json` |
 | `X-Transaction-Count` | Chunk size | number, `all`, `-1`, `*` | `200` |
+
+Not emitted on streamed responses: `Link`, `X-Cursor-Next`, `X-Has-More`. These are
+[cursor-pagination](../reference/pagination.md#cursor-pagination) headers and require a buffered response.

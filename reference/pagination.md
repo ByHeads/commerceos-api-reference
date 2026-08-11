@@ -1,14 +1,17 @@
 # Pagination
 
-Pagination keeps responses fast and predictable when working with large collections. CommerceOS supports both limit/offset
-query parameters and `~skip`/`~take` operators.
+Pagination keeps responses fast and predictable when working with large collections. CommerceOS supports offset
+pagination (limit/offset query parameters or `~skip`/`~take` operators) and cursor pagination (an opaque `after` token).
 
 ## Choose a pagination approach
 - **Query parameters (basic):** `?limit=N&offset=N&orderby=selector`
 - **Operators (pipe-friendly):** `~orderBy(selector[:desc])~skip(N)~take(N)`
+- **Cursor (stable under concurrent writes):** `?limit=N&orderby=selector&after=<token>` — see
+  [Cursor pagination](#cursor-pagination)
 
 Use query parameters for simple, familiar pagination. Use operators when you need explicit control over evaluation order
-or need to chain with other operators like `~where` or `~with`.
+or need to chain with other operators like `~where` or `~with`. Use a cursor when the collection is being written to
+while you walk it, or when growing offsets are making pages slow.
 
 ## Query parameter normalization
 
@@ -67,9 +70,98 @@ Notes:
 - Keep the sort consistent across pages to avoid duplicates or gaps when new records appear.
 - Stop paging when a response returns fewer than `take` items.
 
-## Cursor-like patterns (resume without large offsets)
+## Cursor pagination
 
-There is no dedicated cursor parameter, but you can resume pagination by reusing the last seen sort key:
+Cursor pagination marks your position in a result set with an opaque token instead of a numeric offset. Because the
+token encodes *where you left off* rather than *how many rows to skip*, pages stay stable when items are inserted or
+removed while you are walking the collection, and page cost does not grow as you go deeper.
+
+`orderby` is required. The cursor is passed back as the `after` query parameter.
+
+### Walking a collection
+
+**1. First request** — send `limit` and `orderby`, no `after`:
+
+```bash
+GET /v1/products?limit=50&orderby=identifiers/key
+```
+
+**2. Read the response headers:**
+
+| Header | Description |
+|--------|-------------|
+| `Link` | RFC 8288 link with `rel="next"` pointing at the next page URL. Absent on the last page. |
+| `X-Cursor-Next` | The raw opaque token for the next page. Absent on the last page. |
+| `X-Has-More` | `true` if more pages exist, `false` on the last page. |
+
+All three are listed in `Access-Control-Expose-Headers`, so browser clients can read them cross-origin.
+
+**3. Follow the cursor** — pass the `X-Cursor-Next` value as `after` (or just request the `Link` URL):
+
+```bash
+GET /v1/products?limit=50&orderby=identifiers/key&after=eyJ2IjoiV0lER0VULTAwMSIsImYiOiJpZGVudGlmaWVycy9rZXkiLCJkIjoiYXNjIn0=
+```
+
+**4. Repeat** until `X-Has-More` is `false`.
+
+Cursor pagination combines with the rest of the query pipeline — `~where` filters, `fields` projections and a
+`:desc` sort direction all work as usual, as long as every request in the walk uses the *same* query apart from `after`.
+
+### Requirements and notes
+
+**Sort on a field with unique values.** This is the one requirement that fails silently, so treat it as the first
+thing to get right. The cursor tracks position by sort value alone — the next page is fetched with a strict
+`field > lastValue` filter, with no secondary tiebreaker. If several items share the sort value that falls on a page
+boundary, every one of them except the last is skipped, and the walk can even report `X-Has-More: false` while items
+remain unread. There is no error and no warning; the export just comes up short.
+
+```bash
+# Wrong: many products share a status, so items are dropped at every page boundary
+GET /v1/products?limit=50&orderby=status
+
+# Right: identifiers/key is unique per resource
+GET /v1/products?limit=50&orderby=identifiers/key
+```
+
+`identifiers/key` is the safest choice. `name` is *not* guaranteed unique either — the same product name can exist per
+currency or per store — and low-cardinality fields such as `status` are never safe. Compound sorting is not a
+workaround: an `orderby` with more than one field is rejected with `400 Cursor pagination with compound sort not yet
+supported` as soon as an `after` token is present.
+
+**Cursor pagination and streaming are mutually exclusive.** With `Accept: application/json;stream=true` the response
+body starts before the pagination headers could be computed, so `Link`, `X-Cursor-Next` and `X-Has-More` are never
+emitted. This is inherent to streaming, not a bug. An `after` token *is* still honored on a streamed request — the
+response is exactly `limit` items starting after the token — but with no next-cursor header there is nothing to
+continue from. Use buffered (non-streaming) requests when you need to walk pages. See
+[`features/streaming.md`](../features/streaming.md).
+
+**`fields` may omit the sort field.** The API fetches the `orderby` field internally to compute the next cursor and
+strips it back out before responding, so a projection that excludes it still paginates correctly and still returns only
+the fields you asked for:
+
+```bash
+# Paginates fine; each item comes back with name and status only, no identifiers
+GET /v1/products?limit=50&orderby=identifiers/key&fields=name,status
+```
+
+For a nested sort selector this applies to its first segment — sorting on `identifiers/key` while projecting
+`fields=name` fetches and then strips the whole `identifiers` object. If your projection already includes that field,
+nothing is added or removed.
+
+**Other notes:**
+
+- **`orderby` is required with `after`.** Omitting it returns `400 Cursor pagination requires 'orderby' to be
+  specified`. A malformed or truncated token also returns 400.
+- **`limit` defaults to 100** when omitted. Send it explicitly so page sizes are predictable.
+- **`offset` is ignored** when `after` is present — use one pagination style per request, not both.
+- **The token is opaque.** Do not parse, edit or construct it; always use the value from the response headers.
+- **Cursors are stateless.** They encode a position, not a server-side session, and stay valid indefinitely as long as
+  the sort field still exists.
+
+## Resuming from the last sort key (without a cursor token)
+
+Cursor pagination is query-parameter based. When you are working with the operator pipeline instead, you can get the
+same "no growing offsets" effect by filtering on the last value you saw:
 
 ```bash
 # First page (newest first)
@@ -102,7 +194,10 @@ These endpoints return items within a half-open time range:
 - `/after/{timestamp}` — items with `timestamp >= {timestamp}` (inclusive start)
 - `/before/{timestamp}` — items with `timestamp < {timestamp}` (exclusive end)
 
-**Cursor pagination with `/after`** (works for any supported collection — receipts shown):
+**Paging through a time window** (works for any supported collection — receipts shown). Note that the `/after/`
+*path segment* here is unrelated to the `after` *query parameter* of [cursor pagination](#cursor-pagination) — this
+pattern carries its position in the timestamp itself rather than in a token:
+
 ```bash
 # First page
 GET /v1/receipts/after/2025-01-01T00:00:00.000Z~take(100)
@@ -121,6 +216,9 @@ Invalid timestamps return a 404 error response (not an empty array).
 - Favor smaller, consistent page sizes (e.g., 100–500 items) and iterate until the last page is smaller than your page size.
 - Prefer date-window filtering (`timestamp` ranges) over very large offsets.
 - Sort by an indexed, unique-ish field (timestamps or identifiers) to keep page boundaries stable.
+- **Prefer a cursor over deep offsets** when exporting a whole collection: `?limit=500&orderby=identifiers/key` and then
+  follow `X-Cursor-Next`. Remember the sort field must be unique, and that the walk has to be buffered — a streamed
+  request never returns the cursor headers ([details](#cursor-pagination)).
 - **Use `/after/{timestamp}` and `/before/{timestamp}` for any time-sliced export** — they are the recommended pattern on every collection that supports them ([list](operators.md#time-relative-queries-before-and-after)). They use the collection's time index, stay linear in returned rows, and produce stable cursor boundaries between pages. `~where(timestamp>...)` works but is a predicate scan that gets slower as page offsets grow; reach for it only when you need to combine the time filter with a non-time condition.
 
 ## Copy-paste recipes
@@ -138,4 +236,8 @@ GET /v1/people?orderby=name&limit=100&offset=100
 # Time-sliced export (operators + date window)
 GET /v1/trade-orders~where(timestamp>=2025-01-01)~where(timestamp<2025-02-01)~orderBy(timestamp:desc)~take(200)
 GET /v1/trade-orders~where(timestamp>=2025-01-01)~where(timestamp<2025-02-01)~orderBy(timestamp:desc)~skip(200)~take(200)
+
+# Full catalog sync (cursor) — buffered requests only; repeat while X-Has-More is true
+GET /v1/products?limit=500&orderby=identifiers/key
+GET /v1/products?limit=500&orderby=identifiers/key&after=<X-Cursor-Next from the previous response>
 ```

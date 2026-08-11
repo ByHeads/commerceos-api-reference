@@ -374,7 +374,7 @@ The endpoint returns a half-open time range:
 - `/after/{timestamp}` — items with timestamp `>= {timestamp}` (inclusive start)
 - `/before/{timestamp}` — items with timestamp `< {timestamp}` (exclusive end)
 
-Results are returned as an ordinary collection, so any operator can be chained: `~orderBy(...)`, `~take(N)`, `~skip(N)`, `~with(...)`, `~just(...)`, `~map(...)`. See [`pagination.md`](pagination.md#cursor-like-patterns-resume-without-large-offsets) for the cursor-style "resume from last seen timestamp" pattern.
+Results are returned as an ordinary collection, so any operator can be chained: `~orderBy(...)`, `~take(N)`, `~skip(N)`, `~with(...)`, `~just(...)`, `~map(...)`. See [`pagination.md`](pagination.md#resuming-from-the-last-sort-key-without-a-cursor-token) for the "resume from last seen timestamp" pattern, and [`pagination.md`](pagination.md#cursor-pagination) for the `after` cursor token.
 
 ---
 
