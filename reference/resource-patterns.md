@@ -123,6 +123,92 @@ PATCH /v1/stores/{key}/stockRoots
 
 Both methods remove all existing items. Individual items can still be removed with `DELETE /v1/{collection}/{key}/{member}/{itemKey}`.
 
+To detach a specific subset without touching the rest, use the `remove` operation — see [Array Write Operations](#array-write-operations).
+
+---
+
+## Array Write Operations
+
+Every writable array member — labels on any entity, `members` on a customer group, `prices` on a product, `stockRoots` on an agent, `categories` on a product, `applicableOnlyTo` on a label, the trade-rule relation collections, and so on — supports three write operations via `PATCH`:
+
+| Operation | Effect on the array | Elements not listed |
+|-----------|---------------------|---------------------|
+| `add` | Appends the listed elements | Left in place |
+| `replace` | Makes the array exactly the supplied set | Dropped |
+| `remove` | Detaches exactly the listed elements | Left in place |
+
+Read-only arrays stay read-only — these operations are only available where the array itself is writable.
+
+### Two Ways to Invoke
+
+**Envelope** — `PATCH` the array itself with the operation as the body key:
+
+```bash
+PATCH /v1/trade-orders/{key}/labels
+{"remove": [{"identifiers": {"com.example.labelId": "sync-pending"}}]}
+```
+
+A single object is accepted where an array is expected:
+
+```bash
+PATCH /v1/trade-orders/{key}/labels
+{"remove": {"identifiers": {"com.example.labelId": "sync-pending"}}}
+```
+
+**Explicit sub-path** — `PATCH` the operation as a path segment, with the elements as the body:
+
+```bash
+PATCH /v1/trade-orders/{key}/labels/remove
+[{"identifiers": {"com.example.labelId": "sync-pending"}}]
+```
+
+Both forms are equivalent. The same pair of forms works for `add` and `replace`.
+
+### Identifying Elements
+
+Elements are matched **by identity**, resolved the same way `replace` resolves them — so you can target by **any** namespaced identifier, not just the primary key:
+
+```bash
+# Removes the "sync-pending" label from this order
+PATCH /v1/trade-orders/1a29.../labels
+{"remove": {"identifiers": {"com.example.labelId": "sync-pending"}}}
+```
+
+- **Object arrays** (labels, group members, prices, categories): identify the element by its identifiers, e.g. `{"category": {"identifiers": {"com.example.catId": "PHONES"}}}` for `categories`.
+- **Scalar `string[]` arrays** (e.g. a label's `applicableOnlyTo`): pass the string value itself, e.g. `{"remove": ["Product"]}`.
+
+### `remove` Is Idempotent
+
+Removing an element that is not currently in the array — wrong identifier, or already removed — is a **silent no-op**: `200`, no error, nothing changed. Retries and double-sends are safe. This holds for every array type.
+
+### Combining `add` and `remove`
+
+`add` and `remove` may be sent in a **single** `PATCH` body and are applied together in one transaction:
+
+```bash
+PATCH /v1/trade-orders/1a29.../labels
+{
+  "add":    [{"identifiers": {"com.example.labelId": "vip"}}],
+  "remove": [{"identifiers": {"com.example.labelId": "sync-pending"}}]
+}
+```
+
+If the **same** element appears in both `add` and `remove`, it ends up **present** — `add` wins, deterministically, regardless of key order in the JSON.
+
+`replace` **cannot** be combined with either, since it sets the whole array. A body mixing `replace` with `add` or `remove` is rejected with **`400` Bad Request** and the array is left unchanged. Send `replace` on its own, or `add`/`remove` together.
+
+### Choosing an Operation
+
+| Goal | Use |
+|------|-----|
+| Attach one or more elements, keep the rest | `add` |
+| Detach one or more elements, keep the rest | `remove` |
+| Make the array exactly this set | `replace` |
+| Clear the array entirely | `replace` with `[]` (or `PUT []`) |
+| Detach a single element you already have the key for | `DELETE /v1/{collection}/{key}/{member}/{itemKey}` |
+
+`DELETE` on a single element is unchanged and still supported; `remove` is the bulk/declarative form and the one that matches by arbitrary identifier.
+
 ---
 
 ## Product Node Hierarchy
@@ -187,12 +273,26 @@ Uses a wrapper object pattern:
 
 Weights stored on the category relation.
 
+Because the element is a wrapper, [`remove`](#array-write-operations) identifies it through the wrapped category:
+
+```bash
+PATCH /v1/products/{key}/categories
+{"remove": [{"category": {"identifiers": {"com.example.catId": "PHONES"}}}]}
+```
+
 ### prices
 
 Gets prices specific to this node.
 - Replace on set means setting the array replaces all existing prices
 - On add, price patterns are updated
 - On remove, if no other products remain, price is purged entirely
+
+Detach selected prices without rewriting the whole array with [`remove`](#array-write-operations):
+
+```bash
+PATCH /v1/products/{key}/prices
+{"remove": [{"identifiers": {"com.example.priceId": "CAMPAIGN-Q1"}}]}
+```
 
 ---
 

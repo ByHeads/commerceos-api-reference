@@ -409,7 +409,33 @@ DELETE /v1/stores/{key}/stockRoots  # Not the same as clearing
 
 This works for all `indexedArray` properties: `stockRoots`, `assortmentRoots`, `assortmentOwners`, `categories`, `labels`, `prices`, `users`, `customerGroups`, etc.
 
-> **Note:** Individual items can be removed with `DELETE /v1/{collection}/{key}/{member}/{itemKey}`.
+> **Note:** Individual items can be removed with `DELETE /v1/{collection}/{key}/{member}/{itemKey}`, and a specific subset with `PATCH {"remove": [...]}` — see gotcha 23 below and [Array Write Operations](resource-patterns.md#array-write-operations).
+
+---
+
+## 23. `replace` Can't Be Mixed with `add` or `remove`
+
+`add` and `remove` may be sent together in one `PATCH` body — they are applied in a single transaction, and an element listed in both ends up **present** (`add` wins). `replace` sets the whole array, so it cannot be combined with either:
+
+```bash
+# RIGHT - add and remove together, one transaction
+PATCH /v1/trade-orders/{key}/labels
+{"add":    [{"identifiers": {"com.example.labelId": "vip"}}],
+ "remove": [{"identifiers": {"com.example.labelId": "pending"}}]}
+
+# RIGHT - replace on its own
+PATCH /v1/trade-orders/{key}/labels
+{"replace": [{"identifiers": {"com.example.labelId": "vip"}}]}
+
+# WRONG - 400 Bad Request, and the array is left unchanged
+PATCH /v1/trade-orders/{key}/labels
+{"replace": [...], "remove": [...]}
+```
+
+Two more things that surprise people about `remove`:
+
+- **It is idempotent.** Removing an element that isn't there — wrong identifier, or already removed — is a silent no-op: `200`, nothing changed, no error. Don't use the status code to detect "was it actually attached?"; read the array back if you need to know.
+- **It matches by any identifier, not just the primary key.** `{"remove": [{"identifiers": {"com.example.labelId": "sync-pending"}}]}` resolves the element the same way `replace` does, so any namespaced identifier on the element works. Scalar `string[]` arrays (e.g. a label's `applicableOnlyTo`) take the raw values instead: `{"remove": ["Product"]}`.
 
 ---
 

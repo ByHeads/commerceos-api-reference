@@ -91,7 +91,7 @@ The CommerceOS API OpenAPI specification uses vendor extensions (`x-*` propertie
 
 **Applies to:** Array-type schemas (collections and pure arrays)
 
-**Purpose:** Describes the members available on array types, such as `count`, `add`, and `replace`. These describe how the array can be operated on via field selectors and PATCH operations.
+**Purpose:** Describes the members available on array types, such as `count`, `add`, `replace`, and `remove`. These describe how the array can be operated on via field selectors and PATCH operations.
 
 **Structure:** An object where each key is a member name and the value is a standard OpenAPI schema object describing that member.
 
@@ -117,6 +117,11 @@ The CommerceOS API OpenAPI specification uses vendor extensions (`x-*` propertie
         "type": "array",
         "items": { "$ref": "#/components/schemas/product" },
         "description": "Patch this array to replace the elements of the array."
+      },
+      "remove": {
+        "type": "array",
+        "items": { "$ref": "#/components/schemas/product" },
+        "description": "Patch this array to remove elements from the array."
       }
     }
   }
@@ -130,6 +135,7 @@ The CommerceOS API OpenAPI specification uses vendor extensions (`x-*` propertie
 | `count` | number (read-only) | Returns the number of elements in the collection |
 | `add` | array of element type | PATCH with this member to append elements |
 | `replace` | array of element type | PATCH with this member to replace all elements |
+| `remove` | array of element type | PATCH with this member to detach the listed elements, leaving the rest in place |
 
 **Accessing Array Members:**
 
@@ -156,10 +162,20 @@ PATCH /products
 PATCH /products
 {"replace": [{"name": "Only Product", "identifiers": {"com.example.sku": "ONLY-001"}}]}
 
+# Remove specific elements, leaving the rest in place
+PATCH /products
+{"remove": [{"identifiers": {"com.example.sku": "NEW-001"}}]}
+
+# Add and remove in one transaction
+PATCH /products
+{"add": [{"identifiers": {"com.example.sku": "A"}}], "remove": [{"identifiers": {"com.example.sku": "B"}}]}
+
 # Clear all items from collection (replace with empty array)
 PATCH /products
 {"replace": []}
 ```
+
+Each member is also addressable as an explicit sub-path — `PATCH /products/remove` with the element array as the body is equivalent to the envelope form above. `remove` is idempotent (removing an absent element is a `200` no-op), and `replace` cannot be combined with `add`/`remove` in the same body (`400`). See [Array Write Operations](resource-patterns.md#array-write-operations) for the full semantics.
 
 **Clearing Collections:**
 
@@ -372,7 +388,7 @@ Both approaches trigger the replace handler with an empty whitelist, removing al
 
 When generating client code:
 
-1. **Array operations:** Use `x-array-members` to generate helper methods for `count`, `add`, and `replace` on collection types
+1. **Array operations:** Use `x-array-members` to generate helper methods for `count`, `add`, `replace`, and `remove` on collection types
 2. **Type relationships:** Use `x-conceptOf` to understand collection-to-element relationships
 3. **Required fields:** Use `x-cos-required` to generate validation for create operations
 4. **Field expansion:** Use `x-cos-essential` to understand default vs. expanded field sets

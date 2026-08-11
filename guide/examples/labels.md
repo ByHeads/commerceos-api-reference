@@ -192,6 +192,8 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/trade-orders~with
 
 ### Removing labels
 
+Single label, by external ID:
+
 ```bash
 # Remove label from an order
 curl -X DELETE -u ":banana" "https://example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-001/labels/com.myapp.labelId=urgent"
@@ -199,6 +201,52 @@ curl -X DELETE -u ":banana" "https://example.app.heads.com/api/v1/trade-orders/c
 # Remove label from a product
 curl -X DELETE -u ":banana" "https://example.app.heads.com/api/v1/products/com.myapp.sku=SKU-001/labels/com.myapp.labelId=seasonal"
 ```
+
+Several labels at once, with `PATCH` + `remove`:
+
+```bash
+# Detach two labels, leave every other label on the order untouched
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-001/labels" \
+  -H "Content-Type: application/json" \
+  -d '{"remove": [
+        {"identifiers": {"com.myapp.labelId": "urgent"}},
+        {"identifiers": {"com.myapp.labelId": "high-value"}}
+      ]}'
+
+# A single label can be passed as an object instead of a one-element array
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-001/labels" \
+  -H "Content-Type: application/json" \
+  -d '{"remove": {"identifiers": {"com.myapp.labelId": "urgent"}}}'
+
+# Equivalent explicit sub-path form
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-001/labels/remove" \
+  -H "Content-Type: application/json" \
+  -d '[{"identifiers": {"com.myapp.labelId": "urgent"}}]'
+```
+
+`remove` is **idempotent** — removing a label that is not currently on the entity (wrong identifier, or already removed) returns `200` and changes nothing. Safe to retry, safe to send twice.
+
+See [Array Write Operations](../../reference/resource-patterns.md#array-write-operations) for how `add`, `replace`, and `remove` relate.
+
+### Swapping labels in one call
+
+`add` and `remove` can be combined in a single `PATCH` body and are applied together in one transaction — the natural way to move an entity from one state label to another:
+
+```bash
+# Mark as synced and drop the pending flag, atomically
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-001/labels" \
+  -H "Content-Type: application/json" \
+  -d '{
+        "add":    [{"identifiers": {"com.myapp.sync": "synced"}}],
+        "remove": [{"identifiers": {"com.myapp.sync": "pending"}}]
+      }'
+```
+
+> If the same label appears in both `add` and `remove`, it ends up **present** — `add` wins, regardless of key order.
+>
+> `replace` **cannot** be combined with `add` or `remove`; a body mixing them is rejected with `400` and the labels are left unchanged. Send `replace` on its own.
+>
+> This is the `PATCH` envelope form. The known no-op noted under [Assigning Labels to Entities](#assigning-labels-to-entities) applies to `POST /v1/{resource}/{id}/labels` and to `labels` in creation payloads — verify with `~with(labels)` if you are unsure which path your client takes.
 
 ### Clearing all labels
 
@@ -330,6 +378,17 @@ curl -X PUT -u ":banana" "https://example.app.heads.com/api/v1/labels/com.myapp.
   -d '["TradeOrder", "ShipmentOrder"]'
 ```
 
+`applicableOnlyTo` is a plain `string[]`, so the `remove` operation takes the string values themselves rather than identifier objects:
+
+```bash
+# Drop two types in one call, keeping the rest
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/labels/com.myapp.labelId=fulfillment-hold/applicableOnlyTo" \
+  -H "Content-Type: application/json" \
+  -d '{"remove": ["Product", "ProductCategory"]}'
+```
+
+> Remember that an **empty** `applicableOnlyTo` makes the label applicable to nothing. If `remove` would empty the list, delete the restriction another way (or `PUT` the full intended set) rather than leaving it empty.
+
 ---
 
 ## Integration Patterns
@@ -350,7 +409,16 @@ curl -X GET -u ":banana" \
 Track integration sync state using labels — assign "pending-sync" on creation, replace with "synced" or "sync-failed":
 
 ```bash
-# After successful sync — remove pending, add synced
+# After successful sync — remove pending and add synced in one transaction
+curl -X PATCH -u ":banana" \
+  "https://example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-001/labels" \
+  -H "Content-Type: application/json" \
+  -d '{
+        "add":    [{"identifiers": {"com.myapp.sync": "synced"}}],
+        "remove": [{"identifiers": {"com.myapp.sync": "pending"}}]
+      }'
+
+# Or just detach the pending flag
 curl -X DELETE -u ":banana" \
   "https://example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-001/labels/com.myapp.sync=pending"
 
@@ -401,9 +469,11 @@ When configuring sync webhooks with `~with(labels)` expansion, downstream system
 
 5. **Labels are lightweight** — Prefer many specific labels over few overloaded generic ones. "sync-pending" + "sync-complete" + "sync-failed" is better than a single "sync-status" label.
 
-6. **Single-label-per-state pattern** — For state tracking, remove the old state label before adding the new one. This keeps client-side filtering simple (each entity has at most one state label at a time).
+6. **Single-label-per-state pattern** — For state tracking, drop the old state label as you add the new one. A single `PATCH` with both `add` and `remove` does this in one transaction, so the entity is never observed with two state labels or none (see [Swapping labels in one call](#swapping-labels-in-one-call)).
 
-7. **Labels are non-essential** — They won't appear in default GET responses. Always use `~with(labels)` when you need them.
+7. **Prefer `remove` over `replace` for partial detach** — `replace` sets the whole array, so it silently drops any label added by another system between your read and your write. `remove` only touches the labels you name, and is idempotent if they are already gone.
+
+8. **Labels are non-essential** — They won't appear in default GET responses. Always use `~with(labels)` when you need them.
 
 ---
 

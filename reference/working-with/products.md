@@ -434,6 +434,26 @@ POST /v1/products/com.example.sku=PROD-001/categories
 
 > **Important:** The `weight` field is accepted in the request but is **currently ignored/not persisted**. Sorting by weight is unimplemented. Products in a category are returned in their default order, not by weight. If you need custom ordering, manage it in your application layer.
 
+### Unassigning Products from Categories
+
+```bash
+# Detach one or more categories, leaving the product's other assignments intact
+PATCH /v1/products/com.example.sku=PROD-001/categories
+{"remove": [
+  {"category": {"identifiers": {"com.example.catId": "PHONES"}}},
+  {"category": {"identifiers": {"com.example.catId": "FEATURED"}}}
+]}
+
+# Re-categorize in one transaction: add the new, drop the old
+PATCH /v1/products/com.example.sku=PROD-001/categories
+{
+  "add":    [{"category": {"identifiers": {"com.example.catId": "SMARTPHONES"}}}],
+  "remove": [{"category": {"identifiers": {"com.example.catId": "PHONES"}}}]
+}
+```
+
+`remove` is idempotent — removing a category the product is not in returns `200` and changes nothing. Unlike `replace`, it never disturbs assignments made by other systems. See [Array Write Operations](../resource-patterns.md#array-write-operations).
+
 ### Querying Categories
 
 ```bash

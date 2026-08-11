@@ -781,6 +781,26 @@ POST /v1/trade-relationships/com.example.relId=TR-EMP-001/groups
 DELETE /v1/trade-relationships/com.example.relId=TR-EMP-001/groups/com.example.groupId=EMPLOYEE-GROUP
 ```
 
+**Remove several groups at once (or swap one for another):**
+
+```bash
+# Detach two groups, leave the customer's other groups in place
+PATCH /v1/trade-relationships/com.example.relId=TR-EMP-001/groups
+{"remove": [
+  {"identifiers": {"com.example.groupId": "EMPLOYEE-GROUP"}},
+  {"identifiers": {"com.example.groupId": "VIP-CUSTOMERS"}}
+]}
+
+# Move the customer from one group to another in a single transaction
+PATCH /v1/trade-relationships/com.example.relId=TR-EMP-001/groups
+{
+  "add":    [{"identifiers": {"com.example.groupId": "VIP-CUSTOMERS"}}],
+  "remove": [{"identifiers": {"com.example.groupId": "EMPLOYEE-GROUP"}}]
+}
+```
+
+`remove` is idempotent — removing a group the customer is not in returns `200` and changes nothing. See [Array Write Operations](../resource-patterns.md#array-write-operations) for how `add`, `replace`, and `remove` compare.
+
 #### Querying Group Membership
 
 ```bash

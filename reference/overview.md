@@ -236,6 +236,8 @@ See [`operators.md`](operators.md) for the full operator reference, or [`operato
 | `PATCH` | Partial update |
 | `DELETE` | Remove resources |
 
+`PATCH` on a writable array member additionally accepts the `add`, `replace`, and `remove` operations — see [Array Write Operations](resource-patterns.md#array-write-operations).
+
 ---
 
 ## Content Types
