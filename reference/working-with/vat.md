@@ -400,15 +400,19 @@ A receipt line exposes the unit price both ways, matching the order-item pair ab
 | `unitAmount` | Unit price excluding VAT | Yes |
 | `unitAmountExclVat` | Unit price excluding VAT (same value as `unitAmount`) | No — `~with(...)` |
 | `unitAmountInclVat` | Unit price including VAT | No — `~with(...)` |
+| `unitAmountAfterDiscountInclVat` | Net unit price including VAT — `totalAmount / quantity`, i.e. after line discounts | No — `~with(...)` |
 | `vatPercentage` | Applied VAT rate | Yes |
 | `vatAmount` | VAT portion of the line | Yes |
 
 ```bash
 # Receipt lines with both VAT-explicit unit prices
 GET /v1/receipts/receiptID=R-2024-001/items~with(unitAmountExclVat,unitAmountInclVat)
+
+# List price and net price side by side
+GET /v1/receipts/receiptID=R-2024-001/items~with(unitAmountInclVat,unitAmountAfterDiscountInclVat)
 ```
 
-The unit amounts are pre-discount. For reconciliation against what was charged, use the line totals `salesAmount` (excl. VAT) and `totalAmount` (incl. VAT). See [Receipts → Item Unit Amounts](../receipts.md#item-unit-amounts-vat-explicit).
+The first three unit amounts are pre-discount. For reconciliation against what was charged, use the line totals `salesAmount` (excl. VAT) and `totalAmount` (incl. VAT), or — per unit — `unitAmountAfterDiscountInclVat`, which multiplies back to `totalAmount` exactly. See [Receipts → Item Unit Amounts](../receipts.md#item-unit-amounts-vat-explicit).
 
 ### VAT Groups Structure
 

@@ -325,19 +325,22 @@ GET /v1/receipts/{id}/totalExternalSettlementsAmount
 
 ## Item Unit Amounts (VAT-Explicit)
 
-A receipt line carries its unit price in three forms. All three are read-only decimals — receipts are immutable records.
+A receipt line carries its unit price in four forms. All four are read-only decimals — receipts are immutable records.
 
-| Member | VAT | Included by default | Value |
-|--------|-----|---------------------|-------|
-| `unitAmount` | excluding | **yes** (essential) | The unit price excluding VAT |
-| `unitAmountExclVat` | excluding | no — request with `~with(...)` | The same number as `unitAmount` |
-| `unitAmountInclVat` | including | no — request with `~with(...)` | The unit price including VAT |
+| Member | VAT | Discounts | Included by default | Value |
+|--------|-----|-----------|---------------------|-------|
+| `unitAmount` | excluding | before | **yes** (essential) | The unit price excluding VAT |
+| `unitAmountExclVat` | excluding | before | no — request with `~with(...)` | The same number as `unitAmount` |
+| `unitAmountInclVat` | including | before | no — request with `~with(...)` | The unit price including VAT |
+| `unitAmountAfterDiscountInclVat` | including | **after** | no — request with `~with(...)` | The net unit price actually charged, including VAT |
 
 `unitAmountExclVat` and `unitAmountInclVat` mirror the pair that already exists on `trade order item`, so a consumer that reads both order lines and receipt lines can use one field name for each concept across both. The difference is writability: on an order line `unitAmountExclVat` can be set to override computed pricing (see [Manual Unit Amounts](working-with/orders.md#manual-unit-amounts)); on a receipt line it is read-only, like every other receipt member.
 
+`unitAmountAfterDiscountInclVat` fills the one cell the other three miss — see [The net unit price](#the-net-unit-price-unitamountafterdiscountinclvat) below.
+
 ### Requesting them
 
-Both VAT-explicit members are **non-essential** — the same treatment as `discountAmountInclVat` / `discountAmountExclVat` on the same type. They are absent from a default item payload; ask for them explicitly:
+All three VAT-explicit members are **non-essential** — the same treatment as `discountAmountInclVat` / `discountAmountExclVat` on the same type. They are absent from a default item payload; ask for them explicitly:
 
 ```bash
 # One line, both VAT-explicit unit prices
@@ -348,6 +351,9 @@ GET /v1/receipts/receiptID=MPK00000000002~with(items~with(unitAmountExclVat,unit
 
 # Or project exactly the columns an export needs
 GET /v1/receipts/receiptID=MPK00000000002/items~just(description,quantity,unitAmountExclVat,unitAmountInclVat,vatPercentage)
+
+# All four unit amounts on one line — list price and net price side by side
+GET /v1/receipts/receiptID=MPK00000000002/items~first~with(unitAmountExclVat,unitAmountInclVat,unitAmountAfterDiscountInclVat)
 ```
 
 The first of those returns a line like this — note that `unitAmountExclVat` repeats `unitAmount`, and that at 25% VAT `unitAmountInclVat` is the gross counterpart:
@@ -369,10 +375,56 @@ The first of those returns a line like this — note that `unitAmountExclVat` re
 
 `unitAmount` stays exactly as it was — still essential, still VAT-exclusive, still the field an existing export reads. `unitAmountExclVat` is the same number under a self-describing name; nothing needs migrating. Reach for the explicit pair when a downstream system distinguishes net from gross and you would rather the field name carried that distinction than a comment in your mapping.
 
+### The net unit price: `unitAmountAfterDiscountInclVat`
+
+The other three unit amounts are all **list prices** — what one unit cost before the line's discounts were applied. The figures that reflect what was actually charged are the line *totals*, `salesAmount` (excluding VAT) and `totalAmount` (including VAT). That leaves one obvious cell empty: the price actually charged **per unit**, including VAT. `unitAmountAfterDiscountInclVat` is that cell:
+
+```
+unitAmountAfterDiscountInclVat = totalAmount ÷ quantity
+```
+
+It is the per-unit counterpart of `totalAmount`, exactly as `unitAmountInclVat` is the per-unit counterpart of the line's gross value.
+
+**Reach for it when you are pricing part of a line.** Crediting or charging some — but not all — of the units on a discounted line is the case it exists for: a per-unit return credit, a partial refund, a partially-picked click-and-collect line. Multiply this field by the number of units involved rather than dividing a line total or scaling a pre-discount unit price by hand.
+
+Because the value comes from dividing a recorded incl-VAT total, `unitAmountAfterDiscountInclVat × quantity` reconstructs `totalAmount` exactly. Deriving a net incl-VAT unit price yourself — by scaling a rounded excl-VAT unit price by the VAT rate — does not; rounding at the unit level puts the reconstructed line total a cent or two off the recorded one.
+
+**Worked example.** A line of two units at a 5999.20 list price (excl. VAT, 25% VAT), discounted by 1998.40 excl. VAT:
+
+```bash
+GET /v1/receipts/receiptID=MPK00000000002/items~first~with(unitAmountInclVat,unitAmountAfterDiscountInclVat)
+```
+
+```json
+{
+  "description": "Smartphone X",
+  "quantity": "2",
+  "unitAmount": "5999.20",
+  "unitAmountInclVat": "7499.00",
+  "unitAmountAfterDiscountInclVat": "6250.00",
+  "discountAmount": "1998.40",
+  "salesAmount": "10000.00",
+  "totalAmount": "12500.00",
+  "vatPercentage": "25"
+}
+```
+
+The customer paid 6250.00 per phone, not the 7499.00 list price; crediting one of the two phones is `6250.00 × 1`, and `6250.00 × 2` is the recorded `totalAmount`.
+
+**Sign on returns is positive.** Like every other unit amount, this is a per-unit magnitude. On a return line both `totalAmount` and `quantity` are negative, so their quotient is positive — a return of one phone reports `6250.00`, not `-6250.00`. A credit note that needs a negative figure applies that sign itself; the line's `type` (or the sign of `quantity`) tells you which way it goes. Multiplying by the line's *signed* `quantity` recovers the signed `totalAmount`.
+
+**It reflects surcharges too, not only discounts.** `totalAmount` includes any surcharge applied to the line, while `unitAmountInclVat` excludes surcharges. So the two members differ along two dimensions, and on a line where the surcharge outweighs the discount `unitAmountAfterDiscountInclVat` can be *higher* than `unitAmountInclVat`. Do not read the gap between them as a per-unit discount — for that, use `discountAmount` / `discountAmountInclVat` (see [Discounts](#discounts)).
+
+Like the VAT-explicit pair, it is **non-essential** — request it explicitly:
+
+```bash
+GET /v1/receipts/receiptID=MPK00000000002/items~first~with(unitAmountAfterDiscountInclVat)
+```
+
 ### Two things to watch
 
-- **These are pre-discount unit prices.** All three describe the price of one unit before any line discount is applied. The post-discount figures on a line are the line *totals* — `salesAmount` (excluding VAT) and `totalAmount` (including VAT). Multiplying a unit amount by `quantity` gives the gross line value, not what the customer actually paid for that line.
-- **A zero-quantity line reports zero.** Both members are derived per unit, and are reported as `0` when the line quantity is zero rather than failing on the division.
+- **`unitAmount`, `unitAmountExclVat` and `unitAmountInclVat` are pre-discount unit prices.** All three describe the price of one unit before any line discount is applied. The post-discount figures on a line are the line *totals* — `salesAmount` (excluding VAT) and `totalAmount` (including VAT) — and, per unit, `unitAmountAfterDiscountInclVat`. Multiplying one of the first three by `quantity` gives the gross line value, not what the customer actually paid for that line.
+- **A zero-quantity line reports zero.** All four members are derived per unit, and are reported as `0` when the line quantity is zero rather than failing on the division.
 
 ---
 

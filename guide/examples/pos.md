@@ -142,6 +142,17 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/receipts/receiptI
 # Project just the columns an export needs
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/receipts/receiptID=RCP-2024-00001/items~just(description,quantity,unitAmountExclVat,unitAmountInclVat,vatPercentage)"
 
+# Get the NET unit price incl. VAT (totalAmount / quantity) — what was actually charged per unit,
+# where unitAmountInclVat is the pre-discount list price. Non-essential, so ~with is required.
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/receipts/receiptID=RCP-2024-00001/items~with(unitAmountAfterDiscountInclVat)"
+
+# List price and net price side by side, for every line on the receipt
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/receipts/receiptID=RCP-2024-00001~with(items~with(unitAmountInclVat,unitAmountAfterDiscountInclVat))"
+
+# Credit one unit of a discounted line: multiply this by the unit count.
+# It is a positive magnitude even on return lines — apply the credit sign yourself.
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/receipts/receiptID=RCP-2024-00001/items~first~just(description,quantity,unitAmountAfterDiscountInclVat,totalAmount)"
+
 # Get receipt items with the owning receipt inlined (non-essential, so ~with is required)
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/receipts/receiptID=RCP-2024-00001/items~with(receipt)"
 

@@ -77,7 +77,8 @@ Receipt
   │     ├── quantity ─────────────── Units sold
   │     ├── unitAmount ───────────── Price per unit (excl. VAT)
   │     ├── unitAmountExclVat ────── Same as unitAmount, explicit name (non-essential)
-  │     ├── unitAmountInclVat ────── Price per unit (incl. VAT) (non-essential)
+  │     ├── unitAmountInclVat ────── Price per unit (incl. VAT), pre-discount (non-essential)
+  │     ├── unitAmountAfterDiscountInclVat ── Net price per unit (incl. VAT) (non-essential)
   │     ├── salesAmount ─────────────── Sales amount (excl. VAT)
   │     ├── taxAmount ───────────────── Tax amount
   │     ├── totalAmount ─────────────── Line total (incl. VAT)
@@ -269,7 +270,8 @@ curl -H "Accept: text/csv" \
 - [ ] `items[].description` — Line description
 - [ ] `items[].quantity` — Units
 - [ ] `items[].unitAmount` — Unit price (excl. VAT)
-- [ ] `items[].unitAmountInclVat` — Unit price (incl. VAT) — non-essential, needs `~with(unitAmountInclVat)`
+- [ ] `items[].unitAmountInclVat` — Unit price (incl. VAT), pre-discount — non-essential, needs `~with(unitAmountInclVat)`
+- [ ] `items[].unitAmountAfterDiscountInclVat` — Net unit price (incl. VAT) — non-essential, needs `~with(unitAmountAfterDiscountInclVat)`
 - [ ] `items[].salesAmount` — Sales amount (excl. VAT)
 - [ ] `items[].taxAmount` — Tax amount for line
 - [ ] `items[].totalAmount` — Line total (incl. VAT)
@@ -285,9 +287,23 @@ reason to pull both). All three are **pre-discount**; keep them in a separate co
 post-discount line totals `salesAmount` / `totalAmount` rather than deriving one from the other. See
 [Receipts → Item Unit Amounts](../receipts.md#item-unit-amounts-vat-explicit).
 
+For a **net** unit-price column — what the customer actually paid per unit — pull
+`unitAmountAfterDiscountInclVat` rather than computing `totalAmount / quantity` in the warehouse.
+The API divides the recorded incl-VAT total, so `unitAmountAfterDiscountInclVat × quantity`
+reconstructs `totalAmount` to the cent, whereas a gross unit price scaled down by a discount
+percentage will not. Two caveats when modelling it: the value is a **positive magnitude even on
+return lines** (both `totalAmount` and `quantity` are negative there), so apply the credit sign from
+the line's `type` or the sign of `quantity`; and it reflects line **surcharges** as well as
+discounts, so `unitAmountInclVat − unitAmountAfterDiscountInclVat` is not a clean per-unit discount
+column — use `discountAmount` for that. See
+[Receipts → The net unit price](../receipts.md#the-net-unit-price-unitamountafterdiscountinclvat).
+
 ```bash
 # Item-level export with a gross unit-price column
 GET /v1/receipts/after/{startDate}~with(items~with(unitAmountInclVat))~take(1000)
+
+# List price and net price per unit, for a price-realization / discount-depth model
+GET /v1/receipts/after/{startDate}~with(items~with(unitAmountInclVat,unitAmountAfterDiscountInclVat))~take(1000)
 ```
 
 **Payment Level:**
