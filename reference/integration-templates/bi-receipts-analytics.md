@@ -122,6 +122,28 @@ Receipt
 | **Use case** | Historical analysis | Order management |
 | **Returns** | Separate return receipt | Order status change |
 
+#### Joining the two for omnichannel attribution
+
+The two entities are linked, so a warehouse doesn't have to re-match them by product code:
+
+| Member | Level | Answers |
+|--------|-------|---------|
+| `orders` on a receipt | Document | *Which trade orders does this receipt touch?* |
+| `orderItems` on a receipt item | Line | *Which order lines does this particular line settle?* |
+
+Both are read-only and non-essential — request them with `~with(...)`:
+
+```bash
+# Per-line attribution: what each receipt line settled
+GET /v1/receipts/receiptID=MPK00000000002/items~with(orderItems)
+```
+
+Use `orderItems` rather than the receipt-level `orders` whenever the fact table needs per-line attribution — a receipt that mixes walk-in items with a click-and-collect pickup, or that settles lines from two orders, is indistinguishable at document level.
+
+> **Expect empties.** `orderItems` is `[]` for ordinary POS lines with no originating order, which is the majority of receipt traffic in most estates. Model the join as a left join and keep the unattributed lines; dropping rows with an empty `orderItems` silently removes walk-in sales from revenue totals.
+
+See [Receipts → Item-to-Order Navigation](../receipts.md#item-to-order-navigation-the-orderitems-member) for the full semantics.
+
 ---
 
 ## Integration Architecture

@@ -585,6 +585,72 @@ Both refer to the same line. Two *independent* picks — "earliest related recei
 
 ---
 
+## Item-to-Order Navigation (the `orderItems` member)
+
+A receipt line records what was *rung up*; a trade order line records what was *ordered*. When a sale settles an order — click-and-collect, a webshop order handed over in store, a special order — the two are linked, and `orderItems` on a receipt item names the trade order items that line settles.
+
+```bash
+# Expand the related order lines on each receipt line
+GET /v1/receipts/receiptID=MPK00000000002/items~with(orderItems)
+
+# Or navigate straight through it
+GET /v1/receipts/receiptID=MPK00000000002/items~first/orderItems~first/identifiers/key
+```
+
+It is a `trade order item[]`, **read-only**, and not included by default — request it with `~with(orderItems)`, or navigate through it in a path.
+
+### Line level vs. receipt level
+
+`orderItems` is the per-line counterpart of the receipt-level `orders` member:
+
+| Member | Level | Answers |
+|--------|-------|---------|
+| `orders` on a receipt | Document | *Which trade orders does this receipt touch?* |
+| `orderItems` on a receipt item | Line | *Which order lines does this particular line settle?* |
+
+The receipt-level `orders` is effectively the union across every line, so it cannot tell you *which* line came from *which* order. That distinction matters on any receipt that mixes ordered and walk-in items, or that settles lines from more than one order — a common shape once click-and-collect and in-store pickup are in play. Reach for `orderItems` whenever the attribution has to be per line.
+
+### Cardinality and empty results
+
+`orderItems` is always an array, and it is frequently **empty**:
+
+| Receipt line | `orderItems` |
+|--------------|--------------|
+| An ordinary walk-in sale, no originating order | `[]` |
+| A line settling one order line | One order item |
+| A line correlated with more than one order line | Several order items |
+
+An empty array is the normal case for pure POS traffic, not an error — treat it as such when building joins, and don't assume `orderItems~first` resolves.
+
+The match is made on the correlation the platform records when a receipt line settles an order line. It is **not** inferred from product, quantity, or amount, so two lines for the same product on one receipt resolve independently, and a manually keyed line that happens to match an open order line is not falsely linked to it.
+
+### Recipe: compare what was ordered with what was rung up
+
+```bash
+# The quantity on the order line behind the first receipt line
+GET /v1/receipts/receiptID=MPK00000000002/items~first/orderItems~first/quantity
+
+# The order line's own status — was the line fully settled by this sale?
+GET /v1/receipts/receiptID=MPK00000000002/items~first/orderItems~first/status
+```
+
+Because both sides are reachable from the same line, the receipt figures (`quantity`, `unitAmount`, `totalAmount`) and the order line's figures always refer to the same product line — no re-matching by product code on the consumer side, and no ambiguity when the same product appears twice on one receipt.
+
+### Where the member works
+
+- **Plain GETs** — as a path segment (`…/items~first/orderItems/…`) or expanded with `~with(orderItems)`.
+- **Mapped types and sync-webhook mapping bodies** — a mapping that navigates `orderItems` has the relation inlined for it automatically; no `~with` needed in the mapping's source query.
+- **`~where` selector predicates over the path** on the receipts collection — the same shape that works for the `receipt` backlink:
+
+  ```bash
+  # Receipts whose first line settles a known order line
+  GET /v1/receipts~where(items~first/orderItems~first/identifiers/key=<order-item-key>)
+  ```
+
+Combine it with the [`receipt` backlink](#item-to-receipt-navigation-the-receipt-backlink) to cross in both directions: from a return line to the sale line it reverses, and from that sale line to the order it originally settled.
+
+---
+
 ## Finder and Relative Access
 
 The receipts collection provides utility endpoints for time-based queries.

@@ -143,6 +143,16 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/receipts/receiptI
 # Same pick, the matched line's own key — consistent with the receipt id above
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/receipts/receiptID=RCP-2024-00001/items~first/related~where(type=Sale,unitAmount!=0)~first/identifiers/key"
 
+# Get receipt items with the order lines they settle inlined (non-essential, so ~with is required).
+# Empty for ordinary walk-in lines; populated for click-and-collect, pickup and special orders.
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/receipts/receiptID=RCP-2024-00001/items~with(orderItems)"
+
+# The order line behind a single receipt line
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/receipts/receiptID=RCP-2024-00001/items~first/orderItems~first/identifiers/key"
+
+# Receipt-level counterpart: every trade order this receipt touches (no per-line attribution)
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/receipts/receiptID=RCP-2024-00001~with(orders)"
+
 # Receipts from last 24 hours
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/receipts/after/-=24"
 

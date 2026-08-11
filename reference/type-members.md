@@ -114,7 +114,7 @@ seller, buyer, relationship, user, device, posTerminal, timestamp (read-only, es
 items, labels, totalAmount (read-only), totalTaxAmount (read-only), totalDiscountAmount (read-only),
 roundingAmount (read-only), totalPayableAmount (read-only), totalPaidAmount (read-only),
 totalExternalSettlementsAmount (read-only), externalSettlements (read-only), vatGroups (read-only),
-payments (read-only)
+payments (read-only), orders (read-only, non-essential)
 ```
 
 ## Receipt Item Members
@@ -124,12 +124,17 @@ description (read-only), product, instances, quantity (read-only), unitAmount (r
 discounts, taxAmount (read-only), salesAmount (read-only), totalAmount (read-only),
 discountAmount (read-only), vatAmount (read-only), vatPercentage (read-only),
 discountPercentage (read-only), currencyCode (read-only), manualNotes (read-only),
-receipt (read-only, non-essential), related (read-only, non-essential)
+receipt (read-only, non-essential), related (read-only, non-essential),
+orderItems (read-only, non-essential)
 ```
 
 `receipt` names the receipt that **owns** the item — for lines reached through `related` that is the
 *other* receipt, not the one you navigated from, and it is `null` for lines recorded outside any
 receipt. See [Receipts → Item → Receipt Navigation](receipts.md#item-to-receipt-navigation-the-receipt-backlink).
+
+`orderItems` is a `trade order item[]` naming the order lines this receipt line settles — the per-line
+counterpart of the receipt-level `orders`. It is empty for ordinary walk-in sales. See
+[Receipts → Item → Order Navigation](receipts.md#item-to-order-navigation-the-orderitems-member).
 
 ---
 
