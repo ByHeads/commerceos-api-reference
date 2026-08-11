@@ -17,7 +17,7 @@ A surcharge rule extends `trade rule` (the same base type as discount rules and 
 |----------|---------|
 | `seller` / `buyer` | Scope the rule to specific sellers or buyer groups. Use `include`/`exclude` arrays with identifier references. |
 | `currency` | Restrict to specific currencies (e.g., `{"currencyCode": "SEK"}`). |
-| `time` | Optional validity window with `start` and `end` dates (ISO format). |
+| `time` | Optional validity window with `start` and `end` dates (ISO format). Both bounds are optional; see [Update a surcharge rule](#update-a-surcharge-rule) for the merge and validation rules when changing one. |
 | `items` | A **named map** of item groups. Each key defines a group with `include`/`exclude` arrays and optional `atLeast`/`atMost` quantity constraints. |
 | `effects` | Array of effect objects. Each effect must include `@type` and which items it targets. |
 | `effects[].@type` | Effect type: `"fixed surcharge rule effect"` (flat amount) or `"percentage surcharge rule effect"` (percentage of item value). |
@@ -191,6 +191,22 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/surcharge-rules
     "name": "Pant 1kr - Cans"
   }'
 ```
+
+**Moving a rule's validity window.** The `time` member is merged with what is stored, then the **resulting** window is validated. Send both bounds in one call and they are validated and applied together — so a seasonal rule can be moved to a period that starts after its current end in a single request:
+
+```bash
+# Summer 2026 fee (2026-06-01 → 2026-08-31) rescheduled to summer 2027
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/surcharge-rules/com.example.surchargeRuleId=summer-bag-fee-2026" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "time": {
+      "start": "2027-06-01T00:00:00",
+      "end": "2027-08-31T23:59:59"
+    }
+  }'
+```
+
+A bound you omit keeps its stored value; a bound sent as `null` is cleared (open-ended in that direction). A **single-bound** patch that inverts the window against the stored counterpart — pushing `start` past the stored `end` — is rejected with `400` and `The end date, if specified, must be greater than the start date.`, leaving the rule unchanged. See [Resource Patterns → Validity Window (`time`)](../../reference/resource-patterns.md#validity-window-time) for the full rules, which are shared with discount rules and price rules.
 
 ### Delete a surcharge rule
 

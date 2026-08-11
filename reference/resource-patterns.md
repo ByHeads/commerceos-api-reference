@@ -734,6 +734,64 @@ Trade rules define discounting and pricing logic.
 
 **Concept focus:** This section covers how trade rules behave (discount types, phases, and pricing logic). Use your tenant's `/api-docs` for the canonical endpoint list.
 
+### Validity Window (`time`)
+
+Discount rules, price rules, and surcharge rules — `/v1/discount-rules`, `/v1/price-rules`, `/v1/surcharge-rules` — all share the same optional `time` member: the period during which the rule is eligible to fire.
+
+```bash
+POST /v1/discount-rules
+{
+  "identifiers": {"com.example.discountRuleId": "spring-sale"},
+  "time": {"start": "2026-03-01T00:00:00", "end": "2026-05-31T23:59:59"},
+  "items": { ... },
+  "effects": [ ... ]
+}
+```
+
+Both bounds are optional. A rule with no `time` at all — or with one bound left unset — is unbounded in that direction.
+
+> **Not the same as a price's `from` / `to`.** Those bound an individual price; `time` bounds a *rule*. See [Working with Prices → Validity Periods](working-with/prices.md#validity-periods).
+
+#### Merge semantics on `PATCH` and `PUT`
+
+| In the payload | Result |
+|----------------|--------|
+| Bound present with a value | Set to that value |
+| Bound absent | Keeps its stored value |
+| Bound present as `null` | Cleared — open-ended in that direction |
+
+Validation always runs against the **resulting** window (what you sent, merged over what was stored), and the resulting `end` must be later than the resulting `start`.
+
+#### Send both bounds together when moving a window
+
+A payload carrying `start` and `end` in the same request is validated and applied **as a whole**, so a rule can be moved to a period that lies entirely after its current one in a single call:
+
+```bash
+# Currently valid 2026-03-01 → 2026-05-31; move the whole window to the autumn
+PATCH /v1/discount-rules/com.example.discountRuleId=spring-sale
+{"time": {"start": "2026-09-01T00:00:00", "end": "2026-11-30T23:59:59"}}
+```
+
+The new `start` (September) is later than the *stored* `end` (May), but that combination is never the resulting window, so the request succeeds. Patching `end` first and `start` second still works and remains valid — it is simply no longer necessary.
+
+#### Clearing a bound
+
+```bash
+# Drop the expiry; the rule runs indefinitely from its existing start
+PATCH /v1/discount-rules/com.example.discountRuleId=spring-sale
+{"time": {"end": null}}
+```
+
+#### Invalid windows
+
+A resulting window whose `end` is not later than its `start` is rejected with **`400` Bad Request** and the message:
+
+```
+The end date, if specified, must be greater than the start date.
+```
+
+The rule is left untouched. This covers the single-bound case too: patching only `start` to a date after the stored `end` inverts the window and fails. When you are moving a bound past its stored counterpart, send both bounds. See [gotcha 27](common-gotchas.md#27-patching-one-trade-rule-time-bound-can-invert-the-window).
+
 ### Manual Discount Types
 
 | Type | Description |

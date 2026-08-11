@@ -334,6 +334,8 @@ PUT /v1/trade-rules
 ```
 
 > **Note:** Discount rules use the trade-rule schema with `items` (product conditions), `effects` (discount rule effects), and `time` (validity window). The fields `discountPercentage`, `validFrom`, and `validTo` do not exist on trade-rules.
+>
+> When rescheduling a campaign later, send `time.start` and `time.end` together — the window is merged with what is stored and then validated as a whole, so a single-bound patch that pushes `start` past the stored `end` is rejected with `400`. See [Resource Patterns → Validity Window (`time`)](../resource-patterns.md#validity-window-time).
 
 ---
 

@@ -17,7 +17,7 @@ A discount rule defines **when** and **how** discounts apply. Key properties:
 |----------|---------|
 | `seller` / `buyer` | Scope the rule to specific sellers or buyer groups. The `buyer` condition accepts **customer group** identifiers (see [Customer Groups and Buyer Conditions](#customer-groups-and-buyer-conditions)). Use `include`/`exclude` arrays with identifier references. |
 | `currency` | Restrict to specific currencies (e.g., `{"currencyCode": "SEK"}`). |
-| `time` | Optional validity window with `start` and `end` dates (ISO format). |
+| `time` | Optional validity window with `start` and `end` dates (ISO format). Both bounds are optional; see [Updating a Rule's Validity Window](#updating-a-rules-validity-window) for the merge and validation rules when changing one. |
 | `phase` | Determines evaluation order. Rules in lower-priority phases apply first; higher-priority phases can stack on top. Include `identifiers`, `name`, and `priority`. |
 | `items` | A **named map** of item groups. Each key (e.g., `"phone"`, `"plan"`) defines a group with `include`/`exclude` arrays, optional `atLeast`/`atMost` quantity constraints, and optional `worthAtLeast`/`worthAtMost` value thresholds. Set `includeAll: true` to match all products without listing specific groups (see [Using `includeAll` for Cart-Wide Rules](#using-includeall-for-cart-wide-rules)). |
 | `where.equals` | Links item groups by matching property paths (e.g., ensuring a phone's IMEI matches a plan's phoneImei for bundle discounts). |
@@ -38,6 +38,51 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/discount-rules"
 # Get discount rule by ID
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/discount-rules/com.heads.seedID=employee-discount"
 ```
+
+---
+
+## Updating a Rule's Validity Window
+
+The `time` member is merged with what is already stored, then the **resulting** window is validated: a bound you omit keeps its stored value, a bound sent as `null` is cleared, and the resulting `end` must be later than the resulting `start`.
+
+**Move a window to a new period — send both bounds in one call:**
+
+```bash
+# Rule currently valid 2026-03-01 → 2026-05-31; move the whole window to the autumn
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/discount-rules/com.example.discountRuleId=spring-sale" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "time": {
+      "start": "2026-09-01T00:00:00",
+      "end": "2026-11-30T23:59:59"
+    }
+  }'
+```
+
+Both bounds are validated and applied together, so this works even though the new `start` (September) is later than the stored `end` (May). Staging the change as two calls — push `end` out first, then move `start` — is still valid but unnecessary.
+
+**Extend an end date only:**
+
+```bash
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/discount-rules/com.example.discountRuleId=spring-sale" \
+  -H "Content-Type: application/json" \
+  -d '{"time": {"end": "2026-06-30T23:59:59"}}'
+```
+
+The stored `start` is untouched.
+
+**Make a rule open-ended — clear a bound with `null`:**
+
+```bash
+# Runs indefinitely from its existing start
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/discount-rules/com.example.discountRuleId=spring-sale" \
+  -H "Content-Type: application/json" \
+  -d '{"time": {"end": null}}'
+```
+
+**What fails:** a single-bound patch that inverts the window against the stored counterpart — e.g. setting `start` to September while the stored `end` is still May — is rejected with `400` and `The end date, if specified, must be greater than the start date.`, and the rule is left unchanged. Send both bounds together instead.
+
+The same `time` semantics apply to [surcharge rules](./surcharge-rules.md#update-a-surcharge-rule) and price rules. See [Resource Patterns → Validity Window (`time`)](../../reference/resource-patterns.md#validity-window-time).
 
 ---
 
