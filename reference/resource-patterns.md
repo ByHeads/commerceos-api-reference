@@ -728,6 +728,82 @@ See [Operators → Time-relative queries](operators.md#time-relative-queries-bef
 
 ---
 
+## Validity Windows
+
+Several resources bound their period of validity with a **start/end pair**. The members are named differently on each resource, but they all behave identically on write: the payload is merged over what is stored, and the **resulting** window is validated as a whole.
+
+| Resource | Endpoint | Window members |
+|----------|----------|----------------|
+| Trade rule (discount, price, surcharge) | `/v1/discount-rules`, `/v1/price-rules`, `/v1/surcharge-rules` | `time.start` / `time.end` |
+| Price | `/v1/prices`, `/v1/products/{key}/prices` | `from` / `to` |
+| Trade restriction | `/v1/trade-restrictions` | `from` / `until` |
+| Project reference | `/v1/trade-relationships/{key}/projectReferences` | `validFrom` / `validTo` |
+| Period window | `/v1/seasons`, `/v1/campaigns` | `purchaseWindow.start` / `.end`, `salesWindow.start` / `.end` |
+
+Only the trade rule keeps its bounds in a nested `time` object; on the other resources they are flat members of the resource itself. That difference is cosmetic — a flat pair sent in one payload is still applied atomically, exactly like a nested one.
+
+### Merge semantics on `PATCH` and `PUT`
+
+| In the payload | Result |
+|----------------|--------|
+| Bound present with a value | Set to that value |
+| Bound absent | Keeps its stored value |
+| Bound present as `null` | Cleared — open-ended in that direction |
+
+Both bounds are optional on write everywhere in the table. A window with neither bound set is unbounded in both directions.
+
+Validation always runs against the resulting window — what you sent, merged over what was stored — and the resulting end must be later than the resulting start.
+
+### Send both bounds together when moving a window
+
+A payload carrying both bounds in the same request is validated and applied **as a whole**, so a window can be moved to a period lying entirely after (or before) its current one in a single call:
+
+```bash
+# Price currently valid 2026-02-01 → 2026-02-28; move the whole window into June
+PATCH /v1/prices/com.example.priceId=PROD-001-PROMO
+{"from": "2026-06-04T05:00:00Z", "to": "2026-06-16T21:59:00Z"}
+```
+
+The new `from` (June) is later than the *stored* `to` (February), but that pairing is never the resulting window, so the request succeeds. Patching the far bound first and the near bound second still works and remains valid — it is simply no longer necessary.
+
+### Clearing a bound
+
+```bash
+# Drop the expiry; the price stays valid indefinitely from its existing start
+PATCH /v1/prices/com.example.priceId=PROD-001-PROMO
+{"to": null}
+```
+
+### Invalid windows
+
+A resulting window whose end is not later than its start is rejected with **`400` Bad Request** and the message:
+
+```
+The end date, if specified, must be greater than the start date.
+```
+
+The stored window is left untouched. This covers the single-bound case: patching only the start bound to a date after the stored end bound inverts the window and fails. Swapping the bounds of the example above — `{"from": "2026-06-16T21:59:00Z", "to": "2026-06-04T05:00:00Z"}` — fails the same way. When moving a bound past its stored counterpart, send both bounds.
+
+### Resource-specific notes
+
+**Project references** are a keyed map on the trade relationship (`/v1/trade-relationships/{key}/projectReferences`). A `PATCH` naming a key that is not already present is a silent no-op — it does not create the reference. Only references that already exist can have their `validFrom` / `validTo` updated this way. See [Working with Customers → Project References](working-with/customers.md#project-references).
+
+**Period windows** are the two windows on a trade period — `purchaseWindow` (when buying happens) and `salesWindow` (when selling happens). Seasons and campaigns are both periods and carry both windows:
+
+```bash
+# Move a season's sales window; both bounds in one call, applied atomically
+PATCH /v1/seasons/com.example.seasonId=SS26
+{"salesWindow": {"start": "2026-06-04T05:00:00Z", "end": "2026-06-16T21:59:00Z"}}
+```
+
+Each window is merged and validated independently, so a payload may move `purchaseWindow` and `salesWindow` in the same request.
+
+> **Create periods through `/v1/seasons` or `/v1/campaigns`.** A period created directly through `POST /v1/periods` cannot store window spans, so its `purchaseWindow` / `salesWindow` bounds do not persist.
+
+See [gotcha 27](common-gotchas.md#27-patching-one-validity-window-bound-can-invert-the-window) for the short form.
+
+---
+
 ## Trade Rules
 
 Trade rules define discounting and pricing logic.
@@ -751,6 +827,8 @@ POST /v1/discount-rules
 Both bounds are optional. A rule with no `time` at all — or with one bound left unset — is unbounded in that direction.
 
 > **Not the same as a price's `from` / `to`.** Those bound an individual price; `time` bounds a *rule*. See [Working with Prices → Validity Periods](working-with/prices.md#validity-periods).
+
+The rules below are the shared start/end-pair contract described under [Validity Windows](#validity-windows), stated here in terms of `time`.
 
 #### Merge semantics on `PATCH` and `PUT`
 
@@ -790,7 +868,7 @@ A resulting window whose `end` is not later than its `start` is rejected with **
 The end date, if specified, must be greater than the start date.
 ```
 
-The rule is left untouched. This covers the single-bound case too: patching only `start` to a date after the stored `end` inverts the window and fails. When you are moving a bound past its stored counterpart, send both bounds. See [gotcha 27](common-gotchas.md#27-patching-one-trade-rule-time-bound-can-invert-the-window).
+The rule is left untouched. This covers the single-bound case too: patching only `start` to a date after the stored `end` inverts the window and fails. When you are moving a bound past its stored counterpart, send both bounds. See [gotcha 27](common-gotchas.md#27-patching-one-validity-window-bound-can-invert-the-window).
 
 ### Manual Discount Types
 
@@ -825,6 +903,8 @@ Edge cases handled: zero priority, 100% discount, zero reduction amount.
 > - `Time.always` defaults provide an indefinite validity window
 >
 > For scoped pricing (wholesale vs retail, store-specific), explicitly specify `buyers` and `sellers`.
+
+`from` and `to` follow the shared start/end-pair contract — see [Validity Windows](#validity-windows) for merge semantics, moving a window in one call, and the `400` on an inverted window.
 
 ### Sub-Collections
 

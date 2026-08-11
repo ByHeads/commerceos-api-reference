@@ -519,9 +519,9 @@ Full rules: [Pagination → Cursor pagination](pagination.md#cursor-pagination).
 
 ---
 
-## 27. Patching One Trade-Rule `time` Bound Can Invert the Window
+## 27. Patching One Validity-Window Bound Can Invert the Window
 
-A trade rule's `time` window is merged before it is validated: a bound you don't send keeps its stored value, and the check runs against the **resulting** window. So patching a single bound past its stored counterpart produces an inverted window and is rejected with `400` — `The end date, if specified, must be greater than the start date.` — leaving the rule untouched.
+A validity window is merged before it is validated: a bound you don't send keeps its stored value, and the check runs against the **resulting** window. So patching a single bound past its stored counterpart produces an inverted window and is rejected with `400` — `The end date, if specified, must be greater than the start date.` — leaving the stored window untouched.
 
 ```bash
 # Rule currently valid 2026-03-01 → 2026-05-31
@@ -537,9 +537,24 @@ PATCH /v1/discount-rules/com.example.discountRuleId=spring-sale
 
 Sending both bounds together works no matter how far the window moves — there is no need to stage the change as "push `end` out first, then move `start`". (That two-step sequence is still valid; it is just extra round trips.)
 
-Two related details: sending a bound as `null` **clears** it rather than leaving it alone, making the rule open-ended in that direction; and the same `time` member and rules apply to `/v1/discount-rules`, `/v1/price-rules`, and `/v1/surcharge-rules` alike.
+**The same applies to every other start/end pair in the API**, even though the members are named differently and sit flat on the resource rather than inside a `time` object:
 
-Full rules: [Resource Patterns → Validity Window (`time`)](resource-patterns.md#validity-window-time).
+| Resource | Members |
+|----------|---------|
+| Price (`/v1/prices`) | `from` / `to` |
+| Trade restriction (`/v1/trade-restrictions`) | `from` / `until` |
+| Project reference (`/v1/trade-relationships/{key}/projectReferences`) | `validFrom` / `validTo` |
+| Period window (`/v1/seasons`, `/v1/campaigns`) | `purchaseWindow.start` / `.end`, `salesWindow.start` / `.end` |
+
+```bash
+# Price valid 2026-02-01 → 2026-02-28, moved into June in one call
+PATCH /v1/prices/com.example.priceId=PROD-001-PROMO
+{"from": "2026-06-04T05:00:00Z", "to": "2026-06-16T21:59:00Z"}
+```
+
+One related detail: sending a bound as `null` **clears** it rather than leaving it alone, making the window open-ended in that direction.
+
+Full rules: [Resource Patterns → Validity Windows](resource-patterns.md#validity-windows), and [Validity Window (`time`)](resource-patterns.md#validity-window-time) for the trade-rule form.
 
 ---
 

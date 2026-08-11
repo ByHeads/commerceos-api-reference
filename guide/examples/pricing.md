@@ -62,9 +62,24 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/prices/com.myap
   -H "Content-Type: application/json" \
   -d '{"amount": 189.00}'
 
+# Move a price's validity window (both bounds in one call, applied atomically)
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/prices/com.myapp.priceId=PRICE-002" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "from": "2026-06-04T05:00:00Z",
+    "to": "2026-06-16T21:59:00Z"
+  }'
+
+# Lift the expiry; the price stays valid indefinitely from its existing start
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/prices/com.myapp.priceId=PRICE-002" \
+  -H "Content-Type: application/json" \
+  -d '{"to": null}'
+
 # Delete price
 curl -X DELETE -u ":banana" "https://example.app.heads.com/api/v1/prices/com.myapp.priceId=PRICE-001"
 ```
+
+> **Validity windows.** A bound you omit keeps its stored value; a bound sent as `null` is cleared. Send both bounds together when moving a window — the pair is validated as a whole, so the new `from` may be later than the stored `to`. A resulting window whose `to` is not later than its `from` is rejected with `400` and `The end date, if specified, must be greater than the start date.`, leaving the price unchanged. See [Working with Prices → Updating Validity](../../reference/working-with/prices.md#updating-validity).
 
 ---
 

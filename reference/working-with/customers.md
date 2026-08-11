@@ -602,6 +602,40 @@ GET /v1/people/com.example.customerId=CUST-001/supplierRelations/after/2025-01-0
 
 Filtering is on `_modifiedTag` **AND** the agent's role on the relationship — the customer-side collection only sees relationships where the agent is the `supplierAgent`, and vice versa. The default mode is `(modify)`; `(create)` is not supported for trade relationships and returns 404. See [Resource Patterns → Trade Relationships](../resource-patterns.md#time-relative-queries-on-agent-sub-collections) for the mode-parameter rules, and [Operators → Time-relative queries](../operators.md#time-relative-queries-before-and-after) for inclusivity and chaining.
 
+### Project References
+
+Project references tag a relationship's orders with a project number, for cost allocation and tracking. They live on `projectReferences`, a map keyed by the project reference number:
+
+```bash
+GET /v1/trade-relationships/com.example.relId=REL-001/projectReferences
+```
+
+| Member | Type | Description |
+|--------|------|-------------|
+| `number` | string | The project reference number (also the map key) |
+| `validFrom` | datetime | Start of the validity period |
+| `validTo` | datetime | End of the validity period |
+| `contactPerson` | reference | Optional contact person for the project |
+
+**Updating a reference's validity window.** The bounds are merged over what is stored, and the resulting window is validated as a whole — so sending both in one call moves the window atomically, even to a period starting after the stored `validTo`:
+
+```bash
+# Reference valid 2026-02-01 → 2026-02-28; move the whole window into June
+PATCH /v1/trade-relationships/com.example.relId=REL-001/projectReferences
+{
+  "REQ-2025-001": {
+    "validFrom": "2026-06-04T05:00:00Z",
+    "validTo": "2026-06-16T21:59:00Z"
+  }
+}
+```
+
+A bound you omit keeps its stored value; a bound sent as `null` is cleared, leaving the reference open-ended in that direction. A resulting window whose `validTo` is not later than its `validFrom` — including a single-bound patch that inverts against the stored counterpart — is rejected with `400` and `The end date, if specified, must be greater than the start date.`, leaving the reference unchanged.
+
+> **Updates only.** A `PATCH` naming a key that is not already present is a silent no-op — it does not create the project reference.
+
+See [Resource Patterns → Validity Windows](../resource-patterns.md#validity-windows) for the shared start/end-pair rules.
+
 ---
 
 ## Agent Finder

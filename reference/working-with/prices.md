@@ -385,6 +385,39 @@ PATCH /v1/prices/com.example.priceId=PROD-001-XMAS
 }
 ```
 
+The payload is merged over the stored window, and the **resulting** window is validated as a whole:
+
+| In the payload | Result |
+|----------------|--------|
+| Bound present with a value | Set to that value |
+| Bound absent | Keeps its stored value |
+| Bound present as `null` | Cleared — open-ended in that direction |
+
+**Send both bounds together when moving a window.** Because the pair is applied atomically, a price can be moved to a period lying entirely after its current one in a single call:
+
+```bash
+# Price currently valid 2026-02-01 → 2026-02-28; move the whole window into June
+PATCH /v1/prices/com.example.priceId=PROD-001-PROMO
+{
+  "from": "2026-06-04T05:00:00Z",
+  "to": "2026-06-16T21:59:00Z"
+}
+```
+
+The new `from` (June) is later than the stored `to` (February), but that pairing is never the resulting window, so the request succeeds. Patching `to` first and `from` second still works — it is simply no longer necessary.
+
+**Clearing a bound:**
+
+```bash
+# Drop the expiry; the price stays valid indefinitely from its existing start
+PATCH /v1/prices/com.example.priceId=PROD-001-XMAS
+{"to": null}
+```
+
+**Invalid windows** — a resulting window whose `to` is not later than its `from` is rejected with `400` and the message `The end date, if specified, must be greater than the start date.`, leaving the stored window untouched. This includes the single-bound case: patching only `from` to a date after the stored `to` inverts the window and fails.
+
+The same merge-then-validate model applies to every start/end pair in the API — see [Resource Patterns → Validity Windows](../resource-patterns.md#validity-windows).
+
 ### Validity Rules
 
 | Scenario | `from` | `to` | Meaning |

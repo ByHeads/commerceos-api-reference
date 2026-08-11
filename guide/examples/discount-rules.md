@@ -1081,6 +1081,27 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/trade-restrictio
   }'
 ```
 
+### Moving a restriction's validity window
+
+A trade restriction is bounded by the flat `from` / `until` pair. Send both bounds in one call and they are validated and applied together, so a restriction can be moved to a period starting after its current end in a single request:
+
+```bash
+# Restriction currently in force 2026-02-01 → 2026-02-28; move it into June
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/trade-restrictions/com.myapp.restrictionId=REST-001" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "from": "2026-06-04T05:00:00Z",
+    "until": "2026-06-16T21:59:00Z"
+  }'
+
+# Lift the end date; the restriction stays in force indefinitely
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/trade-restrictions/com.myapp.restrictionId=REST-001" \
+  -H "Content-Type: application/json" \
+  -d '{"until": null}'
+```
+
+A bound you omit keeps its stored value; a bound sent as `null` is cleared. A **single-bound** patch that inverts the window against the stored counterpart — pushing `from` past the stored `until` — is rejected with `400` and `The end date, if specified, must be greater than the start date.`, leaving the restriction unchanged. See [Resource Patterns → Validity Windows](../../reference/resource-patterns.md#validity-windows) for the full rules, which are shared with prices, project references, and period windows.
+
 ---
 
 ## Planned Features (Not Yet Supported)
