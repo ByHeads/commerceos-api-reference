@@ -309,6 +309,8 @@ GET /v1/products/com.example.sku=ABC~array
 **Notes:**
 - Useful for ensuring consistent array output
 - Input: single object; Output: array with one element
+- Common in sync-webhook side-effect writes, where a collection target expects an array even for a single item: `"api/v1/stock-entries": "$this~map(com.example.entry)~array"` (see [`then.set` key routing](sync-webhooks.md#thenset-key-routing))
+- **The name is `~array` — there is no `~arr` alias.** A misspelled operator resolves silently to an empty value rather than erroring; see [Misspelled Operators Fail Silently](common-gotchas.md#24-misspelled-operators-fail-silently)
 
 ---
 

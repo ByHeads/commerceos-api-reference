@@ -260,6 +260,8 @@ Example from default mapped types:
 "Receipt ID": "$prior/$prior/identifiers/receiptID"
 ```
 
+> **In a sync webhook's `then.set`, these mean something different.** Selectors in a side-effect value are evaluated after delivery, so `$this` is the `out` **response data** and `$prior` is the **source object**. See [`then.set` key routing](sync-webhooks.md#thenset-key-routing).
+
 ### 7) Variables
 
 If a **key** in the mapping object starts with `$`, it defines a variable instead of emitting a field:

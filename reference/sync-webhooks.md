@@ -16,7 +16,7 @@ Use sync webhooks when you need to:
 1. **Pull** - Fetch data from the API using the `in` request configuration
 2. **Map** - Optionally transform the response using a mapped type
 3. **Push** - Send each item to the external endpoint defined in `out`
-4. **Mutate** - Apply `then` actions to update the source objects
+4. **Mutate** - Apply `then` actions: write back to the source objects, and/or write to other resources as side effects
 5. **Reschedule** - If `repeat` is enabled, schedule the next run
 
 ---
@@ -49,7 +49,7 @@ GET /v1/sync-webhooks/com.myapp.hookId=product-sync
 | `in` | request | The API request to fetch source data |
 | `out` | request \| webhook output | The external delivery target. Either an HTTP request (legacy flat shape with `method`/`url`/`auth`/`headers`, or the explicit `{ "http": { ... } }` form) or a direct SQL Server write via `{ "tds": { ... } }`. Use one or the other — specifying both `http` and `tds` is rejected on write. **TDS targets do not support [resume-from-failure](#resume-after-failure)**: the entire batch is re-sent on retry, so make sure the target schema is idempotent (e.g. use `MERGE` rather than blind `INSERT`s). |
 | `map` | mapped type | Reference to a mapped type for data transformation |
-| `then` | object | Actions to perform on source objects after successful sync |
+| `then` | object | Actions to perform after successful sync. Keys in `then.set` that look like a resource path become side-effect writes against that resource; all other keys are written back onto the source object. See [`then.set` key routing](#thenset-key-routing). |
 
 ### Scheduling
 
@@ -206,6 +206,7 @@ Both `in` and `out` use a request object with the following structure:
 - **Content-Type defaults to `application/json;charset=utf-8`** — but `out.headers["Content-Type"]` can override it (custom headers are merged after the default)
 - **`fail` is honored only on `out.http`** — ignored on the `in` request and on `out.tds` targets
 - **`then.set` runs per item** even when `out` is omitted (for mutation-only workflows)
+- **`then.set` keys are routed by shape** — resource-path keys write to other resources, everything else writes back to the source object. See [`then.set` key routing](#thenset-key-routing).
 
 ### Request Body Wrapping
 
@@ -813,7 +814,7 @@ The webhook sends each item as a separate request with `Content-Type: applicatio
 
 ### 4. Apply Post-Sync Actions (`then`)
 
-After successful delivery, the `then.set` object is applied to each source object as a normal unit setter:
+After successful delivery, the `then.set` object is applied:
 ```json
 {
   "then": {
@@ -828,12 +829,56 @@ After successful delivery, the `then.set` object is applied to each source objec
 
 This allows you to mark objects as synced or update tracking fields.
 
+#### `then.set` key routing
+
+Every key in `then.set` is classified by its **shape**, and that classification decides where the value is written:
+
+| Key shape | Where the value goes |
+|-----------|----------------------|
+| A **resource path** — the key starts with `/`, `~`, `$`, or the API base `api/…` | Applied as a **side-effect write** against that target resource |
+| **Anything else** (member names, `identifiers`, namespaced property keys) | Collected into a single value object that is written back onto the **source object** — the record selected by `in` |
+
+Both kinds are applied in the same transaction, so a run either records its side effects and its source-object bookkeeping together, or neither.
+
+A single `then.set` can mix both. The following clears a flag on the source product *and* creates child stock entries in one pass:
+
+```json
+{
+  "then": {
+    "set": {
+      "api/v1/stock-entries": "$this~map(com.myapp.inbound-stock-entry)~array",
+      "com.myapp.stockSyncRequested": false
+    }
+  }
+}
+```
+
+- `api/v1/stock-entries` → starts with the API base, so it is a **side-effect write**: the mapped array is posted to that collection.
+- `com.myapp.stockSyncRequested` → an ordinary key, so it is **patched onto each selected source product**.
+
+#### Writing back to the source object
+
 **Supported mutation paths:**
 - **External identifiers**: `identifiers.com.myapp.synced` — set custom identifier values
 - **Defined members**: Any writable member on the source type (e.g., `name`, `status`)
 - **Pre-defined dynamic properties**: Top-level namespaced keys that have been defined via `properties.dynamic` (e.g., `com.myapp.lastSynced` if that property has been created on the type)
 
 > **Important:** `properties.dynamic.com.example.synced` is **not valid**. The `properties` member exposes metadata about defined properties, not actual values. To set a namespaced dynamic property value, use it as a top-level key (e.g., `"com.myapp.synced": "2024-01-15"`) — but only if the property has been pre-defined via `properties.dynamic`.
+
+#### Side-effect writes to other resources
+
+The value of a resource-path key is a resolver expression, evaluated the same way mapped-type selectors are. Two context references matter here, and they are **not** the same as in the `map` step:
+
+| Reference | Resolves to |
+|-----------|-------------|
+| `$this` | The **`out` response data** — what the delivery request returned |
+| `$prior` | The **source object** — the record selected by `in` that this item came from |
+
+So a side-effect key that needs the response body (e.g. an external ID the target just allocated) reads it from `$this`; a side-effect key that needs the original record reaches back through `$prior`.
+
+> **Note:** When the `out.http` response is fanned out into several elements (via `out.http.resultSelector`), `$this` is the **individual element** currently being processed, not the whole response body.
+
+> **The operator is `~array`, not `~arr`.** [`~array`](operators-catalog.md#array) wraps the piped value in a single-element array (`x` → `[x]`), which is what a collection target such as `api/v1/stock-entries` expects. There are no operator aliases. An unknown or misspelled operator does **not** raise an error — it silently resolves to an empty value, so `~arr` drops the mapped payload and writes nothing, with no entry in the run log. This is a common cause of "the webhook reports success but no records were written." See [Misspelled Operators Fail Silently](common-gotchas.md#24-misspelled-operators-fail-silently).
 
 ### 5. Reschedule
 

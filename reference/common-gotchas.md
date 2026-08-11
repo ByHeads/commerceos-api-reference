@@ -439,6 +439,26 @@ Two more things that surprise people about `remove`:
 
 ---
 
+## 24. Misspelled Operators Fail Silently
+
+An operator the API doesn't recognize is **not** an error. It resolves to an empty value, and everything downstream of it in the pipe receives nothing. There is no 400, no diagnostic in the response, and — inside a sync webhook — no entry in the run log.
+
+There are also **no operator aliases**: every operator must be spelled in full. `~array` is not `~arr`, `~first` is not `~one`, `~count` is not `~len`.
+
+```bash
+# WRONG - ~arr is not an operator; the payload silently becomes empty
+"api/v1/stock-entries": "$this~map(com.example.entry)~arr"
+
+# RIGHT
+"api/v1/stock-entries": "$this~map(com.example.entry)~array"
+```
+
+This is a frequent cause of "the sync webhook reports success but no records were written" — the delivery succeeded, it just delivered nothing. When a mapped type or a webhook side-effect write produces an unexpectedly empty result, check the operator spelling against [`operators-catalog.md`](operators-catalog.md) before looking anywhere else.
+
+Related: [gotcha 9](#9-parameterless-operators-no-empty-parentheses) — a parameterless operator written with empty parentheses (`~first()`) is a different failure and *does* misbehave visibly.
+
+---
+
 ## API Response Behaviors
 
 ### Empty Collection Results

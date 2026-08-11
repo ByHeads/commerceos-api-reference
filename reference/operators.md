@@ -239,7 +239,7 @@ GET /v1/trade-orders~distinctBy(customer/identifiers/key)
   - **Full guide:** See [Mapped Types](mapped-types.md) for body structure, selectors, aliasing, `$prior` aggregation, and X-Request-Map usage.
 - `~flat` - Flatten nested arrays one level deep.
 - `~entries` - Convert object to `{index, key, value}[]` entries (excludes `@type`).
-- `~array` - Wrap single item in an array.
+- `~array` - Wrap single item in an array. Spelled in full — there is no `~arr` alias, and a misspelled operator resolves silently to an empty value (see [gotcha 24](common-gotchas.md#24-misspelled-operators-fail-silently)).
 - `~typeless` - Set context flag to strip `@type` from output.
 - `~join(separator)` - Join array elements to string; default separator is `,`.
 - `~toLower` - Convert string to lowercase; returns `undefined` for non-strings.

@@ -316,7 +316,23 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/sync-webhooks" \
 curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/sync-webhooks/com.myapp.webhookId=product-sync" \
   -H "Content-Type: application/json" \
   -d '{"repeat": false}'
+
+# then.set doing both jobs at once: write to another resource AND clear a flag
+# on the source product. Keys that look like a resource path (start with /, ~, $,
+# or api/...) are side-effect writes; every other key is patched onto the source.
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/sync-webhooks/com.myapp.webhookId=product-sync" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "then": {
+      "set": {
+        "api/v1/stock-entries": "$this~map(com.myapp.inbound-stock-entry)~array",
+        "com.myapp.stockSyncRequested": false
+      }
+    }
+  }'
 ```
+
+> **Watch the operator spelling.** It is `~array`, never `~arr`. An unknown operator resolves silently to an empty value, so a typo here delivers nothing and still reports success. See [`then.set` key routing](../../reference/sync-webhooks.md#thenset-key-routing).
 
 ---
 
