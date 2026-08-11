@@ -323,6 +323,59 @@ GET /v1/receipts/{id}/totalExternalSettlementsAmount
 
 ---
 
+## Item Unit Amounts (VAT-Explicit)
+
+A receipt line carries its unit price in three forms. All three are read-only decimals — receipts are immutable records.
+
+| Member | VAT | Included by default | Value |
+|--------|-----|---------------------|-------|
+| `unitAmount` | excluding | **yes** (essential) | The unit price excluding VAT |
+| `unitAmountExclVat` | excluding | no — request with `~with(...)` | The same number as `unitAmount` |
+| `unitAmountInclVat` | including | no — request with `~with(...)` | The unit price including VAT |
+
+`unitAmountExclVat` and `unitAmountInclVat` mirror the pair that already exists on `trade order item`, so a consumer that reads both order lines and receipt lines can use one field name for each concept across both. The difference is writability: on an order line `unitAmountExclVat` can be set to override computed pricing (see [Manual Unit Amounts](working-with/orders.md#manual-unit-amounts)); on a receipt line it is read-only, like every other receipt member.
+
+### Requesting them
+
+Both VAT-explicit members are **non-essential** — the same treatment as `discountAmountInclVat` / `discountAmountExclVat` on the same type. They are absent from a default item payload; ask for them explicitly:
+
+```bash
+# One line, both VAT-explicit unit prices
+GET /v1/receipts/receiptID=MPK00000000002/items~first~with(unitAmountExclVat,unitAmountInclVat)
+
+# Every line on a receipt
+GET /v1/receipts/receiptID=MPK00000000002~with(items~with(unitAmountExclVat,unitAmountInclVat))
+
+# Or project exactly the columns an export needs
+GET /v1/receipts/receiptID=MPK00000000002/items~just(description,quantity,unitAmountExclVat,unitAmountInclVat,vatPercentage)
+```
+
+The first of those returns a line like this — note that `unitAmountExclVat` repeats `unitAmount`, and that at 25% VAT `unitAmountInclVat` is the gross counterpart:
+
+```json
+{
+  "description": "Smartphone X",
+  "quantity": "1",
+  "unitAmount": "5999.20",
+  "unitAmountExclVat": "5999.20",
+  "unitAmountInclVat": "7499.00",
+  "vatPercentage": "25"
+}
+```
+
+`~withAll` and `?fields=all` include them as well, at the usual cost of a much larger payload.
+
+### `unitAmount` is unchanged
+
+`unitAmount` stays exactly as it was — still essential, still VAT-exclusive, still the field an existing export reads. `unitAmountExclVat` is the same number under a self-describing name; nothing needs migrating. Reach for the explicit pair when a downstream system distinguishes net from gross and you would rather the field name carried that distinction than a comment in your mapping.
+
+### Two things to watch
+
+- **These are pre-discount unit prices.** All three describe the price of one unit before any line discount is applied. The post-discount figures on a line are the line *totals* — `salesAmount` (excluding VAT) and `totalAmount` (including VAT). Multiplying a unit amount by `quantity` gives the gross line value, not what the customer actually paid for that line.
+- **A zero-quantity line reports zero.** Both members are derived per unit, and are reported as `0` when the line quantity is zero rather than failing on the division.
+
+---
+
 ## Discounts
 
 > **Detailed guide:** See [Receipt Discounts & Surcharges — Extraction Guide](../guide/examples/receipt-discounts-surcharges.md) for comprehensive curl examples, nested expansion patterns, per-rule breakdowns, and ERP integration patterns.

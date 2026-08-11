@@ -132,6 +132,16 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/receipts/receiptI
 # Get receipt payments
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/receipts/receiptID=RCP-2024-00001/payments"
 
+# Get receipt items with both VAT-explicit unit prices (non-essential, so ~with is required).
+# unitAmountExclVat equals the default unitAmount; unitAmountInclVat is the gross unit price.
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/receipts/receiptID=RCP-2024-00001/items~with(unitAmountExclVat,unitAmountInclVat)"
+
+# Same, expanded from the receipt in one request
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/receipts/receiptID=RCP-2024-00001~with(items~with(unitAmountExclVat,unitAmountInclVat))"
+
+# Project just the columns an export needs
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/receipts/receiptID=RCP-2024-00001/items~just(description,quantity,unitAmountExclVat,unitAmountInclVat,vatPercentage)"
+
 # Get receipt items with the owning receipt inlined (non-essential, so ~with is required)
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/receipts/receiptID=RCP-2024-00001/items~with(receipt)"
 

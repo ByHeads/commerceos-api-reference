@@ -76,6 +76,8 @@ Receipt
   │     ├── description ──────────── Receipt line text
   │     ├── quantity ─────────────── Units sold
   │     ├── unitAmount ───────────── Price per unit (excl. VAT)
+  │     ├── unitAmountExclVat ────── Same as unitAmount, explicit name (non-essential)
+  │     ├── unitAmountInclVat ────── Price per unit (incl. VAT) (non-essential)
   │     ├── salesAmount ─────────────── Sales amount (excl. VAT)
   │     ├── taxAmount ───────────────── Tax amount
   │     ├── totalAmount ─────────────── Line total (incl. VAT)
@@ -267,6 +269,7 @@ curl -H "Accept: text/csv" \
 - [ ] `items[].description` — Line description
 - [ ] `items[].quantity` — Units
 - [ ] `items[].unitAmount` — Unit price (excl. VAT)
+- [ ] `items[].unitAmountInclVat` — Unit price (incl. VAT) — non-essential, needs `~with(unitAmountInclVat)`
 - [ ] `items[].salesAmount` — Sales amount (excl. VAT)
 - [ ] `items[].taxAmount` — Tax amount for line
 - [ ] `items[].totalAmount` — Line total (incl. VAT)
@@ -274,6 +277,18 @@ curl -H "Accept: text/csv" \
 - [ ] `items[].vatPercentage` — Tax rate
 
 Note: receipt item subpaths for `discounts` and `instances` are currently unsupported, so avoid relying on those expansions in receipt exports.
+
+Note on unit prices: `unitAmount` is VAT-exclusive and present by default. If the warehouse wants a
+gross unit price column too, request `unitAmountInclVat` explicitly — it is non-essential, as is its
+VAT-exclusive twin `unitAmountExclVat` (which carries the same number as `unitAmount`, so there is no
+reason to pull both). All three are **pre-discount**; keep them in a separate column from the
+post-discount line totals `salesAmount` / `totalAmount` rather than deriving one from the other. See
+[Receipts → Item Unit Amounts](../receipts.md#item-unit-amounts-vat-explicit).
+
+```bash
+# Item-level export with a gross unit-price column
+GET /v1/receipts/after/{startDate}~with(items~with(unitAmountInclVat))~take(1000)
+```
 
 **Payment Level:**
 - [ ] `payments[].method` — Payment method ID (string, e.g., `com.heads.card`)

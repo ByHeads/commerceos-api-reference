@@ -124,9 +124,14 @@ description (read-only), product, instances, quantity (read-only), unitAmount (r
 discounts, taxAmount (read-only), salesAmount (read-only), totalAmount (read-only),
 discountAmount (read-only), vatAmount (read-only), vatPercentage (read-only),
 discountPercentage (read-only), currencyCode (read-only), manualNotes (read-only),
+unitAmountExclVat (read-only, non-essential), unitAmountInclVat (read-only, non-essential),
 receipt (read-only, non-essential), related (read-only, non-essential),
 orderItems (read-only, non-essential)
 ```
+
+`unitAmountExclVat` / `unitAmountInclVat` are the VAT-explicit unit prices, mirroring the pair on
+`trade order item` but read-only here. `unitAmountExclVat` is the same number as the essential
+`unitAmount`. See [Receipts → Item Unit Amounts](receipts.md#item-unit-amounts-vat-explicit).
 
 `receipt` names the receipt that **owns** the item — for lines reached through `related` that is the
 *other* receipt, not the one you navigated from, and it is `null` for lines recorded outside any
