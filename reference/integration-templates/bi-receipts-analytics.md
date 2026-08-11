@@ -572,6 +572,17 @@ ORDER BY return_value DESC
 
 > **Note:** Return reasons are captured at the store/POS level and may be stored in your external systems. The receipt schema captures the transaction details but not the reason for return.
 
+**Linking a return line back to the sale it reverses**
+
+A return line's `related` array holds the lines on other receipts that concern the same product instance, and each of those lines carries a `receipt` backlink naming the receipt that **owns** it. That is how you name the original sale when a product instance has been sold more than once (mis-ring corrections, resold units):
+
+```bash
+# The sale receipt owning the matched line
+GET /v1/receipts/receiptID={return}/items~first/related~where(type=Sale,unitAmount!=0)~first/receipt/identifiers/receiptID
+```
+
+Derive the sale receipt id and the matched line id from the *same* related pick — they are then guaranteed to refer to the same line, which two independent picks are not. `receipt` is `null` for related lines recorded outside any receipt (an ERP-imported sale, for example), so handle nulls when building the fact table. See [Receipts → Item → Receipt Navigation](../receipts.md#item-to-receipt-navigation-the-receipt-backlink).
+
 ---
 
 ## Currency and VAT Normalization

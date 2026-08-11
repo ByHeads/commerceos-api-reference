@@ -517,6 +517,74 @@ Instances can be of different types depending on the product, but only mobile de
 
 ---
 
+## Item-to-Receipt Navigation (the `receipt` backlink)
+
+Every receipt item carries a `receipt` member naming the receipt that **owns** that item — the receipt whose `items` array the line belongs to. It is read-only and **non-essential**: request it explicitly with `~with(receipt)`, or navigate through it in a path. Default item payloads do not include it.
+
+```bash
+# Expand the owning receipt on each line
+GET /v1/receipts/receiptID=MPK00000000002/items~with(receipt)
+
+# Or navigate straight through it
+GET /v1/receipts/receiptID=MPK00000000002/items~first/receipt/timestamp
+```
+
+For a receipt's own `items`, the owner is simply the receipt you navigated from — the backlink is a convenience there, useful when a query starts at item level and needs receipt-level context (timestamp, POS terminal, cashier) without a second request.
+
+This is the only item → owning-document navigation in the API.
+
+### Owner semantics across `related`
+
+Receipt items also expose `related`: the lines on **other** receipts that concern the same product instance — the same physical unit sold, returned, corrected, or re-sold. `related` recurses (a related line has its own `related`).
+
+`receipt` always names the receipt owning the item it is read from, at **any** recursion depth:
+
+| Item reached via | `receipt` resolves to |
+|------------------|-----------------------|
+| `…/items` | The receipt you navigated from |
+| `…/items/related` (at any depth) | The receipt whose `items` contain *that related line* — not the receipt you started from |
+| a related line recorded outside any receipt | `null` |
+
+The last row covers lines that were never rung up on a POS — for example, a sale imported directly from an ERP. Treat `receipt` as nullable whenever you walk `related`.
+
+> **Behaviour change.** Earlier releases returned the receipt you navigated *from* for items reached through `related`, which made the member useless for crossing between documents. It now names the owning receipt. Exports that consumed the old (self-referential) value need re-checking.
+
+### Recipe: from a return line to the sale receipt that owns it
+
+This is the case the backlink exists for. When a product instance appears on more than one sale receipt — a mis-ring that was corrected, a unit that was returned and re-sold — a POS-return export has to name *which* sale is being reversed. Starting from the return receipt, one request answers it:
+
+```bash
+GET /v1/receipts/receiptID={return}/items~first/related~where(type=Sale,unitAmount!=0)~first/receipt/identifiers/receiptID
+```
+
+That yields the id of the **sale** receipt owning the matched line — not the return receipt you started from.
+
+The property that makes this correct is **consistency**: the owning receipt and the matched line come from the *same* related pick.
+
+```bash
+# …~first/receipt/…      → the owning sale receipt
+GET /v1/receipts/receiptID={return}/items~first/related~where(type=Sale,unitAmount!=0)~first/receipt/identifiers/receiptID
+
+# …~first/identifiers/…  → the matched line, on that same receipt
+GET /v1/receipts/receiptID={return}/items~first/related~where(type=Sale,unitAmount!=0)~first/identifiers/key
+```
+
+Both refer to the same line. Two *independent* picks — "earliest related receipt" plus "first non-zero related item", say — carry no such guarantee and start disagreeing as soon as a product instance has more than one sale in its history.
+
+### Where the backlink works
+
+- **Plain GETs** — as a path segment (`…/items~first/receipt/…`) or expanded with `~with(receipt)`.
+- **Mapped types and sync-webhook mapping bodies** — a mapping that navigates `receipt` has the relation inlined for it automatically; no `~with` needed in the mapping's source query.
+- **`~where` selector predicates over the path** on the receipts collection:
+
+  ```bash
+  GET /v1/receipts~where(type=Return,items~first/related~where(type=Sale,unitAmount!=0)~first/receipt/identifiers/receiptID=MPK00000000002)
+  ```
+
+- **Read-only receipt access** (clients limited to the `retail:read` scope) — items exposed there carry `receipt` as well. Earlier releases omitted the member entirely from the read-only variant.
+
+---
+
 ## Finder and Relative Access
 
 The receipts collection provides utility endpoints for time-based queries.

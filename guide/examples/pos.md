@@ -132,6 +132,17 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/receipts/receiptI
 # Get receipt payments
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/receipts/receiptID=RCP-2024-00001/payments"
 
+# Get receipt items with the owning receipt inlined (non-essential, so ~with is required)
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/receipts/receiptID=RCP-2024-00001/items~with(receipt)"
+
+# From a return line, find the SALE receipt that owns the matched line.
+# The `receipt` on a related item names the receipt owning THAT line,
+# not the return receipt you started from.
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/receipts/receiptID=RCP-2024-00001/items~first/related~where(type=Sale,unitAmount!=0)~first/receipt/identifiers/receiptID"
+
+# Same pick, the matched line's own key — consistent with the receipt id above
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/receipts/receiptID=RCP-2024-00001/items~first/related~where(type=Sale,unitAmount!=0)~first/identifiers/key"
+
 # Receipts from last 24 hours
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/receipts/after/-=24"
 
