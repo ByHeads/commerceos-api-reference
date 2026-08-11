@@ -334,6 +334,8 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/sync-webhooks/c
 
 > **Watch the operator spelling.** It is `~array`, never `~arr`. An unknown operator resolves silently to an empty value, so a typo here delivers nothing and still reports success. See [`then.set` key routing](../../reference/sync-webhooks.md#thenset-key-routing).
 
+Retry *counts* are per-webhook (`maxAttempts`), but retry *timings* — the concurrency window, the recovery-sweep cadence, and the internal stale-snapshot retry budget — are tenant-wide on `/v1/config/api`. See [Config API](#config-api-system-settings) below for the curl recipes.
+
 ---
 
 ## Shortened Links
@@ -369,6 +371,25 @@ curl -X PUT -u ":banana" "https://example.app.heads.com/api/v1/config/api" \
     "requestLogPath": "/var/log/commerceos/api"
   }'
 
+# Inspect the tenant-wide sync-webhook timings
+curl -X GET -u ":banana" \
+  "https://example.app.heads.com/api/v1/config/api~just(webhookInFlightWindowMs,webhookRecoveryIntervalMs,internalTooOldMaxRetries,internalTooOldRetryDelayMs)"
+
+# Tune sync-webhook timings (all optional numbers; unset reads back as the default)
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/config/api" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "webhookInFlightWindowMs": 120000,
+    "webhookRecoveryIntervalMs": 60000,
+    "internalTooOldMaxRetries": 20,
+    "internalTooOldRetryDelayMs": 5000
+  }'
+
+# Clear an override and go back to the default
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/config/api" \
+  -H "Content-Type: application/json" \
+  -d '{ "internalTooOldRetryDelayMs": null }'
+
 # Get webshop config
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/config/webshop"
 
@@ -381,6 +402,8 @@ curl -X PUT -u ":banana" "https://example.app.heads.com/api/v1/config/webshop" \
     "paymentMethods": []
   }'
 ```
+
+The four sync-webhook timings on `/v1/config/api` are **tenant-wide** — they apply to every webhook and have no per-webhook override. See [System Configuration](../../reference/sync-webhooks.md#system-configuration-v1configapi) for what each one controls and when a change takes effect.
 
 ---
 

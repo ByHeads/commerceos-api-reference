@@ -73,6 +73,8 @@ GET /v1/sync-webhooks/com.myapp.hookId=product-sync
 | `maxAttempts` | number | Maximum retry attempts before stopping |
 | `error` | string | Error message from the last failed attempt (system-managed but writable for manual clearing) |
 
+These are the only per-webhook retry controls. The retry *timings* — the per-request stale-snapshot budget, the concurrency window, and the recovery cadence — are tenant-wide on the `API config` singleton; see [System Configuration](#system-configuration-v1configapi).
+
 ### Security & Logging
 
 | Field | Type | Description |
@@ -134,6 +136,7 @@ curl -X PATCH -u ":banana" \
 | Field | Type | Description |
 |-------|------|-------------|
 | `resumeState` | object (read-only) | The pending resume snapshot, if any. Empty when there's no interrupted run to resume — i.e. either the webhook hasn't run, the last run completed cleanly, or its `out` request isn't marked `idempotent`. When present, contains the strategy that was active and the saved continuation token (`cursor` resolved request fragments, or `linkHeader` / `nextUrl` URL). Use it to diagnose stalled paginated runs; clear with `clearProgress` to force a full restart. See [Resume After Failure](#resume-after-failure). |
+| `inFlightSince` | date-time (read-only) | When the currently-running run claimed the webhook, or empty when no run is in flight. Refreshed as a heartbeat while the run proceeds, so it is the best "is this webhook alive right now?" signal — unlike `last`, which records the *start* of the last attempt and never advances mid-run. Unaffected by `reset` and `catchUp`. How long a stale value keeps the slot locked is governed by `webhookInFlightWindowMs`; see [System Configuration](#system-configuration-v1configapi). |
 
 ---
 
@@ -940,39 +943,23 @@ Failures are handled in two layers — a **per-request transient retry** inside 
 
 #### Per-request transient retry (internal targets)
 
-When the `out.http.url` is an internal API path (starts with `api/v1/...`), each per-item operation transparently retries two known-transient transactor errors before the failure escapes to the task-scheduler layer. Both errors arrive at the webhook as a wrapped 500 response whose body looks like:
+When the `out.http.url` is an internal API path (starts with `api/v1/...`), a per-item operation that fails with a **stale-snapshot** error is transparently re-issued on a fresh transaction before the failure escapes to the task-scheduler layer. The error surfaces to the webhook as a wrapped 500 response whose body looks like:
 
 ```json
-{ "error": "Internal server error.", "details": "<marker>" }
+{ "error": "Internal server error.", "details": "Unexpected error: -2" }
 ```
 
-| Marker (in `details`) | When it fires | Operator log substring |
-|---|---|---|
-| `The transaction conflicted with another transaction` | Optimistic-lock collision: two writers contended for the same target. | Same string — search logs for `"transaction conflicted"`. |
-| `Unexpected error: -2` | The per-item transaction's read snapshot aged out under load (the read-side history rolled past the transaction's start generation). | Same string — search logs for `"Unexpected error: -2"`. |
+It means the per-item transaction's read snapshot aged out under load — the read-side history rolled past the transaction's start generation. Search operator logs for `"Unexpected error: -2"` or `"transaction-too-old"`.
 
-Both retry up to **`webhookTransientRetryMaxAttempts`** times (default **50**) with a flat **`webhookTransientRetryDelayMs`** delay (default **3000 ms**) between attempts. The implicit per-operation ceiling is `maxAttempts × delayMs` — **150 s** at the defaults — after which the error propagates to the task-scheduler retry layer below.
+The operation retries up to **`internalTooOldMaxRetries`** times (default **50**) with a flat **`internalTooOldRetryDelayMs`** delay (default **3000 ms**) between attempts. The implicit per-operation ceiling is `maxRetries × delayMs` — **150 s** at the defaults — after which the error propagates to the task-scheduler retry layer below.
 
-**External (`http://...`) targets do not engage this retry** — conflict and stale-snapshot semantics don't apply across the network. The existing 401-refresh path on external targets is independent and unaffected by these knobs.
+**Optimistic-lock conflicts are not retried here.** A conflict (`"The transaction conflicted with another transaction"` in `details`) is auto-retried by the transactor itself on the normal write path; when it does escape — the upsert-PUT-to-a-potential-target case, where auto-retry is off — it goes straight to the task-scheduler layer and takes the fast **10 s** reschedule described below. The `internalTooOld*` knobs have no effect on it.
 
-Both knobs are **system-wide** on the API configuration (no per-webhook override). Tune them via `/v1/config/api`:
+**External (`http://...`) targets do not engage this retry** — stale-snapshot semantics don't apply across the network. The 401-refresh path on external targets is independent and unaffected by these knobs, as is the unreachable-target retry.
 
-```bash
-# Inspect current values
-curl -X GET -u ":banana" \
-  "https://example.app.heads.com/api/v1/config/api~just(webhookTransientRetryMaxAttempts,webhookTransientRetryDelayMs)"
+Both knobs are **system-wide** on the API configuration (no per-webhook override) — see [System Configuration](#system-configuration-v1configapi) for the full set and for tuning examples.
 
-# Update both (operators only)
-curl -X PATCH -u ":banana" \
-  "https://example.app.heads.com/api/v1/config/api" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "webhookTransientRetryMaxAttempts": 20,
-    "webhookTransientRetryDelayMs": 5000
-  }'
-```
-
-> **Don't disable the retry.** Setting `webhookTransientRetryMaxAttempts: 0` reverts to the old fail-fast behaviour, which forces the task-scheduler layer to absorb every transient flake. The scheduler's fast back-off (below) was sized assuming this inner retry catches the common case; bypassing it produces noisier pauses and more `attempts`-counter churn without any throughput gain.
+> **Don't disable the retry.** Setting `internalTooOldMaxRetries: 0` reverts to fail-fast, which forces the task-scheduler layer to absorb every transient flake. The scheduler's fast back-off (below) was sized assuming this inner retry catches the common case; bypassing it produces noisier pauses and more `attempts`-counter churn without any throughput gain.
 
 #### Task-scheduler retry (whole run)
 
@@ -981,7 +968,7 @@ When a run finishes with an error — either because the failure wasn't transien
 1. **Error recorded** — The `error` field is set with `"Error while executing: <message>"`.
 2. **Attempts incremented** — The `attempts` counter increases by 1.
 3. **Retry scheduled** — If `attempts < maxAttempts`:
-   - **Transient errors** (the two markers above): retry **10 s** later.
+   - **Transient transactor errors** (stale snapshot, or an escaped optimistic-lock conflict): retry **10 s** later.
    - **All other errors**: retry **60 s** later.
 4. **Stopped** — If `attempts >= maxAttempts`, the webhook stops (`when` becomes `"never"`).
 
@@ -1103,6 +1090,80 @@ curl -X POST -u ":banana" \
 - **Authentication failure** - Invalid or expired credentials
 - **Invalid `in` query** - Unauthorized scopes or malformed URL
 - **Invalid `when` expression** - URL doesn't return a date-time
+
+---
+
+## System Configuration (`/v1/config/api`)
+
+A handful of sync-webhook timings are **system-wide**, not per-webhook. They live on the `API config` singleton at `GET /v1/config/api` and apply to every webhook on the tenant. There is no per-webhook override — the per-webhook knobs are `maxAttempts`, `repeat`, and `when` ([Retry Configuration](#retry-configuration), [Scheduling](#scheduling)).
+
+All four fields are optional numbers. Leaving a field unset (or setting it to `null`) means "use the default"; the defaults are what a healthy deployment should run with, so change them only in response to an observed problem.
+
+| Field | Unit | Default | Controls |
+|-------|------|---------|----------|
+| `webhookInFlightWindowMs` | ms | `60000` (60 s) | How long a webhook's in-flight marker stays trusted by the concurrent-execution guard. |
+| `webhookRecoveryIntervalMs` | ms | `300000` (5 min) | How often the periodic recovery sweep runs. |
+| `internalTooOldMaxRetries` | count | `50` | Per-request retry budget for stale-snapshot (`ETOOOLD`) failures on internal-target calls. |
+| `internalTooOldRetryDelayMs` | ms | `3000` (3 s) | Flat delay between those per-request retries. |
+
+### Concurrency guard — `webhookInFlightWindowMs`
+
+A webhook must never run twice concurrently: two workers pushing the same delta window produce duplicate `out` deliveries. Before starting a run, the runner checks the webhook's read-only `inFlightSince` marker — if it is set and younger than `webhookInFlightWindowMs`, another worker is assumed to be running and this attempt is skipped.
+
+A running webhook refreshes that marker as a heartbeat, so the window is a **staleness threshold, not a run-duration cap**: a run that legitimately takes an hour keeps its marker fresh the whole time and is never mistaken for a crash. What the window does bound is how long a *crashed* run keeps the slot locked — the marker stops being refreshed, goes stale after one window, and the next attempt (or the recovery sweep) takes over.
+
+- **Raise it** if you see spurious skips because workers are heavily contended and heartbeats are being delayed. The cost is a slower rescue of genuinely crashed runs.
+- **Lower it** to recover faster from crashed runs. The cost is a higher risk of two workers overlapping under load — and more heartbeat writes, since the heartbeat cadence tracks the window (roughly a third of it, clamped to 5–30 s).
+
+The marker is read-only over the API, and `reset` / `catchUp` deliberately leave it alone — it belongs to the worker holding the slot, not to the delta high-water mark. To stop a webhook, set `when` to `"never"` (see [Pause and Stop Behavior](#pause-and-stop-behavior)); to release a slot held by a crashed worker, wait for the window to lapse or for the recovery sweep below.
+
+### Recovery sweep — `webhookRecoveryIntervalMs`
+
+A background sweep runs every `webhookRecoveryIntervalMs` and repairs webhooks that fell out of the normal schedule chain. Each pass:
+
+- clears in-flight markers older than `webhookInFlightWindowMs` (releasing slots held by crashed runs);
+- schedules a fresh task for any **active** webhook (`when` set and not `"never"`) that no longer has one.
+
+It never touches a paused or stopped webhook — a webhook whose `when` is `"never"` stays stopped, by design. Recovery is not a substitute for fixing a failing webhook; it only restores webhooks that lost their schedule to a crash or an unclean shutdown.
+
+Lowering the interval detects a lost schedule sooner at the cost of a periodic scan of every webhook. Because the next sweep is scheduled when the current one finishes, a change to this field takes effect only after the currently-pending sweep fires — expect up to one *old* interval of lag.
+
+### Stale-snapshot retry — `internalTooOldMaxRetries` / `internalTooOldRetryDelayMs`
+
+These are the two knobs behind the [per-request transient retry](#per-request-transient-retry-internal-targets). They apply **only** to internal-target calls (`out.http.url` starting with `api/v1/...`); external HTTP targets are unaffected.
+
+`internalTooOldMaxRetries × internalTooOldRetryDelayMs` is an implicit wall-clock ceiling per failing operation — **150 s** at the defaults. Raising either value widens that ceiling, which also means a run can sit longer in a single operation before the failure reaches the scheduler; the recovery sweep accounts for this, so a webhook stuck in a long retry budget is not mistaken for a dead one.
+
+Optimistic-lock conflicts are handled elsewhere and are not governed by these knobs — see the [retry section](#per-request-transient-retry-internal-targets).
+
+### Inspecting and tuning
+
+```bash
+# Inspect the current sync-webhook timings
+curl -X GET -u ":banana" \
+  "https://example.app.heads.com/api/v1/config/api~just(webhookInFlightWindowMs,webhookRecoveryIntervalMs,internalTooOldMaxRetries,internalTooOldRetryDelayMs)"
+
+# Adjust individual knobs (PATCH leaves every other config field untouched)
+curl -X PATCH -u ":banana" \
+  "https://example.app.heads.com/api/v1/config/api" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "webhookInFlightWindowMs": 120000,
+    "webhookRecoveryIntervalMs": 60000,
+    "internalTooOldMaxRetries": 20,
+    "internalTooOldRetryDelayMs": 5000
+  }'
+
+# Return a knob to its default
+curl -X PATCH -u ":banana" \
+  "https://example.app.heads.com/api/v1/config/api" \
+  -H "Content-Type: application/json" \
+  -d '{ "internalTooOldRetryDelayMs": null }'
+```
+
+> **A read never shows `null`.** An unset field reads back as its default, so `GET /v1/config/api` always reports the value actually in force. To tell "explicitly set to the default value" apart from "never set", you'd have to track that yourself — for tuning purposes the two are equivalent. Send `null` to clear an override.
+
+Changes take effect on the **next** run that reads the field: `internalTooOld*` at the start of the next retried operation, `webhookInFlightWindowMs` at the next claim or sweep, and `webhookRecoveryIntervalMs` only after the currently-pending sweep fires.
 
 ---
 
