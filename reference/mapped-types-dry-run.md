@@ -201,7 +201,7 @@ This field is reserved for a future template-injection feature.
 |---|---|---|
 | `resolved` | Always | The mapped output, exactly as the resolver produced it. Verbatim — not coerced even when `outputType` validation runs. |
 | `validation` | When `outputType` was in the request | `{ errors: [], warnings: [] }`. Each `errors[]` entry has a `path` (the JSON path inside `resolved`) and an `error` string. A non-empty `errors` array does **not** make the response a 4xx — the response is still 200. |
-| `trace` | When `trace: true` was in the request | One entry per top-level mapping key (in mapping order), skipping directive keys (`#nullability`) and `'@type'` markers. Each entry has the `key`, the original `path` from the mapping, and a `steps[]` array of `{ op, result }`. Pure-literal selectors (`'fixed'`) have an empty `steps` array — the key was visited but no path navigation happened. |
+| `trace` | When `trace: true` was in the request | One entry per top-level mapping key (in mapping order), skipping directive keys (`#nullability`) and `'@type'` markers. Each entry has the `key`, the original `path` from the mapping, and a `steps[]` array of `{ op, result }`. A bare literal selector (`'fixed'`) has an empty `steps` array — the key was visited but no path navigation happened. A literal continued with members (`'fixed'/upper`) does record those steps. |
 
 ### 400 Bad Request
 

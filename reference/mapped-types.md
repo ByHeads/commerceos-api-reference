@@ -208,6 +208,25 @@ Wrap in single quotes to force a literal string:
 - `"buyer/name ?? 'unknown'"`
 - `"reason/name+':'+amount/str"`
 
+A literal is a string like any other, so it can be followed by a `/` member chain or a `~` operator pipe — every [string member](primitives.md#string-operations) applies:
+
+```json
+{
+  "slug":     "'Brød & Melk'/ld",
+  "shortCode": "'hello'/upper/length",
+  "version":  "'42'/num"
+}
+```
+→ `{ "slug": "brød-melk", "shortCode": 5, "version": 42 }`
+
+Note that `version` is the **number** `42`, not the string `"42"` — a type-changing member such as `/num` or `/dec` changes the emitted JSON type.
+
+Content inside the quotes is verbatim, including slashes: `'a/b'/upper` is the string `A/B`, and a fully quoted `'/not/a/path'` stays the string `/not/a/path`. An unknown member resolves to `null` rather than raising an error, so a literal-derived field that comes back `null` usually means a misspelled member name.
+
+With `+` concatenation the operands are split before each is resolved, so a member binds to its own operand: `"'PRE'/lower+name"` emits `"pre"` followed by the value of `name`.
+
+> **In a URL, not a mapping body?** The same literals work in `~with(...)` / `~just(...)` selectors, but a comma or `?` inside the quotes is consumed by the URL parser before the literal is read — percent-encode them as `%2C` and `%3F`. See [String Literals as a Starting Point](primitives.md#string-literals-as-a-starting-point).
+
 ### 3) Null-coalescing
 
 Use ` ?? ` (note required spaces) to provide a fallback:

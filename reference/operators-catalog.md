@@ -33,6 +33,7 @@ GET /v1/products~with(prices,categories)
 - Selectors support nested paths: `~with(items~with(product))`
 - Multiple fields are comma-separated
 - Use for expanding relations without fetching all fields
+- A selector may be a single-quoted **string literal**, optionally continued with a `/` member chain or a `~` pipe: `~with(slug:'Brød & Melk'/ld)` → `"brød-melk"`. Percent-encode `,` as `%2C` and `?` as `%3F` inside the quotes — the URL is split before the literal is read. See [String Literals as a Starting Point](primitives.md#string-literals-as-a-starting-point)
 
 ---
 

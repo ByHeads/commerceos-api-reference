@@ -114,6 +114,34 @@ Key behaviors:
 
 Example: `/agents/com.heads.seedID=store1/customerRelations` (NOT `customer-relations`)
 
+### Utility Endpoints
+
+A handful of endpoints are not backed by stored data — they compute a value on the spot.
+
+| Endpoint | Returns |
+|----------|---------|
+| `/v1/now` | The current timestamp |
+| `/v1/uuid` | A freshly generated UUID |
+| `/v1/void` | A constant string, for connectivity checks |
+| `/v1/new` | An ad-hoc object assembled from the selectors you supply |
+
+See [Query Operator Examples](../guide/examples/query-operators.md#system-resources) for runnable curl versions.
+
+#### `/v1/new` — build an object from selectors
+
+`GET /v1/new` returns an empty object. Add `~with(...)` selectors to fill it in; each argument uses the usual `alias:selector` form, and the selector can be a [string literal](primitives.md#string-literals-as-a-starting-point), a cross-fetch into the API root, or any operator pipe.
+
+```
+GET /v1/new~with(id:'Brød & Melk'/ld,at:api/v1/now)
+```
+```json
+{ "id": "brød-melk", "at": "2026-08-12T09:00:00.000Z" }
+```
+
+`PUT /v1/new` accepts the object template in the request body instead of the URL, and behaves the same way.
+
+> **The response is a bare object — there is no `@type` key.** `/v1/new` assembles an ad-hoc object rather than materializing a declared type, so there is nothing meaningful to report; the generated OpenAPI schema has never declared one. If you have client code reading `@type` off a `/new` response, it will now see the key absent. Other utility endpoints are unaffected.
+
 ---
 
 ## Common Resource Families

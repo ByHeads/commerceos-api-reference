@@ -132,6 +132,47 @@ GET /products/com.example.sku=ABC/name/%.10s
 # Returns: first 10 characters of name
 ```
 
+### String Literals as a Starting Point
+
+Everything above works on a value you navigated to. It also works on a **string literal** — a value you write inline, wrapped in single quotes. A literal can be followed by a `/` path or a `~` operator pipe exactly like any other string:
+
+```
+GET /v1/new~with(slug:'Brød & Melk'/ld)
+# Returns: { "slug": "brød-melk" }
+```
+
+Literals are accepted anywhere a selector is: `~with(...)` and `~just(...)` arguments, [mapped type](mapped-types.md#2-literals) bodies, and sync-webhook `body` / `url` selectors. (`/v1/new` above is the [utility endpoint](overview.md#utility-endpoints) that builds an object out of whatever selectors you hand it — handy for trying a literal in isolation.)
+
+**Chaining works the same way as on a navigated string:**
+
+| Selector | Result |
+|----------|--------|
+| `'hello'/upper/length` | `5` |
+| `'42'/num` | `42` (a number, not the string `"42"`) |
+| `'Brød & Melk'/ld` | `"brød-melk"` |
+| `'a/b'/upper` | `"A/B"` |
+
+Two properties are worth stating explicitly:
+
+- **Literal content is preserved verbatim** — spaces, punctuation and slashes inside the quotes are part of the string, not path separators. Only the first `/` *after* the closing quote begins the member chain, so `'a/b'/upper` uppercases the three-character string `a/b`, and a fully quoted `'/not/a/path'` is just the string `/not/a/path`.
+- **An unknown member resolves to `null`** — no error, exactly as when you append an unknown member to a navigated string. A field that unexpectedly comes back `null` is usually a misspelled member name.
+
+**Concatenation splits first.** In an expression using `+`, the operands are separated before each one is resolved, so a member binds to its own operand:
+
+```
+'PRE'/lower+name
+# Resolves as ("PRE" lowercased) + name  →  "pre" + the value of name
+```
+
+**Encoding caveats.** A literal is still part of a URL, and the URL is parsed before the literal is:
+
+| Character in the literal | Write it as | Why |
+|--------------------------|-------------|-----|
+| `,` | `%2C` | A bare comma splits the `~with(...)` / `~just(...)` argument list, even inside quotes |
+| `?` | `%3F` | A bare `?` starts the query string |
+
+A ternary therefore reads `~with(v:cond %3F 'A'/ld : 'B')`. See [gotcha 28](common-gotchas.md#28-commas-inside-string-literals-split-operator-arguments).
+
 ---
 
 ## Number Operations

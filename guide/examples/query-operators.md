@@ -178,9 +178,23 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/uuid"
 # Connection test (returns constant string, not empty)
 # Response: "･*★`ﾟ+✧`*ﾟ✦´★･ﾟ✧'*･"
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/void"
+
+# Build an ad-hoc object from selectors
+# Response: {"id":"brod-melk","at":"2026-08-12T09:00:00.000Z"}
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/new~with(id:'Brod & Melk'/ld,at:api/v1/now)"
+
+# String literals accept members, including type-changing ones
+# Response: {"shortCode":5,"version":42}
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/new~with(shortCode:'hello'/upper/length,version:'42'/num)"
+
+# A comma inside a literal must be percent-encoded, or it splits the argument list
+# Response: {"label":"BROD, MELK"}
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/new~with(label:'Brod%2C Melk'/upper)"
 ```
 
 > **Note:** The `/void` endpoint returns a constant string (`"･*★\`ﾟ+✧\`*ﾟ✦´★･ﾟ✧'*･"`) rather than an empty response. This is useful for testing API connectivity—a successful response confirms the API is reachable and responding.
+
+> **`/new` returns a bare object.** There is no `@type` key on the response — the endpoint assembles an ad-hoc object rather than materializing a declared type. See [Utility Endpoints](../../reference/overview.md#utility-endpoints) for the full description and [String Literals](../../reference/primitives.md#string-literals-as-a-starting-point) for what a quoted selector can do.
 
 ---
 

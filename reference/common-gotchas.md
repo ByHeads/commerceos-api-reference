@@ -558,6 +558,31 @@ Full rules: [Resource Patterns → Validity Windows](resource-patterns.md#validi
 
 ---
 
+## 28. Commas Inside String Literals Split Operator Arguments
+
+A single-quoted [string literal](primitives.md#string-literals-as-a-starting-point) can be used as a selector and continued with members (`'Brød & Melk'/ld`). But the URL is parsed before the literal is: a bare `,` inside the quotes still ends the current `~with(...)` argument, and a bare `?` still starts the query string.
+
+```bash
+# WRONG - the comma splits the argument list; 'Melk' is read as a second selector
+GET /v1/new~with(label:'Brød, Melk'/upper)
+
+# RIGHT - percent-encode the comma
+GET /v1/new~with(label:'Brød%2C Melk'/upper)
+```
+
+Same for `?` in a ternary — write `%3F`:
+
+```bash
+GET /v1/products~with(tag:status %3F 'active'/upper : 'none')
+```
+
+Two related surprises:
+
+- **A misspelled member on a literal resolves to `null`, not an error** — the same silent behaviour as [misspelled operators](#24-misspelled-operators-fail-silently). `'hello'/uppr` yields `null`.
+- **`+` concatenation splits before members are applied**, so `'PRE'/lower+name` is `"pre"` concatenated with `name` — the `/lower` does not reach `name`.
+
+---
+
 ## API Response Behaviors
 
 ### Empty Collection Results

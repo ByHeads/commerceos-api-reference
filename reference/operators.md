@@ -110,7 +110,12 @@ GET /v1/products~just(name,status)
 
 # Blacklist: exclude audit fields
 GET /v1/products~without(createdAt,updatedAt,createdBy)
+
+# Alias a computed value; a selector may be a quoted string literal
+GET /v1/products~with(slug:name/ld,source:'catalog'/upper)
 ```
+
+> **String literals as selectors.** A single-quoted literal is a valid selector and can be continued with a `/` member chain or a `~` pipe, e.g. `~with(slug:'Brød & Melk'/ld)`. Percent-encode any `,` (`%2C`) or `?` (`%3F`) inside the quotes — the URL is split before the literal is read. See [String Literals as a Starting Point](primitives.md#string-literals-as-a-starting-point).
 
 ### Filtering
 - `~where(predicates)` - Filter by predicates (AND).
