@@ -116,6 +116,7 @@ The webhook resource exposes a few operator methods callable via POST against th
 | `reset` | Clear all `last*` timestamps (`last`, `lastStart`, `lastFinished`, `lastSuccess`, `lastFailed`). Forces the next run to behave as a full sync — delta queries that key off `lastStart` (e.g. `{api/v1/context/webhook/lastStart}`) will see no lower bound and re-fetch everything. |
 | `catchUp` | Mark the webhook as if it had just completed a successful run. Sets `last`, `lastStart`, `lastFinished`, and `lastSuccess` to *now*; clears `error`, `attempts`, and `lastFailed`. Use this to activate a webhook on a system with existing historical data without replaying that history. Inverse of `reset`. |
 | `clearProgress` | Clear any pending resume snapshot in `resumeState`, so the next run starts from page 1. See [Resume After Failure](#resume-after-failure). |
+| `abort` | Stop the run that is executing **right now**. Rejected with `400` when no run is in flight — to stop *future* runs, pause the webhook instead. Cancellation is cooperative and the aborted run does not count as a failure. See [Aborting a Run in Progress](#aborting-a-run-in-progress). |
 
 ```bash
 # Run immediately (well, ~3 s from now).
@@ -129,6 +130,12 @@ curl -X PATCH -u ":banana" \
   "https://example.app.heads.com/api/v1/sync-webhooks/com.myapp.id=my-webhook" \
   -H "Content-Type: application/json" \
   -d '{"runOnce": 60}'
+
+# Stop the run that is currently executing.
+curl -X PATCH -u ":banana" \
+  "https://example.app.heads.com/api/v1/sync-webhooks/com.myapp.id=my-webhook" \
+  -H "Content-Type: application/json" \
+  -d '{"abort": true}'
 ```
 
 ### Sync-State Fields
@@ -137,6 +144,7 @@ curl -X PATCH -u ":banana" \
 |-------|------|-------------|
 | `resumeState` | object (read-only) | The pending resume snapshot, if any. Empty when there's no interrupted run to resume — i.e. either the webhook hasn't run, the last run completed cleanly, or its `out` request isn't marked `idempotent`. When present, contains the strategy that was active and the saved continuation token (`cursor` resolved request fragments, or `linkHeader` / `nextUrl` URL). Use it to diagnose stalled paginated runs; clear with `clearProgress` to force a full restart. See [Resume After Failure](#resume-after-failure). |
 | `inFlightSince` | date-time (read-only) | When the currently-running run claimed the webhook, or empty when no run is in flight. Refreshed as a heartbeat while the run proceeds, so it is the best "is this webhook alive right now?" signal — unlike `last`, which records the *start* of the last attempt and never advances mid-run. Unaffected by `reset` and `catchUp`. How long a stale value keeps the slot locked is governed by `webhookInFlightWindowMs`; see [System Configuration](#system-configuration-v1configapi). |
+| `abortRequestedAt` | date-time (read-only) | When an operator last requested an [`abort`](#aborting-a-run-in-progress), or empty when there is no pending request. A non-empty value means the abort has been recorded but the run has not yet reached the checkpoint where it stops. Consumed (cleared) when the targeted run ends, or when a fresh run claims the slot — so a request can never spill over and cancel a later run. |
 
 ---
 
@@ -983,6 +991,77 @@ On success:
 - If `repeat` is `true`: the webhook reschedules using `when`
 - If `repeat` is `false`: `when` is set to `"never"` (one-time execution complete)
 
+### Aborting a Run in Progress
+
+A long-running webhook — a full catalogue sync started by mistake, a paginated run walking far more pages than expected, a delivery loop hammering a target that is having a bad day — can be stopped mid-flight with the [`abort`](#operator-methods) method:
+
+```bash
+curl -X PATCH -u ":banana" \
+  "https://example.app.heads.com/api/v1/sync-webhooks/com.myapp.id=my-webhook" \
+  -H "Content-Type: application/json" \
+  -d '{"abort": true}'
+```
+
+`abort` acts on the **current execution only**. It is not a pause: the webhook keeps its schedule and will run again at its next `when`.
+
+#### It only works while a run is in flight
+
+The call is rejected with **`400`** when nothing is currently running — that is, when [`inFlightSince`](#sync-state-fields) is empty or has already gone stale (older than `webhookInFlightWindowMs`, see [Concurrency guard](#concurrency-guard--webhookinflightwindowms)). There is no "abort the next run" queueing; a request that found no run does not linger.
+
+To stop *future* runs, pause the webhook instead — clear `when` (`null`) or set it to `"never"`; see [Pause and Stop Behavior](#pause-and-stop-behavior).
+
+#### Cancellation is cooperative
+
+The run is not killed. It is asked to stop, and it does so at its next checkpoint:
+
+- between attempts of the [per-request transient retry](#per-request-transient-retry-internal-targets);
+- between items of the `out` batch;
+- between elements of a fanned-out `out` response (`out.http.resultSelector`);
+- between page fetches of a paginated `in`.
+
+Two consequences worth planning around:
+
+- **An `out` request already on the wire is allowed to finish**, so its outcome is known and recorded rather than left ambiguous. Abort never leaves you wondering whether the last delivery landed.
+- **A run sitting inside one long database resolve stops when that resolve completes or fails** — there is no checkpoint inside it. On a heavy `in` selection, expect the abort to take effect at the end of that step rather than instantly.
+
+Between the request and the stop, [`abortRequestedAt`](#sync-state-fields) is non-empty. That is the signal that an abort is pending but the run has not reached its checkpoint yet.
+
+#### An aborted run is not a failure
+
+This is the part that matters for retry budgets and delta windows. An abort:
+
+- **consumes no attempt** — `attempts` is untouched, so aborting repeatedly can never exhaust `maxAttempts` and pause the webhook;
+- **does not stamp `lastFailed`**, and does not count as a failed run for health monitoring;
+- **leaves the delta high-water mark alone** — `lastStart` is not advanced, so the next run re-covers the same window. At-least-once delivery is preserved: nothing selected by the aborted run is silently dropped, and items it had already delivered are delivered again (make sure the target tolerates that, the same way [resume](#resume-after-failure) requires).
+
+The webhook then reschedules on its normal `when` cadence. Until the next clean run finishes, `error` reads:
+
+```text
+Previous run was aborted by operator request.
+```
+
+That string is informational — it records why the run ended, not that anything is broken.
+
+#### Stopping a runaway webhook for good
+
+Because an aborted run reschedules normally, aborting alone will not stop a webhook that is misbehaving every cycle. Pause first, then abort:
+
+```bash
+# 1. Take it off the schedule so nothing new starts.
+curl -X PATCH -u ":banana" \
+  "https://example.app.heads.com/api/v1/sync-webhooks/com.myapp.id=my-webhook" \
+  -H "Content-Type: application/json" \
+  -d '{"when": "never"}'
+
+# 2. Stop the run that is still executing.
+curl -X PATCH -u ":banana" \
+  "https://example.app.heads.com/api/v1/sync-webhooks/com.myapp.id=my-webhook" \
+  -H "Content-Type: application/json" \
+  -d '{"abort": true}'
+```
+
+In that order the aborted run has no schedule to return to. Reverse the order and the webhook simply starts again on its next tick. To bring it back afterwards, restore the schedule directly or call [`reactivate`](#operator-methods).
+
 ### Resume After Failure
 
 When the `out` request is marked `idempotent: true` **and** the `in` request uses a resumable pagination strategy, the webhook can resume an interrupted run from the page boundary it failed on rather than restarting from page 1.
@@ -1115,7 +1194,7 @@ A running webhook refreshes that marker as a heartbeat, so the window is a **sta
 - **Raise it** if you see spurious skips because workers are heavily contended and heartbeats are being delayed. The cost is a slower rescue of genuinely crashed runs.
 - **Lower it** to recover faster from crashed runs. The cost is a higher risk of two workers overlapping under load — and more heartbeat writes, since the heartbeat cadence tracks the window (roughly a third of it, clamped to 5–30 s).
 
-The marker is read-only over the API, and `reset` / `catchUp` deliberately leave it alone — it belongs to the worker holding the slot, not to the delta high-water mark. To stop a webhook, set `when` to `"never"` (see [Pause and Stop Behavior](#pause-and-stop-behavior)); to release a slot held by a crashed worker, wait for the window to lapse or for the recovery sweep below.
+The marker is read-only over the API, and `reset` / `catchUp` deliberately leave it alone — it belongs to the worker holding the slot, not to the delta high-water mark. To stop *future* runs, set `when` to `"never"` (see [Pause and Stop Behavior](#pause-and-stop-behavior)); to stop the run currently holding the slot, call [`abort`](#aborting-a-run-in-progress); to release a slot held by a *crashed* worker, wait for the window to lapse or for the recovery sweep below — `abort` cannot help there, since it needs a live run to reach a checkpoint.
 
 ### Recovery sweep — `webhookRecoveryIntervalMs`
 
@@ -1375,6 +1454,16 @@ PATCH /v1/sync-webhooks/com.example.syncId=my-webhook
 { "when": "api/v1/now/+=0:5:0" }
 ```
 
+Pausing only affects **future** runs — a run that is already executing keeps going until it finishes. To stop that one too, follow the pause with [`abort`](#aborting-a-run-in-progress):
+
+```bash
+# Stop the run that is executing right now (400 if none is)
+PATCH /v1/sync-webhooks/com.example.syncId=my-webhook
+{ "abort": true }
+```
+
+Aborting on its own is not a pause: the aborted run reschedules on the normal `when` cadence.
+
 ---
 
 ## Troubleshooting
@@ -1397,6 +1486,8 @@ PATCH /v1/sync-webhooks/com.example.syncId=my-webhook
 | `"Error while getting date for 'when' using URI '{whenUri}': The response was not a date. Result was: {result}. Could be a permissions issue..."` | Invalid `when` expression | Ensure `when` URL returns a date-time value, or check authorized scopes |
 | `"Invalid configuration for client credentials. Missing tokenUrl, client_id"` | Missing OAuth fields | Provide all required fields: `tokenUrl`, `client_id`, `client_secret`, `scope` |
 | `"Invalid configuration for basic auth. Missing password."` | Basic auth without password | Provide the password field |
+| `abort` rejected with `400` | No run is in flight — `inFlightSince` is empty or has gone stale | Nothing is running to stop. To prevent *future* runs, pause the webhook (`when: "never"`). See [Aborting a Run in Progress](#aborting-a-run-in-progress) |
+| `"Previous run was aborted by operator request."` in `error` | An operator called `abort` and the run stopped at its next checkpoint | Informational, not a failure — no attempt was consumed and `lastStart` is unchanged. It clears on the next clean run |
 
 ### Checking Status
 
@@ -1406,6 +1497,9 @@ GET /v1/sync-webhooks/com.myapp.id=my-webhook
 
 # Check specific fields
 GET /v1/sync-webhooks/com.myapp.id=my-webhook~just(error,attempts,last,next,when)
+
+# Is a run executing right now, and is an abort pending?
+GET /v1/sync-webhooks/com.myapp.id=my-webhook~just(inFlightSince,abortRequestedAt,error)
 ```
 
 ### Resetting a Failed Webhook

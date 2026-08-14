@@ -330,7 +330,28 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/sync-webhooks/c
       }
     }
   }'
+
+# Is a run executing right now, and is an abort pending?
+curl -X GET -u ":banana" \
+  "https://example.app.heads.com/api/v1/sync-webhooks/com.myapp.webhookId=product-sync~just(inFlightSince,abortRequestedAt,error)"
+
+# Stop the run that is currently executing (400 if none is in flight).
+# The webhook keeps its schedule and runs again at the next `when`.
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/sync-webhooks/com.myapp.webhookId=product-sync" \
+  -H "Content-Type: application/json" \
+  -d '{"abort": true}'
+
+# Stop a runaway webhook for good: pause first, then abort — in that order the
+# aborted run has no schedule to return to.
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/sync-webhooks/com.myapp.webhookId=product-sync" \
+  -H "Content-Type: application/json" \
+  -d '{"when": "never"}'
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/sync-webhooks/com.myapp.webhookId=product-sync" \
+  -H "Content-Type: application/json" \
+  -d '{"abort": true}'
 ```
+
+> **`abort` stops a run, it does not pause the webhook.** Cancellation is cooperative — the run stops at its next checkpoint, an `out` request already on the wire is allowed to finish, and the aborted run is *not* a failure: no attempt is consumed and `lastStart` stays put, so the next run re-covers the same window. See [Aborting a Run in Progress](../../reference/sync-webhooks.md#aborting-a-run-in-progress).
 
 > **Watch the operator spelling.** It is `~array`, never `~arr`. An unknown operator resolves silently to an empty value, so a typo here delivers nothing and still reports success. See [`then.set` key routing](../../reference/sync-webhooks.md#thenset-key-routing).
 
