@@ -207,6 +207,7 @@ GET /v1/trade-orders~orderBy(customer/name)
 - `~orderBy` accepts a single selector; commas are treated as part of the selector string
 - Nested paths supported: `~orderBy(customer/name)`
 - Collects all items in memory before sorting — not suitable for very large collections
+- **Blocks the short-circuit.** A `~take`/`~first` after a sort still waits for the whole collection to be sorted; that is inherent, since the top N cannot be known without seeing every row. If you need *any* N rows rather than the *first* N, leave `~orderBy` out and the request stops early ([details](operators.md#limiters-stop-the-scan-early)).
 
 ---
 
@@ -455,6 +456,8 @@ GET /v1/products~orderBy(name)~take(50)
 **Notes:**
 - `~take(0)` returns empty result
 - `~take(1)` returns first item as part of a collection
+- **Short-circuits the scan.** `~take` stops pulling items through the pipeline once it has N of them, so an upstream `~where` is never evaluated against the rest of the collection. Put the filter **before** the limiter — `~take(1)~where(...)` truncates first and then filters, which usually returns `[]`. See [Limiters stop the scan early](operators.md#limiters-stop-the-scan-early).
+- An upstream `~orderBy` cancels the benefit: the sort has to consume everything before `~take` can slice it.
 - Pair with `~orderBy(selector[:desc])` for stable pages (single selector only)
 - Query params **can** be mixed with operators. See [Query Parameter Normalization](#query-parameter-normalization) below.
 
@@ -478,7 +481,7 @@ GET /v1/products~orderBy(name)~skip(100)~take(50)
 
 **Notes:**
 - `~skip(0)` is a no-op
-- Combine with `~take` for pagination
+- Combine with `~take` for pagination — `~skip(N)~take(M)` stops after N + M items rather than walking the whole collection
 - Use the same `~orderBy` selector on every page to avoid duplicates or gaps
 
 ---
@@ -513,11 +516,15 @@ Return the first item from a collection.
 **Example:**
 ```
 GET /v1/products~orderBy(name)~first
+
+# Filter first, then reduce — stops at the first match
+GET /v1/products~where(gtin=7312345678901)~first
 ```
 
 **Notes:**
 - Returns `null` if collection is empty
 - Returns a single object, not an array
+- **Short-circuits the scan** like `~take(1)`: an upstream `~where` stops being evaluated as soon as one item matches. Keep the filter on the left of `~first`. See [Limiters stop the scan early](operators.md#limiters-stop-the-scan-early).
 
 ---
 
@@ -535,6 +542,7 @@ GET /v1/products~orderBy(name)~last
 **Notes:**
 - Returns `null` if collection is empty
 - Returns a single object, not an array
+- **Consumes the whole collection** — it has to reach the end to know which item is last. `~orderBy(selector:desc)~first` often answers the same question and stops at the first item.
 
 ---
 
@@ -552,6 +560,7 @@ GET /v1/products~where(status=Active)~count
 **Notes:**
 - Returns `0` for empty collections
 - Returns a number, not an array
+- **Consumes the whole collection** — unlike `~take`/`~first` there is nothing to short-circuit, since every matching item has to be seen to be counted. Use `~where(...)~take(1)~count` when all you need to know is whether *any* item matches.
 - Use `~count~toString` for `text/plain` output
 
 ---

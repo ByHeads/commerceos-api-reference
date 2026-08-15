@@ -79,7 +79,7 @@ Comprehensive curl examples demonstrating the full capabilities of the CommerceO
 
 ### Receipt Date Filtering
 
-Receipt `/after` and `/before` endpoints accept Date-parsable timestamps only:
+Receipt `/after` and `/before` endpoints accept any Date-parsable timestamp, plus the relative `-=` / `+=` shorthand:
 
 ```bash
 # ISO 8601 (recommended)
@@ -88,9 +88,13 @@ GET /v1/receipts/before/2024-12-31T23:59:59.999Z
 
 # RFC 2822
 GET /v1/receipts/after/Mon, 01 Jan 2024 00:00:00 GMT
+
+# Relative to now — the leading number is HOURS
+GET /v1/receipts/after/-=24
+GET /v1/receipts/after/-=0:30
 ```
 
-> **Note:** Invalid timestamps return empty arrays (not errors). Relative syntax like `-=24` is not supported.
+> **Note:** Invalid timestamps return empty arrays (not errors). In the relative form the leading number is hours (`-=h[:m[:s[.ms]]]`), so `-=2000` is about 83 days, not 2000 days — see [Operators → Relative timestamps](../reference/operators.md#relative-timestamps).
 
 ---
 

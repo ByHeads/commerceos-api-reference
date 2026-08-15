@@ -320,6 +320,40 @@ This sequence is recommended because:
 - Sorting before pagination ensures consistent page order
 - Pagination at the end avoids unexpected results from filtered/sorted subsets
 
+### Limiters stop the scan early
+
+A chain is evaluated lazily: items are pulled through it one at a time, and a **limiter** — `~take(N)` or `~first` — stops pulling as soon as it has what it asked for. Everything upstream of the limiter, including the `~where` predicate and any per-element subqueries it evaluates, simply never runs against the rest of the collection.
+
+```bash
+# Stops at the tenth match, however large the collection is
+GET /v1/products~where(status=Active)~take(10)
+
+# Stops at the first match
+GET /v1/products~where(gtin=7312345678901)~first
+
+# Stops after N + M items
+GET /v1/products~skip(100)~take(50)
+```
+
+`limit=N` is normalized to `~take(N)` and behaves identically, and query parameters are always appended *after* path operators — so `/v1/products~where(status=Active)?limit=10` is the same chain as the first example above.
+
+**Order is literal — put the filter first.** `~` is a pipe, and the pipeline does exactly what you wrote, in the order you wrote it. A limiter placed before the filter truncates the collection first and then filters the survivors, which is almost never what was meant:
+
+```bash
+# RIGHT - "the first active product"
+GET /v1/products~where(status=Active)~take(1)
+
+# WRONG - "take the first product, then check whether it happens to be active"
+#         Returns [] whenever the very first product isn't active.
+GET /v1/products~take(1)~where(status=Active)
+```
+
+**Draining operators still see everything.** `~count`, `~last` and `~orderBy` cannot answer their question without consuming the whole stream, so a limiter placed after one of them does not save any work:
+
+- `~where(...)~count` counts every match — that is the point of the operator.
+- `~orderBy(name)~take(10)` sorts the entire collection before slicing. You cannot know the alphabetically-first ten rows without looking at all of them. If you only need *some* ten rows rather than the *top* ten, drop the `~orderBy` and the request short-circuits.
+- `~last` walks to the end of the stream. On a sorted collection, `~orderBy(field:desc)~first` answers the same question and stops at the first item.
+
 ---
 
 ## Evaluation Notes
@@ -343,6 +377,42 @@ This sequence is recommended because:
 ```
 
 `{timestamp}` accepts any string `Date.parse` understands; ISO 8601 (`2025-02-01T00:00:00.000Z`) is recommended. Invalid timestamps return an empty collection or a 404 (depending on the operator).
+
+### Relative timestamps
+
+Instead of an absolute timestamp you can write an offset from *now*: `-=` subtracts, `+=` adds.
+
+**The leading number is hours.** The full form is `-=h[:m[:s[.ms]]]`, so every field you leave off defaults to zero:
+
+| Written | Means |
+|---|---|
+| `-=1` | 1 hour ago |
+| `-=24` | 24 hours ago |
+| `-=168` | 1 week ago |
+| `-=0:30` | 30 minutes ago |
+| `-=0:0:30` | 30 seconds ago |
+| `+=48` | 48 hours from now |
+
+```bash
+GET /v1/receipts/after/-=24
+GET /v1/receipts/after/-=0:30~take(100)
+```
+
+> **Watch the magnitude.** Because the unit is hours, a number that looks like a day count is not one: `-=2000` is 2000 hours — about 83 days — not 2000 days and not 2000 minutes. This is a common source of accidentally enormous windows in a polling job. If you mean 30 days, write `-=720`.
+
+### Polling efficiently
+
+For an incremental sync, keep the timestamp of the last record you processed in your own state store and ask for a **tight** window each time, rather than a fixed generous lookback:
+
+```bash
+# Good: resume from where the last run finished
+GET /v1/trade-orders/after/2025-02-01T10:03:00.124Z~take(500)
+
+# Wasteful: re-reads ~83 days of history on every poll, then throws almost all of it away
+GET /v1/trade-orders/after/-=2000~take(500)
+```
+
+A limiter such as `~take(500)` short-circuits the pipeline ([details](#limiters-stop-the-scan-early)), so an oversized window does not make the *response* larger — but the endpoint still has to walk the records that fall inside the window in order to return them in time order. The width of the window, not the size of the page, sets the floor on what the request costs. A five-minute poll should ask for roughly five minutes of data (plus whatever overlap you want for safety), not for the last three months.
 
 ### Mode parameter
 
@@ -386,5 +456,7 @@ Results are returned as an ordinary collection, so any operator can be chained: 
 ## Performance Considerations
 
 - **Always prefer `/before/{ts}` and `/after/{ts}` over `~where(timestamp>{ts})` / `~where(timestamp<{ts})`** on any collection that supports them — see [Time-relative queries](#time-relative-queries-before-and-after) for the full list. The path endpoints use the collection's time index and stay linear in the number of returned rows; `~where` on a timestamp is a predicate scan and becomes the dominant cost on large datasets. Use `~where(timestamp...)` only when you must combine the time predicate with a non-time condition the path endpoint cannot express.
+- **Put `~where` before `~take`/`~first`.** A limiter stops the scan as soon as it is satisfied, so `~where(...)~take(10)` costs ten matches rather than a whole collection — see [Limiters stop the scan early](#limiters-stop-the-scan-early). Written the other way round the query is also *wrong*, not just slow.
 - Use `~with`/`~just` to limit output and avoid expanding expensive relations.
-- `~orderBy` collects all items into memory before sorting—not suitable for very large collections.
+- `~orderBy` collects all items into memory before sorting—not suitable for very large collections, and it defeats the short-circuit above because a limiter after it still waits for the full sort.
+- `~count` and `~last` also consume the entire stream by definition. Where a `~first` on a sorted collection answers the same question, prefer it.

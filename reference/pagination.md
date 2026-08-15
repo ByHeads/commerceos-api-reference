@@ -69,6 +69,7 @@ Notes:
 - `~orderBy` accepts a single selector; add `:desc` for descending (`~orderBy(createdAt:desc)`).
 - Keep the sort consistent across pages to avoid duplicates or gaps when new records appear.
 - Stop paging when a response returns fewer than `take` items.
+- Put any `~where` filter **before** `~skip`/`~take`. Besides being the only order that gives the right answer, it lets the request stop scanning once the page is full — see [Limiters stop the scan early](operators.md#limiters-stop-the-scan-early).
 
 ## Cursor pagination
 
@@ -215,6 +216,7 @@ Invalid timestamps return a 404 error response (not an empty array).
 
 - Favor smaller, consistent page sizes (e.g., 100–500 items) and iterate until the last page is smaller than your page size.
 - Prefer date-window filtering (`timestamp` ranges) over very large offsets.
+- **Filter before you limit.** `~where(...)~take(N)` stops scanning at the Nth match; `~take(N)~where(...)` truncates first and then filters, which is both slower to reason about and usually empty. An `~orderBy` between the two removes the benefit, because the sort must read every row first ([details](operators.md#limiters-stop-the-scan-early)).
 - Sort by an indexed, unique-ish field (timestamps or identifiers) to keep page boundaries stable.
 - **Prefer a cursor over deep offsets** when exporting a whole collection: `?limit=500&orderby=identifiers/key` and then
   follow `X-Cursor-Next`. Remember the sort field must be unique, and that the walk has to be buffered — a streamed

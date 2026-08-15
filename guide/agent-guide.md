@@ -559,12 +559,12 @@ When referencing another object, use the `identifiers` wrapper:
 | Operator | Purpose | Example | Pitfall |
 |----------|---------|---------|---------|
 | `~where(cond)` | Filter | `~where(status=Active)` | In-memory filter, not indexed |
-| `~take(N)` | Limit results | `~take(10)` | Apply before other operators when possible |
+| `~take(N)` | Limit results | `~take(10)` | Put it **after** `~where`, never before |
 | `~skip(N)` | Offset | `~skip(20)` | Combine with `~take` for pagination |
 | `~orderBy(field)` | Sort ascending | `~orderBy(name)` | Collects ALL items before sorting |
 | `~orderBy(field:desc)` | Sort descending | `~orderBy(name:desc)` | Same memory concern |
 | `~first` | First element | `~first` | Returns `null` when empty, NOT `[]` |
-| `~count` | Count elements | `~count` | Returns number, not object |
+| `~count` | Count elements | `~count` | Returns number, not object; always scans everything |
 | `~with(field)` | Expand field | `~with(items)` | Multiple: `~with(a,b)` |
 | `~just(fields)` | Project only | `~just(name,key:identifiers/key)` | Clears ALL other fields |
 | `~map(type)` | Transform | `~map(com.heads.receipt-csv)` | **Only accepts mapped type names** |
@@ -609,7 +609,7 @@ Use these instead of `~where()` for date filtering - they use database indexes:
 /receipts~where(timestamp>2024-12-14)
 ```
 
-**Relative Date Syntax:**
+**Relative Date Syntax:** the leading number is **hours** — the full form is `-=h[:m[:s[.ms]]]`.
 
 | Syntax | Meaning |
 |--------|---------|
@@ -617,6 +617,26 @@ Use these instead of `~where()` for date filtering - they use database indexes:
 | `-=24` | 24 hours ago |
 | `-=0:30` | 30 minutes ago |
 | `+=48` | 48 hours in future |
+
+> **Watch the magnitude.** A number that looks like a day count isn't one: `-=2000` is 2000 hours — roughly 83 days — not 2000 days and not 2000 minutes. For 30 days write `-=720`.
+
+### 5.5 Filter Before You Limit
+
+Operators run in the order you write them, like a pipe. A `~take(N)` or `~first` placed **after** a `~where` stops the scan as soon as it has N matches; placed **before** it, it truncates the collection first and then filters whatever is left.
+
+```bash
+# RIGHT - "the first active product". Stops at the first match.
+/products~where(status=Active)~first
+
+# WRONG - "the first product, if it happens to be active". Usually returns [].
+/products~take(1)~where(status=Active)
+```
+
+The wrong order fails quietly — `200` with an empty collection, which looks just like "nothing matched".
+
+Two operators can't short-circuit no matter where you put them: `~count` and `~last` both have to read to the end of the stream. And `~orderBy` between the filter and the limiter removes the benefit, since the sort has to see every match before it can hand over the first N.
+
+See [Operators → Limiters stop the scan early](../reference/operators.md#limiters-stop-the-scan-early).
 
 ---
 

@@ -399,6 +399,28 @@ def sync_with_recovery():
                 continue
 ```
 
+### Keeping the Poll Window Tight
+
+Every pull above is a `/after/{timestamp}` window with a `~take(N)` limiter on the end. The limiter short-circuits — the request stops scanning as soon as it has N receipts, so a page never costs more than the page ([details](../operators.md#limiters-stop-the-scan-early)) — but the *window* still has to be walked to return its records in time order. Window width, not page size, is what a poll costs.
+
+That makes the cursor timestamp in your state store the thing to get right:
+
+```bash
+# Good: resume from the last receipt the previous run committed
+GET /v1/receipts/after/2024-12-15T10:05:32.124Z~take(500)~withAll
+
+# Wasteful: a fixed lookback re-reads the same history on every poll and
+# discards nearly all of it. -= is in HOURS, so this is ~83 days.
+GET /v1/receipts/after/-=2000~take(500)~withAll
+```
+
+Two things to watch:
+
+- **Relative offsets are hours** (`-=h[:m[:s]]`), so `-=24` is a day and `-=720` is 30 days. A number chosen as if it were days or minutes silently produces a window orders of magnitude off.
+- **Overlap deliberately, not accidentally.** The safety margin in [Handling Gaps and Retries](#handling-gaps-and-retries) is a minute or so on top of the cursor — that is cheap. Replacing the cursor with a blanket "last 90 days" lookback is not, and it grows with the tenant.
+
+If a poll must combine the time window with another condition, keep `~where` to the left of `~take` — the reverse order truncates before it filters and returns the wrong rows.
+
 ### Sync Frequency Recommendations
 
 | Use Case | Frequency | Rationale |

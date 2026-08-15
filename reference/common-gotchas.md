@@ -583,6 +583,30 @@ Two related surprises:
 
 ---
 
+## 29. A Limiter Before the Filter Truncates the Wrong Thing
+
+`~` is a pipe and the chain runs exactly in the order you wrote it — there is no query planner that reorders it for you. Put `~take` or `~first` ahead of `~where` and the collection is cut down *first*, then filtered, so the answer is whatever survives from an arbitrary handful of rows.
+
+```bash
+# WRONG - "take the first product, then check whether it happens to be active"
+#         Returns [] whenever the very first product isn't active.
+GET /v1/products~take(1)~where(status=Active)
+
+# RIGHT - "the first active product"
+GET /v1/products~where(status=Active)~take(1)
+```
+
+The failure is quiet: the request succeeds with `200` and an empty (or short) collection, which reads exactly like "nothing matched". On a small test tenant, where the first few rows often *do* match, the wrong order can even appear to work.
+
+Written the right way round it is also the faster form. A limiter stops pulling items through the chain once it is satisfied, so `~where(...)~take(10)` costs ten matches rather than a full scan, no matter how large the collection is. Two things to know about that:
+
+- **`~orderBy` between the filter and the limiter cancels it.** `~where(...)~orderBy(name)~take(10)` has to sort every match before it can slice the first ten. That is unavoidable if you genuinely want the alphabetically-first ten; if any ten will do, drop the sort.
+- **`~count` and `~last` never short-circuit** — both have to reach the end of the stream. To ask "does anything match?" without counting everything, use `~where(...)~take(1)~count`.
+
+Full rules: [Operators → Limiters stop the scan early](operators.md#limiters-stop-the-scan-early).
+
+---
+
 ## API Response Behaviors
 
 ### Empty Collection Results

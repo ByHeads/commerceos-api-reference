@@ -173,7 +173,8 @@ PUT /v1/products
 - `fields=a,b` uses projection (`~just`/`~simpleJust`) unless `fields=all/none/default`; use `~with(...)` when you need expansion semantics.
 - Operator chains run in URL order; rearranging operators can change results, so keep them in a logical sequence.
 - `~orderBy` accepts a single selector; commas are treated as literal selector characters, so multi-field ordering is not supported.
-- Receipt `/after`/`/before` cursor endpoints only accept Date-parsable timestamps; relative shorthands like `-=24` are not supported.
+- `/after`/`/before` time-relative endpoints accept Date-parsable timestamps and the relative `-=`/`+=` shorthand, where the leading number is **hours** — `-=2000` is ~83 days, not 2000 days.
+- Operator chains are literal: `~where(...)~take(N)` stops scanning at the Nth match, while `~take(N)~where(...)` truncates first and then filters (usually returning nothing). Filter before you limit.
 - Product category/group hierarchies do not accept a `parent` field or `/children` endpoints; use `childCategories` on the parent category and `parentGroup` + `members` on product group nodes.
 - Product images are URL-keyed (`identifiers.url`) with no `altText`/`sortOrder` metadata; use URL-only image identifiers.
 
