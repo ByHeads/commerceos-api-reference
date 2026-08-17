@@ -133,6 +133,29 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/products~first~ty
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/agents/com.heads.seedID=ourcompany/addresses~entries"
 ```
 
+### Splitting a String
+
+`/={separator}` on a string returns a real array, so the array operators chain onto it.
+
+```bash
+# Split a product name on "-" (written //= because the member follows the usual /)
+# If name is "AB-CD" → ["AB","CD"]
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/products/com.example.sku=ABC/name//=-"
+
+# Split, then keep one piece — the usual way to pull the tail off a composite identifier
+# Response: "wdajdi21jdj2j123"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/new~with(a:'32891238:wdajdi21jdj2j123')/a//=%3A~last"
+
+# ~join is the inverse: re-punctuate a value in one request
+# If name is "AB-CD" → "AB_CD"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/products/com.example.sku=ABC/name//=-~join(_)"
+
+# Percent-encode a separator the URL syntax already uses: %2F for "/", %7E for "~"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/products/com.example.sku=ABC/name//=%2F~count"
+```
+
+> **A separator that never occurs is not an error.** The split returns a one-element array holding the whole string, with a `200` — so a mis-encoded separator looks like a successful split. See [gotcha 31](../../reference/common-gotchas.md#31-a-mis-encoded-split-separator-looks-like-a-successful-split) and [Splitting a String into an Array](../../reference/primitives.md#splitting-a-string-into-an-array).
+
 ---
 
 ## Parameterless Operators (NO parentheses!)

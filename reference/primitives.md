@@ -88,6 +88,7 @@ GET /products/com.example.sku=ABC/name/5..      → from position 5 to end
 | `+={suffix}` | string | Append suffix |
 | `-={prefix}` | string | Prepend prefix |
 | `+~{text}` | string | Smart concatenation (avoids duplicate overlap) |
+| `/={separator}` | string[] | Split into an array on the separator — see [Splitting a String into an Array](#splitting-a-string-into-an-array) |
 
 **Examples:**
 ```
@@ -114,6 +115,70 @@ GET /people/com.example.id=123/fullName/fold
 # If fullName is "Æther" → returns: "Aether"
 # If fullName is "naïve" → returns: "naive"
 ```
+
+> **A literal `~` in an operand must be written `%7E`.** A `~` normally ends the current segment and starts an operator, so a suffix, prefix or comparison operand that contains one has to be encoded — `name/+=%7Ev2` appends `~v2`. See [Escaping a Tilde in an Operand](#escaping-a-tilde-in-an-operand) for the exact rule.
+
+### Splitting a String into an Array
+
+`/={separator}` splits the string on the separator and returns a **`string[]`**. In a URL the member follows the usual `/` path separator, so it is written with two slashes:
+
+```
+GET /products/com.example.sku=ABC/name//=-
+# If name is "AB-CD" → returns: ["AB","CD"]
+```
+
+The separator is everything after `/=`, taken literally — it can be more than one character (`//=--`), and it is not a pattern or regular expression.
+
+Two properties are worth stating explicitly:
+
+- **`/=` is one token with two behaviours, chosen by the type of the value it is applied to.** On a [number](#dynamic-members-arithmetic) or [decimal](#decimal-operations) it divides (`price/amount//=2` halves the price); on a string it splits (`name//=-`). There is no separate split token to remember.
+- **A separator that does not occur yields a one-element array** holding the whole string — not `null`, not an error. `"ABCD"//=-` returns `["ABCD"]`.
+
+#### Chaining array operators onto the result
+
+The result is a real array, so the [array operators](operators-catalog.md) apply to it directly: `~first`, `~last`, `~count`, `~take(N)`, `~skip(N)`, `~flat`, `~join(...)`.
+
+"Split, then keep one piece" is the usual reason to reach for the member at all — pulling the tail off a composite external identifier, for example:
+
+```
+GET /v1/new~with(a:'32891238:wdajdi21jdj2j123')/a//=%3A~last
+# Returns: "wdajdi21jdj2j123"
+```
+
+`~join(...)` is the inverse and re-assembles the pieces, so a split/join pair can re-punctuate a value in one request:
+
+```
+GET /products/com.example.sku=ABC/name//=-~join(_)
+# If name is "AB-CD" → returns: "AB_CD"
+```
+
+#### Encoding the separator
+
+The separator sits inside a URL, and the URL is parsed before the separator is read. Encode any character the surrounding syntax already uses:
+
+| Separator | Write it as | Why |
+|-----------|-------------|-----|
+| `/` | `%2F` | A raw `/` is read as the start of the next path step |
+| `~` | `%7E` | A raw `~` starts an operator, or folds into a two-character token — see below |
+| `?` | `%3F` | A bare `?` starts the query string |
+| `(` / `)` | `%28` / `%29` | Closes an operator's argument list |
+| `,` | `%2C` | Inside `~with(...)` / `~just(...)`, ends the current argument |
+| `:` | `%3A` | Inside `~with(...)` / `~orderBy(...)`, separates the alias from the selector |
+
+When in doubt, percent-encode: the segment is URL-decoded before the separator is read, so encoding a character that did not need it is harmless.
+
+#### Escaping a Tilde in an Operand
+
+A `~` ends the current selector segment and starts an operator — **except** directly after `+`, `<`, `-`, `~`, `=` or `!`, where it is read as part of a two-character token (`+~`, `<~`, `-~`, `~~`, `=~`, `!~`).
+
+That exception is what makes a raw `~` unusable as a separator: in `//=~~last` neither tilde ends the segment — the first follows `=`, the second follows a `~` — so `~last` is absorbed into the separator instead of being read as an operator. Any operand that needs a literal `~`, whether a separator, a suffix or a comparison value, must encode it as `%7E`:
+
+```
+GET /products/com.example.sku=ABC/name//=%7E~count
+# Splits on "~" and counts the pieces
+```
+
+> **If you tried this before and got the whole string back.** Until 2026-08-18, `//={separator}~{operator}` mis-parsed: the operator was absorbed into the separator, so the split matched nothing and the response was the **original unsplit string as a one-element array** — with a `200` and no error. If that sent you to a two-request workaround (split in one call, index client-side), it still works and is simply no longer necessary. Only the `//=` family was affected; a `~` operator after an ordinary member, such as `name~toLower`, always worked.
 
 ### Printf Formatting
 
@@ -209,6 +274,8 @@ Numbers (integers and floating-point) support arithmetic, comparisons, and round
 | `/={n}` | number | Divide by n |
 | `+={n}%` | number | Add n percent of value |
 | `-={n}%` | number | Subtract n percent of value |
+
+> **`/=` is shared with strings.** On a number or decimal `/={n}` divides; applied to a string the same token splits it into an array (`name//=-`). The type of the value decides which behaviour you get — see [Splitting a String into an Array](#splitting-a-string-into-an-array).
 
 ### Dynamic Members (Rounding)
 
@@ -502,7 +569,7 @@ GET /products~where(category=null)
 
 | Type | Key Operations |
 |------|----------------|
-| **string** | `length`, `lower`/`upper`, `fold`, indexing (`0`, `-1`), ranges (`2..5`), contains (`=~`), concat (`+=`, `+~`) |
+| **string** | `length`, `lower`/`upper`, `fold`, indexing (`0`, `-1`), ranges (`2..5`), contains (`=~`), concat (`+=`, `+~`), split (`/={separator}`) |
 | **strict string** | Same as string; rejects `""`, whitespace-only, and `"0"` |
 | **url** | Strict string with URL semantics (no validation) |
 | **namespaced key** | Exactly two dots, max 128 chars (e.g., `com.example.id`) |

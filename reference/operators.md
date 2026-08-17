@@ -130,6 +130,7 @@ GET /v1/products~with(slug:name/ld,source:'catalog'/upper)
     - ISO 8601 dates (e.g., `2024-12-20T10:00:00Z`) are parsed as Date objects
     - Empty strings: use `field=` (nothing after `=`) to match empty string
     - Nested paths work as keys: `~where(addresses/main/countryCode=SE)`
+    - A literal `~` in a value must be percent-encoded as `%7E` — a bare `~` ends the segment and starts an operator, except directly after `+ < - ~ = !` where it forms a two-character token (`=~`, `!~`, `+~`, …). See [Escaping a Tilde in an Operand](primitives.md#escaping-a-tilde-in-an-operand)
   - Date coercion: Datetime values on either side are compared via `.getTime()`
 - `~either(predicates)` - Filter by predicates (OR). See [`~either` below](#either-or-filtering) for details.
 
@@ -246,11 +247,13 @@ GET /v1/trade-orders~distinctBy(customer/identifiers/key)
 - `~entries` - Convert object to `{index, key, value}[]` entries (excludes `@type`).
 - `~array` - Wrap single item in an array. Spelled in full — there is no `~arr` alias, and a misspelled operator resolves silently to an empty value (see [gotcha 24](common-gotchas.md#24-misspelled-operators-fail-silently)).
 - `~typeless` - Set context flag to strip `@type` from output.
-- `~join(separator)` - Join array elements to string; default separator is `,`.
+- `~join(separator)` - Join array elements to string; default separator is `,`. Inverse of the string split member `/={separator}`.
 - `~toLower` - Convert string to lowercase; returns `undefined` for non-strings.
 - `~toUpper` - Convert string to uppercase; returns `undefined` for non-strings.
 - `~toString` - Convert value to string via `.toString()`.
 - `~repeat(N)` - Repeat input N times.
+
+> **Operators also consume arrays produced by a path member.** Navigating to a string and splitting it with `/={separator}` yields a real `string[]`, so `~first`, `~last`, `~count`, `~take(N)`, `~skip(N)`, `~flat` and `~join(...)` all chain onto it — `…/a//=%3A~last` keeps the part after the colon. Percent-encode a separator that the URL syntax already uses (`%2F` for `/`, `%7E` for `~`). See [Splitting a String into an Array](primitives.md#splitting-a-string-into-an-array).
 
 ---
 

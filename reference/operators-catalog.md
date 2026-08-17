@@ -378,11 +378,15 @@ Join array elements into a string.
 **Example:**
 ```
 GET /v1/products/com.example.sku=ABC/gtin~join(,)
+
+# Re-punctuate a value: split on "-", join with "_"
+GET /v1/products/com.example.sku=ABC/name//=-~join(_)
 ```
 
 **Notes:**
 - Default separator is `,` if not specified
 - Input must be an array
+- The inverse of the string [`/={separator}`](primitives.md#splitting-a-string-into-an-array) split member, so the two compose into a single-request re-punctuation
 
 ---
 
@@ -537,12 +541,16 @@ Return the last item from a collection.
 **Example:**
 ```
 GET /v1/products~orderBy(name)~last
+
+# Split a composite value and keep the tail
+GET /v1/new~with(a:'32891238:wdajdi21jdj2j123')/a//=%3A~last
 ```
 
 **Notes:**
 - Returns `null` if collection is empty
 - Returns a single object, not an array
 - **Consumes the whole collection** — it has to reach the end to know which item is last. `~orderBy(selector:desc)~first` often answers the same question and stops at the first item.
+- Applies to any array, including one produced by [splitting a string](primitives.md#splitting-a-string-into-an-array) with `/={separator}` — that pairing is the usual way to pull the tail off a composite identifier
 
 ---
 

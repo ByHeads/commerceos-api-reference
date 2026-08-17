@@ -633,6 +633,40 @@ Full rules: [Resource Patterns → The `@value` Write Envelope](resource-pattern
 
 ---
 
+## 31. A Mis-Encoded Split Separator Looks Like a Successful Split
+
+`/={separator}` [splits a string into an array](primitives.md#splitting-a-string-into-an-array) — written `//=` in a path, because the member follows the usual `/`. The separator is read straight out of the URL, so any character the URL syntax already uses has to be percent-encoded first.
+
+The sharp one is `~`. A bare `~` ends the segment and starts an operator, *except* directly after `+ < - ~ = !`, where it forms a two-character token — so `//=~` is read as the `=~` (contains) comparison, not as "split on tildes":
+
+```bash
+# WRONG - neither tilde ends the segment, so "~last" is swallowed into the separator
+GET /v1/products/com.example.sku=ABC/name//=~~last
+
+# RIGHT - encode the separator, and the operator is read as an operator
+GET /v1/products/com.example.sku=ABC/name//=%7E~last
+```
+
+A `/` separator needs the same treatment — written raw it is read as the start of the next path step rather than as the character to split on:
+
+```bash
+# RIGHT - split on "/"
+GET /v1/products/com.example.sku=ABC/name//=%2F
+```
+
+The full list of characters to encode (`/`, `~`, `?`, `(`, `)`, and `,` / `:` inside an operator's argument list) is in [Encoding the separator](primitives.md#encoding-the-separator).
+
+**Why it is quiet:** a separator that never occurs in the string is not an error — the split returns a **one-element array holding the whole, unsplit string**, with a `200`. A wrongly encoded separator therefore produces a well-formed array that looks like a successful split until you notice it has exactly one element. If a split "worked" but gave you back the original value, check the encoding before checking the data.
+
+Encoding is always safe to add: the segment is URL-decoded before the separator is read, so `%2D` for `-` behaves exactly like a bare `-`.
+
+Two related points:
+
+- **The same rule applies to any operand**, not just separators — a suffix, prefix or comparison value containing a `~` needs `%7E` too (`name/+=%7Ev2` appends `~v2`).
+- **`/=` divides numbers and splits strings.** One token, two behaviours, chosen by the type of the value it lands on: `price/amount//=2` halves a price, `name//=-` splits a name.
+
+---
+
 ## API Response Behaviors
 
 ### Empty Collection Results
