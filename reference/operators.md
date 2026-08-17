@@ -253,7 +253,7 @@ GET /v1/trade-orders~distinctBy(customer/identifiers/key)
 - `~toString` - Convert value to string via `.toString()`.
 - `~repeat(N)` - Repeat input N times.
 
-> **Operators also consume arrays produced by a path member.** Navigating to a string and splitting it with `/={separator}` yields a real `string[]`, so `~first`, `~last`, `~count`, `~take(N)`, `~skip(N)`, `~flat` and `~join(...)` all chain onto it — `…/a//=%3A~last` keeps the part after the colon. Percent-encode a separator that the URL syntax already uses (`%2F` for `/`, `%7E` for `~`). See [Splitting a String into an Array](primitives.md#splitting-a-string-into-an-array).
+> **Operators also consume arrays produced by a path member.** Navigating to a string and splitting it with `/={separator}` yields a real `string[]`, so `~first`, `~last`, `~count`, `~take(N)`, `~skip(N)`, `~flat` and `~join(...)` all chain onto it — `name//=%3A~last` keeps the part after the colon. Percent-encode a separator that the URL syntax already uses (`%2F` for `/`, `%3F` for `?`). One exception does not chain at all: a separator ending in `+ < - ~ = !` absorbs the operator that follows it, so split on a hyphen through a `~with(...)` alias instead — `~with(parts:name//=-)/parts~last`. See [Splitting a String into an Array](primitives.md#splitting-a-string-into-an-array).
 
 ---
 

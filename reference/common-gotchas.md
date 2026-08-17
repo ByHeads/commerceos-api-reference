@@ -633,37 +633,30 @@ Full rules: [Resource Patterns → The `@value` Write Envelope](resource-pattern
 
 ---
 
-## 31. A Mis-Encoded Split Separator Looks Like a Successful Split
+## 31. A Split on `-` Swallows the Operator After It
 
-`/={separator}` [splits a string into an array](primitives.md#splitting-a-string-into-an-array) — written `//=` in a path, because the member follows the usual `/`. The separator is read straight out of the URL, so any character the URL syntax already uses has to be percent-encoded first.
+`/={separator}` [splits a string into an array](primitives.md#splitting-a-string-into-an-array) — written `//=` in a path, because the member follows the usual `/`. The array operators chain onto the result, so `//=%3A~last` keeps the part after the colon.
 
-The sharp one is `~`. A bare `~` ends the segment and starts an operator, *except* directly after `+ < - ~ = !`, where it forms a two-character token — so `//=~` is read as the `=~` (contains) comparison, not as "split on tildes":
-
-```bash
-# WRONG - neither tilde ends the segment, so "~last" is swallowed into the separator
-GET /v1/products/com.example.sku=ABC/name//=~~last
-
-# RIGHT - encode the separator, and the operator is read as an operator
-GET /v1/products/com.example.sku=ABC/name//=%7E~last
-```
-
-A `/` separator needs the same treatment — written raw it is read as the start of the next path step rather than as the character to split on:
+That chaining breaks when the separator ends in one of six characters: `+`, `<`, `-`, `~`, `=`, `!`. A `~` directly after any of them is read as part of a two-character member token (`+~`, `<~`, `-~`, `~~`, `=~`, `!~`) rather than as the start of an operator, so the operator text is absorbed into the separator. `-` is the one people hit, because hyphens are the most common thing to split on.
 
 ```bash
-# RIGHT - split on "/"
-GET /v1/products/com.example.sku=ABC/name//=%2F
+# WRONG - "~last" is swallowed into the separator, which then matches nothing
+GET /v1/products/com.example.sku=ABC/name//=-~last
+
+# RIGHT - park the split in a ~with alias; the "/" before it ends the segment
+GET /v1/products/com.example.sku=ABC~with(parts:name//=-)/parts~last
 ```
 
-The full list of characters to encode (`/`, `~`, `?`, `(`, `)`, and `,` / `:` inside an operator's argument list) is in [Encoding the separator](primitives.md#encoding-the-separator).
+**Percent-encoding does not rescue this one.** `%2D~last` is tokenized exactly like `-~last`. Encoding is the fix for a *different* problem — a separator the URL syntax itself consumes (`%2F` for `/`, `%3F` for `?`, `%28`/`%29` for parentheses, `%2C` and `%3A` inside an operator's argument list). Those all chain normally once encoded.
 
-**Why it is quiet:** a separator that never occurs in the string is not an error — the split returns a **one-element array holding the whole, unsplit string**, with a `200`. A wrongly encoded separator therefore produces a well-formed array that looks like a successful split until you notice it has exactly one element. If a split "worked" but gave you back the original value, check the encoding before checking the data.
-
-Encoding is always safe to add: the segment is URL-decoded before the separator is read, so `%2D` for `-` behaves exactly like a bare `-`.
+**Why it is quiet:** a separator that never occurs in the string is not an error — the split returns a **one-element array holding the whole, unsplit string**, with a `200`. Both mistakes therefore produce a well-formed array that looks like a successful split until you notice it has exactly one element. If a split "worked" but handed back the original value, suspect the separator before the data.
 
 Two related points:
 
-- **The same rule applies to any operand**, not just separators — a suffix, prefix or comparison value containing a `~` needs `%7E` too (`name/+=%7Ev2` appends `~v2`).
+- **A literal `~` in any operand needs `%7E`**, not just in a separator — `name/+=%7Ev2` appends `~v2`. And since `~` is itself one of the six characters, a `~` separator can't be followed by an operator either.
 - **`/=` divides numbers and splits strings.** One token, two behaviours, chosen by the type of the value it lands on: `price/amount//=2` halves a price, `name//=-` splits a name.
+
+Full rules: [Primitives → Splitting a String into an Array](primitives.md#splitting-a-string-into-an-array).
 
 ---
 
