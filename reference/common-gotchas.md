@@ -607,6 +607,32 @@ Full rules: [Operators → Limiters stop the scan early](operators.md#limiters-s
 
 ---
 
+## 30. An Outer Member Beats the Same Member Inside `@value`
+
+A write body may use the `@value` envelope to separate identification from writing: the outer object says which element to write to, `@value` says what to apply. The two halves are merged before the write, and **the outer object wins** any member they both carry — which is the opposite of what the nesting suggests.
+
+```bash
+# WRONG - the envelope looks more specific, so it "should" win. It doesn't.
+#         The title ends up "Outer".
+PUT /v1/labels
+[{"identifiers": {"com.example.labelId": "vip"}, "title": "Outer", "@value": {"title": "Inner"}}]
+
+# RIGHT - each member appears in exactly one of the two halves
+PUT /v1/labels
+[{"identifiers": {"com.example.labelId": "vip"}, "@value": {"title": "Inner"}}]
+```
+
+The failure is quiet — `200`, and a stored value that came from the half you weren't looking at. It bites hardest in generated payloads, where a client that copies a source record into the outer object *and* into `@value` silently ignores everything the envelope was meant to apply.
+
+Two related points about the same envelope:
+
+- **`identifiers` inside `@value` are written, not matched.** That is the feature, not a trap: `{"identifiers": {"com.example.labelId": "old"}, "@value": {"identifiers": {"com.example.campaignId": "new"}}}` finds the object by the old identifier and **adds** the new one. It adds — it never removes the outer one.
+- **`"@value": null` is a write, not a delete.** It sets the identified element to null so it stops resolving by its identifiers, and returns `200`. To remove a resource, use `DELETE /v1/{collection}/{key}`.
+
+Full rules: [Resource Patterns → The `@value` Write Envelope](resource-patterns.md#the-value-write-envelope).
+
+---
+
 ## API Response Behaviors
 
 ### Empty Collection Results

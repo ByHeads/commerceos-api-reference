@@ -103,6 +103,27 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/products/com.my
   -H "Content-Type: application/json" \
   -d '{"name": "Premium T-Shirt", "status": "Active"}'
 
+# Add a second identifier to an existing product (@value envelope:
+# the outer identifiers find the product, the inner ones are written onto it)
+curl -X PUT -u ":banana" "https://example.app.heads.com/api/v1/products" \
+  -H "Content-Type: application/json" \
+  -d '[{
+    "identifiers": {"com.myapp.sku": "SKU-001"},
+    "@value": {"identifiers": {"com.myapp.pimId": "PIM-00012345"}}
+  }]'
+
+# The product now answers to both keys, with every other member untouched
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/products/com.myapp.pimId=PIM-00012345"
+
+# Update a product through the envelope (same effect as the flat PATCH above;
+# note that an outer sibling would win over the same member inside @value)
+curl -X PUT -u ":banana" "https://example.app.heads.com/api/v1/products" \
+  -H "Content-Type: application/json" \
+  -d '[{
+    "identifiers": {"com.myapp.sku": "SKU-001"},
+    "@value": {"name": "Premium T-Shirt", "status": "Active"}
+  }]'
+
 # Assign product to category
 curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/products/com.myapp.sku=SKU-001/categories" \
   -H "Content-Type: application/json" \

@@ -185,6 +185,18 @@ PUT /people/com.myapp.userId=123 '{"givenName": "John"}'
 GET /people/com.myapp.userId=123
 ```
 
+**Adding an identifier to an object you can only find by another one.** Identifiers listed alongside the payload are used to *select* the object, so they cannot at the same time be written. Put the new identifier inside a `@value` envelope instead:
+
+```bash
+PUT /people
+[{
+  "identifiers": {"com.myapp.userId": "123"},
+  "@value": {"identifiers": {"com.myapp.crmId": "CRM-9981"}}
+}]
+```
+
+The person is now reachable as both `com.myapp.userId=123` and `com.myapp.crmId=CRM-9981`; no other member changes. See [The `@value` Write Envelope](resource-patterns.md#the-value-write-envelope).
+
 ---
 
 ## Common Identifiers and Dynamic Properties
@@ -265,6 +277,8 @@ See [`operators.md`](operators.md) for the full operator reference, or [`operato
 | `DELETE` | Remove resources |
 
 `PATCH` on a writable array member additionally accepts the `add`, `replace`, and `remove` operations — see [Array Write Operations](resource-patterns.md#array-write-operations).
+
+Any write body may also wrap its payload in `@value` to separate the identifiers that select an object from the members applied to it — see [The `@value` Write Envelope](resource-patterns.md#the-value-write-envelope).
 
 ---
 

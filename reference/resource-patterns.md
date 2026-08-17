@@ -211,6 +211,86 @@ If the **same** element appears in both `add` and `remove`, it ends up **present
 
 ---
 
+## The `@value` Write Envelope
+
+Every write payload does two things at once: it says *which* object to write to, and *what* to write. In the ordinary flat form the two are mixed together in one object — `identifiers` selects (or creates) the element, and the sibling members are what gets applied:
+
+```bash
+PUT /v1/labels
+[{"identifiers": {"com.example.labelId": "vip"}, "title": "VIP customer"}]
+```
+
+The `@value` envelope pulls them apart. The outer object identifies the element; whatever sits under `@value` is what gets applied to it:
+
+```bash
+PUT /v1/labels
+[{"identifiers": {"com.example.labelId": "vip"}, "@value": {"title": "VIP customer"}}]
+```
+
+Those two requests do exactly the same thing. With no overlap between the identifying members and the written ones, the envelope is just a longer way to write the same payload — pick whichever suits the client generating it. What the envelope makes possible is the case the flat form cannot express: **writing the very members that would otherwise be used for identification**, above all `identifiers` itself.
+
+The envelope works on elements of a top-level collection `PUT`/`POST` and in the body of a direct `PATCH` on a single entity, on create and on update alike.
+
+> **If you tried this form before and nothing happened.** On top-level collection writes the envelope used to be dropped before the write was applied: the element was still matched or created from the outer `identifiers`, the response was still `200`, and the enveloped payload was silently discarded. That is fixed — both paths now apply it. Any workaround built around it (splitting the write into a create plus a follow-up `PATCH`, say) still works and is simply no longer necessary.
+
+### The outer object wins
+
+The two halves are merged before the write, with the outer object taking precedence. If the same member appears both as an outer sibling and inside `@value`, **the outer one is applied** and the enveloped one is discarded:
+
+```bash
+PUT /v1/labels
+[{"identifiers": {"com.example.labelId": "vip"}, "title": "Outer", "@value": {"title": "Inner"}}]
+
+# The label's title is "Outer".
+```
+
+This catches people out — the envelope looks like the more specific of the two, so the intuition runs the other way. Don't write the same member in both places; see [Common Gotchas → An Outer Member Beats the Same Member Inside `@value`](common-gotchas.md#30-an-outer-member-beats-the-same-member-inside-value).
+
+### Rewriting identifiers
+
+This is what the envelope exists for. Inside `@value`, `identifiers` are **written**, not matched on — so a single request can say "find the object carrying this identifier, and give it that one":
+
+```bash
+PUT /v1/labels
+[{
+  "identifiers": {"com.example.labelId": "PROMO-Q1"},
+  "@value": {"identifiers": {"com.example.campaignId": "CMP-2026-014"}}
+}]
+```
+
+The label already known as `com.example.labelId=PROMO-Q1` is now **also** reachable as `com.example.campaignId=CMP-2026-014`. Both work; the object is the same one, with the same `identifiers.key`.
+
+Two things to be clear about:
+
+- **It adds, it does not replace.** The outer identifier stays on the object. Nothing in this form removes an identifier.
+- **Nothing else is touched.** Members not mentioned anywhere in the payload keep their stored values, exactly as with any other partial write.
+
+The typical use is an integration adopting a second external ID — a new PIM namespace, a migration from a legacy key — that needs to stamp it onto objects it can currently only find by the old one, without a read-then-write round trip per object and without risking a collision with the other members.
+
+### Setting an element to `null`
+
+An envelope of `null` sets the identified element to null, after which it no longer resolves by its identifiers:
+
+```bash
+PUT /v1/labels
+[{"identifiers": {"com.example.labelId": "obsolete"}, "@value": null}]
+```
+
+The response is `200`, like any other write. This is a write that nulls a slot, not a resource deletion — to remove a resource, use `DELETE /v1/{collection}/{key}`.
+
+### On a direct `PATCH`
+
+The same body shape is accepted when patching a single entity, where the URL already identifies the target:
+
+```bash
+PATCH /v1/labels/com.example.labelId=vip
+{"@value": {"title": "VIP customer"}}
+```
+
+Here the envelope buys nothing on its own — it is equivalent to sending `{"title": "VIP customer"}`. It is worth knowing about because it means one payload shape travels unchanged between a bulk collection write and a single-entity patch, which is convenient for a client, a mapped type, or a sync webhook that emits the same body either way.
+
+---
+
 ## Product Node Hierarchy
 
 Products exist in a hierarchy with different node types:

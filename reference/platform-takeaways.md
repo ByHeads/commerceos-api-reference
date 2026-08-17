@@ -118,3 +118,4 @@ Resources support user-defined external identifiers:
 - Access via `identifiers` member
 - Multiple external IDs can exist on the same object
 - Used for integration and cross-system references
+- To add one to an existing object, use the `@value` envelope — the outer `identifiers` select the object, the ones inside `@value` are written onto it (see [Resource Patterns → The `@value` Write Envelope](resource-patterns.md#the-value-write-envelope))

@@ -170,6 +170,28 @@ GET /v1/products/com.acme.sku=SKU-WIDGET-BLU-M
 GET /v1/products~where(gtin=7312345678901)~first
 ```
 
+### Adding an Identifier to Products Already in the Catalog
+
+Adopting a second identifier later — a new PIM namespace, a supplier code, a migration off a legacy key — means writing an identifier onto products you can currently only *find* by the old one. A flat payload can't do both: identifiers sitting next to the payload select the product, so they are not available to be written. Wrap the new identifier in a `@value` envelope:
+
+```bash
+# Stamp the new PIM id onto a product currently known only by its legacy SKU
+PUT /v1/products
+[{
+  "identifiers": {"com.acme.legacy-sku": "OLD-00012345"},
+  "@value": {"identifiers": {"com.acme.pim-id": "PIM-PROD-00012345"}}
+}]
+```
+
+The product is afterwards reachable by both keys, and nothing else about it changes. The array form takes as many elements as the migration batch needs, so the whole catalogue can be re-keyed in bulk rather than one read-then-write round trip per product.
+
+Two properties worth planning the migration around:
+
+- **It adds; it never removes.** The legacy identifier stays. Old integrations keep resolving throughout the cutover, which is what makes this safe to run ahead of switching consumers over.
+- **Only the identifier is written.** Members absent from the payload keep their stored values, so a re-keying pass cannot accidentally revert names, prices, or status.
+
+See [Resource Patterns → The `@value` Write Envelope](../resource-patterns.md#the-value-write-envelope) for the full semantics.
+
 ---
 
 ## Integration Architecture
