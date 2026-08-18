@@ -225,13 +225,14 @@ The API buffers all results, so if an error occurs at any point, a proper HTTP e
 ```json
 {
   "@type": "bad request",
-  "error": "Invalid value for field 'name'.",
+  "error": "The request was invalid and could not be processed.",
+  "details": "Invalid value for field 'name'.",
   "processedCount": 200,
   "failedAtIndex": 200
 }
 ```
 
-The HTTP status code (e.g., 400) is set correctly because headers hadn't been sent yet.
+`error` is the general category of the failure and `details` the occurrence-specific message. The HTTP status code (e.g., 400) is set correctly because headers hadn't been sent yet.
 
 ### With Streaming
 
@@ -244,8 +245,8 @@ HTTP headers (including the status code) are sent before the first item, so **th
   "@type": "mid-stream error",
   "error": "An error occured while streaming the response body. The status code and headers might still indicate success.",
   "innerError": {
-    "@type": "bad request",
-    "error": "Invalid value for field 'name'."
+    "error": "The request was invalid and could not be processed.",
+    "details": "Invalid value for field 'name'."
   }
 }
 ```
@@ -261,28 +262,46 @@ Note what is **not** there: `processedCount` and `failedAtIndex` belong to the b
   {
     "@type": "mid-stream error",
     "error": "An error occured while streaming the response body. The status code and headers might still indicate success.",
+    "innerError": {
+      "error": "The request was invalid and could not be processed.",
+      "details": "Invalid value for field 'name'."
+    },
     "processedCount": 2
   }
 ]
 ```
 
-The body stays valid JSON, so you can parse it in one go and then inspect the last element. Note that the JSON form carries `processedCount` but **no `innerError`** — that is deliberate, not an oversight: the detail is in the server log, not in the body. If you need the underlying cause in the response, use a line-delimited format.
+The body stays valid JSON, so you can parse it in one go and then inspect the last element. Apart from the JSON-only `processedCount`, the two markers are the same object — the NDJSON response for the same failure is byte-identical with that one field removed.
 
 All data preceding the error object is valid and committed.
 
-#### Only `@type` Is Always There
+#### `innerError` Has the Same Shape on Every Format
 
-The two streamed forms do not carry the same fields, and neither carries the full set the buffered error body does. **`"@type": "mid-stream error"` is the only field present in both** — branch on that and nothing else:
+`innerError` carries the cause of the failure, and it is identical whatever content type you asked for — so a client reads it the same way on a streamed JSON export as on an NDJSON one. It has two members:
+
+| Member | Meaning |
+|--------|---------|
+| `error` | The general category of the failure — `"The request was invalid and could not be processed."`, `"Internal server error."` |
+| `details` | The occurrence-specific message — `"Invalid value for field 'name'."` |
+
+**`innerError` carries no `@type` of its own.** Worth checking your parser against, because it is the odd one out: the wrapper around it has one (`"mid-stream error"`), and so does a non-streaming error body (`"bad request"`, `"internal error"`, …). Match on `error` and `details`, not on an inner type.
+
+It is sanitized rather than raw. An unexpected server-side failure surfaces as `{"error": "Internal server error.", "details": "<message>"}` — never a stack trace or an internal frame.
+
+#### Which Fields Each Form Carries
+
+The three error bodies do not carry the same fields, and **`"@type": "mid-stream error"` is the one to branch on** — it is the only field that both identifies a truncated stream and is present on every streamed form:
 
 | Field | Buffered error body | Streamed, line-delimited | Streamed, `application/json` |
 |-------|---------------------|--------------------------|------------------------------|
 | `@type` | Yes | Yes | Yes |
 | `error` | Yes | Yes | Yes |
-| `innerError` | — (it *is* the error) | Yes | — |
+| `details` | Yes | — (it is inside `innerError`) | — (it is inside `innerError`) |
+| `innerError` | — (it *is* the error) | Yes | Yes |
 | `processedCount` | Yes | — | Yes |
 | `failedAtIndex` | Yes | — | — |
 
-The two absences are the ones that catch people out. A completeness check written as `if (last.processedCount !== undefined)` never fires on an NDJSON, CSV or SQL export, and one written as `if (last.innerError)` never fires on a JSON export — both wave a truncated export through as complete. The underlying cause is always in the server log regardless of which form you get.
+The absences are the ones that catch people out. A completeness check written as `if (last.processedCount !== undefined)` never fires on an NDJSON, CSV or SQL export, and `failedAtIndex` appears only on the buffered batched-write body — either check waves a truncated export through as complete. Key detection on `@type` and read `innerError` for the cause.
 
 > **Important:** When consuming a streamed response, always check the **last line** (line-delimited formats) or the **last array element** (JSON) for `"@type": "mid-stream error"`, and treat it as a failure regardless of the `200`. Requests without `stream=true` never need this — they get a real error status instead.
 
@@ -295,13 +314,13 @@ This is the practical cost of streaming a `GET`, and it applies to reads as much
   "@type": "mid-stream error",
   "error": "An error occured while streaming the response body. The status code and headers might still indicate success.",
   "innerError": {
-    "@type": "bad request",
-    "error": "Invalid value for field 'name'."
+    "error": "The request was invalid and could not be processed.",
+    "details": "Invalid value for field 'name'."
   }
 }
 ```
 
-The appended wrapper carries `innerError` but neither `processedCount` nor `failedAtIndex` — those two belong to the buffered error body ([field matrix](#only-type-is-always-there)). The lines already delivered are valid; the collection is simply incomplete.
+The appended wrapper carries `innerError` but neither `processedCount` nor `failedAtIndex` — those two belong to the buffered error body ([field matrix](#which-fields-each-form-carries)). The lines already delivered are valid; the collection is simply incomplete.
 
 A streaming client must check for that line. Reject the export rather than treating a truncated collection as complete — a partial export that looks successful is how stale rows end up in a warehouse:
 
