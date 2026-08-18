@@ -72,13 +72,16 @@ Parameters are passed via the Accept header after a semicolon:
 |-----------|------|---------|-------------|
 | `batchSize` | int | 1000 | Statements per batch (a multi-row INSERT counts as one statement) |
 | `stream` | boolean | `false` | Serialize and send batches incrementally instead of assembling the whole body first — see [§ 8.1](#81-sql-statement-batching) |
+| `mode` | `insert` \| `sync` \| `merge` | `insert` | Accepted, but currently has no effect — see the note below |
 
 **Example:**
 ```http
 Accept: application/sql; batchSize=500
 ```
 
-> **Note:** The `mode` parameter (`insert`, `sync`, `merge`) is accepted by the serializer settings but currently unused—mapped types cannot read it (there is no `$mode` variable in the resolver). The SQL serializer emits statements exactly as provided without interpreting or transforming based on mode.
+> **Note:** The `mode` parameter is accepted by the serializer settings but currently unused — mapped types cannot read it. The SQL serializer emits statements exactly as provided, without interpreting or transforming them based on mode.
+
+> **A value outside the enum empties the response.** `mode` accepts `insert`, `sync` and `merge` and nothing else. `Accept: application/sql;mode=upsert` answers a success status with no body — the whole parameter set fails to apply, so the serializer has nothing to write, and there is no error message to go on. The same holds for a non-boolean `stream` (`;stream=truex`) or a non-numeric `batchSize`. Parameters the serializer does not recognize at all — `charset`, `q`, a misspelled name — are ignored harmlessly. See [Accept parameter tolerance](../reference/overview.md#accept-parameter-tolerance).
 
 ---
 

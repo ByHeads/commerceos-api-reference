@@ -346,7 +346,29 @@ Accept: application/json; skipMembers=prices,images
 
 **`skipNulls` + `~with` interaction:** When `skipNulls=true` (default), null fields are omitted. However, if a field is explicitly requested via `~with()`, a null value is included to indicate the field exists but is empty.
 
-**Unknown parameters:** Unknown parameters in the Accept header are accepted and ignored (they do not cause errors).
+### Accept Parameter Tolerance
+
+Every content type that serializes a collection — `application/json`, `application/x-ndjson`, `text/csv`, `application/sql`, `application/vnd.ms-sqlserver.csv` — accepts parameters it does not recognize and ignores them. A standards-compliant header is safe to send:
+
+```bash
+Accept: text/csv;charset=utf-8          # charset ignored, rows returned
+Accept: application/json;q=0.9          # q ignored, array returned
+Accept: text/csv;delimiter=|;charset=utf-8   # delimiter honored, charset ignored
+```
+
+A misspelled parameter **name** falls into the same bucket: it is ignored, silently, so `;strem=true` is a perfectly successful buffered response and nothing reports the typo.
+
+> **An invalid *value* on a parameter the format does recognize empties the response.** The whole parameter set fails to apply, the serializer ends up with nothing to write, and the request answers a **success status with no data** — `204 No Content` on a buffered request. There is no error message.
+>
+> ```bash
+> Accept: application/json;stream=truex    # not a boolean  → empty
+> Accept: application/json;skipNulls=1     # not a boolean  → empty (use true/false)
+> Accept: application/sql;mode=upsert      # not in the enum → empty
+> ```
+>
+> The SQL `mode` enum is strict: `insert`, `sync` and `merge` are the only accepted values (see [SQL export](../features/sql-export.md#22-serializer-parameters)). Booleans must be spelled `true` or `false` — `1`, `yes` and `on` are all rejected.
+>
+> The failure mode to recognize: a `204` (or an empty `200`) from a collection you know is not empty, right after you added or edited an `Accept` parameter. Drop the parameter and the data comes back.
 
 ### Format-Specific Behaviors
 
@@ -425,6 +447,6 @@ Without `stream=true`, all items are read from the database within a single tran
 
 Streaming trades the guarantees above for that latency: items are read in batches across separate read transactions (so no single-point-in-time snapshot), and a failure after the first byte cannot change the status code. It arrives as a `mid-stream error` object inside the body — appended as one more line on the line-delimited formats, or as the **last element of the array** on `application/json`.
 
-**Two envelope differences** catch integrators switching an existing call to `stream=true`: an empty result is `200` with an empty body rather than `204 No Content` (JSON excepted — it serializes to `[]`), and the buffered body carries one extra trailing newline. Compare lines rather than raw bytes when diffing the two.
+**Two envelope differences** catch integrators switching an existing call to `stream=true`: an empty result is `200` with an empty body rather than `204 No Content` (JSON excepted — it serializes to `[]`), and a buffered `application/json` body ends with a newline the streamed one does not have. For the line-oriented formats the two forms are byte-identical, so an exact-comparison client can diff raw bytes across the switch; only JSON needs the trailing newline accounted for.
 
 > **Streaming in depth:** For transaction chunking, input streaming, `X-Transaction-Count` header, and mid-stream error handling, see [`features/streaming.md`](../features/streaming.md).

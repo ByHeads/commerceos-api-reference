@@ -787,7 +787,9 @@ The point is time-to-first-byte, and the reason it matters is that a long query 
 
 It costs the guarantees above: reads are batched across separate transactions, and a failure after the first byte cannot change the status code. On the line-delimited formats it arrives as a final `{"@type": "mid-stream error", ...}` line; on `application/json` the array closes itself and the marker is its **last element**. Always check for it — a `200` does not mean the export is complete.
 
-Two envelope differences to plan for when switching a call to `stream=true`: an empty result is `200` with an empty body instead of `204 No Content` (JSON excepted — it returns `[]`), and the buffered body has one extra trailing newline. See [Streaming](../features/streaming.md).
+Two envelope differences to plan for when switching a call to `stream=true`: an empty result is `200` with an empty body instead of `204 No Content` (JSON excepted — it returns `[]`), and a buffered `application/json` body ends with a newline the streamed one lacks (NDJSON, CSV and SQL are byte-identical either way). See [Streaming](../features/streaming.md).
+
+**Spelling the parameter matters, and the two ways of getting it wrong look different.** A misspelled parameter *name* is ignored — `;strem=true` is a successful buffered response with no warning. An invalid *value* on a name the format recognizes (`;stream=truex`, `;skipNulls=1`, `application/sql;mode=upsert`) empties the response: success status, no data, `204` when buffered. See [Accept parameter tolerance](../reference/overview.md#accept-parameter-tolerance).
 
 ### 7.4 Mapped Type Exports
 

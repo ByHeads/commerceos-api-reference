@@ -143,11 +143,14 @@ currency or per store — and low-cardinality fields such as `status` are never 
 workaround: an `orderby` with more than one field is rejected with `400 Cursor pagination with compound sort not yet
 supported` as soon as an `after` token is present.
 
-**Cursor pagination and streaming are mutually exclusive.** With `Accept: application/json;stream=true` the response
-body starts before the pagination headers could be computed, so `Link`, `X-Cursor-Next` and `X-Has-More` are never
-emitted. This is inherent to streaming, not a bug. An `after` token *is* still honored on a streamed request — the
-response is exactly `limit` items starting after the token — but with no next-cursor header there is nothing to
-continue from. Use buffered (non-streaming) requests when you need to walk pages. See
+**The pagination headers require a buffered JSON response.** `Link`, `X-Cursor-Next` and `X-Has-More` are emitted only
+for `application/json` without `;stream=true`. A streamed body starts before the headers could be computed, and the
+line-oriented formats (`application/x-ndjson`, `text/csv`, `application/sql`) are not in a shape the header
+post-processing can annotate — so neither gets them, streamed or not. This is inherent, not a bug.
+
+An `after` token *is* still honored in every format — the response is exactly `limit` items starting after the token —
+but with no next-cursor header there is nothing to continue from. **Walk the pages with buffered JSON**, then re-request
+a page in the export format if you need the rows as NDJSON or CSV. See
 [`features/streaming.md`](../features/streaming.md).
 
 **`fields` may omit the sort field.** The API fetches the `orderby` field internally to compute the next cursor and
@@ -233,8 +236,8 @@ Invalid timestamps return a 404 error response (not an empty array).
 - **Filter before you limit.** `~where(...)~take(N)` stops scanning at the Nth match; `~take(N)~where(...)` truncates first and then filters, which is both slower to reason about and usually empty. An `~orderBy` between the two removes the benefit, because the sort must read every row first ([details](operators.md#limiters-stop-the-scan-early)).
 - Sort by an indexed, unique-ish field (timestamps or identifiers) to keep page boundaries stable.
 - **Prefer a cursor over deep offsets** when exporting a whole collection: `?limit=500&orderby=identifiers/key` and then
-  follow `X-Cursor-Next`. Remember the sort field must be unique, and that the walk has to be buffered — a streamed
-  request never returns the cursor headers ([details](#cursor-pagination)).
+  follow `X-Cursor-Next`. Remember the sort field must be unique, and that the walk has to be buffered JSON — a streamed
+  response, or any NDJSON/CSV/SQL response, never returns the cursor headers ([details](#cursor-pagination)).
 - **Use `/after/{timestamp}` and `/before/{timestamp}` for any time-sliced export** — they are the recommended pattern on every collection that supports them ([list](operators.md#time-relative-queries-before-and-after)). They use the collection's time index, stay linear in returned rows, and produce stable cursor boundaries between pages. `~where(timestamp>...)` works but is a predicate scan that gets slower as page offsets grow; reach for it only when you need to combine the time filter with a non-time condition.
 
 ## Copy-paste recipes

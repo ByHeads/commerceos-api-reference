@@ -386,7 +386,7 @@ The third is a matter of where you write the projection, and it is the one that 
 GET /v1/people~skip(1000)~take(10)~just(name)
 ```
 
-**`?fields=` cannot express that order, so it always pays the full cost.** `?offset=1000&limit=10` on its own is the cheap shape — the two parameters normalize to `~skip(1000)~take(10)`. But `?fields=name` normalizes to a `~just(name)` placed *ahead* of the skip under the [canonical order](#query-parameter-normalization), and there is no query-parameter spelling that puts it after. The same goes for `orderby=` and for any filter parameter (`?status=Active`). If you want a projected page at offset cost, write the operators by hand:
+**`?fields=` cannot express that order, so it always pays the full cost.** `?offset=1000&limit=10` on its own is the cheap shape — the two parameters normalize to `~skip(1000)~take(10)`. But `?fields=name` normalizes to a `~just(name)` placed *ahead* of the skip under the [canonical order](#query-parameter-normalization), and there is no query-parameter spelling that puts it after. `format=` sits ahead of the skip in that same order and costs the win too, as do `orderby=` and any filter parameter (`?status=Active`). If you want a projected page at offset cost, write the operators by hand:
 
 | Request | Cost |
 |---------|------|

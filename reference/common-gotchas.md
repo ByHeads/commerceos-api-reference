@@ -507,10 +507,11 @@ workaround — an `orderby` listing more than one field is rejected with `400` o
 
 Two related surprises in the same feature:
 
-- **Streaming turns the walk off.** With `Accept: application/json;stream=true` the body starts before the pagination
-  headers could be computed, so `Link` / `X-Cursor-Next` / `X-Has-More` are never sent. An `after` token is still
-  honored, so the request succeeds and returns `limit` items — it just gives you nothing to continue from. Page walks
-  must use buffered requests.
+- **Streaming turns the walk off — and so does an export format.** With `Accept: application/json;stream=true` the body
+  starts before the pagination headers could be computed, so `Link` / `X-Cursor-Next` / `X-Has-More` are never sent. The
+  line-oriented formats (NDJSON, CSV, SQL) do not carry them either, streamed or buffered. An `after` token is still
+  honored in every format, so the request succeeds and returns `limit` items — it just gives you nothing to continue
+  from. Walk the pages with buffered JSON.
 - **A `fields` projection may omit the sort field.** The API fetches it internally to compute the cursor and strips it
   back out, so `?orderby=identifiers/key&fields=name,status` paginates correctly and still returns only `name` and
   `status`.
@@ -688,7 +689,7 @@ Accept: application/x-ndjson;stream=true
 
 A client that branches on `204` to mean "no results" reads the streamed `200` as a success carrying data, and then fails parsing an empty body. **Test for an empty body, not for a status code.** The same applies to `text/csv` and `application/sql`. JSON is the exception either way — an empty collection serializes to `[]`, which is not an empty body.
 
-The second difference: **the buffered body carries one extra trailing newline.** NDJSON, CSV and SQL rows already end in a newline, so a buffered body ends with two and a streamed body with one. Diff *lines*, not raw bytes, when comparing the two forms — otherwise identical exports compare unequal on one character.
+The second difference is JSON-only: **a buffered `application/json` body ends with a newline, a streamed one does not** (`[{...}]\n` vs `[{...}]`). NDJSON, CSV and SQL rows already end in a newline, so for those three the buffered and streamed bodies are byte-identical and an exact-comparison client can diff raw bytes across the switch.
 
 Two related surprises, and the real cost of streaming:
 
@@ -761,6 +762,35 @@ Two related points about reading users:
 - **A deactivated user is still in the collection.** `DELETE` on a user deactivates rather than purges, and the record keeps appearing in `/v1/users` and counting in `~count`.
 
 Full rules: [Users → Members](users.md#members).
+
+---
+
+## 35. A Bad `Accept` Parameter Value Empties the Response
+
+An `Accept` parameter the format does not recognize is ignored. An **invalid value on one it does recognize** takes the whole response with it: the parameter set fails to apply, the serializer has nothing to write, and the request answers a success status with no data — `204 No Content` on a buffered request, with no error message anywhere.
+
+```bash
+# WRONG - 204 No Content from a collection full of products
+Accept: application/json;skipNulls=1
+Accept: application/json;stream=truex
+Accept: application/sql;mode=upsert
+
+# RIGHT
+Accept: application/json;skipNulls=false
+Accept: application/json;stream=true
+Accept: application/sql;mode=merge
+```
+
+Booleans must be spelled `true` or `false` — `1`, `0`, `yes` and `on` are all rejected. The SQL `mode` enum accepts only `insert`, `sync` and `merge`.
+
+The failure is quiet in the worst way: the status says success, and an empty body from a filtered collection is indistinguishable from "nothing matched". **If a request starts coming back empty right after you touched the `Accept` header, suspect the parameter before the query.**
+
+Two related points:
+
+- **A misspelled parameter *name* is ignored, not rejected.** `;strem=true` returns a perfectly successful buffered response, so a stream that never streams is usually a typo in the name rather than a platform limitation. Unknown parameters are ignored deliberately — `;charset=utf-8` and `;q=0.9` are absorbed on every collection format so that standards-compliant headers work.
+- **The two failures look alike from outside.** Wrong name → full body, no parameter applied. Wrong value → empty body. Check the body before the header, then the header before the query.
+
+Full rules: [Accept parameter tolerance](overview.md#accept-parameter-tolerance).
 
 ---
 

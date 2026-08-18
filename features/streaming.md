@@ -58,7 +58,7 @@ Two things it is **not**:
 | `application/vnd.ms-sqlserver.csv;stream=true` | `application/vnd.ms-sqlserver.csv` | **Incrementally** — header row, then one row at a time |
 | *any of the above without `;stream=true`* | unchanged | Whole body first |
 
-Without the parameter nothing has changed: the default path is byte-identical to what it always was, and still buffers.
+Without the parameter the response is buffered, whatever the format: the body is assembled in full before any of it is written. (`application/x-ndjson` is the one format whose lines are built on demand either way, but the buffered path drains them into a single body before sending, so there is nothing observable to it — the parameter is what changes delivery.)
 
 `text/plain` and `text/html` have no collection path at all — they serialize a single string value — so `;stream=true` on those does nothing.
 
@@ -66,12 +66,26 @@ Without the parameter nothing has changed: the default path is byte-identical to
 
 > **Fixed: `application/sql;stream=true` used to return an empty body.** The combination previously answered `200` with nothing in it. It now streams the statements. No client can have been depending on an empty body, so there is nothing to migrate — if you avoided the combination for that reason, it works now.
 
+### Getting the Parameter Wrong Fails Two Different Ways
+
+A misspelled parameter **name** is ignored; a bad **value** on a name the format does recognize empties the response.
+
+```bash
+# Ignored — no such parameter, so the response is buffered. No error.
+Accept: application/x-ndjson;strem=true
+
+# Empty body under a success status — `stream` is recognized, `truex` is not a boolean
+Accept: application/x-ndjson;stream=truex
+```
+
+Neither one tells you it happened, and they look the same from the outside until you look at the body. If a request that should be streaming is arriving all at once, check the spelling of the name; if it is arriving as `204 No Content` from a collection you know is not empty, check the value. Full rules, including which parameters each format recognizes: [Accept parameter tolerance](../reference/overview.md#accept-parameter-tolerance).
+
 ### The First Chunk Follows a Batch, Not an Item
 
 Results are pulled through the collection **200 chunks at a time**, so the first byte waits for a whole batch rather than a single item. Two consequences worth planning around:
 
 - **Below about 200 items, streamed and buffered are indistinguishable.** Someone testing the feature against twenty records will conclude it does nothing. Test on a collection large enough to matter.
-- **For `application/sql`, a chunk is a whole `batchSize` group** (default 1000 statements), not one row — so the first byte needs roughly 200 × `batchSize` rows behind it. Lower `batchSize` if you want bytes sooner: `Accept: application/sql;stream=true;batchSize=100`.
+- **For `application/sql`, a chunk is a whole `batchSize` group** (default 1000 statements), not one row — so the first byte needs roughly 200 × `batchSize` rows behind it. Lower `batchSize` if you want bytes sooner, or when 200 × `batchSize` rows in one read transaction is more than the export should be holding open: `Accept: application/sql;stream=true;batchSize=100`.
 
 ### How It Works
 
@@ -101,9 +115,11 @@ In practice that means a record updated mid-export can appear with its new value
 **Run an export buffered when it has to be internally consistent** — a reconciliation extract, a financial period close, anything where two records in the same file are compared against each other. Stream it when time-to-first-byte matters more than that, which is the usual case for a bulk catalogue or inventory pull.
 
 > **Streaming responses carry no pagination headers.** The body starts before `Link`, `X-Cursor-Next` and `X-Has-More`
-> could be computed, so a streamed response never emits them. An `after` cursor token is still honored — the response
-> is exactly `limit` items starting after that token — but there is no next cursor to continue from, so a page walk
-> must use buffered requests. See [Cursor pagination](../reference/pagination.md#cursor-pagination).
+> could be computed, so a streamed response never emits them — and neither do the line-oriented formats even when
+> buffered, since those bodies are not in a shape the header post-processing can annotate. An `after` cursor token is
+> still honored — the response is exactly `limit` items starting after that token — but there is no next cursor to
+> continue from, so a page walk must use buffered JSON.
+> See [Cursor pagination](../reference/pagination.md#cursor-pagination).
 
 ### Two Response Differences When You Switch to `stream=true`
 
@@ -125,9 +141,14 @@ A client that treats `204` as its "no results" signal will read the streamed `20
 
 This applies to formats whose empty body is genuinely empty — NDJSON, CSV and SQL. JSON is the exception: an empty collection serializes to `[]`, which is not an empty body, so JSON answers `200` either way and never `204`.
 
-**2. The buffered body carries one extra trailing newline.** The buffered path appends a newline to the body it sends; the streamed path passes chunks through untouched. Since NDJSON, CSV and SQL rows already end in a newline, a buffered body of those formats ends with two and a streamed one with one.
+**2. A buffered JSON body ends with a newline; a streamed one does not.** The buffered path terminates the body it sends with a newline unless it already ends in one. A JSON array ends `]`, so the buffered form gains a character the streamed form does not have:
 
-Compare **lines**, not raw bytes, if you diff the two forms — a byte-for-byte comparison of the same query fails on that single character.
+```text
+application/json              → [{...},{...}]\n
+application/json;stream=true  → [{...},{...}]
+```
+
+The line-oriented formats already end each row with a newline, so for `application/x-ndjson`, `text/csv` and `application/sql` the two forms are **byte-identical** — an exact-comparison client can diff raw bytes across the switch. Only JSON needs the trailing newline trimmed (or the comparison done on parsed values rather than text). If you are carrying a line-normalizing comparison for one of the other three formats, it still works and is simply no longer necessary.
 
 ---
 
@@ -368,7 +389,7 @@ The same request without `stream=true` fails cleanly: nothing has been sent yet,
 - **Clients keyed on `204`:** an empty streamed collection is `200` with an empty body (see [Two response differences](#two-response-differences-when-you-switch-to-streamtrue)).
 - **Snapshot consistency:** streaming reads use batched transactions, so one response can mix two states of the data. For a consistent point-in-time view — a reconciliation extract, a period close — use the default buffered mode (see [A streamed response is not a point-in-time snapshot](#a-streamed-response-is-not-a-point-in-time-snapshot)).
 - **Client libraries that don't support NDJSON:** a standard JSON parser expects a complete array, so NDJSON needs a line-by-line reader. This is a reason to prefer `application/json;stream=true` over NDJSON — not a reason to avoid streaming: the JSON form still parses in one go, it just cannot be parsed incrementally.
-- **Cursor-paginated walks:** streamed responses never emit `Link` / `X-Cursor-Next` / `X-Has-More`, so there is no token to follow. Use buffered requests for the walk (see [Cursor pagination](../reference/pagination.md#cursor-pagination)).
+- **Cursor-paginated walks:** streamed responses never emit `Link` / `X-Cursor-Next` / `X-Has-More`, so there is no token to follow — and neither do NDJSON, CSV or SQL responses even when buffered. Walk the pages with buffered JSON (see [Cursor pagination](../reference/pagination.md#cursor-pagination)).
 
 ### Decision Guide
 
@@ -455,7 +476,9 @@ curl -fsSL -X PATCH https://example.app.heads.com/api/v1/products -u ":banana" \
 | `X-Transaction-Count` | Chunk size | number, `all`, `-1`, `*` | `200` |
 
 Not emitted on streamed responses: `Link`, `X-Cursor-Next`, `X-Has-More`. These are
-[cursor-pagination](../reference/pagination.md#cursor-pagination) headers and require a buffered response.
+[cursor-pagination](../reference/pagination.md#cursor-pagination) headers and require a buffered `application/json`
+response — the line-oriented formats do not carry them even when buffered.
 
-Also different on a streamed response: an empty result is `200` with an empty body rather than `204 No Content`, and
-there is no extra trailing newline. See [Two response differences](#two-response-differences-when-you-switch-to-streamtrue).
+Also different on a streamed response: an empty result is `200` with an empty body rather than `204 No Content`, and a
+streamed `application/json` body does not end with the newline the buffered one carries (the line-oriented formats are
+byte-identical either way). See [Two response differences](#two-response-differences-when-you-switch-to-streamtrue).
