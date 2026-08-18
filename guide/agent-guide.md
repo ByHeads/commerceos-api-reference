@@ -719,12 +719,12 @@ Body: {"givenName": "John"}
 
 ### 7.2 Response Format Options
 
-For large result sets, consider using NDJSON format for streaming:
+For large result sets, use NDJSON **with `;stream=true`** — that combination builds each line as the collection advances, so the first row arrives immediately no matter how big the export is:
 
 ```bash
-# NDJSON streaming - one object per line (recommended for large result sets)
-curl -u ":banana" -H "Accept: application/x-ndjson" \
-  "https://example.app.heads.com/api/v1/products~take(100)"
+# NDJSON streaming - one object per line (recommended for large exports)
+curl -u ":banana" -H "Accept: application/x-ndjson;stream=true" \
+  "https://example.app.heads.com/api/v1/products~just(identifiers,stockLevels)"
 ```
 
 **Response Format Modes:**
@@ -732,26 +732,29 @@ curl -u ":banana" -H "Accept: application/x-ndjson" \
 | Accept Header | Behavior | First Byte | Use Case |
 |---------------|----------|------------|----------|
 | `application/json` | Buffered - waits for all items | After serialization | Small datasets, simple parsing |
-| `application/x-ndjson` | Line-delimited - one object per line | After buffering | CLI pipelines, large datasets |
+| `application/x-ndjson` | Line-delimited - one object per line | After the whole body is built | CLI pipelines |
+| `application/x-ndjson;stream=true` | Line-delimited, built incrementally | Immediately | Large exports |
 
 ### 7.3 Transaction and Streaming Semantics
 
-All array responses go through two phases: **buffering** (database read) and **serialization** (output writing).
-
-**Phase 1 - Buffering (Transaction-Bounded):**
-All items are read from the database within a single transaction. This guarantees:
+**Buffered (the default, no `stream=true`):**
+All items are read from the database within a single transaction and the whole body is assembled before anything is sent. This guarantees:
 - **Snapshot consistency**: The entire result set reflects one point-in-time
 - **Atomicity**: Either all items are returned, or none (on error)
-- **No partial results**: Errors during buffering return no data, not corrupted arrays
+- **No partial results**: An error returns a proper HTTP error status, not a truncated array
 
-**Phase 2 - Serialization (Format-Dependent):**
-After buffering completes, output format determines streaming behavior:
+**With `stream=true`:**
 
-| Format | Buffering | Serialization | First Byte After |
-|--------|-----------|---------------|------------------|
-| `application/json` | Full | Buffered | All items read + serialized |
-| `application/x-ndjson` | Full | Streaming (line-by-line) | All items read |
-| `text/csv` | Full | Streaming (row-by-row) | All items read |
+| Format | First byte after |
+|--------|------------------|
+| `application/x-ndjson;stream=true` | The first line — built on demand as the collection advances |
+| `application/x-ndjson` | The whole body is built |
+| `application/json` (with or without `stream=true`) | The whole body is built |
+| `text/csv` | The whole body is built |
+
+NDJSON with `stream=true` is the only combination that produces output incrementally. It costs the guarantees above: reads are batched across separate transactions, and a failure after the first byte arrives as a final `{"@type": "mid-stream error", ...}` line on a `200` response — always check for it.
+
+Two envelope differences to plan for when switching a call to `stream=true`: an empty result is `200` with an empty body instead of `204 No Content`, and the buffered body has one extra trailing newline. See [Streaming](../features/streaming.md).
 
 ### 7.4 Mapped Type Exports
 

@@ -816,13 +816,20 @@ GET /v1/receipts/after/2025-02-01T00:00:00.000Z~take(500)~withAll
 
 ### Streaming Large Exports
 
-For large exports, use NDJSON format for streaming:
+For large exports, use NDJSON with `;stream=true` — lines are built as the collection advances, so the first receipt arrives immediately instead of after the whole export has been assembled:
 
 ```bash
 # Stream receipts as newline-delimited JSON
-curl -H "Accept: application/x-ndjson" \
-  "https://your-tenant.api/v1/receipts~orderBy(timestamp)~take(10000)"
+curl -H "Accept: application/x-ndjson;stream=true" \
+  "https://your-tenant.api/v1/receipts/after/2026-01-01T00:00:00Z~take(10000)"
 ```
+
+> **`~orderBy` cancels the head start.** Sorting has to see every receipt before it can emit the first one, so
+> `~receipts~orderBy(timestamp)~take(10000)` streams no earlier than it buffers. Receipts already come back in
+> time order from the [time-relative endpoints](#finder-and-relative-access), so an explicit sort is usually
+> unnecessary on an export.
+
+Two things change when you add `;stream=true`: an empty result comes back as `200` with an empty body rather than `204`, and a failure part-way through arrives as a final `{"@type": "mid-stream error", ...}` line on an otherwise successful response. Check for that line before loading an export — see [Streaming](../features/streaming.md).
 
 Or use CSV for tabular export:
 

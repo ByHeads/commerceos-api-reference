@@ -327,7 +327,7 @@ Accept: application/json; skipTypes=true
 # Serialize numbers as strings (for precision)
 Accept: application/json; numberHandling=string
 
-# Stream JSON array output (faster first-byte, but still buffers first)
+# Send the finished JSON array in chunks (the body is still assembled first)
 Accept: application/json; stream=true
 
 # Skip specific members from output
@@ -339,7 +339,7 @@ Accept: application/json; skipMembers=prices,images
 | `skipNulls` | boolean | `true` | Omit null fields from output |
 | `skipTypes` | boolean | `false` | Strip `@type` discriminators |
 | `numberHandling` | `"string"` or `"number"` | `"number"` | Serialize numbers as strings for precision |
-| `stream` | boolean | `false` | Stream JSON array output (one item at a time) |
+| `stream` | boolean | `false` | Send the body in chunks instead of one string. On `application/x-ndjson` it also builds each line on demand — see [Streaming](../features/streaming.md) |
 | `skipMembers` | comma-separated | — | Member names to exclude from output |
 
 **`skipNulls` + `~with` interaction:** When `skipNulls=true` (default), null fields are omitted. However, if a field is explicitly requested via `~with()`, a null value is included to indicate the field exists but is empty.
@@ -355,13 +355,14 @@ Accept: application/json; skipMembers=prices,images
 
 **NDJSON (`application/x-ndjson`):**
 - One JSON object per line
-- Empty collections yield empty output (no lines)
+- Empty collections yield empty output (no lines) — returned as `204 No Content` buffered, or `200` with an empty body when `;stream=true`
+- Add `;stream=true` to build and send lines incrementally (see [Streaming](../features/streaming.md))
 - Trailing newlines are accepted on import
 
 **CSV (`text/csv`):**
 - Header row derived from first item's fields
 - Commas, quotes, and newlines in values are escaped
-- Empty collections yield empty output (no header)
+- Empty collections yield empty output (no header) — `204 No Content` buffered, `200` with an empty body when `;stream=true`
 - Single item yields header + 1 data row
 
 **text/plain and text/html:**
@@ -392,29 +393,28 @@ Accept: application/json; skipMembers=prices,images
 
 ## Transaction and Buffering Semantics
 
-All collection responses go through two phases: **buffering** (database read) and **serialization** (output writing).
+### Default: Buffered (Transaction-Bounded)
 
-### Phase 1: Buffering (Transaction-Bounded)
-
-All items are read from the database within a single transaction before any output is written. This guarantees:
+Without `stream=true`, all items are read from the database within a single transaction and the complete body is assembled before any of it is written. This guarantees:
 
 - **Snapshot consistency:** The entire result set reflects one point-in-time view of the data
 - **Atomicity:** Either all items are returned, or none (on error)
-- **No partial results:** Errors during buffering return no data, preventing corrupted or incomplete arrays
+- **No partial results:** An error returns a proper HTTP error status and no data, rather than a truncated array
 
-### Phase 2: Serialization (Format-Dependent)
+### With `stream=true`
 
-After buffering completes, items are serialized according to the requested output format:
+| Format | First byte arrives |
+|--------|--------------------|
+| `application/x-ndjson; stream=true` | **Immediately** — each line is built as the collection advances |
+| `application/x-ndjson` | After the whole body is assembled |
+| `application/json` | After the whole body is assembled |
+| `application/json; stream=true` | After the whole body is assembled, then sent as array-element chunks |
+| `text/csv` | After the whole body is assembled |
 
-| Format | Serialization Behavior | First Byte Timing |
-|--------|------------------------|-------------------|
-| `application/json` | Buffered (default) | After all items read + serialized |
-| `application/json; stream=true` | Streaming - one array element at a time | After all items read |
-| `application/x-ndjson` | Streaming - one line per item | After all items read |
-| `text/csv` | Streaming - one row per item | After all items read |
+**Key point:** NDJSON with `stream=true` is the only combination that produces output incrementally — time-to-first-byte is roughly constant regardless of collection size. For every other format, `stream=true` changes only how the finished body is handed to the client, not when it becomes available.
 
-**Key point:** Even streaming formats buffer all items during the database read phase. The "streaming" behavior applies only to the serialization phase, providing faster first-byte response times for large result sets while maintaining transaction consistency.
+Streaming trades the guarantees above for that latency: items are read in batches across separate read transactions (so no single-point-in-time snapshot), and a failure after the first byte cannot change the status code — it arrives as a final `mid-stream error` line on an otherwise `200` response.
 
-**JSON streaming note:** By default, JSON arrays are fully serialized before output begins. With `stream=true`, JSON array elements are streamed individually **after** the buffering phase completes—the first byte arrives after all items are read from the database, but before the full JSON array is assembled. This is useful for large result sets where you want incremental output.
+**Two envelope differences** catch integrators switching an existing call to `stream=true`: an empty result is `200` with an empty body rather than `204 No Content`, and the buffered body carries one extra trailing newline. Compare NDJSON lines rather than raw bytes when diffing the two.
 
 > **Streaming in depth:** For transaction chunking, input streaming, `X-Transaction-Count` header, and mid-stream error handling, see [`features/streaming.md`](../features/streaming.md).

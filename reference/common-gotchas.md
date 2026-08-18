@@ -668,6 +668,34 @@ Full rules: [Primitives → Splitting a String into an Array](primitives.md#spli
 
 ---
 
+## 32. An Empty Streamed Collection Is `200`, Not `204`
+
+`Accept: application/x-ndjson;stream=true` returns exactly the lines the buffered form returns, in the same order — but the response *envelope* differs in two ways, and both surface only after you switch an existing call over.
+
+A buffered response with an empty body is `204 No Content`. A streamed one has already sent its status before it discovers there is nothing to send, so it is `200` with a zero-length body.
+
+```bash
+# 204 No Content
+GET /v1/products~where(status=Nonexistent)
+Accept: application/x-ndjson
+
+# 200 OK, empty body — same query
+GET /v1/products~where(status=Nonexistent)
+Accept: application/x-ndjson;stream=true
+```
+
+A client that branches on `204` to mean "no results" reads the streamed `200` as a success carrying data, and then fails parsing an empty body. **Test for an empty body, not for a status code.** JSON is unaffected either way — an empty collection serializes to `[]`, which is not an empty body.
+
+The second difference: **the buffered body carries one extra trailing newline.** NDJSON lines already end in a newline, so a buffered body ends with two and a streamed body with one. Diff NDJSON *lines*, not raw bytes, when comparing the two forms — otherwise identical exports compare unequal on one character.
+
+One related surprise, and the real cost of streaming:
+
+- **A mid-stream failure cannot change the status code.** Once the first line is on the wire the response is `200`, so a failure part-way through arrives as a final line `{"@type": "mid-stream error", ...}` and the collection is silently short. A streaming client must check for that line before treating an export as complete. A buffered request fails cleanly with a proper error status instead.
+
+Full rules: [Streaming](../features/streaming.md#two-response-differences-when-you-switch-to-streamtrue).
+
+---
+
 ## API Response Behaviors
 
 ### Empty Collection Results
