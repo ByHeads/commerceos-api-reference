@@ -141,6 +141,9 @@ The result is a real array, so the [array operators](operators-catalog.md) apply
 "Split, then keep one piece" is the usual reason to reach for the member at all — pulling the tail off a composite external identifier, for example:
 
 ```
+GET /products/com.example.sku=ABC/name//=-~last
+# If name is "AB-CD-EF" → returns: "EF"
+
 GET /v1/new~with(tail:'32891238%3Awdajdi21jdj2j123'//=%3A~last)
 # Returns: { "tail": "wdajdi21jdj2j123" }
 ```
@@ -154,65 +157,42 @@ GET /products/com.example.sku=ABC/name//=%3A~join(_)
 
 The pieces are reachable only through the `~` operators — an array index is not a member of the result, so `//=%3A/0` does not return the first piece. (`/length` does work, and equals `~count`.)
 
+Chaining works for every separator. An integrator who hit an older release may still be carrying a workaround for it — a two-request split, or the split parked in a `~with(parts:name//=-)/parts~last` alias — and both still work, they are simply no longer necessary.
+
 #### Encoding the separator
 
 The separator sits inside a URL, and the URL is parsed before the separator is read. Encode any character the surrounding syntax already uses:
 
 | Separator | Write it as | Why |
 |-----------|-------------|-----|
-| `/` | `%2F` | A raw `/` is read as the start of the next path step |
-| `~` | `%7E` | A raw `~` starts an operator |
+| `/` | `%2F` | A raw `/` ends the segment — see the empty-separator note below |
+| `+` | `%2B` | A bare `+` is read as string concatenation, never as a separator |
+| space | `%20` | Whitespace is expression syntax, never a separator |
 | `?` | `%3F` | A bare `?` starts the query string |
 | `(` / `)` | `%28` / `%29` | Closes an operator's argument list |
 | `,` | `%2C` | Inside `~with(...)` / `~just(...)`, ends the current argument |
 | `:` | `%3A` | Inside `~with(...)` / `~orderBy(...)`, separates the alias from the selector |
 
+Everything else — including `-`, `=`, `<`, `!` and `~` — works either bare or encoded, and encoding it does not change the result. In the separator position a `~` needs no escaping: `//=~~last` splits on tildes and keeps the last piece. (In an ordinary member operand it still does — see [Escaping a Tilde in an Operand](#escaping-a-tilde-in-an-operand).)
+
 When in doubt, percent-encode: the segment is URL-decoded before the separator is read, so encoding a character that did not need it is harmless. `//=%2D` and `//=-` split identically.
 
-An **empty** separator splits the string into individual characters, which is what a raw `/` degrades into: in `//=/` the separator ends at the second `/` and the rest is read as the next path step, so `"AB-CD"` comes back as `["A","B","-","C","D"]` rather than as a split on `/`.
-
-#### Separators that block a following operator
-
-Six characters cannot be the **last** character of a separator if a `~` operator has to follow it: `+`, `<`, `-`, `~`, `=` and `!`. The split itself still works; only the chaining breaks.
-
-The reason is the tokenizer rule below — a `~` directly after one of those six is read as part of a two-character member token rather than as the start of an operator, so the operator text is absorbed into the separator. The result is quiet: the separator no longer matches anything, and the response is the whole unsplit string as a one-element array.
-
-```
-# Splits correctly
-GET /products/com.example.sku=ABC/name//=-
-# If name is "AB-CD" → ["AB","CD"]
-
-# Does NOT work - "~last" is swallowed into the separator, so nothing matches
-GET /products/com.example.sku=ABC/name//=-~last
-# → ["AB-CD"]
-```
-
-**Percent-encoding does not help here** — `%2D~last` is treated exactly like `-~last`. Instead, park the split in a `~with(...)` alias and navigate to it: the `/` before the alias name ends the segment, so the operator that follows is read as an operator.
-
-```
-GET /products/com.example.sku=ABC~with(parts:name//=-)/parts~last
-# If name is "AB-CD" → "CD"
-```
-
-Separators ending in any other character — `:`, `.`, `_`, `|`, a space, `/` as `%2F` — chain directly and need no workaround.
+An **empty** separator splits the string into individual characters, and that is what a raw `/` degrades into rather than an error: in `//=/` the separator ends at the second `/` and the rest is read as the next path step, so `"AB-CD"` comes back as `["A","B","-","C","D"]`. Write `//=%2F` to split on a slash.
 
 #### Escaping a Tilde in an Operand
 
-A `~` ends the current selector segment and starts an operator — **except** directly after `+`, `<`, `-`, `~`, `=` or `!`, where it is read as part of a two-character token (`+~`, `<~`, `-~`, `~~`, `=~`, `!~`).
+A `~` ends the current selector segment and starts an operator — **except** directly after `+`, `<`, `-`, `~`, `=` or `!`, where it is read as part of a two-character member token (`+~`, `<~`, `-~`, `~~`, `=~`, `!~`).
 
-So any operand that needs a literal `~` — a suffix, a prefix, a comparison value, or a split separator — must encode it as `%7E`, or it will be read as the start of an operator:
+So an ordinary member operand that needs a literal `~` — a suffix, a prefix or a comparison value — must encode it as `%7E`, or it will be read as the start of an operator:
 
 ```
 GET /products/com.example.sku=ABC/name/+=%7Ev2
 # Appends "~v2"
-
-GET /products/com.example.sku=ABC/name//=%7E
-# If name is "x~y~z" → ["x","y","z"]
 ```
 
-Because `~` is itself one of the six characters, a `~` separator is subject to the restriction above: `//=%7E~count` does not work. Use the `~with(...)` alias form for that case.
+The same rule decides where an operand ends, so it also blocks an operator from chaining onto a member whose operand ends in one of those six characters. In `/+=z-~count` the `-~` is read as a member token and `~count` becomes operand text rather than an operator. The way round it is to park the member in a `~with(...)` alias and navigate to it — the `/` before the alias name ends the segment, so the operator that follows is read as an operator (`~with(b:name/+=z-)/b~count`).
 
-> **If you tried this before and got the whole string back.** Until 2026-08-18, `//={separator}~{operator}` mis-parsed for **every** separator: the operator was absorbed into the separator, so the split matched nothing and the response was the **original unsplit string as a one-element array** — with a `200` and no error. Chaining now works for every separator except the six characters listed under [Separators that block a following operator](#separators-that-block-a-following-operator). If the old behaviour sent you to a two-request workaround (split in one call, index client-side), it still works and is simply no longer necessary. Only the `//=` family was affected; a `~` operator after an ordinary member, such as `name~toLower`, always worked.
+This applies to **member operands only**. The `//={separator}` position is exempt: a separator ending in any character, `~` included, is followed by an operator in the normal way.
 
 ### Printf Formatting
 

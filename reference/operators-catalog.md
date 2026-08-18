@@ -387,7 +387,6 @@ GET /v1/products/com.example.sku=ABC/name//=%3A~join(_)
 - Default separator is `,` if not specified
 - Input must be an array
 - The inverse of the string [`/={separator}`](primitives.md#splitting-a-string-into-an-array) split member, so the two compose into a single-request re-punctuation
-- A separator ending in `+ < - ~ = !` swallows the operator that follows it — split on a hyphen via a `~with(...)` alias instead (see [gotcha 31](common-gotchas.md#31-a-split-on---swallows-the-operator-after-it))
 
 ---
 
@@ -544,6 +543,7 @@ Return the last item from a collection.
 GET /v1/products~orderBy(name)~last
 
 # Split a composite value and keep the tail
+GET /v1/products/com.example.sku=ABC/name//=-~last
 GET /v1/new~with(tail:'32891238%3Awdajdi21jdj2j123'//=%3A~last)
 ```
 

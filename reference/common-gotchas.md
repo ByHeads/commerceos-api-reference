@@ -633,27 +633,35 @@ Full rules: [Resource Patterns → The `@value` Write Envelope](resource-pattern
 
 ---
 
-## 31. A Split on `-` Swallows the Operator After It
+## 31. A Split Separator the URL Syntax Eats
 
-`/={separator}` [splits a string into an array](primitives.md#splitting-a-string-into-an-array) — written `//=` in a path, because the member follows the usual `/`. The array operators chain onto the result, so `//=%3A~last` keeps the part after the colon.
+`/={separator}` [splits a string into an array](primitives.md#splitting-a-string-into-an-array) — written `//=` in a path, because the member follows the usual `/`. The array operators chain onto the result, so `//=-~last` keeps the part after the last hyphen.
 
-That chaining breaks when the separator ends in one of six characters: `+`, `<`, `-`, `~`, `=`, `!`. A `~` directly after any of them is read as part of a two-character member token (`+~`, `<~`, `-~`, `~~`, `=~`, `!~`) rather than as the start of an operator, so the operator text is absorbed into the separator. `-` is the one people hit, because hyphens are the most common thing to split on.
+Most separators can be written bare. Four cannot, because the surrounding syntax consumes them before the separator is read:
 
 ```bash
-# WRONG - "~last" is swallowed into the separator, which then matches nothing
-GET /v1/products/com.example.sku=ABC/name//=-~last
+# WRONG - the "/" ends the segment, so this splits on nothing (an empty
+#         separator) and then treats "~last" as the next path step
+GET /v1/products/com.example.sku=ABC/name//=/~last
 
-# RIGHT - park the split in a ~with alias; the "/" before it ends the segment
-GET /v1/products/com.example.sku=ABC~with(parts:name//=-)/parts~last
+# RIGHT - encode it
+GET /v1/products/com.example.sku=ABC/name//=%2F~last
 ```
 
-**Percent-encoding does not rescue this one.** `%2D~last` is tokenized exactly like `-~last`. Encoding is the fix for a *different* problem — a separator the URL syntax itself consumes (`%2F` for `/`, `%3F` for `?`, `%28`/`%29` for parentheses, `%2C` and `%3A` inside an operator's argument list). Those all chain normally once encoded.
+| Separator | Write it as | Otherwise it is read as |
+|-----------|-------------|-------------------------|
+| `/` | `%2F` | The start of the next path step |
+| `+` | `%2B` | String concatenation |
+| space | `%20` | Expression syntax |
+| `?` | `%3F` | The start of the query string |
 
-**Why it is quiet:** a separator that never occurs in the string is not an error — the split returns a **one-element array holding the whole, unsplit string**, with a `200`. Both mistakes therefore produce a well-formed array that looks like a successful split until you notice it has exactly one element. If a split "worked" but handed back the original value, suspect the separator before the data.
+Inside an operator's argument list, `,` and `:` need `%2C` and `%3A` as well. Everything else — `-`, `=`, `<`, `!`, `~`, `.`, `_`, `|` — works bare or encoded, and encoding a character that did not need it is harmless.
+
+**Why it is quiet:** a separator that never occurs in the string is not an error — the split returns a **one-element array holding the whole, unsplit string**, with a `200`. A mis-encoded separator therefore produces a well-formed array that looks like a successful split until you notice it has exactly one element. If a split "worked" but handed back the original value, suspect the separator before the data.
 
 Two related points:
 
-- **A literal `~` in any operand needs `%7E`**, not just in a separator — `name/+=%7Ev2` appends `~v2`. And since `~` is itself one of the six characters, a `~` separator can't be followed by an operator either.
+- **A literal `~` in a *member* operand still needs `%7E`** — `name/+=%7Ev2` appends `~v2`. The separator position is exempt: `//=~~last` splits on tildes and chains normally.
 - **`/=` divides numbers and splits strings.** One token, two behaviours, chosen by the type of the value it lands on: `price/amount//=2` halves a price, `name//=-` splits a name.
 
 Full rules: [Primitives → Splitting a String into an Array](primitives.md#splitting-a-string-into-an-array).
