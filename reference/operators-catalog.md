@@ -486,6 +486,10 @@ GET /v1/products~orderBy(name)~skip(100)~take(50)
 **Notes:**
 - `~skip(0)` is a no-op
 - Combine with `~take` for pagination — `~skip(N)~take(M)` stops after N + M items rather than walking the whole collection
+- **Skipped records are stepped over, not built** — but only when nothing filters or sorts in front of the skip. `~skip(N)~take(M)` builds the M records it returns; `~where(...)~skip(N)~take(M)` and `~orderBy(...)~skip(N)~take(M)` have to read the earlier records to know which ones they are. See [A skip is only cheap while nothing filters or sorts before it](operators.md#a-skip-is-only-cheap-while-nothing-filters-or-sorts-before-it)
+- The saving applies per record, not to the count — a page still starts by walking N records, so deep offsets stay proportional to the offset. Prefer a cursor or a time window for whole-collection exports
+- Works the same on a member or relation collection: `GET /v1/products/com.example.sku=ABC/categories~skip(2)`
+- Skipping past the end returns an empty collection (`[]` in JSON), not an error
 - Use the same `~orderBy` selector on every page to avoid duplicates or gaps
 
 ---

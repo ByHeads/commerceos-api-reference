@@ -19,6 +19,8 @@ Operators in URL paths chain left-to-right as written:
 - `~orderBy(field:desc)` - Sorting
 - `~distinct` and `~distinctBy(key)` - Deduplication
 
+Order is literal, and it decides cost as well as meaning: a limiter placed after a filter stops the scan at the Nth match (placed before it, the answer changes too), and a `~skip` with nothing filtering or sorting in front of it steps over the skipped records without building them. See [Operators → Operator Application Order](operators.md#operator-application-order).
+
 ### Query Parameter Order
 
 When using query parameters instead of path operators, they are canonicalized to a fixed order regardless of how they appear in the URL:

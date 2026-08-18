@@ -70,6 +70,9 @@ Notes:
 - Keep the sort consistent across pages to avoid duplicates or gaps when new records appear.
 - Stop paging when a response returns fewer than `take` items.
 - Put any `~where` filter **before** `~skip`/`~take`. Besides being the only order that gives the right answer, it lets the request stop scanning once the page is full — see [Limiters stop the scan early](operators.md#limiters-stop-the-scan-early).
+- Skipping past the end of a collection returns an empty result, not an error.
+
+**Offset cost.** On a plain collection — nothing filtering or sorting before the skip — `~skip(N)~take(M)` steps over the N skipped records without building them, and builds only the M it returns. A `~where` or `~orderBy` written *ahead* of the skip removes that, necessarily: after a filter the skip is counting matches, and a sort has to see everything before it can say what sits at position N. The same applies to `?offset=&limit=`, where `orderby=` and filter parameters are normalized into place ahead of the skip. This makes the offset pages you already have cheaper; it does not make a deep offset cheap, since the request still walks N + M records either way. Details: [A skip is only cheap while nothing filters or sorts before it](operators.md#a-skip-is-only-cheap-while-nothing-filters-or-sorts-before-it).
 
 ## Cursor pagination
 
@@ -215,7 +218,7 @@ Invalid timestamps return a 404 error response (not an empty array).
 ## Performance tips for large exports
 
 - Favor smaller, consistent page sizes (e.g., 100–500 items) and iterate until the last page is smaller than your page size.
-- Prefer date-window filtering (`timestamp` ranges) over very large offsets.
+- Prefer date-window filtering (`timestamp` ranges) over very large offsets. An unfiltered, unsorted `~skip(N)` steps over the skipped records cheaply, but it still steps over N of them — a deep offset is still proportional to its depth ([details](operators.md#a-skip-is-only-cheap-while-nothing-filters-or-sorts-before-it)).
 - **Filter before you limit.** `~where(...)~take(N)` stops scanning at the Nth match; `~take(N)~where(...)` truncates first and then filters, which is both slower to reason about and usually empty. An `~orderBy` between the two removes the benefit, because the sort must read every row first ([details](operators.md#limiters-stop-the-scan-early)).
 - Sort by an indexed, unique-ish field (timestamps or identifiers) to keep page boundaries stable.
 - **Prefer a cursor over deep offsets** when exporting a whole collection: `?limit=500&orderby=identifiers/key` and then

@@ -144,6 +144,8 @@ curl -u ":banana" "https://example.app.heads.com/api/v1/products~skip(20)~take(1
 curl -u ":banana" "https://example.app.heads.com/api/v1/products?limit=10&offset=20"
 ```
 
+A plain `~skip(N)~take(M)` (equivalently `?offset=N&limit=M`) steps over the skipped records without building them, so an offset page costs about what its own page size costs. Put a `~where` or `~orderBy` — or a filter/`orderby=` parameter — ahead of the skip and that stops being true: a filter makes the skip count *matches*, and a sort has to read everything first. Either way the request still walks N + M records, so deep offsets remain expensive; use a cursor or a time window for whole-collection walks. See [`reference/operators.md`](../reference/operators.md#a-skip-is-only-cheap-while-nothing-filters-or-sorts-before-it).
+
 **Using a Cursor (for whole-collection walks):**
 ```bash
 # First page - orderby is required, and must be a field with unique values

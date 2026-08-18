@@ -602,6 +602,7 @@ Written the right way round it is also the faster form. A limiter stops pulling 
 
 - **`~orderBy` between the filter and the limiter cancels it.** `~where(...)~orderBy(name)~take(10)` has to sort every match before it can slice the first ten. That is unavoidable if you genuinely want the alphabetically-first ten; if any ten will do, drop the sort.
 - **`~count` and `~last` never short-circuit** — both have to reach the end of the stream. To ask "does anything match?" without counting everything, use `~where(...)~take(1)~count`.
+- **A filter or a sort in front of a `~skip` costs it the same way.** `~skip(N)~take(M)` on its own steps over the N skipped records without building them; `~where(...)~skip(N)~take(M)` cannot, because the skip is then counting matches and the earlier records have to be read to be counted ([details](operators.md#a-skip-is-only-cheap-while-nothing-filters-or-sorts-before-it)). Order the filter first anyway — it is still the only order that answers the right question.
 
 Full rules: [Operators → Limiters stop the scan early](operators.md#limiters-stop-the-scan-early).
 

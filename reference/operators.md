@@ -357,6 +357,34 @@ GET /v1/products~take(1)~where(status=Active)
 - `~orderBy(name)~take(10)` sorts the entire collection before slicing. You cannot know the alphabetically-first ten rows without looking at all of them. If you only need *some* ten rows rather than the *top* ten, drop the `~orderBy` and the request short-circuits.
 - `~last` walks to the end of the stream. On a sorted collection, `~orderBy(field:desc)~first` answers the same question and stops at the first item.
 
+### A skip is only cheap while nothing filters or sorts before it
+
+This is about cost only — every request below returns exactly what it always returned.
+
+**`~skip(N)` walks past the first N records without building them — but only when it is reading the collection itself.** Nothing may filter or sort in front of it:
+
+```bash
+# Cheap: the 1000 skipped records are stepped over, only the 10 returned ones are built
+GET /v1/people~skip(1000)~take(10)
+
+# Not cheap, and cannot be: skip counts positions among the *matches*
+GET /v1/people~where(status=Active)~skip(1000)~take(10)
+
+# Not cheap either: the sort has to see every record before it knows what sits at position 1000
+GET /v1/people~orderBy(name)~skip(1000)~take(10)
+```
+
+Both exceptions are inherent, not incidental. `~skip` counts positions in whatever sequence reaches it, so after a `~where` it is counting *matches* — and establishing that an earlier record matches means reading that record. A `~orderBy` has to consume the whole collection before it can order it, which is the same [draining](#limiters-stop-the-scan-early) behaviour that stops a limiter after a sort from short-circuiting.
+
+`?offset=1000&limit=10` is the same cheap shape, since the two parameters normalize to `~skip(1000)~take(10)`. Adding `orderby=` or any filter parameter (`?status=Active`) puts a `~orderBy`/`~where` *ahead* of the skip under the [canonical order](#query-parameter-normalization), with exactly the effect shown above.
+
+**It does not make deep offsets cheap — it makes the offsets you already use cheaper.** The request still asks the collection for N + M records either way; what dropped is how much work each skipped record costs. The cost of a page is still proportional to how far into the collection it starts, so the standing advice is unchanged: for a large export, page with a cursor or a time window rather than a growing offset ([pagination](pagination.md#choose-a-pagination-approach)). Treat this as a discount on the pattern you already have, not as a reason to move to it.
+
+Two smaller points:
+
+- **Member and relation collections skip just as cheaply.** `GET /v1/products/com.example.sku=ABC/categories~skip(2)` behaves like a top-level collection.
+- **Skipping past the end is an empty result, not an error.** `~skip(5000)` on a collection of 300 returns an empty collection: `[]` in JSON, and no output at all in the line-oriented formats — `204 No Content` buffered, `200` with an empty body when [streamed](../features/streaming.md).
+
 ---
 
 ## Evaluation Notes
