@@ -41,9 +41,13 @@ commerceos-api-reference/
 │   │   ├── query-operators.md    # Operator usage examples
 │   │   └── users.md              # User and permission examples
 │   ├── advanced-queries.md       # 300 advanced query examples
+│   ├── provisioning-users.md     # End-to-end user, credential and role setup
 │   └── creating-skills.md        # How to create Claude skills
 ├── reference/
 │   ├── overview.md               # API basics, auth, endpoints
+│   ├── users.md                  # User accounts and lifecycle
+│   ├── credentials.md            # The nine credential types, auth providers
+│   ├── user-roles.md             # Roles, permissions, role assignments
 │   ├── operators.md              # Query operators reference
 │   ├── operators-catalog.md      # Complete operator catalog
 │   ├── pagination.md             # Pagination patterns and strategies
@@ -95,6 +99,8 @@ commerceos-api-reference/
 | Task recipes | [`guide/agent-guide.md`](guide/agent-guide.md) |
 | Troubleshooting | [`guide/agent-guide.md`](guide/agent-guide.md) |
 | Type members | [`reference/type-members.md`](reference/type-members.md) |
+| Users, credentials, roles | [`reference/users.md`](reference/users.md), [`reference/credentials.md`](reference/credentials.md), [`reference/user-roles.md`](reference/user-roles.md) |
+| Provisioning access | [`guide/provisioning-users.md`](guide/provisioning-users.md) |
 | Common pitfalls | [`reference/common-gotchas.md`](reference/common-gotchas.md) |
 | Data transformation | [`reference/mapped-types.md`](reference/mapped-types.md) |
 | Curl examples | [`guide/examples.md`](guide/examples.md) |

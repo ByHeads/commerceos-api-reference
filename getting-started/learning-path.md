@@ -51,6 +51,12 @@ This creates a mapped type that:
 
 - Review [`../reference/platform-takeaways.md`](../reference/platform-takeaways.md) for cross-cutting API behaviors.
 
+## 5b) Identity and access (when you need to provision, not just query)
+
+- Walk [`../guide/provisioning-users.md`](../guide/provisioning-users.md) end to end: person → user → credentials → permissions → role → assignment.
+- Reference: [`../reference/users.md`](../reference/users.md), [`../reference/credentials.md`](../reference/credentials.md), [`../reference/user-roles.md`](../reference/user-roles.md).
+- Note before you start: this area needs the `admin` scope, and it is **not** described by the generated OpenAPI spec.
+
 ## 6) Targeted practice
 
 - Create new examples in [`../guide/examples.md`](../guide/examples.md) when you learn a new pattern.

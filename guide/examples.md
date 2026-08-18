@@ -29,7 +29,7 @@ Comprehensive curl examples demonstrating the full capabilities of the CommerceO
 | [Serial Number Tracking](./examples/serial-number-tracking.md) | Track individual units by serial number | Quick start: configure, receive, sell, read back |
 | [Product Instances & Tracking](./examples/product-instances-tracking.md) | Serial numbers, batches, instance types | MobileDevice, Artifact, productInstances, batch tracking |
 | [Point of Sale](./examples/pos.md) | Terminals, profiles, receipts, devices, printers | Receipt creation, payment terminals |
-| [Users & Auth](./examples/users.md) | Users, roles, role assignments, OAuth2 | User management, authentication |
+| [Users & Auth](./examples/users.md) | Users, credentials, permissions, roles, role assignments, OAuth2, auth providers | User management, authentication (needs the `admin` scope — see the [provisioning guide](./provisioning-users.md)) |
 | [Configuration](./examples/configuration.md) | Countries, languages, templates, mapped types, webhooks | System settings, integrations |
 | [Query Operators](./examples/query-operators.md) | Operators reference | Filtering, pagination, projection |
 | [Advanced Patterns](./examples/advanced.md) | Complex queries, bulk operations, SQL export | Aggregations, NDJSON, mapped types |

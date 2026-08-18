@@ -167,3 +167,34 @@ transactions, transactionItems
 ```
 owner (agent), articleNumber, minimumOrderQuantity, primarySupplier (company)
 ```
+
+## User Members
+
+```
+identifiers, agent, localCredentials, retailCredentials, bankIDCredentials,
+mobileCredentials, entraIdCredentials, oauth2Clients, apikeyCredentials,
+pinCredentials (non-essential), scanTokenCredentials (non-essential),
+roleAssignments (non-essential), inactive (non-essential),
+hidden (non-essential), labels (non-essential), config (non-essential),
+posMode (non-essential)
+```
+
+A user has **no `name` member** — the display name comes from the linked `agent`. `identifiers.userId` is assigned by the system (`U00001`, …) and is read-only.
+
+The non-essential members are absent from a plain `GET`; ask for them with `~with(...)` or `~withAll`. `roleAssignments` is the one that misleads — a plain read of a fully provisioned user shows no roles at all. See [Users → Members](users.md#members) and [gotcha 34](common-gotchas.md#34-roleassignments-is-missing-from-the-default-user-representation).
+
+## User Role Members
+
+```
+identifiers (userRoleID), name, permissions (non-essential)
+```
+
+`permissions` holds user-permission **objects** (`{"identifiers": {"permissionName": "…"}}`), not strings. There is no `description` member. See [Roles, Permissions and Assignments](user-roles.md).
+
+## User Role Assignment Members
+
+```
+identifiers, role, node
+```
+
+`node` is the agent (usually a store or company) the role applies at; omit it for an assignment that is not tied to one. The subject — which user is granted the role — comes from the path you create it under, `/v1/users/{id}/roleAssignments`.

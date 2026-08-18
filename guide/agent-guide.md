@@ -444,6 +444,8 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/receipts" \
 
 **When to use:** Onboarding employees, access control
 
+> **Needs the `admin` scope.** There is no `users:write` — `users:read` is read-only. The full flow (person → user → credentials → permissions → role → assignment) is walked through in [Provisioning Users and Access](provisioning-users.md), with reference material in [Users](../reference/users.md), [Credentials](../reference/credentials.md) and [Roles, Permissions and Assignments](../reference/user-roles.md).
+
 **Create User:**
 
 Users must be linked to an existing agent (person). First create or identify the person, then create the user:
@@ -480,6 +482,24 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/users/com.test.u
 ```
 
 > **Note:** Role assignments use `node` (not `scope`) to specify the organizational scope.
+
+**Attach a credential** — the account cannot be signed in to until it has one:
+
+```bash
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/users/com.test.userId=USER-001/localCredentials" \
+  -H "Content-Type: application/json" \
+  -d '[{"identifiers": {"email": "john@example.com"}, "password": "Secret1!"}]'
+```
+
+**Verify:**
+
+```bash
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/users/com.test.userId=USER-001~withAll"
+```
+
+> **A plain `GET` on a user shows no roles.** `roleAssignments` is not in the default representation, nor are `pinCredentials`, `scanTokenCredentials`, `labels`, `config` or `posMode`. Use `~withAll` or `~with(roleAssignments)`, or you will conclude a fully provisioned user has no access at all.
+>
+> **And never round-trip a credentials record.** Secrets read back as `"********"`; writing that placeholder sets the secret to those eight characters, with a `200` and no visible change. See [gotcha 33](../reference/common-gotchas.md#33-a-read-modify-write-on-credentials-overwrites-the-secret).
 
 ---
 
@@ -519,7 +539,7 @@ Every resource has two types of identifiers:
 | Companies/Stores | `identifiers`, `name` |
 | Trade Orders | `identifiers`, `status`, `timestamp`, `items` |
 | Receipts | `identifiers`, `seller`, `buyer`, `timestamp`, `items`, `payments` |
-| Users | `identifiers`, `agent` |
+| Users | `identifiers`, `agent`, and seven of the nine credential collections (`localCredentials`, `retailCredentials`, `bankIDCredentials`, `mobileCredentials`, `entraIdCredentials`, `oauth2Clients`, `apikeyCredentials`) — but **not** `roleAssignments`, `pinCredentials` or `scanTokenCredentials` |
 
 > **Note:** Essential fields are defined per type in the schema. The list above shows common examples. Use `~withAll` to retrieve all fields, or consult the OpenAPI spec for the complete schema.
 

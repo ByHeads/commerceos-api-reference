@@ -701,6 +701,68 @@ Full rules: [Streaming](../features/streaming.md#two-response-differences-when-y
 
 ---
 
+## 33. A Read-Modify-Write on Credentials Overwrites the Secret
+
+Credential secrets are write-only: a read returns the fixed placeholder `"********"` where one is set, and omits the member where none is. Send that placeholder back and it is treated like any other value — the secret becomes those eight literal characters.
+
+```bash
+# WRONG - GET returned "password": "********". Sending the object back
+#         sets the password to the string "********".
+PATCH /v1/local-credentials/email=ada@example.com
+{"identifiers": {"email": "ada@new.example.com"}, "password": "********"}
+
+# RIGHT - patch only what is changing
+PATCH /v1/local-credentials/email=ada@example.com
+{"identifiers": {"email": "ada@new.example.com"}}
+```
+
+The failure is silent in both directions: the write returns `200`, and the next read is byte-identical to the one before it, because a set secret always renders as the same eight characters. Nothing in the API tells you the password changed — you find out when someone cannot sign in.
+
+It bites read-modify-write clients hardest, and generic ones especially: fetch a record, change one field, `PUT` the whole object back is the normal shape of an ORM-style integration, and it is exactly the shape that breaks here. **Patch only the fields you are changing, and never include a secret member unless you intend to set it.**
+
+Five members behave this way, across four resources:
+
+| Member | On |
+|---|---|
+| `password` | `local credentials` |
+| `pin` | `PIN credentials` |
+| `token` | `scan token credentials` |
+| `apiKey` | `apikey credentials` |
+| `secret` | `oauth2 client` |
+
+Two related points:
+
+- **The value you send is the only copy.** No read returns a secret, so an API key or client secret that was not captured when it was written cannot be recovered — the credential has to be replaced.
+- **`null` clears, the placeholder does not.** `{"password": null}` removes the secret; `{"password": "********"}` sets it.
+
+Full rules: [Credentials → Secrets go in, they never come out](credentials.md#secrets-go-in-they-never-come-out).
+
+---
+
+## 34. `roleAssignments` Is Missing From the Default User Representation
+
+A plain `GET` on a user returns its identifiers, its `agent`, and seven of the nine credential collections. It says **nothing about roles** — so a check for "what access does this user have?" reports none for a user who has several.
+
+```bash
+# WRONG - roleAssignments is not in the response, whatever the user has
+GET /v1/users/com.example.userId=U-1
+
+# RIGHT
+GET /v1/users/com.example.userId=U-1~with(roleAssignments)
+GET /v1/users/com.example.userId=U-1~withAll
+```
+
+Seven members are absent from the default view: `roleAssignments`, `pinCredentials`, `scanTokenCredentials`, `hidden`, `labels`, `config`, `posMode`. The two credential collections are the other half of the trap — an audit that lists "every credential on this account" from a plain `GET` misses PINs and QR cards entirely.
+
+Two related points about reading users:
+
+- **`inactive` is absent, not `false`, on an active user.** Filter with the falsy check — `~where(!inactive)` — because `~where(inactive=false)` compares against a member that is not there.
+- **A deactivated user is still in the collection.** `DELETE` on a user deactivates rather than purges, and the record keeps appearing in `/v1/users` and counting in `~count`.
+
+Full rules: [Users → Members](users.md#members).
+
+---
+
 ## API Response Behaviors
 
 ### Empty Collection Results

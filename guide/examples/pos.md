@@ -280,7 +280,7 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/devices/com.mya
   -d '{"status": "Inactive"}'
 ```
 
-> **Note:** Device roles (`/v1/device-roles`) and role assignments (`~with(roleAssignments)`) are not exposed through the API.
+> **Note:** Device roles (`/v1/device-roles`) and a device's role assignments (`~with(roleAssignments)` on a device) are not exposed through the API. This is about **devices** only — *user* role assignments are available, at `/v1/users/{id}/roleAssignments`; see [Roles, Permissions and Assignments](../../reference/user-roles.md).
 
 ---
 

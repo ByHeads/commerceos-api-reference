@@ -1150,18 +1150,25 @@ POS resources include terminals, profiles, functions, devices, and printers. Use
 
 ## Users and Credentials
 
+Full coverage lives on three dedicated pages — [Users](users.md), [Credentials](credentials.md) and [Roles, Permissions and Assignments](user-roles.md) — with an end-to-end walkthrough in [Provisioning Users and Access](../guide/provisioning-users.md). What follows is the shape of the resources.
+
+> **Writes here need the `admin` scope.** `users:read` is read-only and there is no `users:write`. See [Users → Scopes](users.md#scopes).
+
 ### User Resources
 
 | Member | Description | Write Semantics |
 |--------|-------------|-----------------|
 | `agent` | Linked agent reference | Settable |
-| `inactive` | Deactivation flag | Settable |
+| `inactive` | Deactivation flag (absent when active) | Settable |
 | `labels` | Assigned labels | Add/remove |
 | `roleAssignments` | Role assignments | Add/remove |
 | `config` | User configuration (darkModeActive, preferredLocale) | Settable |
 | `posMode` | POS mode flag | Settable |
+| `hidden` | Advisory flag; collection reads do not filter on it | Settable |
 
 > **Note:** Users do not have a `name` field. The user's display name comes from their linked `agent`.
+
+> **`roleAssignments`, `pinCredentials`, `scanTokenCredentials`, `hidden`, `labels`, `config` and `posMode` are not in the default representation.** Ask for them with `~with(...)` or `~withAll` — see [gotcha 34](common-gotchas.md#34-roleassignments-is-missing-from-the-default-user-representation).
 
 ```bash
 # User by key
@@ -1169,19 +1176,28 @@ GET /users/key={userKey}
 
 # User with agent expanded
 GET /users/key={userKey}~with(agent)
+
+# Everything, including roles
+GET /users/key={userKey}~withAll
 ```
 
 ### Credentials Sub-Collections
 
-| Sub-Collection | Description | Key Field |
-|----------------|-------------|-----------|
-| `localCredentials` | Email-based auth | `email` |
-| `retailCredentials` | Username-based auth | `username` |
-| `pinCredentials` | PIN-based auth | - |
-| `apikeyCredentials` | API key auth | - |
-| `oauth2Clients` | OAuth2 clients | - |
-| `bankIDCredentials` | BankID auth | - |
-| `mobileCredentials` | Mobile auth | - |
+Each is also a root collection in its own right, addressable directly — `/v1/local-credentials/email=ada@example.com`.
+
+| Sub-Collection | Root collection | Identified by | Secret |
+|----------------|-----------------|---------------|--------|
+| `localCredentials` | `/v1/local-credentials` | `email` and/or `username` | `password` |
+| `retailCredentials` | `/v1/retail-credentials` | `username` | — (Heads Retail holds it) |
+| `pinCredentials` | `/v1/pin-credentials` | your own identifiers | `pin` |
+| `scanTokenCredentials` | `/v1/scan-token-credentials` | your own identifiers | `token` |
+| `apikeyCredentials` | `/v1/apikey-credentials` | your own identifiers | `apiKey` |
+| `bankIDCredentials` | `/v1/bankid-credentials` | `personalNumber` | — |
+| `mobileCredentials` | `/v1/mobile-credentials` | `phoneNumber` | — |
+| `entraIdCredentials` | `/v1/entraid-credentials` | `subject`, `objectId` | — |
+| `oauth2Clients` | `/v1/oauth2-clients` | `clientID` | `secret` |
+
+> **Secrets are write-only.** Reads return the fixed placeholder `"********"`, and writing that placeholder back sets the secret to those eight characters. Patch only what you are changing — see [gotcha 33](common-gotchas.md#33-a-read-modify-write-on-credentials-overwrites-the-secret) and [Credentials](credentials.md#secrets-go-in-they-never-come-out).
 
 ### Roles and Permissions
 
@@ -1189,9 +1205,14 @@ GET /users/key={userKey}~with(agent)
 # Role assignments for a user
 GET /users/{id}/roleAssignments
 
-# Available user roles
-GET /user-roles
+# Available user roles, with their permissions expanded
+GET /user-roles~with(permissions)
 
 # Permissions collection
 GET /user-permissions
+
+# Every assignment in the tenant
+GET /user-role-assignments
 ```
+
+Roles and permissions govern what a signed-in user can do in the CommerceOS applications. They do **not** govern API access — that is set by the `scopes` on the credential making the request. See [Roles → What roles do not control](user-roles.md#what-roles-do-not-control).

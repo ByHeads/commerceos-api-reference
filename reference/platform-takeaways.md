@@ -121,3 +121,13 @@ Resources support user-defined external identifiers:
 - Multiple external IDs can exist on the same object
 - Used for integration and cross-system references
 - To add one to an existing object, use the `@value` envelope — the outer `identifiers` select the object, the ones inside `@value` are written onto it (see [Resource Patterns → The `@value` Write Envelope](resource-patterns.md#the-value-write-envelope))
+
+---
+
+## 6) Identity and Access
+
+- A **user** is an account, not a person — it holds credentials and points at an `agent` that carries the name. Users have no `name` member (see [Users](users.md))
+- **API access is decided by the scopes on the credential making the request** — the `scopes` array on an API key, or an OAuth2 client's granted scopes. User roles and permissions govern the CommerceOS applications, not the API (see [Roles → What roles do not control](user-roles.md#what-roles-do-not-control))
+- **Provisioning is an `admin` operation.** There is no `users:write`; `users:read` is read-only. The `admin` scope is excluded from the generated OpenAPI spec, so these endpoints are not described by `/api-docs`
+- **Credential secrets are write-only.** Reads return `"********"`; writing that placeholder back sets the secret to those eight characters (see [gotcha 33](common-gotchas.md#33-a-read-modify-write-on-credentials-overwrites-the-secret))
+- `DELETE` on a **user** deactivates; `DELETE` on a **credential** purges

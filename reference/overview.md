@@ -50,7 +50,7 @@ The API organizes resources into logical groups. Each group maps to OAuth2 scope
 | Orders | Trade orders, items, payments, and returns | [Orders guide](working-with/orders.md) | [Examples](../guide/examples/orders.md) |
 | Inventory | Stock places, stock transactions, and adjustment reasons | [Stock guide](working-with/stock.md) | [Examples](../guide/examples/inventory.md) |
 | POS | Terminals, profiles, receipts, and payment methods | [Receipts](receipts.md) | [Examples](../guide/examples/pos.md) |
-| Users | User accounts, credentials, and role assignments | — | [Examples](../guide/examples/users.md) |
+| Users | User accounts, credentials, and role assignments | [Users](users.md), [Credentials](credentials.md), [Roles & Permissions](user-roles.md), [Provisioning guide](../guide/provisioning-users.md) | [Examples](../guide/examples/users.md) |
 | Configuration | System settings and serial number sequences | — | [Examples](../guide/examples/configuration.md) |
 | Advanced | Mapped types and sync webhooks (requires `advanced` scope) | [Sync Webhooks](sync-webhooks.md), [Mapped Types](mapped-types.md) | [Examples](../guide/examples/advanced.md) |
 
@@ -92,6 +92,8 @@ curl -X POST example.app.heads.com/oauth2/v1/token \
 # Use token
 curl -H "Authorization: Bearer TOKEN" example.app.heads.com/api/v1/void
 ```
+
+Both an API key and an OAuth2 client are **credentials on a user** — that is what makes a request attributable to someone. Creating them, and choosing the scopes they carry, is covered in [Credentials](credentials.md); the whole provisioning flow is walked through in [Provisioning Users and Access](../guide/provisioning-users.md).
 
 > **EPI Integration OAuth2 Requirements:** External Payment Integrations (EPI) require a confidential OAuth2 client with specific scopes for the `install` action to succeed. See [EPI Integrations & Configurations](../guide/examples/configuration.md#epi-integrations--configurations) for required scopes and setup.
 
@@ -159,7 +161,7 @@ The API is organized around resource families like Agents, Products, Orders, Inv
 | **pos** | Terminals, profiles, functions, devices, printers, and currency denominations for in-store flows. |
 | **prices** | Price definitions, validity windows, and currency-scoped pricing. |
 | **supply-chains** | Trade relationships, delivery terms, and payment terms between agents. |
-| **users** | User accounts and credentials (local and retail) for access and identity. |
+| **users** | User accounts and credentials for access and identity. `users:read` is read-only and covers users plus local, retail and Entra ID credentials; **there is no `users:write`** — every write, and everything to do with roles and permissions, needs `admin`. See [Users → Scopes](users.md#scopes). |
 | **retail** | Receipts, payment methods, payment cards/means, Z/X and cash register reports, return reasons, and mobile device/plans. See [`receipts.md`](receipts.md) for BI/analytics usage. |
 | **geo** | Currencies, languages, countries, and cities for localization. |
 | **media** | Images and other media assets attached to products and agents. |

@@ -58,9 +58,13 @@ commerceos-api-reference/
 │   │   ├── advanced.md           # Advanced usage patterns
 │   │   └── discount-rules.md     # Discount rule examples
 │   ├── advanced-queries.md       # 300 advanced query examples
+│   ├── provisioning-users.md     # End-to-end user, credential and role setup
 │   └── creating-skills.md        # How to create Claude skills
 ├── reference/                    # API reference documentation
 │   ├── overview.md               # API basics, auth, endpoints
+│   ├── users.md                  # User accounts and lifecycle
+│   ├── credentials.md            # The nine credential types, auth providers
+│   ├── user-roles.md             # Roles, permissions, role assignments
 │   ├── operators.md              # Query operators (~where, ~with, etc.)
 │   ├── operators-catalog.md      # Complete operator reference catalog
 │   ├── pagination.md             # Pagination patterns and best practices
@@ -117,6 +121,8 @@ commerceos-api-reference/
 | Mapped Types | [`reference/mapped-types.md`](reference/mapped-types.md) |
 | Sync Webhooks | [`reference/sync-webhooks.md`](reference/sync-webhooks.md) |
 | Type Members | [`reference/type-members.md`](reference/type-members.md) |
+| Users & Credentials | [`reference/users.md`](reference/users.md), [`reference/credentials.md`](reference/credentials.md), [`reference/user-roles.md`](reference/user-roles.md) |
+| Provisioning Users | [`guide/provisioning-users.md`](guide/provisioning-users.md) |
 | OpenAPI Extensions | [`reference/openapi-extensions.md`](reference/openapi-extensions.md) |
 | Streaming | [`features/streaming.md`](features/streaming.md) |
 | Common Gotchas | [`reference/common-gotchas.md`](reference/common-gotchas.md) |
