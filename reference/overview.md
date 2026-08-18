@@ -327,7 +327,7 @@ Accept: application/json; skipTypes=true
 # Serialize numbers as strings (for precision)
 Accept: application/json; numberHandling=string
 
-# Send the finished JSON array in chunks (the body is still assembled first)
+# Serialize and send the array incrementally (faster first byte)
 Accept: application/json; stream=true
 
 # Skip specific members from output
@@ -339,7 +339,7 @@ Accept: application/json; skipMembers=prices,images
 | `skipNulls` | boolean | `true` | Omit null fields from output |
 | `skipTypes` | boolean | `false` | Strip `@type` discriminators |
 | `numberHandling` | `"string"` or `"number"` | `"number"` | Serialize numbers as strings for precision |
-| `stream` | boolean | `false` | Send the body in chunks instead of one string. On `application/x-ndjson` it also builds each line on demand — see [Streaming](../features/streaming.md) |
+| `stream` | boolean | `false` | Serialize and send the collection incrementally instead of building the whole body first — see [Streaming](../features/streaming.md) |
 | `skipMembers` | comma-separated | — | Member names to exclude from output |
 
 **`skipNulls` + `~with` interaction:** When `skipNulls=true` (default), null fields are omitted. However, if a field is explicitly requested via `~with()`, a null value is included to indicate the field exists but is empty.
@@ -349,9 +349,10 @@ Accept: application/json; skipMembers=prices,images
 ### Format-Specific Behaviors
 
 **JSON (`application/json`):**
-- Empty collections return `[]`
+- Empty collections return `[]` — never an empty body, so JSON is `200` and never `204`
 - `~count` returns a number
 - POST accepts arrays for bulk creation
+- Add `;stream=true` to serialize and send array elements incrementally (see [Streaming](../features/streaming.md)). A mid-collection failure closes the array and becomes its last element
 
 **NDJSON (`application/x-ndjson`):**
 - One JSON object per line
@@ -363,6 +364,7 @@ Accept: application/json; skipMembers=prices,images
 - Header row derived from first item's fields
 - Commas, quotes, and newlines in values are escaped
 - Empty collections yield empty output (no header) — `204 No Content` buffered, `200` with an empty body when `;stream=true`
+- Add `;stream=true` to emit the header row and then each data row as the collection advances
 - Single item yields header + 1 data row
 
 **text/plain and text/html:**
@@ -375,6 +377,7 @@ Accept: application/json; skipMembers=prices,images
 - Require mapped type output returning `SqlStatement[]` — see [`features/sql-export.md`](../features/sql-export.md)
 - Arrays/objects in values are rejected; flatten or JSON-stringify before serialization
 - Supports `batchSize` parameter for streaming batches (e.g., `Accept: application/sql; batchSize=100`)
+- Add `;stream=true` to send statements incrementally. A chunk is a whole `batchSize` group, so lower `batchSize` for an earlier first byte (see [Streaming](../features/streaming.md))
 - SQL Server CSV escapes special characters for BULK INSERT compatibility
 
 ### Known Limitations
@@ -403,18 +406,23 @@ Without `stream=true`, all items are read from the database within a single tran
 
 ### With `stream=true`
 
+`;stream=true` makes the computation itself incremental: each item is serialized as it is sent, rather than the whole collection being built first. This applies to **every collection format** — `application/json`, `application/x-ndjson`, `text/csv`, `application/sql` and `application/vnd.ms-sqlserver.csv`.
+
 | Format | First byte arrives |
 |--------|--------------------|
-| `application/x-ndjson; stream=true` | **Immediately** — each line is built as the collection advances |
-| `application/x-ndjson` | After the whole body is assembled |
-| `application/json` | After the whole body is assembled |
-| `application/json; stream=true` | After the whole body is assembled, then sent as array-element chunks |
-| `text/csv` | After the whole body is assembled |
+| any collection format *without* `stream=true` | After the whole body is assembled |
+| `application/x-ndjson; stream=true` | After the first batch — each line is built as the collection advances |
+| `application/json; stream=true` | After the first batch — each array element is built as the collection advances |
+| `text/csv; stream=true` | After the first batch — header row, then one row at a time |
+| `application/sql; stream=true` | After the first batch of `batchSize` groups |
+| `text/plain`, `text/html` | No collection path; `stream=true` does nothing |
 
-**Key point:** NDJSON with `stream=true` is the only combination that produces output incrementally — time-to-first-byte is roughly constant regardless of collection size. For every other format, `stream=true` changes only how the finished body is handed to the client, not when it becomes available.
+**Key point:** the win is time-to-first-byte, and the reason it matters is connection liveness — a long-running query behind a proxy or client with a first-byte timeout stays alive because the first chunk ships early. It is *not* a way to parse a JSON array incrementally (a JSON array is only parseable once you hold all of it — use NDJSON for that), and it does *not* bound server memory.
 
-Streaming trades the guarantees above for that latency: items are read in batches across separate read transactions (so no single-point-in-time snapshot), and a failure after the first byte cannot change the status code — it arrives as a final `mid-stream error` line on an otherwise `200` response.
+**The first chunk follows a batch, not an item.** Results are read 200 chunks at a time, so on a collection smaller than that there is no observable difference. For `application/sql` a chunk is a whole `batchSize` group (default 1000), so lower `batchSize` if you want bytes sooner.
 
-**Two envelope differences** catch integrators switching an existing call to `stream=true`: an empty result is `200` with an empty body rather than `204 No Content`, and the buffered body carries one extra trailing newline. Compare NDJSON lines rather than raw bytes when diffing the two.
+Streaming trades the guarantees above for that latency: items are read in batches across separate read transactions (so no single-point-in-time snapshot), and a failure after the first byte cannot change the status code. It arrives as a `mid-stream error` object inside the body — appended as one more line on the line-delimited formats, or as the **last element of the array** on `application/json`.
+
+**Two envelope differences** catch integrators switching an existing call to `stream=true`: an empty result is `200` with an empty body rather than `204 No Content` (JSON excepted — it serializes to `[]`), and the buffered body carries one extra trailing newline. Compare lines rather than raw bytes when diffing the two.
 
 > **Streaming in depth:** For transaction chunking, input streaming, `X-Transaction-Count` header, and mid-stream error handling, see [`features/streaming.md`](../features/streaming.md).

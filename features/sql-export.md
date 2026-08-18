@@ -70,7 +70,8 @@ Parameters are passed via the Accept header after a semicolon:
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `batchSize` | int | 1000 | Statements per batch for streaming output (a multi-row INSERT counts as one statement) |
+| `batchSize` | int | 1000 | Statements per batch (a multi-row INSERT counts as one statement) |
+| `stream` | boolean | `false` | Serialize and send batches incrementally instead of assembling the whole body first — see [§ 8.1](#81-sql-statement-batching) |
 
 **Example:**
 ```http
@@ -357,23 +358,30 @@ WITH (
 
 ### 8.1 SQL Statement Batching
 
-For large exports, the serializer batches output based on `batchSize`:
+For large exports, the serializer groups output into batches of `batchSize` statements:
 
 ```http
 GET /v1/receipts~map(receipt-sql-export)
 Accept: application/sql; batchSize=500
 ```
 
-Each batch is flushed to the response stream, keeping memory usage constant regardless of total row count.
+By default the whole body is assembled before any of it is sent. Add `;stream=true` to serialize and send each batch as the collection advances:
+
+```http
+GET /v1/receipts~map(receipt-sql-export)
+Accept: application/sql; stream=true; batchSize=500
+```
+
+A chunk here is a whole `batchSize` group rather than a single row, and chunks are read 200 at a time — so the first byte needs roughly `200 × batchSize` rows behind it. Lower `batchSize` if you want bytes sooner.
+
+> **Streaming does not bound memory.** It spreads memory growth over the response window, but peak usage is still proportional to the size of the export. The benefit is time-to-first-byte — which is what keeps a long export alive behind a client or proxy first-byte timeout.
 
 ### 8.2 CSV Row Streaming
 
-CSV output streams row-by-row:
+`application/vnd.ms-sqlserver.csv;stream=true` emits rows as the collection advances:
 - First row determines column ordering
 - Header emitted with first data row
-- Subsequent rows stream independently
-
-Memory usage: O(1) per row.
+- Subsequent rows follow independently
 
 ---
 
@@ -394,7 +402,7 @@ The serializer validates each statement before rendering. Invalid statements cau
 
 ### 9.2 Mid-Stream Errors
 
-Because SQL export uses streaming responses, errors occurring after response headers are committed appear as mid-stream errors:
+With `;stream=true`, the `200` and its headers are already on the wire before the collection is finished, so a later failure cannot change the status code. It is appended to the body as one more line:
 
 ```json
 {
@@ -406,7 +414,7 @@ Because SQL export uses streaming responses, errors occurring after response hea
 }
 ```
 
-Test your mapped types with small datasets before production use to catch validation errors early.
+Without `;stream=true` the same failure is reported as a proper HTTP error status with no body — so a buffered export gives you a clean failure signal, at the cost of a slower first byte. Either way, test your mapped types with small datasets before production use to catch validation errors early. See [Streaming](streaming.md#4-error-handling) for the full contract.
 
 ---
 

@@ -721,7 +721,7 @@ Body: {"givenName": "John"}
 
 ### 7.2 Response Format Options
 
-For large result sets, use NDJSON **with `;stream=true`** — that combination builds each line as the collection advances, so the first row arrives immediately no matter how big the export is:
+For large result sets, add **`;stream=true`** to the Accept header — the collection is then serialized and sent as it advances, so the first bytes arrive long before the export is finished. NDJSON is the best pairing for very large exports, because each line parses on its own:
 
 ```bash
 # NDJSON streaming - one object per line (recommended for large exports)
@@ -733,9 +733,11 @@ curl -u ":banana" -H "Accept: application/x-ndjson;stream=true" \
 
 | Accept Header | Behavior | First Byte | Use Case |
 |---------------|----------|------------|----------|
-| `application/json` | Buffered - waits for all items | After serialization | Small datasets, simple parsing |
+| `application/json` | Buffered - waits for all items | After the whole body is built | Small datasets, simple parsing |
+| `application/json;stream=true` | One well-formed array, serialized incrementally | After the first batch | Large exports, standard JSON parser |
 | `application/x-ndjson` | Line-delimited - one object per line | After the whole body is built | CLI pipelines |
-| `application/x-ndjson;stream=true` | Line-delimited, built incrementally | Immediately | Large exports |
+| `application/x-ndjson;stream=true` | Line-delimited, built incrementally | After the first batch | Large exports, row-by-row processing |
+| `text/csv;stream=true` | Header row, then rows incrementally | After the first batch | Large tabular exports |
 
 ### 7.3 Transaction and Streaming Semantics
 
@@ -747,16 +749,13 @@ All items are read from the database within a single transaction and the whole b
 
 **With `stream=true`:**
 
-| Format | First byte after |
-|--------|------------------|
-| `application/x-ndjson;stream=true` | The first line — built on demand as the collection advances |
-| `application/x-ndjson` | The whole body is built |
-| `application/json` (with or without `stream=true`) | The whole body is built |
-| `text/csv` | The whole body is built |
+Every collection format — JSON, NDJSON, CSV, SQL — serializes and sends each item as the collection advances. The first byte follows the first batch of 200, so on a collection smaller than that you will see no difference at all; on `application/sql` a chunk is a whole `batchSize` group (default 1000), so lower `batchSize` for an earlier first byte.
 
-NDJSON with `stream=true` is the only combination that produces output incrementally. It costs the guarantees above: reads are batched across separate transactions, and a failure after the first byte arrives as a final `{"@type": "mid-stream error", ...}` line on a `200` response — always check for it.
+The point is time-to-first-byte, and the reason it matters is that a long query behind a 60-second first-byte timeout gets killed having sent nothing. It does **not** let you parse a JSON array incrementally (use NDJSON for that), and it does **not** reduce server memory.
 
-Two envelope differences to plan for when switching a call to `stream=true`: an empty result is `200` with an empty body instead of `204 No Content`, and the buffered body has one extra trailing newline. See [Streaming](../features/streaming.md).
+It costs the guarantees above: reads are batched across separate transactions, and a failure after the first byte cannot change the status code. On the line-delimited formats it arrives as a final `{"@type": "mid-stream error", ...}` line; on `application/json` the array closes itself and the marker is its **last element**. Always check for it — a `200` does not mean the export is complete.
+
+Two envelope differences to plan for when switching a call to `stream=true`: an empty result is `200` with an empty body instead of `204 No Content` (JSON excepted — it returns `[]`), and the buffered body has one extra trailing newline. See [Streaming](../features/streaming.md).
 
 ### 7.4 Mapped Type Exports
 

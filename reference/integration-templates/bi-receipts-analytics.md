@@ -240,10 +240,12 @@ curl -H "Accept: application/x-ndjson;stream=true" \
   "https://your-tenant.api/v1/receipts/after/2026-01-01T00:00:00Z~take(10000)"
 ```
 
+`;stream=true` works on every collection format, so a loader that wants one well-formed JSON document can use `Accept: application/json;stream=true` and get the same head start — but NDJSON stays the better choice here, because a JSON array only parses once the whole thing has landed, while NDJSON parses a line at a time.
+
 Three things to build into the loader:
 
-- **Check the last line.** A failure part-way through a streamed export cannot change the status code — it arrives as `{"@type": "mid-stream error", ...}` on an otherwise `200` response. Treating a truncated export as complete is how a warehouse silently ends up short a day's receipts. Reject the batch and re-run it.
-- **Don't branch on `204`.** An empty streamed result is `200` with an empty body, where the buffered form returns `204 No Content`.
+- **Check the last line.** A failure part-way through a streamed export cannot change the status code — it arrives as `{"@type": "mid-stream error", ...}` on an otherwise `200` response. Treating a truncated export as complete is how a warehouse silently ends up short a day's receipts. Reject the batch and re-run it. On a streamed `application/json` export the marker is the **last array element** instead, and the body still parses cleanly — so "it parsed" is not a completeness check.
+- **Don't branch on `204`.** An empty streamed result is `200` with an empty body, where the buffered form returns `204 No Content`. (Streamed JSON is the exception: it returns `[]`.)
 - **Drop `~orderBy` if you can.** Sorting reads the whole collection before the first line can be emitted, which removes the entire benefit. The [time-relative endpoints](#phase-2-incremental-sync) already return receipts in time order.
 
 See [Streaming](../../features/streaming.md) for the full contract.

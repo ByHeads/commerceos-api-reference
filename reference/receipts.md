@@ -831,11 +831,11 @@ curl -H "Accept: application/x-ndjson;stream=true" \
 
 Two things change when you add `;stream=true`: an empty result comes back as `200` with an empty body rather than `204`, and a failure part-way through arrives as a final `{"@type": "mid-stream error", ...}` line on an otherwise successful response. Check for that line before loading an export — see [Streaming](../features/streaming.md).
 
-Or use CSV for tabular export:
+Or use CSV for tabular export. `;stream=true` works there too — the header row goes out first, then each data row as the collection advances:
 
 ```bash
 # Export as CSV (flattened structure)
-curl -H "Accept: text/csv" \
+curl -H "Accept: text/csv;stream=true" \
   "https://your-tenant.api/v1/receipts~just(identifiers,timestamp,totalAmount,currencyCode)~take(10000)"
 ```
 

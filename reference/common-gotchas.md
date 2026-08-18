@@ -685,13 +685,14 @@ GET /v1/products~where(status=Nonexistent)
 Accept: application/x-ndjson;stream=true
 ```
 
-A client that branches on `204` to mean "no results" reads the streamed `200` as a success carrying data, and then fails parsing an empty body. **Test for an empty body, not for a status code.** JSON is unaffected either way — an empty collection serializes to `[]`, which is not an empty body.
+A client that branches on `204` to mean "no results" reads the streamed `200` as a success carrying data, and then fails parsing an empty body. **Test for an empty body, not for a status code.** The same applies to `text/csv` and `application/sql`. JSON is the exception either way — an empty collection serializes to `[]`, which is not an empty body.
 
-The second difference: **the buffered body carries one extra trailing newline.** NDJSON lines already end in a newline, so a buffered body ends with two and a streamed body with one. Diff NDJSON *lines*, not raw bytes, when comparing the two forms — otherwise identical exports compare unequal on one character.
+The second difference: **the buffered body carries one extra trailing newline.** NDJSON, CSV and SQL rows already end in a newline, so a buffered body ends with two and a streamed body with one. Diff *lines*, not raw bytes, when comparing the two forms — otherwise identical exports compare unequal on one character.
 
-One related surprise, and the real cost of streaming:
+Two related surprises, and the real cost of streaming:
 
-- **A mid-stream failure cannot change the status code.** Once the first line is on the wire the response is `200`, so a failure part-way through arrives as a final line `{"@type": "mid-stream error", ...}` and the collection is silently short. A streaming client must check for that line before treating an export as complete. A buffered request fails cleanly with a proper error status instead.
+- **A mid-stream failure cannot change the status code.** Once the first chunk is on the wire the response is `200`, so a failure part-way through is delivered inside the body and the collection is silently short. A streaming client must check for it before treating an export as complete. A buffered request fails cleanly with a proper error status instead.
+- **Where that marker lands depends on the content type.** On the line-delimited formats (`application/x-ndjson`, `text/csv`, `application/sql`) it is one more line at the end. On `application/json` the array closes itself and the marker is its **last element** — so the body still parses, and a client that only checks "did `JSON.parse` succeed?" will load a truncated export as if it were complete. Check `.[-1]["@type"]`. The JSON form also carries `processedCount` but no `innerError`; the underlying cause is only in the server log.
 
 Full rules: [Streaming](../features/streaming.md#two-response-differences-when-you-switch-to-streamtrue).
 

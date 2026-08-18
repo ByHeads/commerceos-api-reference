@@ -1,8 +1,8 @@
 # Streaming
 
-By default, the API buffers all results before sending the response. For large datasets or batch mutations, you can opt in to **streaming** to receive data incrementally as it becomes available. This reduces memory usage, lowers time-to-first-byte, and lets clients begin processing results before the full response is ready.
+By default, the API buffers all results before sending the response. For large datasets or batch mutations, you can opt in to **streaming** to receive data incrementally as it becomes available. This lowers time-to-first-byte and lets clients begin processing results before the full response is ready.
 
-For responses, the format that streams incrementally is **NDJSON** — newline-delimited JSON, one object per line, requested as `Accept: application/x-ndjson;stream=true`. Other formats accept `stream=true` but still assemble the whole body first; see [What `stream=true` does per format](#what-streamtrue-does-per-format).
+`;stream=true` on the `Accept` header makes the *computation* incremental for every collection format — `application/json`, `application/x-ndjson`, `text/csv`, `application/sql` and `application/vnd.ms-sqlserver.csv`. Each item is serialized as it is sent, rather than the whole collection being built first.
 
 > **See also:** [`reference/overview.md`](../reference/overview.md) for content type basics and serializer parameters.
 
@@ -23,17 +23,13 @@ For responses, the format that streams incrementally is **NDJSON** — newline-d
 
 Streaming is opt-in per request: add `;stream=true` to the `Accept` header. Without that parameter the response is buffered, whatever the format.
 
-The combination that genuinely streams is **NDJSON with `;stream=true`**:
-
 ```bash
 curl -fsSL https://example.app.heads.com/api/v1/products \
   -H "Accept: application/x-ndjson;stream=true" \
   -u ":banana"
 ```
 
-Each line is built and sent as the underlying collection advances, so time-to-first-byte is roughly constant no matter how large the collection is — a hundred products and a hundred thousand products both start arriving immediately. Use it for large exports.
-
-Requesting NDJSON without the parameter returns the same bytes, but the whole body is assembled before any of it is sent:
+Each line is built and sent as the underlying collection advances, so time-to-first-byte stops growing with the size of the collection — a hundred products and a hundred thousand products both start arriving at about the same moment. (Almost: the first chunk follows a batch of 200 rather than a single item — see [The first chunk follows a batch](#the-first-chunk-follows-a-batch-not-an-item).) Requesting the same format without the parameter returns the same bytes, but the whole body is assembled before any of it is sent:
 
 ```bash
 # Same lines, same order — just no incremental delivery
@@ -42,27 +38,47 @@ curl -fsSL https://example.app.heads.com/api/v1/products \
   -u ":banana"
 ```
 
-### What `stream=true` Does Per Format
+### Why Time-to-First-Byte Is the Point
 
-Only NDJSON builds its body lazily. Every other format assembles the complete body first, and `stream=true` then hands it to the client in chunks rather than as one string — which saves a final concatenation and changes how a mid-response failure is reported, but does **not** improve time-to-first-byte.
+The reason to reach for `stream=true` is **keeping the connection alive**, not parsing. A query that takes ninety seconds to assemble, sitting behind a proxy or an HTTP client with a sixty-second first-byte timeout, is killed having sent nothing at all. Streaming ships the first chunk long before the collection is finished, so the timeout never fires and the export completes.
+
+Two things it is **not**:
+
+- **Not a way to parse a JSON array incrementally.** `application/json;stream=true` delivers one well-formed JSON array in pieces, and a JSON array is only parseable once you hold all of it. If you want to process rows as they arrive, use NDJSON — one self-contained object per line, parseable a line at a time. That remains the best choice for very large exports.
+- **Not a way to bound server memory.** Streaming spreads memory growth over the response window, but peak memory is still proportional to the size of the collection. Do not size an export on the assumption that streaming makes it constant-memory.
+
+### What `stream=true` Does Per Format
 
 | Accept Header | Response `Content-Type` | Body built |
 |---------------|-------------------------|------------|
-| `application/x-ndjson;stream=true` | `application/x-ndjson` | **Lazily** — one line at a time, as the collection advances |
-| `application/x-ndjson` | `application/x-ndjson` | Whole body first |
-| `application/json` | `application/json` | Whole body first |
-| `application/json;stream=true` | `application/json` | Whole body first, then sent as array-element chunks |
-| `text/csv` | `text/csv` | Whole body first |
-| `application/sql` | `application/sql` | Whole body first |
+| `application/x-ndjson;stream=true` | `application/x-ndjson` | **Incrementally** — one line at a time, as the collection advances |
+| `application/json;stream=true` | `application/json` | **Incrementally** — one array element at a time |
+| `text/csv;stream=true` | `text/csv` | **Incrementally** — header row, then one row at a time |
+| `application/sql;stream=true` | `application/sql` | **Incrementally** — one `batchSize` group of statements at a time |
+| `application/vnd.ms-sqlserver.csv;stream=true` | `application/vnd.ms-sqlserver.csv` | **Incrementally** — header row, then one row at a time |
+| *any of the above without `;stream=true`* | unchanged | Whole body first |
+
+Without the parameter nothing has changed: the default path is byte-identical to what it always was, and still buffers.
+
+`text/plain` and `text/html` have no collection path at all — they serialize a single string value — so `;stream=true` on those does nothing.
 
 > **`application/json;stream=true` does not produce NDJSON.** The response stays `application/json` — a normal JSON array, delivered in pieces. Only an `x-ndjson` Accept header returns line-delimited output.
 
+> **Fixed: `application/sql;stream=true` used to return an empty body.** The combination previously answered `200` with nothing in it. It now streams the statements. No client can have been depending on an empty body, so there is nothing to migrate — if you avoided the combination for that reason, it works now.
+
+### The First Chunk Follows a Batch, Not an Item
+
+Results are pulled through the collection **200 chunks at a time**, so the first byte waits for a whole batch rather than a single item. Two consequences worth planning around:
+
+- **Below about 200 items, streamed and buffered are indistinguishable.** Someone testing the feature against twenty records will conclude it does nothing. Test on a collection large enough to matter.
+- **For `application/sql`, a chunk is a whole `batchSize` group** (default 1000 statements), not one row — so the first byte needs roughly 200 × `batchSize` rows behind it. Lower `batchSize` if you want bytes sooner: `Accept: application/sql;stream=true;batchSize=100`.
+
 ### How It Works
 
-When streaming, items are pulled through the collection in batches (default 200 items per batch), each within its own read transaction. A batch commits before its lines are yielded, then the next batch begins.
+Each batch of 200 is read within its own read transaction. The batch commits before its chunks are yielded, then the next batch begins.
 
 ```
-[Batch 1: 200 items] → commit → stream → [Batch 2: 200 items] → commit → stream → ...
+[Batch 1: 200 chunks] → commit → stream → [Batch 2: 200 chunks] → commit → stream → ...
 ```
 
 Streaming composes with the query operators normally — `~where`, `~skip`, `~take` and projections such as `~just(...)` all behave exactly as they do on a buffered request, and a filter still narrows the collection before any line is built.
@@ -98,11 +114,11 @@ curl -isS -H "Accept: application/x-ndjson;stream=true" -u ":banana" \
 
 A client that treats `204` as its "no results" signal will read the streamed `200` as a success carrying data and try to parse an empty body. Test for an empty body, not for a status code.
 
-This applies to formats whose empty body is genuinely empty — NDJSON and CSV. JSON is unaffected: an empty collection serializes to `[]`, which is not an empty body, so it is `200` either way.
+This applies to formats whose empty body is genuinely empty — NDJSON, CSV and SQL. JSON is the exception: an empty collection serializes to `[]`, which is not an empty body, so JSON answers `200` either way and never `204`.
 
-**2. The buffered body carries one extra trailing newline.** The buffered path appends a newline to the body it sends; the streamed path passes lines through untouched. Since NDJSON lines already end in a newline, a buffered NDJSON body ends with two and a streamed one with one.
+**2. The buffered body carries one extra trailing newline.** The buffered path appends a newline to the body it sends; the streamed path passes chunks through untouched. Since NDJSON, CSV and SQL rows already end in a newline, a buffered body of those formats ends with two and a streamed one with one.
 
-Compare NDJSON **lines**, not raw bytes, if you diff the two forms — a byte-for-byte comparison of the same query fails on that single character.
+Compare **lines**, not raw bytes, if you diff the two forms — a byte-for-byte comparison of the same query fails on that single character.
 
 ---
 
@@ -210,7 +226,9 @@ The HTTP status code (e.g., 400) is set correctly because headers hadn't been se
 
 ### With Streaming
 
-HTTP headers (including the status code) are sent before the first item. If an error occurs mid-stream, the status code cannot be changed — it may still show 200. Instead, a `mid-stream error` JSON object is appended to the response stream:
+HTTP headers (including the status code) are sent before the first item, so **the response says `200` even when it failed**. The error is delivered inside the body instead — and *where* it lands depends on the content type.
+
+**Line-delimited formats** (`application/x-ndjson`, `text/csv`, `application/sql`) get one more line appended:
 
 ```json
 {
@@ -225,9 +243,25 @@ HTTP headers (including the status code) are sent before the first item. If an e
 }
 ```
 
-All data preceding the error object is valid and committed. The `processedCount` and `failedAtIndex` fields help clients understand exactly how far processing got before the failure.
+**`application/json`** cannot do that — a second JSON value after the closing `]` would make the body unparseable. So the array **closes itself** and the error becomes its **last element**:
 
-> **Important:** When consuming streaming responses, always check the last line for `"@type": "mid-stream error"`. A 200 status code does not guarantee all items were processed successfully.
+```json
+[
+  { "@type": "product", "...": "..." },
+  { "@type": "product", "...": "..." },
+  {
+    "@type": "mid-stream error",
+    "error": "An error occured while streaming the response body. The status code and headers might still indicate success.",
+    "processedCount": 2
+  }
+]
+```
+
+The body stays valid JSON, so you can parse it in one go and then inspect the last element. Note that the JSON form carries `processedCount` but **no `innerError`** — that is deliberate, not an oversight: the detail is in the server log, not in the body. If you need the underlying cause in the response, use a line-delimited format.
+
+All data preceding the error object is valid and committed. `processedCount` and `failedAtIndex` tell a batch mutation exactly how far it got before the failure.
+
+> **Important:** When consuming a streamed response, always check the **last line** (line-delimited formats) or the **last array element** (JSON) for `"@type": "mid-stream error"`, and treat it as a failure regardless of the `200`. Requests without `stream=true` never need this — they get a real error status instead.
 
 ### Mid-Stream Errors on a Streamed Export
 
@@ -244,7 +278,7 @@ This is the practical cost of streaming a `GET`, and it applies to reads as much
 }
 ```
 
-On a read failure the wrapper carries `innerError` but no `processedCount` / `failedAtIndex` — those describe how far a batch mutation got, and there is nothing being committed here. The lines already delivered are valid; the collection is simply incomplete.
+On a read failure the appended wrapper carries `innerError` but no `failedAtIndex` — that describes how far a batch mutation got, and there is nothing being committed here. The lines already delivered are valid; the collection is simply incomplete.
 
 A streaming client must check for that line. Reject the export rather than treating a truncated collection as complete — a partial export that looks successful is how stale rows end up in a warehouse:
 
@@ -254,6 +288,15 @@ curl -fsSL -H "Accept: application/x-ndjson;stream=true" -u ":banana" \
   | grep -q '"@type":"mid-stream error"' && echo "EXPORT INCOMPLETE — do not load"
 ```
 
+The equivalent check on a streamed **JSON** export inspects the last array element rather than the last line — the body is a single well-formed array, so it parses normally and the marker is simply the final entry:
+
+```bash
+curl -fsSL -H "Accept: application/json;stream=true" -u ":banana" \
+  "https://example.app.heads.com/api/v1/products~just(identifiers,stockLevels)" \
+  | jq -e '.[-1]["@type"] == "mid-stream error"' >/dev/null \
+  && echo "EXPORT INCOMPLETE — do not load"
+```
+
 The same request without `stream=true` fails cleanly: nothing has been sent yet, so the error is reported as a proper HTTP error status with no body to mistake for data. That is the reason to keep an export buffered when a reliable failure signal matters more than time-to-first-byte.
 
 ### Error Handling Checklist
@@ -261,7 +304,8 @@ The same request without `stream=true` fails cleanly: nothing has been sent yet,
 | Mode | HTTP Status Accurate? | Error Location | Partial Data? |
 |------|----------------------|----------------|---------------|
 | Buffered | Yes | Response body | No — all or nothing per response |
-| Streaming | May be 200 despite error | Last line of stream | Yes — all lines before the error are committed |
+| Streaming, line-delimited | May be 200 despite error | Last line of the stream | Yes — everything before the error is valid |
+| Streaming, `application/json` | May be 200 despite error | Last element of the array | Yes — everything before the error is valid |
 
 ---
 
@@ -269,19 +313,19 @@ The same request without `stream=true` fails cleanly: nothing has been sent yet,
 
 ### Good Use Cases
 
-- **Large exports:** `Accept: application/x-ndjson;stream=true` on a large collection. Lines arrive as the collection advances, so the first row is available immediately instead of after the whole export has been assembled. This is the case streaming is for.
+- **Long-running exports behind a timeout:** the first chunk ships early, so a proxy or client with a first-byte timeout does not kill the request while the collection is still being assembled. This is the case streaming is for.
+- **Large exports you want to process row by row:** `Accept: application/x-ndjson;stream=true`. Lines arrive as the collection advances and each one parses on its own.
 - **Bulk imports:** Importing large datasets where you want incremental progress feedback.
-- **Memory-constrained clients:** Mobile or embedded clients that cannot buffer entire result sets.
+- **Memory-constrained clients:** Mobile or embedded clients that cannot buffer entire result sets. (This is about *client* memory — streaming does not reduce server memory.)
 - **Pipeline processing:** When each item can be processed independently as it arrives.
 
 ### When to Avoid Streaming
 
-- **Small requests:** For collections under a few hundred items, buffered mode is simpler with proper error handling.
+- **Small requests:** For collections under a few hundred items, buffered mode is simpler with proper error handling — and below the 200-item batch there is no measurable difference anyway.
 - **Atomic error handling:** When you need a clean HTTP status code on failure, use buffered mode. Or use `X-Transaction-Count: all` to ensure all-or-nothing semantics.
-- **Formats other than NDJSON:** JSON, CSV and SQL build the whole body before sending either way, so `stream=true` buys no earlier first byte — it only costs you the clean error status and the `204` on an empty result.
 - **Clients keyed on `204`:** an empty streamed collection is `200` with an empty body (see [Two response differences](#two-response-differences-when-you-switch-to-streamtrue)).
 - **Snapshot consistency:** Streaming reads use batched transactions; for a consistent point-in-time view, use the default buffered mode.
-- **Client libraries that don't support NDJSON:** Standard JSON parsers expect a complete JSON array. Streaming requires a line-by-line parser.
+- **Client libraries that don't support NDJSON:** a standard JSON parser expects a complete array, so NDJSON needs a line-by-line reader. This is a reason to prefer `application/json;stream=true` over NDJSON — not a reason to avoid streaming: the JSON form still parses in one go, it just cannot be parsed incrementally.
 - **Cursor-paginated walks:** streamed responses never emit `Link` / `X-Cursor-Next` / `X-Has-More`, so there is no token to follow. Use buffered requests for the walk (see [Cursor pagination](../reference/pagination.md#cursor-pagination)).
 
 ### Decision Guide
@@ -308,6 +352,17 @@ curl -fsSL "https://example.app.heads.com/api/v1/products~just(identifiers,stock
 # NDJSON without streaming — same lines, whole body assembled first
 curl -fsSL https://example.app.heads.com/api/v1/products \
   -H "Accept: application/x-ndjson" \
+  -u ":banana"
+
+# JSON, streamed — one well-formed array, delivered in pieces.
+# Same win on time-to-first-byte; parse it in one go when it lands.
+curl -fsSL "https://example.app.heads.com/api/v1/products~just(identifiers,stockLevels)" \
+  -H "Accept: application/json;stream=true" \
+  -u ":banana"
+
+# CSV, streamed — header row first, then rows as the collection advances
+curl -fsSL "https://example.app.heads.com/api/v1/products~just(identifiers,name)" \
+  -H "Accept: text/csv;stream=true" \
   -u ":banana"
 ```
 
@@ -353,7 +408,7 @@ curl -fsSL -X PATCH https://example.app.heads.com/api/v1/products -u ":banana" \
 
 | Header | Direction | Values | Default |
 |--------|-----------|--------|---------|
-| `Accept` | Response format | `application/json`, `application/json;stream=true`, `application/x-ndjson` | `application/json` |
+| `Accept` | Response format | `application/json`, `application/x-ndjson`, `text/csv`, `application/sql`, `application/vnd.ms-sqlserver.csv` — each with an optional `;stream=true` | `application/json` |
 | `Content-Type` | Request format | `application/json`, `application/json;stream=true`, `application/x-ndjson` | `application/json` |
 | `X-Transaction-Count` | Chunk size | number, `all`, `-1`, `*` | `200` |
 
