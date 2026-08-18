@@ -18,13 +18,14 @@ while you walk it, or when growing offsets are making pages slow.
 Query parameters are internally translated to operators in a **canonical order** regardless of how you write them in the URL:
 
 ```
-format → fields → where → orderBy → skip → take → simpleJust
+format → where → orderBy → fields → skip → take → simpleJust
 ```
 
 This means:
 - **Sorting always runs before pagination** — `?orderby=name&limit=10` and `?limit=10&orderby=name` produce identical results
 - Query parameters can be **mixed** with path operators — the system normalizes all parameters into the canonical pipeline
-- The `fields` parameter (which controls projection) is applied early, before filtering or sorting
+- **Filtering and sorting run before projection** — so `?status=Active&fields=name` filters on `status` even though `status` is not in the projection
+- The `fields` projection lands **ahead of `skip`/`take`**, which is what makes `?fields=…&offset=…` more expensive than `?offset=…` alone (see [Operators: `~skip` and `~take`](#operators-skip-and-take) below)
 - **`~skip` is only added when `offset` is present** — `?limit=50` translates to `~take(50)` (no `~skip`); `?limit=50&offset=0` translates to `~skip(0)~take(50)`
 
 **Example**: These requests are equivalent:
@@ -72,7 +73,17 @@ Notes:
 - Put any `~where` filter **before** `~skip`/`~take`. Besides being the only order that gives the right answer, it lets the request stop scanning once the page is full — see [Limiters stop the scan early](operators.md#limiters-stop-the-scan-early).
 - Skipping past the end of a collection returns an empty result, not an error.
 
-**Offset cost.** On a plain collection — nothing filtering or sorting before the skip — `~skip(N)~take(M)` steps over the N skipped records without building them, and builds only the M it returns. A `~where` or `~orderBy` written *ahead* of the skip removes that, necessarily: after a filter the skip is counting matches, and a sort has to see everything before it can say what sits at position N. The same applies to `?offset=&limit=`, where `orderby=` and filter parameters are normalized into place ahead of the skip. This makes the offset pages you already have cheaper; it does not make a deep offset cheap, since the request still walks N + M records either way. Details: [A skip is only cheap while nothing filters or sorts before it](operators.md#a-skip-is-only-cheap-while-nothing-filters-or-sorts-before-it).
+**Offset cost.** On a plain collection — nothing filtering, sorting or projecting before the skip — `~skip(N)~take(M)` steps over the N skipped records without building them, and builds only the M it returns. A `~where` or `~orderBy` written *ahead* of the skip removes that, necessarily: after a filter the skip is counting matches, and a sort has to see everything before it can say what sits at position N. This makes the offset pages you already have cheaper; it does not make a deep offset cheap, since the request still walks N + M records either way. Details: [A skip is only cheap while nothing filters, sorts or projects before it](operators.md#a-skip-is-only-cheap-while-nothing-filters-sorts-or-projects-before-it).
+
+**`?fields=` cancels it, and this is the one to watch.** `?offset=1000&limit=10` on its own is the cheap shape. Add `?fields=name` and it is not: the projection normalizes to a `~just(name)` placed *ahead* of the skip under the [canonical order](#query-parameter-normalization), so it is applied to all 1000 skipped records as well as the 10 you asked for. `orderby=` and filter parameters land ahead of the skip the same way. There is no query-parameter spelling that puts the projection after the skip — if you want a projected page at offset cost, write the operators yourself:
+
+```bash
+# Full cost — ~just(name) runs before the skip
+GET /v1/people?fields=name&offset=1000&limit=10
+
+# Same response, cheap — the projection is applied to the ten records returned
+GET /v1/people~skip(1000)~take(10)~just(name)
+```
 
 ## Cursor pagination
 
@@ -218,7 +229,7 @@ Invalid timestamps return a 404 error response (not an empty array).
 ## Performance tips for large exports
 
 - Favor smaller, consistent page sizes (e.g., 100–500 items) and iterate until the last page is smaller than your page size.
-- Prefer date-window filtering (`timestamp` ranges) over very large offsets. An unfiltered, unsorted `~skip(N)` steps over the skipped records cheaply, but it still steps over N of them — a deep offset is still proportional to its depth ([details](operators.md#a-skip-is-only-cheap-while-nothing-filters-or-sorts-before-it)).
+- Prefer date-window filtering (`timestamp` ranges) over very large offsets. An unfiltered, unsorted `~skip(N)` steps over the skipped records cheaply, but it still steps over N of them — a deep offset is still proportional to its depth ([details](operators.md#a-skip-is-only-cheap-while-nothing-filters-sorts-or-projects-before-it)).
 - **Filter before you limit.** `~where(...)~take(N)` stops scanning at the Nth match; `~take(N)~where(...)` truncates first and then filters, which is both slower to reason about and usually empty. An `~orderBy` between the two removes the benefit, because the sort must read every row first ([details](operators.md#limiters-stop-the-scan-early)).
 - Sort by an indexed, unique-ish field (timestamps or identifiers) to keep page boundaries stable.
 - **Prefer a cursor over deep offsets** when exporting a whole collection: `?limit=500&orderby=identifiers/key` and then

@@ -144,7 +144,19 @@ curl -u ":banana" "https://example.app.heads.com/api/v1/products~skip(20)~take(1
 curl -u ":banana" "https://example.app.heads.com/api/v1/products?limit=10&offset=20"
 ```
 
-A plain `~skip(N)~take(M)` (equivalently `?offset=N&limit=M`) steps over the skipped records without building them, so an offset page costs about what its own page size costs. Put a `~where` or `~orderBy` — or a filter/`orderby=` parameter — ahead of the skip and that stops being true: a filter makes the skip count *matches*, and a sort has to read everything first. Either way the request still walks N + M records, so deep offsets remain expensive; use a cursor or a time window for whole-collection walks. See [`reference/operators.md`](../reference/operators.md#a-skip-is-only-cheap-while-nothing-filters-or-sorts-before-it).
+A plain `~skip(N)~take(M)` (equivalently `?offset=N&limit=M`) steps over the skipped records without building them, so an offset page costs about what its own page size costs. Three things written ahead of the skip take that away: a `~where` (the skip is then counting *matches*, so earlier records have to be read), a `~orderBy` (a sort reads everything first), and a projection such as `~just(...)` (it is applied to the skipped records too). Either way the request still walks N + M records, so deep offsets remain expensive; use a cursor or a time window for whole-collection walks.
+
+The projection case is the one to watch, because `?fields=` always lands ahead of the skip and there is no query-parameter spelling that moves it:
+
+```bash
+# Full cost - ~just(name) is applied to all 1010 records
+curl -u ":banana" "https://example.app.heads.com/api/v1/people?fields=name&offset=1000&limit=10"
+
+# Same response, cheap - the projection is applied to the ten returned
+curl -u ":banana" "https://example.app.heads.com/api/v1/people~skip(1000)~take(10)~just(name)"
+```
+
+See [`reference/operators.md`](../reference/operators.md#a-skip-is-only-cheap-while-nothing-filters-sorts-or-projects-before-it).
 
 **Using a Cursor (for whole-collection walks):**
 ```bash

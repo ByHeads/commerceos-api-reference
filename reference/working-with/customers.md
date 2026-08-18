@@ -1397,7 +1397,7 @@ GET /v1/prices~with(buyers)~take(10)
    ```
 
 6. **Query params and operators can be mixed:**
-   Query parameters are normalized into operators in canonical order: `format → fields → where → orderBy → skip → take → simpleJust`. Mixing is supported:
+   Query parameters are normalized into operators in canonical order: `format → where → orderBy → fields → skip → take → simpleJust`. Mixing is supported:
    ```bash
    # Both of these are valid and produce the same result:
    GET /v1/people~orderBy(name)?limit=10

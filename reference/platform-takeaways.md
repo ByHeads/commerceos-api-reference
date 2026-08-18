@@ -26,7 +26,7 @@ Order is literal, and it decides cost as well as meaning: a limiter placed after
 When using query parameters instead of path operators, they are canonicalized to a fixed order regardless of how they appear in the URL:
 
 ```
-format → fields → where → orderBy → skip → take → simpleJust
+format → where → orderBy → fields → skip → take → simpleJust
 ```
 
 This means `?skip=10&orderBy=name:asc` is equivalent to `?orderBy=name:asc&skip=10` — sorting always runs before pagination.

@@ -849,7 +849,7 @@ Assuming prices: Phone 7999 SEK (net), Coffee 79 SEK (net), Book 149 SEK (net)
 
 5. **Query parameter normalization order:**
    Query params and operators can be mixed. They are normalized in this order:
-   `format → fields → where → orderBy → skip → take → simpleJust`
+   `format → where → orderBy → fields → skip → take → simpleJust`
    ```bash
    # Both forms are equivalent after normalization
    GET /v1/vat-codes?take=10~orderBy(percentage)

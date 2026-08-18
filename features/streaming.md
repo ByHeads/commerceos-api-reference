@@ -89,7 +89,16 @@ Streaming composes with the query operators normally — `~where`, `~skip`, `~ta
 > [time-relative endpoints](../reference/operators.md#time-relative-queries-before-and-after) return records in time order — drop
 > the sort and keep the incremental delivery.
 
-> **Note:** Because each batch uses a separate read transaction, the result set may not reflect a single point-in-time snapshot when data is changing concurrently. For snapshot-consistent reads, use the default buffered mode.
+### A Streamed Response Is Not a Point-in-Time Snapshot
+
+This is the one correctness property streaming gives up, and it is worth deciding about deliberately rather than discovering later.
+
+- **Buffered:** the whole collection is read inside a single read transaction, so the response is a consistent snapshot — every record is as it stood at one moment.
+- **Streamed:** each batch of 200 is read in its own read transaction. A write that lands between two batches is invisible to the parts of the body already sent and visible to the parts still to come, so one response can mix two states of the data.
+
+In practice that means a record updated mid-export can appear with its new values while an earlier, related record in the same body still shows the old ones. Nothing is corrupted and nothing is lost — the body is just not a single instant.
+
+**Run an export buffered when it has to be internally consistent** — a reconciliation extract, a financial period close, anything where two records in the same file are compared against each other. Stream it when time-to-first-byte matters more than that, which is the usual case for a bulk catalogue or inventory pull.
 
 > **Streaming responses carry no pagination headers.** The body starts before `Link`, `X-Cursor-Next` and `X-Has-More`
 > could be computed, so a streamed response never emits them. An `after` cursor token is still honored — the response
@@ -234,14 +243,14 @@ HTTP headers (including the status code) are sent before the first item, so **th
 {
   "@type": "mid-stream error",
   "error": "An error occured while streaming the response body. The status code and headers might still indicate success.",
-  "processedCount": 200,
-  "failedAtIndex": 200,
   "innerError": {
     "@type": "bad request",
     "error": "Invalid value for field 'name'."
   }
 }
 ```
+
+Note what is **not** there: `processedCount` and `failedAtIndex` belong to the buffered error body above, and a streamed line-delimited marker carries neither.
 
 **`application/json`** cannot do that — a second JSON value after the closing `]` would make the body unparseable. So the array **closes itself** and the error becomes its **last element**:
 
@@ -259,7 +268,21 @@ HTTP headers (including the status code) are sent before the first item, so **th
 
 The body stays valid JSON, so you can parse it in one go and then inspect the last element. Note that the JSON form carries `processedCount` but **no `innerError`** — that is deliberate, not an oversight: the detail is in the server log, not in the body. If you need the underlying cause in the response, use a line-delimited format.
 
-All data preceding the error object is valid and committed. `processedCount` and `failedAtIndex` tell a batch mutation exactly how far it got before the failure.
+All data preceding the error object is valid and committed.
+
+#### Only `@type` Is Always There
+
+The two streamed forms do not carry the same fields, and neither carries the full set the buffered error body does. **`"@type": "mid-stream error"` is the only field present in both** — branch on that and nothing else:
+
+| Field | Buffered error body | Streamed, line-delimited | Streamed, `application/json` |
+|-------|---------------------|--------------------------|------------------------------|
+| `@type` | Yes | Yes | Yes |
+| `error` | Yes | Yes | Yes |
+| `innerError` | — (it *is* the error) | Yes | — |
+| `processedCount` | Yes | — | Yes |
+| `failedAtIndex` | Yes | — | — |
+
+The two absences are the ones that catch people out. A completeness check written as `if (last.processedCount !== undefined)` never fires on an NDJSON, CSV or SQL export, and one written as `if (last.innerError)` never fires on a JSON export — both wave a truncated export through as complete. The underlying cause is always in the server log regardless of which form you get.
 
 > **Important:** When consuming a streamed response, always check the **last line** (line-delimited formats) or the **last array element** (JSON) for `"@type": "mid-stream error"`, and treat it as a failure regardless of the `200`. Requests without `stream=true` never need this — they get a real error status instead.
 
@@ -278,7 +301,7 @@ This is the practical cost of streaming a `GET`, and it applies to reads as much
 }
 ```
 
-On a read failure the appended wrapper carries `innerError` but no `failedAtIndex` — that describes how far a batch mutation got, and there is nothing being committed here. The lines already delivered are valid; the collection is simply incomplete.
+The appended wrapper carries `innerError` but neither `processedCount` nor `failedAtIndex` — those two belong to the buffered error body ([field matrix](#only-type-is-always-there)). The lines already delivered are valid; the collection is simply incomplete.
 
 A streaming client must check for that line. Reject the export rather than treating a truncated collection as complete — a partial export that looks successful is how stale rows end up in a warehouse:
 
@@ -324,7 +347,7 @@ The same request without `stream=true` fails cleanly: nothing has been sent yet,
 - **Small requests:** For collections under a few hundred items, buffered mode is simpler with proper error handling — and below the 200-item batch there is no measurable difference anyway.
 - **Atomic error handling:** When you need a clean HTTP status code on failure, use buffered mode. Or use `X-Transaction-Count: all` to ensure all-or-nothing semantics.
 - **Clients keyed on `204`:** an empty streamed collection is `200` with an empty body (see [Two response differences](#two-response-differences-when-you-switch-to-streamtrue)).
-- **Snapshot consistency:** Streaming reads use batched transactions; for a consistent point-in-time view, use the default buffered mode.
+- **Snapshot consistency:** streaming reads use batched transactions, so one response can mix two states of the data. For a consistent point-in-time view — a reconciliation extract, a period close — use the default buffered mode (see [A streamed response is not a point-in-time snapshot](#a-streamed-response-is-not-a-point-in-time-snapshot)).
 - **Client libraries that don't support NDJSON:** a standard JSON parser expects a complete array, so NDJSON needs a line-by-line reader. This is a reason to prefer `application/json;stream=true` over NDJSON — not a reason to avoid streaming: the JSON form still parses in one go, it just cannot be parsed incrementally.
 - **Cursor-paginated walks:** streamed responses never emit `Link` / `X-Cursor-Next` / `X-Has-More`, so there is no token to follow. Use buffered requests for the walk (see [Cursor pagination](../reference/pagination.md#cursor-pagination)).
 

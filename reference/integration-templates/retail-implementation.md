@@ -578,7 +578,7 @@ Be aware of required fields for key resources:
 
 Query parameters and operators **can be mixed**; the system normalizes all parameters into a canonical order:
 
-`format → fields → where → orderBy → skip → take → simpleJust`
+`format → where → orderBy → fields → skip → take → simpleJust`
 
 **All of these are equivalent:**
 ```bash

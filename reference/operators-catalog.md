@@ -486,7 +486,8 @@ GET /v1/products~orderBy(name)~skip(100)~take(50)
 **Notes:**
 - `~skip(0)` is a no-op
 - Combine with `~take` for pagination — `~skip(N)~take(M)` stops after N + M items rather than walking the whole collection
-- **Skipped records are stepped over, not built** — but only when nothing filters or sorts in front of the skip. `~skip(N)~take(M)` builds the M records it returns; `~where(...)~skip(N)~take(M)` and `~orderBy(...)~skip(N)~take(M)` have to read the earlier records to know which ones they are. See [A skip is only cheap while nothing filters or sorts before it](operators.md#a-skip-is-only-cheap-while-nothing-filters-or-sorts-before-it)
+- **Skipped records are stepped over, not built** — but only when nothing filters, sorts or projects in front of the skip. `~skip(N)~take(M)` builds the M records it returns; `~where(...)~skip(N)~take(M)` and `~orderBy(...)~skip(N)~take(M)` have to read the earlier records to know which ones they are. See [A skip is only cheap while nothing filters, sorts or projects before it](operators.md#a-skip-is-only-cheap-while-nothing-filters-sorts-or-projects-before-it)
+- **Write a projection after the skip, not before.** `~skip(1000)~take(10)~just(name)` projects the ten records returned; `~just(name)~skip(1000)~take(10)` projects all 1010. `?fields=` always produces the second shape — it is normalized ahead of the skip and cannot be moved
 - The saving applies per record, not to the count — a page still starts by walking N records, so deep offsets stay proportional to the offset. Prefer a cursor or a time window for whole-collection exports
 - Works the same on a member or relation collection: `GET /v1/products/com.example.sku=ABC/categories~skip(2)`
 - Skipping past the end returns an empty collection (`[]` in JSON), not an error
@@ -639,7 +640,7 @@ GET /v1/products~throwAt(5)
 Query parameters and path operators **can be mixed** in the same request. The system normalizes all query parameters into operators and appends them after any path operators in the following **canonical order**:
 
 ```
-format → fields → where → orderBy → skip → take → simpleJust
+format → where → orderBy → fields → skip → take → simpleJust
 ```
 
 **Example - mixing works:**

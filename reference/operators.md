@@ -45,7 +45,7 @@ Query parameters and path operators **can be mixed** in the same request. The sy
 When query parameters are used, they are translated into operators and applied in a **canonical order** regardless of their position in the URL:
 
 ```
-format → fields → where → orderBy → skip → take → simpleJust
+format → where → orderBy → fields → skip → take → simpleJust
 ```
 
 This means:
@@ -299,7 +299,7 @@ Standard query parameters are translated to operators:
 **Query parameter canonical order:** Query parameters are normalized into operators in a fixed order regardless of their position in the URL:
 
 ```
-format → fields → where → orderBy → skip → take → simpleJust
+format → where → orderBy → fields → skip → take → simpleJust
 ```
 
 Sorting (`orderBy`) is applied **before** pagination (`skip`, `take`), ensuring consistent page boundaries when sorting and paginating collections. This matches the recommended path operator order where sorting comes before pagination.
@@ -357,11 +357,11 @@ GET /v1/products~take(1)~where(status=Active)
 - `~orderBy(name)~take(10)` sorts the entire collection before slicing. You cannot know the alphabetically-first ten rows without looking at all of them. If you only need *some* ten rows rather than the *top* ten, drop the `~orderBy` and the request short-circuits.
 - `~last` walks to the end of the stream. On a sorted collection, `~orderBy(field:desc)~first` answers the same question and stops at the first item.
 
-### A skip is only cheap while nothing filters or sorts before it
+### A skip is only cheap while nothing filters, sorts or projects before it
 
 This is about cost only — every request below returns exactly what it always returned.
 
-**`~skip(N)` walks past the first N records without building them — but only when it is reading the collection itself.** Nothing may filter or sort in front of it:
+**`~skip(N)` walks past the first N records without building them — but only when it is reading the collection itself.** Nothing may filter, sort or project in front of it:
 
 ```bash
 # Cheap: the 1000 skipped records are stepped over, only the 10 returned ones are built
@@ -372,11 +372,27 @@ GET /v1/people~where(status=Active)~skip(1000)~take(10)
 
 # Not cheap either: the sort has to see every record before it knows what sits at position 1000
 GET /v1/people~orderBy(name)~skip(1000)~take(10)
+
+# Not cheap: the projection is applied to every record it reaches, skipped ones included
+GET /v1/people~just(name)~skip(1000)~take(10)
 ```
 
-Both exceptions are inherent, not incidental. `~skip` counts positions in whatever sequence reaches it, so after a `~where` it is counting *matches* — and establishing that an earlier record matches means reading that record. A `~orderBy` has to consume the whole collection before it can order it, which is the same [draining](#limiters-stop-the-scan-early) behaviour that stops a limiter after a sort from short-circuiting.
+The first two exceptions are inherent, not incidental. `~skip` counts positions in whatever sequence reaches it, so after a `~where` it is counting *matches* — and establishing that an earlier record matches means reading that record. A `~orderBy` has to consume the whole collection before it can order it, which is the same [draining](#limiters-stop-the-scan-early) behaviour that stops a limiter after a sort from short-circuiting.
 
-`?offset=1000&limit=10` is the same cheap shape, since the two parameters normalize to `~skip(1000)~take(10)`. Adding `orderby=` or any filter parameter (`?status=Active`) puts a `~orderBy`/`~where` *ahead* of the skip under the [canonical order](#query-parameter-normalization), with exactly the effect shown above.
+The third is a matter of where you write the projection, and it is the one that costs people the win by accident. `~just(...)` fans out over every element that reaches it, so a projection ahead of the skip is applied to the records you are throwing away. Written after the skip it is applied to the ten you keep:
+
+```bash
+# Cheap — project the page, not the collection
+GET /v1/people~skip(1000)~take(10)~just(name)
+```
+
+**`?fields=` cannot express that order, so it always pays the full cost.** `?offset=1000&limit=10` on its own is the cheap shape — the two parameters normalize to `~skip(1000)~take(10)`. But `?fields=name` normalizes to a `~just(name)` placed *ahead* of the skip under the [canonical order](#query-parameter-normalization), and there is no query-parameter spelling that puts it after. The same goes for `orderby=` and for any filter parameter (`?status=Active`). If you want a projected page at offset cost, write the operators by hand:
+
+| Request | Cost |
+|---------|------|
+| `?offset=1000&limit=10` | Cheap |
+| `?fields=name&offset=1000&limit=10` | Full — `~just` runs ahead of the skip |
+| `~skip(1000)~take(10)~just(name)` | Cheap — same response as the row above |
 
 **It does not make deep offsets cheap — it makes the offsets you already use cheaper.** The request still asks the collection for N + M records either way; what dropped is how much work each skipped record costs. The cost of a page is still proportional to how far into the collection it starts, so the standing advice is unchanged: for a large export, page with a cursor or a time window rather than a growing offset ([pagination](pagination.md#choose-a-pagination-approach)). Treat this as a discount on the pattern you already have, not as a reason to move to it.
 

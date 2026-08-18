@@ -256,7 +256,7 @@ The API supports query operators that modify responses:
 
 > **Mixing Query Layers**
 >
-> You can combine `~` operators and query parameters in a single request. Query parameters are parsed at the `?` position and applied as a fixed block (`format → fields → where → orderBy → skip → take → simpleJust`) regardless of their order in the URL. Prefer a single style when operator ordering matters.
+> You can combine `~` operators and query parameters in a single request. Query parameters are parsed at the `?` position and applied as a fixed block (`format → where → orderBy → fields → skip → take → simpleJust`) regardless of their order in the URL. Prefer a single style when operator ordering matters.
 
 **Path operators (`~`):** Applied in the order they appear in the URL. Think of `~` as a pipe operator: each step consumes the output of the previous step.
 

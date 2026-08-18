@@ -165,7 +165,7 @@ GET /v1/receipts?orderby=timestamp:desc&limit=200&offset=400
 Query parameters can be mixed with path operators—the system normalizes them into a canonical order:
 
 ```
-format → fields → where → orderBy → skip → take → simpleJust
+format → where → orderBy → fields → skip → take → simpleJust
 ```
 
 This means sorting (orderBy) always runs before pagination (skip/take), ensuring consistent results regardless of URL parameter order. For example:

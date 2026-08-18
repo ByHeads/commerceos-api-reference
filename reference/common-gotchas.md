@@ -313,7 +313,7 @@ This returns `'has value'` if `someField` exists and is truthy, not if it equals
 Query parameters (`?limit=…&orderby=…`) are translated to operators in a **fixed canonical order**, regardless of how they appear in the URL:
 
 ```
-format → fields → where → orderBy → skip → take → simpleJust
+format → where → orderBy → fields → skip → take → simpleJust
 ```
 
 This means sorting (`orderBy`) always runs **before** pagination (`skip`/`take`) when using query params—ensuring consistent page boundaries.
@@ -602,7 +602,8 @@ Written the right way round it is also the faster form. A limiter stops pulling 
 
 - **`~orderBy` between the filter and the limiter cancels it.** `~where(...)~orderBy(name)~take(10)` has to sort every match before it can slice the first ten. That is unavoidable if you genuinely want the alphabetically-first ten; if any ten will do, drop the sort.
 - **`~count` and `~last` never short-circuit** — both have to reach the end of the stream. To ask "does anything match?" without counting everything, use `~where(...)~take(1)~count`.
-- **A filter or a sort in front of a `~skip` costs it the same way.** `~skip(N)~take(M)` on its own steps over the N skipped records without building them; `~where(...)~skip(N)~take(M)` cannot, because the skip is then counting matches and the earlier records have to be read to be counted ([details](operators.md#a-skip-is-only-cheap-while-nothing-filters-or-sorts-before-it)). Order the filter first anyway — it is still the only order that answers the right question.
+- **A filter or a sort in front of a `~skip` costs it the same way.** `~skip(N)~take(M)` on its own steps over the N skipped records without building them; `~where(...)~skip(N)~take(M)` cannot, because the skip is then counting matches and the earlier records have to be read to be counted ([details](operators.md#a-skip-is-only-cheap-while-nothing-filters-sorts-or-projects-before-it)). Order the filter first anyway — it is still the only order that answers the right question.
+- **A *projection* in front of a `~skip` costs it too, and here the order is free to change.** `~just(name)~skip(1000)~take(10)` applies the projection to all 1010 records; `~skip(1000)~take(10)~just(name)` returns the same thing and applies it to ten. Watch for this with `?fields=`, which is always normalized ahead of the skip — `?fields=name&offset=1000&limit=10` pays the full cost and cannot be rewritten to avoid it without switching to path operators.
 
 Full rules: [Operators → Limiters stop the scan early](operators.md#limiters-stop-the-scan-early).
 
@@ -692,7 +693,9 @@ The second difference: **the buffered body carries one extra trailing newline.**
 Two related surprises, and the real cost of streaming:
 
 - **A mid-stream failure cannot change the status code.** Once the first chunk is on the wire the response is `200`, so a failure part-way through is delivered inside the body and the collection is silently short. A streaming client must check for it before treating an export as complete. A buffered request fails cleanly with a proper error status instead.
-- **Where that marker lands depends on the content type.** On the line-delimited formats (`application/x-ndjson`, `text/csv`, `application/sql`) it is one more line at the end. On `application/json` the array closes itself and the marker is its **last element** — so the body still parses, and a client that only checks "did `JSON.parse` succeed?" will load a truncated export as if it were complete. Check `.[-1]["@type"]`. The JSON form also carries `processedCount` but no `innerError`; the underlying cause is only in the server log.
+- **Where that marker lands depends on the content type.** On the line-delimited formats (`application/x-ndjson`, `text/csv`, `application/sql`) it is one more line at the end. On `application/json` the array closes itself and the marker is its **last element** — so the body still parses, and a client that only checks "did `JSON.parse` succeed?" will load a truncated export as if it were complete. Check `.[-1]["@type"]`.
+- **`@type` is the only field both streamed forms carry.** The line-delimited marker has `innerError` but no `processedCount`; the JSON marker has `processedCount` but no `innerError`. So `if (last.processedCount !== undefined)` never fires on an NDJSON export and `if (last.innerError)` never fires on a JSON one — either check waves a truncated export through as complete. Key it on `"@type": "mid-stream error"` and nothing else ([field matrix](../features/streaming.md#only-type-is-always-there)).
+- **A streamed response is not a point-in-time snapshot.** Batches are read in separate transactions, so a concurrent write can be invisible to the rows already sent and visible to the rows still to come. Run an export buffered when two records in the same file will be compared against each other.
 
 Full rules: [Streaming](../features/streaming.md#two-response-differences-when-you-switch-to-streamtrue).
 

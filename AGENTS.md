@@ -125,7 +125,7 @@ GET /v1/products~where(status=Active)~take(10)~with(prices)
 ```
 
 **Query parameters** (legacy format) are canonicalized to a fixed order regardless of how they appear in the URL:
-`format → fields → where → orderBy → skip → take → simpleJust`
+`format → where → orderBy → fields → skip → take → simpleJust`
 
 For example, `?orderby=name&limit=10` applies orderBy *before* skip/take internally, ensuring consistent pagination boundaries when sorting collections.
 
