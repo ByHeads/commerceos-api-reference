@@ -257,17 +257,20 @@ The API buffers all results, so if an error occurs at any point, a proper HTTP e
 
 ### With Streaming
 
-HTTP headers (including the status code) are sent before the first item, so **the response says `200` even when it failed**. The error is delivered inside the body instead — and *where* it lands depends on the content type.
+**Streaming does not change how a request fails.** Everything decided before the first byte of the body — authentication, scopes, an unknown resource or key, a malformed query or cursor token, an unsupported content type, and **every mutation** — still produces an ordinary HTTP error response with the correct status code and the usual error body, exactly as it would without `stream=true`. A `GET` for a product that does not exist is a `404` whether or not you asked for streaming, and a batch mutation that fails on its 200th item still answers with a normal `4xx`: a mutation does all of its writing before the response body starts, so the status line is still free to carry the failure.
 
-**Line-delimited formats** (`application/x-ndjson`, `text/csv`, `application/sql`) get one more line appended:
+The one exception is a failure that strikes *while the collection is being read out*, after the `200` status line and headers have already gone on the wire. There is no status code left to change at that point, so the failure is appended to the body instead. That is an internal fault — a record that cannot be built, a read that fails part-way through a collection — rather than something a client can provoke with a bad request, and it is correspondingly rare. Handle it because it is the one failure a `200` will not tell you about, not because you should expect to see it. The response is **truncated, not corrupted**: everything delivered before the marker is valid.
+
+*Where* the marker lands depends on the content type. **Line-delimited formats** (`application/x-ndjson`, `text/csv`, `application/sql`) get one more line appended:
 
 ```json
 {
   "@type": "mid-stream error",
   "error": "An error occured while streaming the response body. The status code and headers might still indicate success.",
   "innerError": {
-    "error": "The request was invalid and could not be processed.",
-    "details": "Invalid value for field 'name'."
+    "@type": "internal error",
+    "error": "Internal server error.",
+    "details": "A description of what went wrong while reading the collection."
   }
 }
 ```
@@ -284,8 +287,9 @@ Note what is **not** there: `processedCount` and `failedAtIndex` belong to the b
     "@type": "mid-stream error",
     "error": "An error occured while streaming the response body. The status code and headers might still indicate success.",
     "innerError": {
-      "error": "The request was invalid and could not be processed.",
-      "details": "Invalid value for field 'name'."
+      "@type": "internal error",
+      "error": "Internal server error.",
+      "details": "A description of what went wrong while reading the collection."
     },
     "processedCount": 2
   }
@@ -296,18 +300,24 @@ The body stays valid JSON, so you can parse it in one go and then inspect the la
 
 All data preceding the error object is valid and committed.
 
-#### `innerError` Has the Same Shape on Every Format
+#### `innerError` Is an Ordinary Error Body
 
-`innerError` carries the cause of the failure, and it is identical whatever content type you asked for — so a client reads it the same way on a streamed JSON export as on an NDJSON one. It has two members:
+`innerError` is **exactly the error body the same failure would have produced as an ordinary HTTP error response**, `@type` discriminator included, on every content type. There is nothing special to parse: whatever your client already does with an error body applies unchanged, you just reach one level deeper to find it.
 
 | Member | Meaning |
 |--------|---------|
-| `error` | The general category of the failure — `"The request was invalid and could not be processed."`, `"Internal server error."` |
-| `details` | The occurrence-specific message — `"Invalid value for field 'name'."` |
+| `@type` | The error's discriminator — `"internal error"`, `"bad request"`, `"conflict"`, … Exactly what the same failure would carry as a top-level error body. |
+| `error` | The general category of the failure — `"Internal server error."` |
+| `details` | The occurrence-specific message — `"A description of what went wrong while reading the collection."` |
+| `suggestion` | Present on errors that carry one; absent otherwise. |
 
-**`innerError` carries no `@type` of its own.** Worth checking your parser against, because it is the odd one out: the wrapper around it has one (`"mid-stream error"`), and so does a non-streaming error body (`"bad request"`, `"internal error"`, …). Match on `error` and `details`, not on an inner type.
+The specific type may add its own members on top of those (a `"conflict"` carries `conflictingResource`, for example) — again, the same ones it would carry as a top-level error body.
 
-It is sanitized rather than raw. An unexpected server-side failure surfaces as `{"error": "Internal server error.", "details": "<message>"}` — never a stack trace or an internal frame.
+> **Changed 2026-08-19 — this reverses earlier guidance.** Until this shipped, `innerError` arrived *without* its `@type`: the discriminator was joined to the body only on the HTTP error path, and a mid-stream failure by definition never reaches that path. Earlier versions of this page documented that absence as a rule to parse around. If you wrote a client that matches on `error`/`details` because the type key was missing — or worse, branches on its absence — the key is there now, on every format.
+
+`innerError` is sanitized rather than raw. An unexpected server-side failure surfaces as `{"@type": "internal error", "error": "Internal server error.", "details": "<message>"}` — never a stack trace or an internal frame.
+
+The generated OpenAPI spec reflects this: `innerError` is declared as the error model rather than as an untyped value, so `<base-uri>/openapi/spec.json` describes its members and a generated client types it like any other error.
 
 #### Which Fields Each Form Carries
 
@@ -324,24 +334,27 @@ The three error bodies do not carry the same fields, and **`"@type": "mid-stream
 
 The absences are the ones that catch people out. A completeness check written as `if (last.processedCount !== undefined)` never fires on an NDJSON, CSV or SQL export, and `failedAtIndex` appears only on the buffered batched-write body — either check waves a truncated export through as complete. Key detection on `@type` and read `innerError` for the cause.
 
+The rows above describe the **outer** marker. `innerError` itself always carries its own `@type`, on both streamed forms — see [`innerError` Is an Ordinary Error Body](#innererror-is-an-ordinary-error-body).
+
 > **Important:** When consuming a streamed response, always check the **last line** (line-delimited formats) or the **last array element** (JSON) for `"@type": "mid-stream error"`, and treat it as a failure regardless of the `200`. Requests without `stream=true` never need this — they get a real error status instead.
 
 ### Mid-Stream Errors on a Streamed Export
 
-This is the practical cost of streaming a `GET`, and it applies to reads as much as to mutations. Once the first line is on the wire the status is already `200`, so a failure part-way through the collection cannot change it. It arrives as a final line instead:
+This is the practical cost of streaming a `GET`. Once the first line is on the wire the status is already `200`, so a fault that strikes while the rest of the collection is being read out cannot change it. It arrives as a final line instead:
 
 ```json
 {
   "@type": "mid-stream error",
   "error": "An error occured while streaming the response body. The status code and headers might still indicate success.",
   "innerError": {
-    "error": "The request was invalid and could not be processed.",
-    "details": "Invalid value for field 'name'."
+    "@type": "internal error",
+    "error": "Internal server error.",
+    "details": "A description of what went wrong while reading the collection."
   }
 }
 ```
 
-The appended wrapper carries `innerError` but neither `processedCount` nor `failedAtIndex` — those two belong to the buffered error body ([field matrix](#which-fields-each-form-carries)). The lines already delivered are valid; the collection is simply incomplete.
+The appended wrapper carries `innerError` but neither `processedCount` nor `failedAtIndex` — those two belong to the buffered error body ([field matrix](#which-fields-each-form-carries)). The lines already delivered are valid; the collection is simply incomplete. Note that this is the *only* failure mode streaming introduces: a mutation, or anything rejected before the read starts, still fails with a real HTTP status.
 
 A streaming client must check for that line. Reject the export rather than treating a truncated collection as complete — a partial export that looks successful is how stale rows end up in a warehouse:
 

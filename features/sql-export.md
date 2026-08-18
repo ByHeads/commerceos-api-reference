@@ -411,11 +411,14 @@ With `;stream=true`, the `200` and its headers are already on the wire before th
 {
   "@type": "mid-stream error",
   "innerError": {
+    "@type": "internal error",
     "error": "Internal server error.",
     "details": "SQL serialization error: Unknown statement type..."
   }
 }
 ```
+
+`innerError` is the ordinary error body the same failure would have produced as an HTTP error response, `@type` included — so the handler you already have for error responses reads it unchanged.
 
 Without `;stream=true` the same failure is reported as a proper HTTP error status with no body — so a buffered export gives you a clean failure signal, at the cost of a slower first byte. Either way, test your mapped types with small datasets before production use to catch validation errors early. See [Streaming](streaming.md#4-error-handling) for the full contract.
 
