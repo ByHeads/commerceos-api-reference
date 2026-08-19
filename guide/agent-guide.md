@@ -614,9 +614,9 @@ When referencing another object, use the `identifiers` wrapper:
 | `~just(fields)` | Project only | `~just(name,key:identifiers/key)` | Clears ALL other fields |
 | `~map(type)` | Transform | `~map(com.heads.receipt-csv)` | **Only accepts mapped type names** |
 | `~flat` | Flatten arrays | `/orders~with(items)/items~flat` | NO parentheses |
-| `~distinct` | Unique values | `/products/status~distinct` | NO parentheses, primitives only |
+| `~distinct` | Unique values | `/people/{key}/languages~distinct` | NO parentheses; needs a collection that already holds scalars |
 
-> **Important:** `~map` only accepts registered mapped type names (e.g., `com.heads.receipt-csv`). It does NOT accept field names as inline selectors. To extract a field, use path navigation (e.g., `/products/status`) or `~just(field)`.
+> **Important:** `~map` only accepts registered mapped type names (e.g., `com.heads.receipt-csv`). It does NOT accept field names as inline selectors — and there is no other operator that projects a member out of a collection either. `products/status` is a `404` (a member path applies to one object, not across a collection), and `~just(status)` keeps the objects rather than yielding their values. To collapse a collection of resources by one of their members, use `~distinctBy(status)`.
 
 ### 5.2 Parameterless Operators (NO Parentheses!)
 
@@ -879,7 +879,7 @@ A bulk write commits in chunks of **200 items**, so a failure part-way through l
 |---------|---------|-----|
 | Wrong path casing | 404 | `/customerRelations` not `/customer-relations` (nested) |
 | Missing `identifiers` wrapper | 400 | `{"identifiers": {"id": "..."}}` not `{"id": "..."}` |
-| Empty parentheses on a parameterless operator | 404 or 500 | `~first` not `~first()` |
+| Empty parentheses on a parameterless operator | `404` or `500` — or, for `~distinct()` / `~typeless()` over a collection, a silent `200 null` | `~first` not `~first()` |
 | Parentheses left off an argument-taking operator | `200` returning `{"@type":"take"}` and no data | `~take(2)` not `~take` — same for `~where`, `~just`, `~order` and the rest |
 | Currency as string | 400 | `{"identifiers": {"currencyCode": "SEK"}}` |
 | Wrong reference field | 400 | Stores use `owner` not `parent` |

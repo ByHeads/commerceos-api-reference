@@ -129,20 +129,40 @@ POST /stores '{"owner": {"@type": "company", "identifiers": {"com.myapp.id": "12
 
 ## 9. Parentheses: Required on Argument-Taking Operators, Forbidden on the Rest
 
-Both halves of this rule are easy to get wrong, and they fail in opposite ways — one loudly, one silently.
+Both halves of this rule are easy to get wrong, and neither half reliably announces itself.
 
-**A parameterless operator with empty parentheses fails loudly.**
+**Empty parentheses on a parameterless operator are a mistake, but not always a visible one.** Four of them fail
+loudly whatever you applied them to:
 
 ```bash
-# WRONG - Empty parentheses break the query
+# WRONG - a failure you will see
 GET /products~first()   # 404 "The requested resource was not found."
+GET /products~last()    # 404
+GET /products~flat()    # 404
 GET /products~count()   # 500
 
 # RIGHT - No parentheses
 GET /products~first
 GET /products~count
-GET /products~map(status)~distinct
+GET /v1/people/{key}/languages~distinct   # ["en","sv"]
 ```
+
+The rest depend on what you applied them to. Over a **collection** they are a silent `200 null`, and they only become
+a `404` when the target is a single object or a string:
+
+```bash
+# WRONG - 200, and the body is null
+GET /products~distinct()    # 200 null
+GET /products~typeless()    # 200 null
+GET /products~withAll()     # 200 null
+GET /products~entries()     # 200 null
+GET /products~array()       # 200 null
+```
+
+That `null` then flows downstream exactly like the bare-operator failure below: `products~distinct()~count` answers
+`1`, and `products~typeless()~take(2)` answers `{"@type":"take"}`. So the two halves of this rule can produce the
+same misleading response, and a chain that goes wrong one way is indistinguishable from one that went wrong the
+other.
 
 **An argument-taking operator with the parentheses left off fails quietly, and it does so on every one of them.** The
 request is a `200` carrying a small object that names the operator, and your collection is gone:
@@ -227,9 +247,16 @@ GET /products~distinct
 # RIGHT - Use ~distinctBy for objects
 GET /products~distinctBy(status)
 
-# Or map to primitive first
-GET /products~map(status)~distinct
+# ~distinct is for a collection that already holds scalars
+GET /v1/people/{key}/languages~distinct   # ["en","sv"]
 ```
+
+**There is no operator that turns a collection of resources into a stream of one of their members**, so there is
+nothing to convert before applying `~distinct`. `products/status` is a `404` — a member path applies to one object,
+not across a collection — and so is `products~map(status)`, because [`~map`](operators-catalog.md#maptypename)
+applies a registered mapped type by name rather than projecting a member. `~just(status)` keeps the objects, so
+`products~just(status)~distinct` dedupes nothing and returns all 156. `~distinctBy(status)` is the operator that
+answers "one per distinct value", and `~distinctBy(status)~just(status)` renders just the values.
 
 ---
 
@@ -487,7 +514,7 @@ There are also **no operator aliases**: every operator must be spelled in full. 
 
 This is a frequent cause of "the sync webhook reports success but no records were written" — the delivery succeeded, it just delivered nothing. When a mapped type or a webhook side-effect write produces an unexpectedly empty result, check the operator spelling against [`operators-catalog.md`](operators-catalog.md) before looking anywhere else.
 
-Related: [gotcha 9](#9-parentheses-required-on-argument-taking-operators-forbidden-on-the-rest) — a parameterless operator written with empty parentheses (`~first()`) is a different failure and *does* misbehave visibly.
+Related: [gotcha 9](#9-parentheses-required-on-argument-taking-operators-forbidden-on-the-rest) — a parameterless operator written with empty parentheses is a different mistake that lands on both sides of this line. `~first()` and `~count()` misbehave visibly; `~distinct()` and `~typeless()` answer `200 null` over a collection, which is the same silence as a misspelling.
 
 ---
 

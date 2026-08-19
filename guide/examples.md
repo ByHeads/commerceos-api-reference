@@ -56,7 +56,7 @@ Comprehensive curl examples demonstrating the full capabilities of the CommerceO
 | `~first` | First element |
 | `~last` | Last element |
 | `~count` | Count elements |
-| `~distinct` | Unique primitive values (use after `~map`) |
+| `~distinct` | Unique values in a collection of scalars (`languages~distinct`); for objects use `~distinctBy(member)` |
 | `~flat` | Flatten arrays |
 | `~typeless` | Remove @type |
 

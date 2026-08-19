@@ -45,8 +45,9 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/trade-orders~with
 # Count by status
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/products~where(status=Active)~count"
 
-# Get distinct statuses (navigate to the field, then apply ~distinct)
-curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/products/status~distinct"
+# Get distinct statuses - ~distinctBy collapses the collection, ~just renders the values
+# (products/status and products~map(status) are both a 404 - there is no member projection across a collection)
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/products~distinctBy(status)~just(status)"
 
 # Get one product per status
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/products~distinctBy(status)~take(10)"

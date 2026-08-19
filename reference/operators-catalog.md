@@ -392,13 +392,20 @@ Deduplicate streams by value identity.
 
 **Example:**
 ```
-GET /v1/products/status~distinct
+GET /v1/people/{key}/languages~distinct
+→ ["en","sv"]
 ```
 
 **Notes:**
 - Works on primitives (strings, numbers)
-- For objects, use `~distinctBy(selector)`
 - Maintains first occurrence, drops subsequent duplicates
+- **It needs a collection that already holds scalars**, and there is no operator that projects one out of a collection
+  of resources. `~just(status)` still yields objects, so `products~just(status)~distinct` dedupes nothing and returns
+  all 156 items; `products/status` and `products~map(status)` are both a `404` (`~map` applies a
+  [registered mapped type](#maptypename) by name, not a member projection). To collapse a collection of resources by
+  one of their members, reach for `~distinctBy(member)` instead.
+- Empty parentheses are silent here: `products~distinct()` is a `200` returning `null`, not an error. See
+  [gotcha 9](common-gotchas.md#9-parentheses-required-on-argument-taking-operators-forbidden-on-the-rest).
 
 ---
 
@@ -532,10 +539,20 @@ operator.
   The element count is preserved and every value is gone, at `200`, with no error. So reaching for `~entries` to index
   a collection is the one shape to avoid: to pair a scalar collection with positions, request the index
   (`~entries~with(index)`) and you get `[{"@type":"entry","index":null}, ...]` — the positions are lost too.
-- **The tell is a missing `key`.** An entry with a `key` and no `value` is an empty slot on a real object; an entry
-  with *neither* means `~entries` had nothing to key on and you handed it a collection. Asking the entries directly
-  will not tell you — `~just(key,value)` answers `{"key":null,"value":null}` whether or not those members ever held
-  anything, the same silence as [naming a member that does not exist](common-gotchas.md#39-a-null-in-a-response-does-not-prove-the-field-exists).
+- **The tell is a missing `key`, and asking for the key outright is the sharper form of it.** An entry with a `key`
+  and no `value` is an empty slot on a real object; an entry with *neither* means `~entries` had nothing to key on and
+  you handed it a collection. The default output leaves that to be read off an **absent** member, so force the
+  projection instead — `~just(key)` renders the key as `null` and puts the two cases side by side:
+
+  ```
+  GET /v1/agents/{key}/addresses~entries~just(key)  → [{"@type":"entry","key":"main"},{"@type":"entry","key":"home"}, ...]
+  GET /v1/people/{key}/languages~entries~just(key)  → [{"@type":"entry","key":null},{"@type":"entry","key":null}]
+  GET /v1/products~take(2)~entries~just(key)        → [{"@type":"entry","key":null},{"@type":"entry","key":null}]
+  ```
+
+  `~entries~withAll` separates them the same way. The `null` on its own still does not prove the member is real —
+  that is [a different question](common-gotchas.md#39-a-null-in-a-response-does-not-prove-the-field-exists) — it
+  simply is not the situation here, because on the object side the keys come back with values in them.
 
 ---
 

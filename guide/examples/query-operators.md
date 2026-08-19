@@ -27,9 +27,11 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/receipts~last"
 # ~count - Count elements (NO parentheses!)
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/products~count"
 
-# ~distinct - Unique primitive values (NO parentheses!)
-# Use path navigation to extract a field, then ~distinct for unique values
-curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/products/status~distinct"
+# ~distinct - Unique values in a collection of scalars (NO parentheses!)
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/people/{key}/languages~distinct"
+
+# There is no way to project a member of a collection into a stream of scalars first:
+# products/status and products~map(status) are both a 404. Use ~distinctBy for objects.
 
 # ~distinctBy(field) - Unique objects by field
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/products~distinctBy(status)~take(10)"
@@ -180,13 +182,15 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/products/com.exam
 | `~first` | First element |
 | `~last` | Last element |
 | `~count` | Count elements |
-| `~distinct` | Unique primitive values (use after path navigation like `/status~distinct`) |
+| `~distinct` | Unique values in a collection of scalars (`languages~distinct`); for objects use `~distinctBy(member)` |
 | `~flat` | Flatten arrays |
 | `~typeless` | Remove @type |
 
-Empty parentheses on these are an error you will see (`~first()` is a `404`). The rule runs the other way for every
-operator that *takes* an argument — `~take`, `~where`, `~just`, `~order` and the rest — where leaving the parentheses
-off is a `200` that returns the operator instead of your data:
+Empty parentheses on these are a mistake, but not always one you will see: `~first()`, `~last()` and `~flat()` are a
+`404` and `~count()` a `500`, while `~distinct()` and `~typeless()` answer `200 null` over a collection and leave you
+hunting for an error that never arrives. The rule runs the other way for every operator that *takes* an argument —
+`~take`, `~where`, `~just`, `~order` and the rest — where leaving the parentheses off is a `200` that returns the
+operator instead of your data:
 
 ```bash
 # WRONG - 200, and the collection is gone
