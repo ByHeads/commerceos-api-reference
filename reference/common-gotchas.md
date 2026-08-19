@@ -503,18 +503,28 @@ GET /v1/products?limit=50&orderby=identifiers/key
 ```
 
 `name` is not a safe substitute either: the same name can exist per currency or per store. Compound sorting is not a
-workaround — an `orderby` listing more than one field is rejected with `400` once an `after` token is present.
+workaround — an `orderby` listing more than one field is a `400` whether or not an `after` token is present.
 
-Two related surprises in the same feature:
+**A sort field that is sometimes empty fails a second way, and it is worth checking for explicitly.** When the last
+item on a page has no value for the sort field, no next cursor can be minted, so the response carries
+`X-Has-More: true` with **no** `X-Cursor-Next`. A walk written as "repeat while `X-Has-More` is true" spins on a
+request it cannot advance; one written as "repeat while a cursor is present" stops mid-collection and reports success.
+Test for the cursor, and treat its absence while `X-Has-More` is `true` as an error. `identifiers/key` is unique *and*
+always populated, which is why it is the recommendation for both failures.
 
+Three related surprises in the same feature:
+
+- **`limit` is required to start a walk — it does not default to 100 on the first request.** With `orderby` alone you
+  get a `200` carrying the *whole* collection and no pagination headers at all, so there is no first page and nothing
+  to follow. The 100 default applies only once an `after` token is present. Send the same `limit` on every request.
 - **Streaming turns the walk off — and so does an export format.** With `Accept: application/json;stream=true` the body
   starts before the pagination headers could be computed, so `Link` / `X-Cursor-Next` / `X-Has-More` are never sent. The
   line-oriented formats (NDJSON, CSV, SQL) do not carry them either, streamed or buffered. An `after` token is still
   honored in every format, so the request succeeds and returns `limit` items — it just gives you nothing to continue
   from. Walk the pages with buffered JSON.
-- **A `fields` projection may omit the sort field.** The API fetches it internally to compute the cursor and strips it
-  back out, so `?orderby=identifiers/key&fields=name,status` paginates correctly and still returns only `name` and
-  `status`.
+- **A stored token cannot outlive a change of sort.** Replaying a token minted under `orderby=name` with
+  `orderby=price` — or with `:desc` flipped — is a `400`, not a silently wrong page. The natural client bug is exactly
+  this: a token kept in state and re-sent after the user changed the sort control.
 
 Full rules: [Pagination → Cursor pagination](pagination.md#cursor-pagination).
 

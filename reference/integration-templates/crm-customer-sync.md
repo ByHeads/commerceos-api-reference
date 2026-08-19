@@ -889,7 +889,9 @@ GET /v1/people~orderBy(fullName)~take(500)
 GET /v1/people~where(fullName>"LastNameFromPreviousPage")~orderBy(fullName)~take(500)
 ```
 
-> **Note**: Path members use `/` separators, not dots. For example, use `identifiers/key` not `identifiers.key`. However, `identifiers/key` is read-only and not ideal for pagination — prefer user-facing fields like `fullName` for cursors.
+> **Note**: Path members use `/` separators, not dots. For example, use `identifiers/key` not `identifiers.key`.
+>
+> **Sort on `identifiers/key` for a full walk, not on `fullName`.** The resume idiom above carries its position in the last value it saw, so it inherits the same two requirements as a [cursor walk](../pagination.md#requirements-and-notes): the sort field must be **unique** — two people sharing a `fullName` at a page boundary means one of them is skipped — and **always populated**, or the walk has nothing to resume from. `identifiers/key` satisfies both. Being read-only does not matter here; you are sorting on it, not writing it. Sort on a user-facing field only when the *order itself* is the point, and accept that such a walk can drop records.
 
 ---
 

@@ -67,7 +67,7 @@ GET /v1/products~orderBy(name)~skip(100)~take(50)
 ```
 
 Notes:
-- `~orderBy` accepts a single selector; add `:desc` for descending (`~orderBy(createdAt:desc)`).
+- `~orderBy` accepts a single selector; add `:desc` for descending (`~orderBy(createdAt:desc)`). More than one field is a `400` — see [Compound sorting](#requirements-and-notes).
 - Keep the sort consistent across pages to avoid duplicates or gaps when new records appear.
 - Stop paging when a response returns fewer than `take` items.
 - Put any `~where` filter **before** `~skip`/`~take`. Besides being the only order that gives the right answer, it lets the request stop scanning once the page is full — see [Limiters stop the scan early](operators.md#limiters-stop-the-scan-early).
@@ -91,11 +91,13 @@ Cursor pagination marks your position in a result set with an opaque token inste
 token encodes *where you left off* rather than *how many rows to skip*, pages stay stable when items are inserted or
 removed while you are walking the collection, and page cost does not grow as you go deeper.
 
-`orderby` is required. The cursor is passed back as the `after` query parameter.
+`limit` and `orderby` are both required on every request of a walk. The cursor is passed back as the `after` query
+parameter.
 
 ### Walking a collection
 
-**1. First request** — send `limit` and `orderby`, no `after`:
+**1. First request** — send `limit` **and** `orderby`, no `after`. Both are required: with `orderby` alone the
+response is the whole collection and carries no pagination headers at all, so there is nothing to walk from.
 
 ```bash
 GET /v1/products?limit=50&orderby=identifiers/key
@@ -105,11 +107,19 @@ GET /v1/products?limit=50&orderby=identifiers/key
 
 | Header | Description |
 |--------|-------------|
-| `Link` | RFC 8288 link with `rel="next"` pointing at the next page URL. Absent on the last page. |
-| `X-Cursor-Next` | The raw opaque token for the next page. Absent on the last page. |
+| `Link` | RFC 8288 link with `rel="next"` pointing at the next page URL. Absent when no next cursor could be minted. |
+| `X-Cursor-Next` | The raw opaque token for the next page. Absent when no next cursor could be minted. |
 | `X-Has-More` | `true` if more pages exist, `false` on the last page. |
 
 All three are listed in `Access-Control-Expose-Headers`, so browser clients can read them cross-origin.
+
+**`X-Has-More: true` with no `X-Cursor-Next` is a real state, and it means the walk stops here.** It is not the last
+page — more items exist — but the last item on the page you just received has no value for the sort field, so there is
+nothing to resume from. A walk written as "repeat while `X-Has-More` is true" spins on a request it cannot advance; one
+written as "repeat while a cursor is present" stops mid-collection and reports success. Loop on the cursor, and check
+the two headers together: no cursor while `X-Has-More` is `true` is an error, not the end. Sorting on a field that
+is always present — `identifiers/key` — avoids the state entirely, which is the same recommendation the uniqueness
+requirement below makes, for a second reason.
 
 **3. Follow the cursor** — pass the `X-Cursor-Next` value as `after` (or just request the `Link` URL):
 
@@ -117,7 +127,9 @@ All three are listed in `Access-Control-Expose-Headers`, so browser clients can 
 GET /v1/products?limit=50&orderby=identifiers/key&after=eyJ2IjoiV0lER0VULTAwMSIsImYiOiJpZGVudGlmaWVycy9rZXkiLCJkIjoiYXNjIn0=
 ```
 
-**4. Repeat** until `X-Has-More` is `false`.
+**4. Repeat** while `X-Cursor-Next` is present. `X-Has-More: false` is the normal end of the collection; a missing
+cursor while `X-Has-More` is still `true` is the stalled walk described above, and should be surfaced rather than
+treated as the end.
 
 Cursor pagination combines with the rest of the query pipeline — `~where` filters, `fields` projections and a
 `:desc` sort direction all work as usual, as long as every request in the walk uses the *same* query apart from `after`.
@@ -138,10 +150,25 @@ GET /v1/products?limit=50&orderby=status
 GET /v1/products?limit=50&orderby=identifiers/key
 ```
 
-`identifiers/key` is the safest choice. `name` is *not* guaranteed unique either — the same product name can exist per
-currency or per store — and low-cardinality fields such as `status` are never safe. Compound sorting is not a
-workaround: an `orderby` with more than one field is rejected with `400 Cursor pagination with compound sort not yet
-supported` as soon as an `after` token is present.
+`identifiers/key` is the safest choice, and being always populated it is also the field that avoids the
+[stalled-walk state](#walking-a-collection) above. `name` is *not* guaranteed unique either — the same product name can
+exist per currency or per store — and low-cardinality fields such as `status` are never safe.
+
+Compound sorting is not a workaround, and not just for pagination: **a multi-field `orderby` is rejected with a `400`
+whether or not you are paginating.** Two layers reach the same answer — `~orderBy` takes one selector, so
+`?orderby=status,name` on its own fails with `details` of `Invalid sort key 'status,name': field not found`, and with an
+`after` token present the cursor rewrite rejects it first with `Cursor pagination with compound sort not yet supported`.
+There is no first page whose `Link` could point at a request that then fails.
+
+**Sort values may contain anything — including `&`, `,` and `?`.** The token carries the last sort value into the next
+request, and it is escaped so that a value like `Black & Decker` or `Shirt, Blue` cannot rewrite the query it is sent
+with. Nothing about the sort field's *content* constrains a walk; only its uniqueness and its presence do.
+
+This was fixed recently, so it is worth naming: before the fix, such a value rewrote the request it was spliced into,
+and the next page came back empty with `X-Has-More: false` — a walk stopped mid-collection and reported success.
+Product names carrying a comma or an ampersand are routine, so anyone paginating on `name` was exposed to it. If you
+built a walk that avoids punctuation in the sort field, or sorts on a surrogate column to dodge it, that workaround
+still works and is simply no longer necessary.
 
 **The pagination headers require a buffered JSON response.** `Link`, `X-Cursor-Next` and `X-Has-More` are emitted only
 for `application/json` without `;stream=true`. A streamed body starts before the headers could be computed, and the
@@ -153,27 +180,47 @@ but with no next-cursor header there is nothing to continue from. **Walk the pag
 a page in the export format if you need the rows as NDJSON or CSV. See
 [`features/streaming.md`](../features/streaming.md).
 
-**`fields` may omit the sort field.** The API fetches the `orderby` field internally to compute the next cursor and
-strips it back out before responding, so a projection that excludes it still paginates correctly and still returns only
-the fields you asked for:
+**`fields` may omit the sort field.** The API fetches the `orderby` selector internally to compute the next cursor and
+strips it back out before responding, so a projection that excludes it still paginates correctly and the response
+contains exactly the fields you asked for:
 
 ```bash
 # Paginates fine; each item comes back with name and status only, no identifiers
 GET /v1/products?limit=50&orderby=identifiers/key&fields=name,status
 ```
 
-For a nested sort selector this applies to its first segment — sorting on `identifiers/key` while projecting
-`fields=name` fetches and then strips the whole `identifiers` object. If your projection already includes that field,
-nothing is added or removed.
+A nested sort selector is handled as a whole path, not as its first segment: `orderby=identifiers/key` with
+`fields=name` fetches and then removes `identifiers/key` specifically, pruning the `identifiers` object only because
+that injection was the sole thing in it. Ask for a sibling — `fields=identifiers/com.example.sku` — and the object
+comes back holding just that member. Nothing is added or removed at all when the projection already reaches the sort
+value, whether by naming it, by naming an ancestor (`fields=identifiers` covers `orderby=identifiers/key`), or through
+`fields=all`.
+
+**The one exception is a projection built on `default`.** `fields=default,gtin` with `orderby=name` returns `name` as
+well, even though you did not ask for it. Which members `default` covers is a property of the type rather than of your
+request, so the sort field is added and then left in place rather than risk deleting a member you were entitled to —
+one extra member beats silent data loss. Every other projection is returned exactly as requested.
 
 **Other notes:**
 
+- **`limit` is required to start a walk.** The first request emits pagination headers only when `orderby` *and* a
+  positive `limit` are both present. Without `limit` the response is the whole collection — not a page, and with
+  nothing to resume from. (`limit=0` is treated the same way, since a zero-item page has no last item to mint a cursor
+  from.) On an `after` request `limit` falls back to 100, but there is no reason to lean on that: send the same `limit`
+  on every request of a walk.
 - **`orderby` is required with `after`.** Omitting it returns a `400` whose `details` read `Cursor pagination requires
   'orderby' to be specified`. A malformed or truncated token also returns 400, with `details` of
   `Malformed cursor token: …`. Both are ordinary error bodies — `@type` of `bad request`, framed to match your `Accept`
   header like any other error ([Error response framing](overview.md#error-response-framing)).
-- **`limit` defaults to 100** when omitted. Send it explicitly so page sizes are predictable.
+- **The `after` token must match the `orderby` it is sent with.** A token minted under `orderby=name` and replayed with
+  `orderby=price`, or with `:desc` flipped, is a `400` — `Cursor token does not match 'orderby': the token was issued
+  for 'name:asc' but the request asks for 'price:asc'`. This is worth designing around rather than discovering: the
+  natural client bug is a stored token replayed after the user changed the sort control, and the alternative to the
+  error is a walk that filters on one field while sorting by another.
+- **Tokens longer than 4096 characters are rejected as malformed.** A cursor holds one sort value, so nothing this API
+  mints comes close; a token that long did not come from a response header.
 - **`offset` is ignored** when `after` is present — use one pagination style per request, not both.
+- **A page holds at most `limit` items**, and exactly `limit` on every page but the last.
 - **The token is opaque.** Do not parse, edit or construct it; always use the value from the response headers.
 - **Cursors are stateless.** They encode a position, not a server-side session, and stay valid indefinitely as long as
   the sort field still exists.
@@ -238,8 +285,9 @@ Invalid timestamps return a 404 error response (not an empty array).
 - **Filter before you limit.** `~where(...)~take(N)` stops scanning at the Nth match; `~take(N)~where(...)` truncates first and then filters, which is both slower to reason about and usually empty. An `~orderBy` between the two removes the benefit, because the sort must read every row first ([details](operators.md#limiters-stop-the-scan-early)).
 - Sort by an indexed, unique-ish field (timestamps or identifiers) to keep page boundaries stable.
 - **Prefer a cursor over deep offsets** when exporting a whole collection: `?limit=500&orderby=identifiers/key` and then
-  follow `X-Cursor-Next`. Remember the sort field must be unique, and that the walk has to be buffered JSON — a streamed
-  response, or any NDJSON/CSV/SQL response, never returns the cursor headers ([details](#cursor-pagination)).
+  follow `X-Cursor-Next`. Remember that `limit` is required on every request of the walk, that the sort field must be
+  unique *and* always populated, and that the walk has to be buffered JSON — a streamed response, or any NDJSON/CSV/SQL
+  response, never returns the cursor headers ([details](#cursor-pagination)).
 - **Use `/after/{timestamp}` and `/before/{timestamp}` for any time-sliced export** — they are the recommended pattern on every collection that supports them ([list](operators.md#time-relative-queries-before-and-after)). They use the collection's time index, stay linear in returned rows, and produce stable cursor boundaries between pages. `~where(timestamp>...)` works but is a predicate scan that gets slower as page offsets grow; reach for it only when you need to combine the time filter with a non-time condition.
 
 ## Copy-paste recipes
@@ -258,7 +306,8 @@ GET /v1/people?orderby=name&limit=100&offset=100
 GET /v1/trade-orders~where(timestamp>=2025-01-01)~where(timestamp<2025-02-01)~orderBy(timestamp:desc)~take(200)
 GET /v1/trade-orders~where(timestamp>=2025-01-01)~where(timestamp<2025-02-01)~orderBy(timestamp:desc)~skip(200)~take(200)
 
-# Full catalog sync (cursor) — buffered requests only; repeat while X-Has-More is true
+# Full catalog sync (cursor) — buffered requests only; repeat while X-Cursor-Next is present.
+# Send the same limit every time; X-Has-More: true with no cursor means the walk stalled.
 GET /v1/products?limit=500&orderby=identifiers/key
 GET /v1/products?limit=500&orderby=identifiers/key&after=<X-Cursor-Next from the previous response>
 ```

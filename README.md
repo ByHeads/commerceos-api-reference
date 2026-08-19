@@ -178,7 +178,7 @@ PUT /v1/products
 - Place/stock place `parent` setters accept only database keys (`identifiers.key`), not external identifiers; fetch the key first via `/identifiers/key` before assigning parents.
 - `fields=a,b` uses projection (`~just`/`~simpleJust`) unless `fields=all/none/default`; use `~with(...)` when you need expansion semantics.
 - Operator chains run in URL order; rearranging operators can change results, so keep them in a logical sequence.
-- `~orderBy` accepts a single selector; commas are treated as literal selector characters, so multi-field ordering is not supported.
+- `~orderBy` accepts a single selector; multi-field ordering is not supported and is rejected with a `400`, whether or not you are paginating.
 - `/after`/`/before` time-relative endpoints accept Date-parsable timestamps and the relative `-=`/`+=` shorthand, where the leading number is **hours** — `-=2000` is ~83 days, not 2000 days.
 - Operator chains are literal: `~where(...)~take(N)` stops scanning at the Nth match, while `~take(N)~where(...)` truncates first and then filters (usually returning nothing). Filter before you limit.
 - Product category/group hierarchies do not accept a `parent` field or `/children` endpoints; use `childCategories` on the parent category and `parentGroup` + `members` on product group nodes.

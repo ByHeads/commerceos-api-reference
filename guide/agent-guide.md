@@ -161,16 +161,21 @@ See [`reference/operators.md`](../reference/operators.md#a-skip-is-only-cheap-wh
 
 **Using a Cursor (for whole-collection walks):**
 ```bash
-# First page - orderby is required, and must be a field with unique values
+# First page - BOTH limit and orderby are required, and the sort field must have
+# unique values that are always populated. Omit limit and you get the whole
+# collection with no pagination headers, so the walk can never start.
 curl -u ":banana" -D - "https://example.app.heads.com/api/v1/products?limit=100&orderby=identifiers/key"
 
-# Follow X-Cursor-Next from the response headers; repeat while X-Has-More is true
+# Follow X-Cursor-Next from the response headers; send the same limit every time
 curl -u ":banana" -D - "https://example.app.heads.com/api/v1/products?limit=100&orderby=identifiers/key&after=<token>"
 ```
 
-Cursor pages stay stable while the collection is being written to, and don't slow down as you go deeper. Two things to
-watch: sorting on a non-unique field (e.g. `status`) silently skips items, and streamed responses never emit the cursor
-headers — see [`reference/pagination.md`](../reference/pagination.md#cursor-pagination).
+Cursor pages stay stable while the collection is being written to, and don't slow down as you go deeper. Loop on the
+presence of `X-Cursor-Next`, not on `X-Has-More` — `X-Has-More: true` with no cursor header means the walk *cannot*
+continue (the last item on the page has no sort value), and it is an error rather than the end of the collection.
+Three more things to watch: `limit` is required on every request, sorting on a non-unique field (e.g. `status`)
+silently skips items, and streamed responses never emit the cursor headers — see
+[`reference/pagination.md`](../reference/pagination.md#cursor-pagination).
 
 **Important:** There is no `totalCount` in list responses. To count items:
 ```bash

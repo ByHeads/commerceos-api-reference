@@ -204,7 +204,7 @@ GET /v1/trade-orders~orderBy(customer/name)
 **Query param equivalent:** `?orderby=name` or `?orderby=name:desc`
 
 **Notes:**
-- `~orderBy` accepts a single selector; commas are treated as part of the selector string
+- `~orderBy` accepts a single selector. A comma does not start a second sort key — it becomes part of the selector, which then resolves to nothing, so `~orderBy(status,name)` (or `?orderby=status,name`) is a `400` with `details` of `Invalid sort key 'status,name': field not found`. This holds whether or not you are paginating; with a cursor `after` token present the request is rejected one layer earlier, with `Cursor pagination with compound sort not yet supported`
 - Nested paths supported: `~orderBy(customer/name)`
 - Collects all items in memory before sorting — not suitable for very large collections
 - **Blocks the short-circuit.** A `~take`/`~first` after a sort still waits for the whole collection to be sorted; that is inherent, since the top N cannot be known without seeing every row. If you need *any* N rows rather than the *first* N, leave `~orderBy` out and the request stops early ([details](operators.md#limiters-stop-the-scan-early)).
