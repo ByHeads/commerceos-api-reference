@@ -13,6 +13,8 @@ manufacturerRelations, labels, timeline, stockRoots, assortmentOwner,
 assortmentRoots, assortment, preferredCurrency
 ```
 
+`customerRelations` and `supplierRelations` list established trade relationships only — the same objects `/v1/trade-relationships` returns, filtered to this agent's role. An agent configured to trade under a parent has none of its own; the relationship belongs to the parent. See [Resource Patterns → What the agent sub-collections contain](resource-patterns.md#what-the-agent-sub-collections-contain).
+
 ## Person-specific Members
 
 ```

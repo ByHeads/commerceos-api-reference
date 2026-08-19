@@ -246,6 +246,10 @@ Item amounts are derived from product prices; `unitAmountInclVat`, `totalAmount`
 
 > **Important:** Both `items` and `sellers` must be non-empty arrays.
 
+**The order establishes the trade relationship.** If no relationship exists between `customer` and `supplier`, posting the order creates one — you do not need to `POST /v1/trade-relationships` first, and a later order for the same pair reuses it.
+
+Which agents the relationship ends up naming is not always the two you sent. Where an agent is configured to trade under a parent — a store buying on its company's account — the relationship is attached to that parent, so it is listed under the parent's `supplierRelations` and not the store's. See [Resource Patterns → Relationships created implicitly by a trade order](../resource-patterns.md#relationships-created-implicitly-by-a-trade-order) for the resolution rules and where the owners are configured.
+
 ### Purchase Order
 
 In a purchase order, your company is the customer:

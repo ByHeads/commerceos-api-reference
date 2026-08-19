@@ -774,6 +774,58 @@ GET /companies/{id}/supplierRelations
 
 Use `~with` to include non-essential fields in the response.
 
+### What the Agent Sub-Collections Contain
+
+Both sub-collections list **established relationships only** — the ones created explicitly through `POST /v1/trade-relationships`, or implicitly by a trade order (see below). Every row is the same object the top-level collection returns, so the two views reconcile:
+
+```bash
+# These return the same set, in the same shape
+GET /v1/agents/com.example.supplierId=SUPPLIER-A/customerRelations
+GET /v1/trade-relationships~where(supplierAgent/identifiers/key=<that agent's key>)
+```
+
+An organizational child that trades under a parent's relationship — a chain store ordering against the parent company's account with a supplier — does **not** get a row of its own. The relationship belongs to the parent and appears in the *parent's* `supplierRelations`, not the store's. To find which relationship a store trades under, resolve its owner first; see [Relationships created implicitly by a trade order](#relationships-created-implicitly-by-a-trade-order).
+
+> **Changed 2026-08-19 — these lists got shorter for some agents.** Both sub-collections previously carried one extra row per organizational child of this kind, and the row had nothing behind it: no `customerAgent`, no `supplierAgent`, no `customerId` / `supplierId`, no status and no validity span. Under the default `skipNulls` those members are omitted rather than sent as `null`, so what arrived was a stub carrying little beyond `@type` and `identifiers` — and it appeared in neither the top-level `/v1/trade-relationships` collection nor the counts taken from it, which is why the two views disagreed.
+>
+> Those rows are gone. An agent that had them now reports a **smaller `~count`** and a shorter list, so expect the number to move once — nothing real was removed. A client-side filter that skipped rows with no `supplierAgent` still works and is simply no longer necessary.
+
+### Relationships Created Implicitly by a Trade Order
+
+`POST /v1/trade-orders` establishes the trade relationship between the order's `customer` and `supplier` when one does not already exist. There is no need to `POST /v1/trade-relationships` first.
+
+**Both parties are resolved through the ownership hierarchy before the relationship is created.** An agent may be configured to trade under another agent — a store buying on its parent company's account — and the relationship is attached to that owner, not to the agent named on the order:
+
+| Order field | Relationship member it lands on |
+|-------------|--------------------------------|
+| `customer` | The customer's **supplier owner** (the agent that acts as customer towards suppliers), or the customer itself when none is configured |
+| `supplier` | The supplier's **customer owner** (the agent that acts as supplier towards customers), or the supplier itself when none is configured |
+
+The root-level owners are readable and writable at `GET /v1/config/root-trade-relationship` (`supplierOwner`, `customerOwner`); both are unset by default, in which case every agent owns its own relationships and the order's two agents are used verbatim.
+
+```bash
+# STORE-01 is configured to buy under COMPANY. Post an order for the store:
+POST /v1/trade-orders
+{
+  "identifiers": {"com.example.orderId": "PO-77"},
+  "customer": {"identifiers": {"com.example.storeId": "STORE-01"}},
+  "supplier": {"identifiers": {"com.example.supplierId": "SUPPLIER-A"}},
+  "sellers": [{"identifiers": {"com.example.supplierId": "SUPPLIER-A"}}],
+  "currency": {"identifiers": {"currencyCode": "SEK"}},
+  "items": [{"product": {"identifiers": {"com.example.sku": "PROD-001"}}, "quantity": 10}]
+}
+
+# The relationship carries COMPANY as its customerAgent, so it is listed here:
+GET /v1/companies/com.example.companyId=COMPANY/supplierRelations
+
+# ...and not here:
+GET /v1/stores/com.example.storeId=STORE-01/supplierRelations   # empty
+```
+
+A second order for the same pair reuses that relationship rather than creating another.
+
+**Explicit creation does not resolve owners.** `POST /v1/trade-relationships` uses exactly the two agents named in the payload. If either agent has an owner configured, a relationship created directly against the child is not the one a trade order will find or use — name the owner in the payload when the setup has one.
+
 ### Time-Relative Queries on Agent Sub-Collections
 
 Both `customerRelations` and `supplierRelations` accept the same `/before/` and `/after/` path filters as the global `/v1/trade-relationships` collection, scoped to the parent agent:

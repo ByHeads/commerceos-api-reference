@@ -86,7 +86,7 @@ Agents represent people, companies, or stores:
 - `nationality`, `languages`, `vatId`
 - `addresses` - Nested object with `main`, `home`, `invoice`, `delivery`, `visiting`
 - `contactMethods` - Phone numbers, email addresses
-- `customerRelations`, `supplierRelations`, `manufacturerRelations` - Trade relationships
+- `customerRelations`, `supplierRelations`, `manufacturerRelations` - Trade relationships. Established relationships only, so they reconcile with `/v1/trade-relationships`; an agent that trades under a parent has none of its own
 - `timeline` - List of receipts where this agent is the buyer
 
 ### Product Nodes

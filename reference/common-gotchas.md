@@ -823,6 +823,34 @@ Full rules: [Error response framing](overview.md#error-response-framing).
 
 ---
 
+## 37. A Trade Order Can Attach Its Relationship to an Agent You Did Not Name
+
+Posting a trade order establishes the trade relationship between its `customer` and `supplier` if none exists. Where an agent is configured to trade under a parent — a chain store buying on its company's account — **the relationship is attached to that parent**, not to the agent named on the order.
+
+```bash
+# Order posted for the store...
+POST /v1/trade-orders
+{ "customer": {"identifiers": {"com.example.storeId": "STORE-01"}},
+  "supplier": {"identifiers": {"com.example.supplierId": "SUPPLIER-A"}}, "...": "..." }
+
+# WRONG - looking for the relationship under the agent you sent
+GET /v1/stores/com.example.storeId=STORE-01/supplierRelations      # empty
+
+# RIGHT - it belongs to the store's owner
+GET /v1/companies/com.example.companyId=COMPANY/supplierRelations
+```
+
+The failure is quiet: both requests answer `200`, and an empty collection reads exactly like "this store has no suppliers yet". On a flat setup with no owners configured the two agents *are* used verbatim, so a test tenant can make the wrong assumption look correct.
+
+Two related points:
+
+- **Explicit creation does not resolve owners.** `POST /v1/trade-relationships` uses exactly the two agents in the payload. Create one against the store and a trade order will neither find nor use it — you end up with a relationship nobody trades on. Name the owner instead.
+- **The child never gets its own row.** `customerRelations` / `supplierRelations` list established relationships only, so a store trading under its parent shows an empty list by design, not a missing one.
+
+Full rules: [Resource Patterns → Relationships created implicitly by a trade order](resource-patterns.md#relationships-created-implicitly-by-a-trade-order).
+
+---
+
 ## API Response Behaviors
 
 ### Empty Collection Results

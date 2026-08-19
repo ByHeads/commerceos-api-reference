@@ -585,6 +585,10 @@ GET /v1/companies/com.example.companyId=OUR-COMPANY/supplierRelations
 GET /v1/people/com.example.customerId=CUST-001/supplierRelations
 ```
 
+The agent sub-collections and the top-level collection are two views of the same set: every row in `customerRelations` / `supplierRelations` is a relationship that also appears in `/v1/trade-relationships`, so counts taken from either side reconcile.
+
+An agent configured to trade under a parent — a store buying on its company's account — has no relationship of its own. The relationship belongs to the parent and is listed there, and a trade order posted for the store uses it. See [Resource Patterns → What the agent sub-collections contain](../resource-patterns.md#what-the-agent-sub-collections-contain) and [→ Relationships created implicitly by a trade order](../resource-patterns.md#relationships-created-implicitly-by-a-trade-order).
+
 ### Time-Relative Queries on Agent Relationships
 
 Both `customerRelations` and `supplierRelations` support the same `/before/` and `/after/` path filters as the top-level `/v1/trade-relationships` collection, scoped to the parent agent and their role:

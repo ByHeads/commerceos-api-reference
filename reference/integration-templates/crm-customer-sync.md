@@ -372,6 +372,8 @@ Content-Type: application/json
 }
 ```
 
+> **Name the agent that actually owns the relationship.** `POST /v1/trade-relationships` uses exactly the two agents in the payload — it does not resolve either of them to a parent. In a chain or franchise setup where individual stores trade on the parent company's account, `supplierAgent` must be that parent; a relationship created against a store is not the one a trade order will find, and you end up maintaining a record nobody trades on. See [Resource Patterns → Relationships created implicitly by a trade order](../resource-patterns.md#relationships-created-implicitly-by-a-trade-order).
+
 ### Step 5: Assign Customer Groups
 
 Customer groups enable group-based pricing and segmentation. Groups are assigned via trade relationships (the supplier-customer link), not directly on agents:

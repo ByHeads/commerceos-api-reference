@@ -236,3 +236,19 @@ For customer group management (creating groups, assigning customers, using group
 - [Working with Customers — Customer Groups](../../reference/working-with/customers.md#customer-groups)
 - [Configuration — Customer Groups](./configuration.md#customer-groups)
 - [Discount Rules — Buyer Conditions](./discount-rules.md#customer-groups-and-buyer-conditions)
+
+An agent's `customerRelations` / `supplierRelations` list established trade relationships only, and reconcile with the top-level collection:
+
+```bash
+# Who this company sells to, and who it buys from
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/companies/com.heads.seedID=ourcompany/customerRelations~take(50)"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/companies/com.heads.seedID=ourcompany/supplierRelations~take(50)"
+
+# Count them
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/companies/com.heads.seedID=ourcompany/customerRelations~count"
+
+# Expand both parties on each row
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/companies/com.heads.seedID=ourcompany/supplierRelations~with(supplierAgent,customerAgent)~take(20)"
+```
+
+A store configured to buy on its parent company's account has **no** supplier relationships of its own — the relationship belongs to the parent, and a trade order posted for the store uses it. An empty `supplierRelations` on such a store is expected, not a missing record. See [Resource Patterns — Relationships created implicitly by a trade order](../../reference/resource-patterns.md#relationships-created-implicitly-by-a-trade-order).
