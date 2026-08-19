@@ -286,11 +286,17 @@ Standard query parameters are translated to operators:
 | `fields=all` | `~withAll` | `?fields=all` → `~withAll` |
 | `orderby=field` | `~orderBy(field)` | `?orderby=name` → `~orderBy(name)` |
 | `orderby=field:desc` | `~orderBy(field:desc)` | `?orderby=name:desc` → `~orderBy(name:desc)` |
-| `format=json` | Accept: application/json | Content type selection |
-| `format=ndjson` | Accept: application/x-ndjson | Streaming output |
-| `format=csv` | Accept: text/csv | Tabular export |
-| `format=txt` | Accept: text/plain | Plain text output |
-| `format=html` | Accept: text/html | HTML-wrapped output |
+
+**`format=` is reserved and not implemented.** It is not a way to choose a response format, and no value works — `?format=json`, `ndjson`, `csv`, `txt`, `html` and anything else are all **404**. Being reserved is what makes it a 404 rather than a filter: an unrecognised parameter falls through to a `~where` clause (see below), while `format=` is rewritten to `~format(...)`, an operator that does not exist. The rewrite is visible in the 404's own `url` field, which is the only thing distinguishing it from any other unknown-operator 404:
+
+```jsonc
+GET /v1/products?format=csv&limit=1
+→ 404 {"@type": "not found",
+       "error": "The requested resource was not found.",
+       "url": "/v1/products~format(csv)~take(1)"}   // ← the rewrite
+```
+
+Choose a response format with the `Accept` header instead — see [Response Formats](overview.md#response-formats-accept-header).
 
 **Fields edge cases:** `fields=none` maps to `~just()` with empty args. `fields=all,extra` emits `~withAll` and `~with(extra)`. `fields=default` is a no-op.
 
@@ -386,7 +392,7 @@ The third is a matter of where you write the projection, and it is the one that 
 GET /v1/people~skip(1000)~take(10)~just(name)
 ```
 
-**`?fields=` cannot express that order, so it always pays the full cost.** `?offset=1000&limit=10` on its own is the cheap shape — the two parameters normalize to `~skip(1000)~take(10)`. But `?fields=name` normalizes to a `~just(name)` placed *ahead* of the skip under the [canonical order](#query-parameter-normalization), and there is no query-parameter spelling that puts it after. `format=` sits ahead of the skip in that same order and costs the win too, as do `orderby=` and any filter parameter (`?status=Active`). If you want a projected page at offset cost, write the operators by hand:
+**`?fields=` cannot express that order, so it always pays the full cost.** `?offset=1000&limit=10` on its own is the cheap shape — the two parameters normalize to `~skip(1000)~take(10)`. But `?fields=name` normalizes to a `~just(name)` placed *ahead* of the skip under the [canonical order](#query-parameter-normalization), and there is no query-parameter spelling that puts it after. `orderby=` and any filter parameter (`?status=Active`) sit ahead of the skip in that same order and cost the win too. If you want a projected page at offset cost, write the operators by hand:
 
 | Request | Cost |
 |---------|------|

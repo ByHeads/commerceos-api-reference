@@ -662,7 +662,7 @@ GET /v1/prices?orderby=amount&limit=100
 GET /v1/prices?orderby=amount&offset=100&limit=100
 ```
 
-> **Note:** You can mix operators and query parameters. When both are present, the API normalizes them in this order: `format` -> `fields` -> `where` -> `orderBy` -> `skip` -> `take` -> `simpleJust`.
+> **Note:** You can mix operators and query parameters. When both are present, the API normalizes them in this order: `format` -> `where` -> `orderBy` -> `fields` -> `skip` -> `take` -> `simpleJust`.
 
 ### Projections
 
@@ -995,7 +995,7 @@ POST /v1/prices
    GET /v1/prices?orderby=amount&limit=10
    GET /v1/prices~orderBy(amount)?limit=10
    ```
-   When mixed, the API normalizes in this order: `format` -> `fields` -> `where` -> `orderBy` -> `skip` -> `take` -> `simpleJust`.
+   When mixed, the API normalizes in this order: `format` -> `where` -> `orderBy` -> `fields` -> `skip` -> `take` -> `simpleJust`.
 
 5. **Namespaced identifiers required:**
    ```bash

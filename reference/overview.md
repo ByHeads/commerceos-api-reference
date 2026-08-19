@@ -297,10 +297,17 @@ A `POST`, `PATCH` or `PUT` with an **array** body is committed in chunks of 200 
 | `application/json` | `json` | Default, buffered response |
 | `application/x-ndjson` | `ndjson` | Streaming, line-delimited |
 | `text/csv` | - | Tabular export |
-| `text/plain` | - | Plain text output |
-| `text/html` | - | HTML-wrapped output |
+| `text/plain` | - | A single text value, unquoted (see below) |
+| `text/html` | - | A single text value in a minimal HTML document (see below) |
 | `application/sql` | `sql` | SQL INSERT/UPDATE/DELETE statements (requires mapped type output) |
 | `application/vnd.ms-sqlserver.csv` | - | SQL Server CSV format for bulk import (requires mapped type output) |
+
+**`text/plain` and `text/html` serve one text value, not a document.** They apply to a request that resolves to a single text value — a member such as `/v1/products/{key}/name` — and return it with no JSON quoting, `text/html` wrapping it in a minimal HTML document. Anything else is a **406**, including a whole object, a collection, and a numeric value such as `~count`. A member the record leaves empty is a `204`. If you want a whole object or collection as text, `text/csv` is the format that takes one.
+
+```bash
+curl -u ":MySecretKey" -H "Accept: text/plain" example.app.heads.com/api/v1/products/{key}/name  # 200 → 1 kr
+curl -u ":MySecretKey" -H "Accept: text/plain" example.app.heads.com/api/v1/products?limit=1     # 406
+```
 
 **Default behavior:** If no Accept header is provided or `*/*` is used, `application/json` is returned.
 

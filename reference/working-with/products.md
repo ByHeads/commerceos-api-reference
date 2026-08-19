@@ -794,7 +794,7 @@ GET /v1/products?orderby=name&limit=100
 GET /v1/products?orderby=name&offset=100&limit=100
 ```
 
-> **Note:** You can mix operators and query parameters. When mixed, they are normalized in this order: `format` -> `fields` -> `where` -> `orderBy` -> `skip` -> `take` -> `simpleJust`. For example, `~orderBy(name)?limit=10` is valid and normalizes to `~orderBy(name)~take(10)`.
+> **Note:** You can mix operators and query parameters. When mixed, they are normalized in this order: `format` -> `where` -> `orderBy` -> `fields` -> `skip` -> `take` -> `simpleJust`. For example, `~orderBy(name)?limit=10` is valid and normalizes to `~orderBy(name)~take(10)`.
 
 ### Projections
 
@@ -1137,7 +1137,7 @@ GET /v1/trade-orders/com.example.orderId=ORD-2024-001~with(items)
    # Valid - mixing is allowed with canonical normalization
    GET /v1/products~orderBy(name)?limit=10
 
-   # Normalization order: format -> fields -> where -> orderBy -> skip -> take -> simpleJust
+   # Normalization order: format -> where -> orderBy -> fields -> skip -> take -> simpleJust
    # The above normalizes to: ~orderBy(name)~take(10)
 
    # Also valid
