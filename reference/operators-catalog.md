@@ -93,6 +93,10 @@ GET /v1/products~just(name,status)
 - Use for strict whitelisting of fields
 - `~just()` with empty args returns minimal object
 - A name the resource does not declare is projected as `null` rather than rejected — see the [`~with` note](#withselectors)
+- It is not interchangeable with `?fields=` on a [cursor walk](pagination.md#requirements-and-notes): a
+  `fields=` list has the sort value added to it behind the scenes, a `~just` list is taken as written. Project the
+  `orderby` selector's own path — `~just(name,identifiers)` alongside `orderby=identifiers/key` — or no cursor is
+  minted and the walk never starts
 
 ---
 

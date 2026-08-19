@@ -522,13 +522,14 @@ request it cannot advance; one written as "repeat while a cursor is present" sto
 Test for the cursor, and treat its absence while `X-Has-More` is `true` as an error. `identifiers/key` is unique *and*
 always populated, which is why it is the recommendation for both failures.
 
-**Sorting on `identifiers/key` costs you one thing: you cannot project it away.** As of 2026-08-19, a nested sort
-selector combined with a `fields=` projection that does not include the parent object lands in exactly the no-cursor
-state above — on the *first* request, so the walk never starts. Project the parent (`fields=name,identifiers`) or drop
-the projection; `fields=all` and omitting `fields` are fine too. Switching to the path-operator form does not help —
-`~just(name)` stalls the walk exactly like `fields=name`. A flat sort field has no such restriction. The tell, without
-reading the headers: `identifiers` comes back as a bare key string instead of an object. See
-[Cursor pagination](pagination.md#requirements-and-notes).
+**A `~just(...)` projection can land you in that same no-cursor state on the first request, where a `fields=` one
+cannot.** A `fields=` parameter can be as narrow as you like, whatever you sort on — `fields=name` alongside
+`orderby=identifiers/key` walks to the end of the collection, and so does `fields=none`, because the sort value is
+fetched under a name of its own and removed again. Nothing is injected into a path-operator projection, so there the
+`orderby` selector has to resolve against what you projected: `~just(name)` with `orderby=identifiers/key` never starts
+the walk, while `~just(name,identifiers)` — keeping the parent object — completes it. An alias does not count
+(`~just(name,k:identifiers/key)` carries the value under the wrong name and still stalls). Prefer `fields=` on a
+request you intend to walk. See [Cursor pagination](pagination.md#requirements-and-notes).
 
 Three related surprises in the same feature:
 

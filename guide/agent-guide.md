@@ -175,10 +175,8 @@ presence of `X-Cursor-Next`, not on `X-Has-More` — `X-Has-More: true` with no 
 continue, and it is an error rather than the end of the collection. Five more things to watch: `limit` is required on
 every request, sorting on a non-unique field (e.g. `status`) silently skips items, a sort field holding a list, an
 object or a boolean is a `400` on the first request (sort on `identifiers/key`, never on `identifiers`), streamed
-responses never emit the cursor headers, and alongside a nested sort selector like `identifiers/key` a `fields=`
-projection narrower than the
-parent object currently stops the cursor being minted at all — project the parent (`fields=name,identifiers`) or drop
-the projection. See
+responses never emit the cursor headers, and a `fields=` projection can be as narrow as you like — while a
+`~just(...)` one has to keep the sort value itself, so prefer `fields=` on a request you intend to paginate. See
 [`reference/pagination.md`](../reference/pagination.md#cursor-pagination).
 
 **Important:** There is no `totalCount` in list responses. To count items:

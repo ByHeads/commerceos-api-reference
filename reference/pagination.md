@@ -237,9 +237,9 @@ token — but with no next-cursor header there is nothing to continue from. **Wa
 re-request a page in the export format if you need the rows as NDJSON or CSV. See
 [`features/streaming.md`](../features/streaming.md).
 
-**`fields` may omit the sort field, when the sort field is a flat member.** The API fetches the `orderby` selector
-internally to compute the next cursor and strips it back out before responding, so a projection that excludes it still
-paginates correctly and the response contains exactly the fields you asked for:
+**`fields` may omit the sort field.** The API fetches the `orderby` selector internally to compute the next cursor and
+removes it again before responding, so a projection that excludes it still paginates correctly and the response
+contains exactly the fields you asked for:
 
 ```bash
 # Paginates fine; each item comes back with status only, no name
@@ -249,37 +249,44 @@ GET /v1/products?limit=50&orderby=name&fields=status
 Naming the sort field yourself (`fields=name,status`) changes nothing — it is already there, so nothing is added and
 nothing is stripped.
 
-> **Projecting alongside a nested sort selector (as of 2026-08-19).** While walking with a nested selector such as
-> `orderby=identifiers/key`, **project the parent object — `fields=name,identifiers` — or drop the projection
-> entirely.** A narrower projection currently returns `X-Has-More: true` with no `X-Cursor-Next`, so the walk cannot
-> start at all — not on a later page, on the *first* request. Projecting the parent costs one extra object per item;
-> the alternative is an export that never begins.
+**A nested sort selector is no different.** Walking on `orderby=identifiers/key` places no constraint on the shape of
+what you project — the sort value is fetched under a name of its own and removed again, so the projection never has to
+reach it. `fields=name`, `fields=none`, the sort path itself, a sibling identifier and `fields=default` all mint a
+cursor and walk to the end of the collection:
 
-The stall covers every projection that does not reach the parent, including the one that names the sort path exactly:
-
-| With `orderby=identifiers/key` | Walk starts? | Response |
-|---|---|---|
-| `fields=name,identifiers` — names the parent | **yes** | exactly as requested |
-| `fields=all`, or no `fields=` at all | **yes** | exactly as requested |
-| `fields=name`, `fields=name,status`, `fields=none` | no | `identifiers` collapses to a bare key string |
-| `fields=identifiers/key` — the exact sort path | no | same |
-| `fields=identifiers/com.example.sku` — a sibling | no | `identifiers` is the bare key string, under the member name you asked to hold a sku |
-| `fields=default`, `fields=default,gtin` | no | bare key string |
-| a path-operator projection, `~just(name)` | no | `~just` is not a way around it |
-
-One visible symptom lets you recognise the state without reading the headers: `identifiers` comes back as a **bare
-string holding the database key** instead of the object you would otherwise get.
-
-```json
-{"@type":"product","name":"501 Original Jeans W28 L36 Stonewash","identifiers":"0239ada480742fd8d2b8b31367cb7d18"}
+```bash
+# Walks to completion; each item comes back with name only
+GET /v1/products?limit=25&orderby=identifiers/key&fields=name
 ```
 
-**One exception, and it applies to a flat sort field only: a projection built on `default`.** `fields=default,gtin`
-with `orderby=name` returns `name` as well, even though you did not ask for it. Which members `default` covers is a
-property of the type rather than of your request, so the sort field is added and then left in place rather than risk
-deleting a member you were entitled to — one extra member beats silent data loss. Every other projection over a flat
-sort field is returned exactly as requested. With a *nested* selector `default` does not get this treatment; it stalls
-like the rest.
+Two response shapes are worth knowing in advance, neither of them a sign of trouble. Naming a **nested path** in
+`fields=` gives you the value at the end of that path under the name of its first segment, rather than the object
+containing it — so `fields=identifiers/com.example.sku` returns `"identifiers": "<your sku>"`, and
+`fields=identifiers/key` returns the database key under that same name. That is how a nested projection renders
+whether or not you are paginating. And `fields=default` returns `identifiers` as a **complete object**, for the reason
+given under the `default` exception below.
+
+> **A path-operator projection must keep the sort value itself.** Nothing is injected into a `~just(...)` list — it is
+> taken as written — so the cursor is minted only if the `orderby` selector still resolves against what you projected.
+> `~just(name)` alongside `orderby=identifiers/key` returns `X-Has-More: true` with no `X-Cursor-Next` and the walk
+> never starts; `~just(name,identifiers)`, which keeps the parent object, walks to the end of the collection. The same
+> rule with a flat sort field: `~just(name)` walks under `orderby=name` and stalls under `orderby=status`.
+>
+> It has to be the selector's own path, not merely its value. An alias carries the value into the response under a
+> different name and still stalls (`~just(name,k:identifiers/key)`), and projecting a nested path onto its first
+> segment leaves the selector with nothing to resolve through, which is a `400`
+> (`~just(name,identifiers/key)` → `Invalid sort key 'identifiers/key': field not found`). A `fields=` parameter has
+> none of this to think about — it is the simpler choice on a request you intend to walk.
+
+**One exception: a projection built on `default`.** `fields=default` on `/v1/stores` alongside
+`orderby=organizationNumber` returns `organizationNumber` as well, even though the default representation does not
+cover it. Which members `default` covers is a property of the type rather than of your request, so the sort field is
+added and then left in place rather than risk deleting a member you were entitled to — one extra member beats silent
+data loss. Every other projection is returned exactly as requested.
+
+What gets added is the **root** of the sort selector, not the leaf. For a flat member the two are the same thing. For a
+nested selector such as `identifiers/key` the root is `identifiers`, so `fields=default` comes back carrying the whole
+`identifiers` object rather than the key on its own.
 
 **Other notes:**
 

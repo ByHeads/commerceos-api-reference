@@ -895,7 +895,7 @@ GET /v1/people~where(identifiers/key>"<last key>")~orderBy(identifiers/key)~take
 >
 > On `people` the presence half is easy to underestimate, because a person with neither a `givenName` nor a `familyName` has no `fullName` at all. Such a record has nothing for the walk to resume from, so the page it ends on comes back with no continuation and the sync reports success part-way through the collection. Nothing about the earlier pages hints at it, which is why the requirement is worth honouring up front rather than testing for — and why `identifiers/key` is the recommendation even on a dataset where every person happens to be named today.
 >
-> **If you switch to the `after` token form, do not add a `fields=` projection.** A nested sort selector such as `identifiers/key` combined with a projection narrower than the parent object currently returns `X-Has-More: true` with no `X-Cursor-Next`, so the walk never starts. Project the parent (`fields=fullName,identifiers`) or drop the projection — see [Cursor pagination](../pagination.md#requirements-and-notes).
+> **If you switch to the `after` token form, project with `fields=` rather than `~just(...)`.** A `fields=` projection can be as narrow as you like alongside a nested sort selector such as `identifiers/key` — `fields=fullName` walks to the end of the collection. A path-operator projection has to keep the sort value itself: `~just(fullName)` returns `X-Has-More: true` with no `X-Cursor-Next` and the walk never starts, while `~just(fullName,identifiers)` completes it. See [Cursor pagination](../pagination.md#requirements-and-notes).
 
 ---
 
