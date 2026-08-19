@@ -296,12 +296,13 @@ given under the `default` exception below.
 
 **Where the sort value comes from, in one rule.** A cursor is minted only if the `orderby` selector can be read from
 the item as the request renders it. Three things can put it there: the resource's default representation; an operator
-that projects it (`~just`, `~with`, `~simpleJust`, even a `~where` predicate); or the API's own fetch-and-remove, which
+that projects it (`~just`, `~with`, even a `~where` predicate); or the API's own fetch-and-remove, which
 fires **only when the request carries a `fields=` parameter**.
 
 Read that as a description of the item that comes back, not as a checklist of what the request named. Naming a member
 is not the same as adding one: `~without(name)` alongside `orderby=name` stalls even though `name` is in the product
-default representation, and `~orderBy` reads its own selector without projecting it at all
+default representation, `~simpleJust(status)` alongside `orderby=name` stalls because it removed the member the
+default representation had already put there, and `~orderBy` reads its own selector without projecting it at all
 ([which operators add and which do not](common-gotchas.md#39-a-null-in-a-response-does-not-prove-the-field-exists)).
 
 The rule covers the path-operator stall above and a second one you may have met on its own — a flat member outside the
@@ -315,9 +316,16 @@ GET /v1/products~with(instanceType)?limit=2&orderby=instanceType  # mints; insta
 
 Those three show a cursor **appearing**, which is not the same as a walk worth running. `instanceType` is populated on
 every product but holds one of a handful of values, so it fails the [uniqueness requirement](#requirements-and-notes)
-above and a walk on it comes up short. How far short depends on the page size: a smaller `limit` loses more, because
-every page resumes past all the items sharing the last one's value. Minting is the first of this section's
-requirements, not a substitute for the others.
+above and a walk on it comes up short.
+
+How far short is not something you can tune. Every page resumes past the whole block of items sharing its last item's
+value, so the walk visits at most one page per distinct value and returns at most `limit × (number of distinct
+values)` items. Whether it loses anything at all depends on where the page boundaries happen to fall relative to the
+value boundaries — a property of the data rather than of your request, and not one that moves in any particular
+direction as you change the page size. Raising `limit` is not a fix: a page size whose boundaries happen to align with
+the value boundaries can walk the collection in full while the next size up comes back short. That gives you something
+to check before you run anything: **if `limit × distinct` is smaller than the collection, the walk cannot finish,
+whatever the page size.** Minting is the first of this section's requirements, not a substitute for the others.
 
 **One exception: a projection built on `default`.** `fields=default` on `/v1/stores` alongside
 `orderby=organizationNumber` returns `organizationNumber` as well, even though the default representation does not
