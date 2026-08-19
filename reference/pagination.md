@@ -249,10 +249,10 @@ GET /v1/products?limit=50&orderby=name&fields=status
 Naming the sort field yourself (`fields=name,status`) changes nothing — it is already there, so nothing is added and
 nothing is stripped.
 
-**A nested sort selector is no different.** Walking on `orderby=identifiers/key` places no constraint on the shape of
-what you project — the sort value is fetched under a name of its own and removed again, so the projection never has to
-reach it. `fields=name`, `fields=none`, the sort path itself, a sibling identifier and `fields=default` all mint a
-cursor and walk to the end of the collection:
+**A nested sort selector is no different.** Walking on `orderby=identifiers/key` places no constraint on how narrow a
+`fields=` list may be — the sort value is fetched under a name of its own and removed again, so the projection never
+has to reach it. `fields=name`, `fields=none`, the sort path itself, a sibling identifier and `fields=default` all mint
+a cursor and walk to the end of the collection:
 
 ```bash
 # Walks to completion; each item comes back with name only
@@ -266,17 +266,50 @@ containing it — so `fields=identifiers/com.example.sku` returns `"identifiers"
 whether or not you are paginating. And `fields=default` returns `identifiers` as a **complete object**, for the reason
 given under the `default` exception below.
 
-> **A path-operator projection must keep the sort value itself.** Nothing is injected into a `~just(...)` list — it is
-> taken as written — so the cursor is minted only if the `orderby` selector still resolves against what you projected.
-> `~just(name)` alongside `orderby=identifiers/key` returns `X-Has-More: true` with no `X-Cursor-Next` and the walk
-> never starts; `~just(name,identifiers)`, which keeps the parent object, walks to the end of the collection. The same
-> rule with a flat sort field: `~just(name)` walks under `orderby=name` and stalls under `orderby=status`.
+> **A `fields=` parameter is what makes the projection irrelevant.** The sort value is fetched behind the scenes only
+> when the request carries a `fields=` list — that is the one spelling the API rewrites for you. Without one you get
+> whatever the rest of the request happens to render, and the cursor is minted only if the `orderby` selector can be
+> read from that.
 >
-> It has to be the selector's own path, not merely its value. An alias carries the value into the response under a
-> different name and still stalls (`~just(name,k:identifiers/key)`), and projecting a nested path onto its first
-> segment leaves the selector with nothing to resolve through, which is a `400`
-> (`~just(name,identifiers/key)` → `Invalid sort key 'identifiers/key': field not found`). A `fields=` parameter has
-> none of this to think about — it is the simpler choice on a request you intend to walk.
+> So a path-operator projection behaves differently: `~just(name)` alongside `orderby=identifiers/key` returns
+> `X-Has-More: true` with no `X-Cursor-Next`, and the walk never starts. There are two ways out and the cheap one is to
+> add the parameter — the same request with `&fields=name` walks to the end of the collection and the response is
+> unchanged. Widening the projection works too (`~just(name,identifiers)`) but costs an extra object on every item.
+> Nothing about this is particular to a nested selector: with a flat one, `~just(name)` walks under `orderby=name` and
+> stalls under `orderby=status`, for the same reason — you can read `name` off what it rendered and you cannot read
+> `status`. And the parameter really is the whole of the difference, not a side effect of projecting differently. These
+> two return the same items with the same keys and the same values, and only the second one mints:
+>
+> ```bash
+> GET /v1/stores~just(name)?limit=2&orderby=organizationNumber              # X-Has-More: true, no cursor
+> GET /v1/stores~just(name)?limit=2&orderby=organizationNumber&fields=name  # mints; identical body
+> ```
+>
+> If you send both, `fields=` decides the response shape — `~just(name)` with `&fields=status` returns `status`, and
+> `~just(name,status)` with `&fields=name` returns `name`. They are two spellings of one projection, not two that
+> combine.
+>
+> Widening has to reach the selector's own path, not merely its value. An alias carries the value under a different
+> name and still stalls (`~just(name,k:identifiers/key)`), and projecting a nested path onto its first segment leaves
+> the selector with nothing to resolve through, which is a `400`
+> (`~just(name,identifiers/key)` → `Invalid sort key 'identifiers/key': field not found`).
+
+**Where the sort value comes from, in one rule.** A cursor is minted only if the `orderby` selector can be read from
+the item as the request renders it. Three things put it there: the resource's default representation; any operator that
+names it (`~just`, `~with`, even a `~where` predicate); or the API's own fetch-and-remove, which fires **only when the
+request carries a `fields=` parameter**. That covers the path-operator stall above and a second one you may have met on
+its own — a flat member outside the default representation, which stalls with no projection at all and walks the moment
+you add any `fields=` list, however narrow:
+
+```bash
+GET /v1/products?limit=2&orderby=unit:desc              # X-Has-More: true, no X-Cursor-Next
+GET /v1/products?limit=2&orderby=unit:desc&fields=none  # mints; each item carries @type alone
+GET /v1/products~with(unit)?limit=2&orderby=unit:desc   # mints; unit is now on the item
+```
+
+Those sort `:desc` deliberately. `unit` is a sparsely-populated member, and ascending puts the records with no value at
+the head — so if the first page ends on one of them, all three requests stall on the always-populated requirement above
+instead. Different problem, same symptom.
 
 **One exception: a projection built on `default`.** `fields=default` on `/v1/stores` alongside
 `orderby=organizationNumber` returns `organizationNumber` as well, even though the default representation does not
@@ -287,6 +320,11 @@ data loss. Every other projection is returned exactly as requested.
 What gets added is the **root** of the sort selector, not the leaf. For a flat member the two are the same thing. For a
 nested selector such as `identifiers/key` the root is `identifiers`, so `fields=default` comes back carrying the whole
 `identifiers` object rather than the key on its own.
+
+It is added on every record, whether or not that record has a value, so the first store back from the request above
+carries `"organizationNumber": null`. The member's presence is the point; its value is that record's. Do not read the
+`null` as evidence about the member itself — that shape is also
+[what a member which does not exist looks like](common-gotchas.md#39-a-null-in-a-response-does-not-prove-the-field-exists).
 
 **Other notes:**
 
