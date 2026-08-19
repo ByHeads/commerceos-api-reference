@@ -828,6 +828,14 @@ POST /v1/prices
 ]
 ```
 
+> **A bulk price write commits in chunks of 200.** If one item fails, that chunk rolls back and every chunk before it stays committed — so an error status can still leave part of the new price list live. A price list that must not go live half-updated is exactly the case for `X-Transaction-Count: all`, which puts the whole array in one transaction:
+>
+> ```bash
+> POST /v1/prices -H "X-Transaction-Count: all" -d '[ ... ]'
+> ```
+>
+> Otherwise, make the sync idempotent and replay the whole array after fixing the bad item. See [Transaction chunking](../../features/streaming.md#3-transaction-chunking).
+
 ### Phase 5: Verification
 
 ```bash

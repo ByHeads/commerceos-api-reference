@@ -282,6 +282,8 @@ See [`operators.md`](operators.md) for the full operator reference, or [`operato
 
 Any write body may also wrap its payload in `@value` to separate the identifiers that select an object from the members applied to it — see [The `@value` Write Envelope](resource-patterns.md#the-value-write-envelope).
 
+A `POST`, `PATCH` or `PUT` with an **array** body is committed in chunks of 200 items rather than as one transaction, so a failure part-way through leaves the earlier chunks written. Set `X-Transaction-Count: all` when a partial write would be worse than no write — see [Transaction chunking](../features/streaming.md#3-transaction-chunking).
+
 ---
 
 ## Content Types

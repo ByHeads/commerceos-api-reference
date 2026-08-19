@@ -861,6 +861,33 @@ Full rules: [Resource Patterns → Relationships created implicitly by a trade o
 
 ---
 
+## 38. A Failed Array Write Has Usually Written Part of the Array
+
+A `POST`, `PATCH` or `PUT` with an array body is committed in chunks of **200 items**, not as one transaction. A failure on item 401 rolls back items 401–500 and leaves items 1–400 committed — and the response is an ordinary error status, which reads exactly like nothing happened.
+
+```bash
+# WRONG - treating the error as "the write did not land"
+POST /v1/prices  [ ...500 prices... ]     # 400 → assume nothing changed, move on
+                                          # 400 prices are live at their new amounts
+
+# RIGHT - either replay the whole array after fixing the bad item...
+PUT /v1/prices  [ ...500 corrected prices... ]   # PUT upserts, so re-applying is harmless
+
+# ...or refuse the partial write in the first place
+POST /v1/prices -H "X-Transaction-Count: all"  [ ...500 prices... ]
+```
+
+The error body will not tell you how far it got: there is no `failedAtIndex` and no per-item counter on it. What you can rely on is the chunk boundary, not an item index — so recovery is either an idempotent replay of the whole array or a read-back, never an attempt to resume from the failure point.
+
+Two related points:
+
+- **`X-Transaction-Count: all` costs more the larger the array**, because one transaction stays open for the whole request. Use it where atomicity is the actual requirement — a price list that must not go live half-updated — not as a default for every import.
+- **It does nothing to a `GET`.** Streamed reads batch 200 at a time as well, but that is a separate mechanism with a fixed size that no header changes.
+
+Full rules: [Transaction chunking](../features/streaming.md#3-transaction-chunking).
+
+---
+
 ## API Response Behaviors
 
 ### Empty Collection Results

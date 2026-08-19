@@ -599,6 +599,12 @@ Content-Type: application/x-ndjson
 {"identifiers":{"com.acme.pim-id":"PIM-003"},"name":"Product 3","status":"Active","gtin":["7312345670003"],"defaultVatCode":{"identifiers":{"percentage":"25"}}}
 ```
 
+**A bulk load commits in chunks of 200 products, not as one transaction.** If product 401 fails, that chunk rolls back and products 1–400 are already in the catalog — and the response is an ordinary error status that looks like nothing landed. Plan the loader around that:
+
+- **Replay the whole file, do not resume.** `PUT` upserts by identifier, so re-sending the full array after fixing the bad row re-applies the committed products harmlessly. The error body has no item index to resume from.
+- **`X-Transaction-Count: all`** puts the entire array in one transaction — either every product lands or none does. Worth it for a cutover that must not leave a half-migrated catalog; the cost grows with the array, so it is not the setting for a routine nightly load.
+See [Transaction chunking](../../features/streaming.md#3-transaction-chunking).
+
 ---
 
 ## Phase 3: Incremental Updates

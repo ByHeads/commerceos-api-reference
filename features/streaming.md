@@ -154,7 +154,7 @@ The line-oriented formats already end each row with a newline, so for `applicati
 
 ## 2. Input Streaming (Batch Mutations)
 
-When sending large arrays in `PUT`, `POST`, or `PATCH` requests, the API splits the input into transaction chunks (default 200 items per chunk). Each chunk is committed in its own database transaction.
+When sending large arrays in `PUT`, `POST`, or `PATCH` requests, the API splits the input into transaction chunks (default 200 items per chunk). Each chunk is committed in its own database transaction — see [Transaction chunking](#3-transaction-chunking) for what that means when one of them fails, and for the `X-Transaction-Count` header that resizes them.
 
 By default, all chunks are processed and results are buffered before the response is sent. To stream results back as each chunk commits, add `;stream=true` to the `Content-Type` header:
 
@@ -192,21 +192,41 @@ EOF
 
 ## 3. Transaction Chunking
 
-Batch mutations are always split into transaction chunks, regardless of streaming. Each chunk is committed atomically — if a chunk fails, items from that chunk are rolled back, but previously committed chunks remain.
+A `POST`, `PATCH` or `PUT` whose body is an **array** is split into transaction chunks, and each chunk is committed on its own. The default chunk size is **200 items**.
 
-The default chunk size is **200 items**.
+Despite living on this page, chunking is not a streaming feature. It applies to every array write — buffered or streamed, JSON or NDJSON or CSV. A body that is a single object is a single transaction and none of this applies to it.
+
+### An Error Status Does Not Mean Nothing Was Written
+
+This is the part to design around, and the explanation for an outcome that is otherwise baffling. Because each chunk commits independently, a failure part-way through an array leaves everything before it in the database:
+
+```
+Input: [item1, item2, ..., item500]
+X-Transaction-Count: 200 (default)
+
+Transaction 1: items 1–200   → commit ✓
+Transaction 2: items 201–400 → commit ✓
+Transaction 3: items 401–500 → rollback ✗
+```
+
+The request answers with an ordinary HTTP error status — a mutation finishes all of its writing before the response body starts, so the failure is reported the usual way, with a real status code and an error body ([Error handling](#4-error-handling)). But items 1–400 are committed and stay committed. Only the failing chunk is rolled back.
+
+So a `4xx` on an array write is not evidence that the write did not happen, and the error body will not tell you how far it got: there is no index and no per-item counter in it. What you know is a chunk boundary, not an item. Two ways to handle that:
+
+- **Make the write idempotent and replay the whole array.** `PUT` upserts by identifier, so re-sending the full array after fixing the bad item re-applies the already-committed items harmlessly and lands the rest. This is the simpler option and the one to reach for by default.
+- **Put the whole array in one transaction**, below, when a partial write would be worse than no write.
 
 ### Controlling Chunk Size
 
-Use the `X-Transaction-Count` header to control how many items are processed per transaction:
+Use the `X-Transaction-Count` request header to set how many items go in one transaction:
 
 ```bash
-# Process 50 items per transaction
+# Commit every 50 items
 curl -X PATCH https://example.app.heads.com/api/v1/products -u ":banana" \
   -H "X-Transaction-Count: 50" \
   -d '[...]'
 
-# Process all items in a single transaction (all succeed or all fail)
+# Commit the whole array at once — either every item lands or none does
 curl -X PATCH https://example.app.heads.com/api/v1/products -u ":banana" \
   -H "X-Transaction-Count: all" \
   -d '[...]'
@@ -220,18 +240,19 @@ curl -X PATCH https://example.app.heads.com/api/v1/products -u ":banana" \
 | `-1` | All items in one transaction |
 | `*` | All items in one transaction |
 
-### Chunking Behavior
+**`all` is the setting for when a partial write is worse than no write** — a price list that must not go live half-updated, a set of records that only makes sense together. It is not free: one transaction stays open for the whole request, so the cost grows with the size of the array. Reach for it on the arrays where atomicity is the requirement, not as a default for every import.
 
-```
-Input: [item1, item2, ..., item500]
-X-Transaction-Count: 200 (default)
+Lowering the number goes the other way: more transactions, each one cheaper, and a smaller window of work to lose when one fails. That is worth doing when individual items are expensive to apply, not as a general tuning knob — the default suits most imports.
 
-Transaction 1: items 1–200   → commit ✓
-Transaction 2: items 201–400 → commit ✓
-Transaction 3: items 401–500 → commit ✓ (or rollback on error)
-```
+### Sending the Header From a Browser
 
-If transaction 3 fails, items 1–400 remain committed. Only the items in the failing chunk are rolled back.
+`X-Transaction-Count` is one of the four request headers the API allows cross-origin (with `Content-Type`, `Accept` and `Authorization`), so a browser client can set it without tripping the CORS preflight.
+
+### Streamed Reads Batch Too — This Header Does Not Change Them
+
+A streamed `GET` also works 200 items at a time, each batch in its own read transaction, which is why a streamed response is not a point-in-time snapshot ([A streamed response is not a point-in-time snapshot](#a-streamed-response-is-not-a-point-in-time-snapshot)).
+
+That is a **separate mechanism that happens to share the same default.** Streamed reads use their own fixed 200-item batches; `X-Transaction-Count` does not change them. The header is read once, on the write path, and only ever splits an array request body — it has no effect on a `GET`, and there is no header, query parameter or `Accept` parameter that resizes a read batch.
 
 ---
 
@@ -263,7 +284,7 @@ A buffered error body carries **no per-item counters** — neither `processedCou
 
 The one exception is a failure that strikes *while the collection is being read out*, after the `200` status line and headers have already gone on the wire. There is no status code left to change at that point, so the failure is appended to the body instead. That is an internal fault — a record that cannot be built, a read that fails part-way through a collection — rather than something a client can provoke with a bad request, and it is correspondingly rare. Handle it because it is the one failure a `200` will not tell you about, not because you should expect to see it. The response is **truncated, not corrupted**: everything delivered before the marker is valid.
 
-**The marker covers the read machinery too, not just the data.** A streamed collection is read one 200-item batch at a time, each in its own read transaction ([Transaction chunking](#3-transaction-chunking)), and a failure of one of *those* transactions between batches produces exactly the same marker — array closed for `application/json`, one more line for everything else. There is nothing extra for a client to do: "check the last line" already covers it. It is worth knowing only because it means the marker is the complete account of how a streamed `GET` can go wrong after the `200`.
+**The marker covers the read machinery too, not just the data.** A streamed collection is read one 200-item batch at a time, each in its own read transaction ([How it works](#how-it-works)), and a failure of one of *those* transactions between batches produces exactly the same marker — array closed for `application/json`, one more line for everything else. There is nothing extra for a client to do: "check the last line" already covers it. It is worth knowing only because it means the marker is the complete account of how a streamed `GET` can go wrong after the `200`.
 
 *Where* the marker lands depends on the content type. **Line-delimited formats** (`application/x-ndjson`, `text/csv`, `application/sql`) get one more line appended:
 

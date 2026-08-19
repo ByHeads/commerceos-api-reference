@@ -819,6 +819,8 @@ curl -X PUT -u ":banana" "https://example.app.heads.com/api/v1/products" \
   --data-binary @products.ndjson
 ```
 
+A bulk write commits in chunks of **200 items**, so a failure part-way through leaves the earlier chunks written and answers with an ordinary error status. `PUT` upserts by identifier, which makes the safe recovery a replay of the whole file rather than an attempt to resume — the error body carries no item index. Add `X-Transaction-Count: all` when a partial write would be worse than no write; it puts the entire array in one transaction, at a cost that grows with the array. See [Transaction chunking](../features/streaming.md#3-transaction-chunking).
+
 ---
 
 ## 8. Troubleshooting: When Things Go Wrong
