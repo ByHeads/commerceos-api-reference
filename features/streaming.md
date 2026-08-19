@@ -344,6 +344,8 @@ The specific type may add its own members on top of those (a `"conflict"` carrie
 
 **It is never absent, and it always has a `@type`.** If a cause cannot be sanitized into a body at all, a generic `{"@type": "internal error", "error": "Internal server error."}` goes out in its place rather than the key being dropped — so a discriminated-union parser over `innerError`'s `@type` is safe to write, on every content type, without a fallback branch for a missing key. Only `details` is optional.
 
+The values you can switch on are the ordinary error types, listed in full at [Error types](../reference/overview.md#error-types) — and since `innerError` is an ordinary error body, that catalogue is the same one your top-level error handling already uses. Give the switch a default branch anyway: new types can be added, and the forward-compatible fallback reports `error`, the one member every type is guaranteed to have.
+
 The generated OpenAPI spec reflects this: `innerError` is declared as the error model rather than as an untyped value, so `<base-uri>/openapi/spec.json` describes its members and a generated client types it like any other error.
 
 #### Which Fields Each Form Carries

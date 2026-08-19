@@ -404,6 +404,38 @@ This is framing, not a new error type: no new `@type`, no new members. A client 
 
 > **Not the same thing as a mid-stream error.** Everything above is the ordinary HTTP error response — the status code is real and the body is the whole response. A `"@type": "mid-stream error"` element instead appears *inside* an otherwise successful `200` body, when a failure strikes after the headers are already on the wire. Both are line-framed for NDJSON, so one line-oriented reader handles both; only the status code distinguishes them. See [Streaming → Error handling](../features/streaming.md#4-error-handling).
 
+### Error Types
+
+Every error body names what went wrong in its `@type` discriminator. **Branch on `@type` rather than on the status code.** The status codes below are the ordinary ones each type is raised with, not a contract — treat the column as indicative, and read `@type` when you need to know what actually happened.
+
+| `@type` | Typical status | Meaning | Type-specific members |
+|---------|----------------|---------|-----------------------|
+| `bad request` | 400 | The request was invalid and could not be processed | — |
+| `no request body` | 400 | A body was required and none was sent | — |
+| `invalid uri syntax` | 400 | The request URI could not be parsed | `uri`, `invalidSection` |
+| `failed indexing` | 400 | Identifiers in the request payload named no existing object of the expected type | `usedIndex`, `indexerOwner`, `indexType` |
+| `invalid index` | 400 | The index value is not valid for the indexer — e.g. a bare number where identifiers were expected | `usedIndex`, `indexerOwner`, `indexType` |
+| `failed coercion` | 400 | A value could not be coerced to the type the target expects | `targetType`, `failedCoercions` |
+| `unauthorized` | 401 | Missing or unusable credentials | — |
+| `forbidden` | 403 | Authenticated, but the authorized scopes do not permit this | `authorizedScopes` |
+| `not found` | 404 | No such resource | `url` |
+| `method not available` | 405 | The method is not supported on this target | `method` |
+| `not acceptable` | 406 | No serializer for the requested `Accept` type | — |
+| `conflict` | 409 | Duplicate or conflicting resource | `conflictingResource` |
+| `unsupported media type` | 415 | No deserializer for the request `Content-Type` | — |
+| `internal error` | 500 | An unexpected server-side failure, sanitized | — |
+
+**Every type draws on the same three base members**, whatever its discriminator: `error` (the general category — always present), `details` (the occurrence-specific message) and `suggestion` (advice for avoiding the failure next time). Only `error` is guaranteed; `details` and `suggestion` appear when there is something specific to say. The type-specific members above are added on top.
+
+Two details worth knowing before you write the switch:
+
+- **`failed indexing` is a write-side failure, and it echoes your input back.** It means a nested reference in your payload — `{"product": {"identifiers": {"com.example.sku": "NOPE"}}}` — named no object that exists. The identifiers you sent come back in `usedIndex`, and `suggestion` names the type that was being looked for, so you can tell a typo from a genuinely absent record without a second request.
+- **`failedCoercions` is a list, not a message.** Each entry describes one value that could not be converted — `success`, `targetType`, `inputValue`, `path` (where in your payload it sat) and `message`. On a bulk write it is the fastest way to find which element and which member were wrong.
+
+**Treat an unrecognized `@type` as a plain error rather than as a parse failure.** New types can be added, so the forward-compatible default branch reports `error` — the one member every type is guaranteed to have — along with `details` when it is present. Two values will never turn up as an HTTP error body: `mid-stream error`, which appears only *inside* a committed `200` (see [Streaming → Error handling](../features/streaming.md#4-error-handling)), and `error` itself, which is the base every type above inherits from rather than something the API emits on its own.
+
+> **Changed 2026-08-19.** An invalid index used to go out as `"invalid index type"`, which is not a type the published schema defines. It is now `"invalid index"`, matching the schema and the client you generate from it. Only relevant if you hard-coded the old string from an observed response — a client that follows the unrecognized-`@type` advice above was already handling it.
+
 ### Format-Specific Behaviors
 
 **JSON (`application/json`):**
