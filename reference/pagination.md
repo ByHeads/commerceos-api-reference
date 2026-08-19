@@ -114,12 +114,14 @@ GET /v1/products?limit=50&orderby=identifiers/key
 All three are listed in `Access-Control-Expose-Headers`, so browser clients can read them cross-origin.
 
 **`X-Has-More: true` with no `X-Cursor-Next` is a real state, and it means the walk stops here.** It is not the last
-page — more items exist — but the last item on the page you just received has no value for the sort field, so there is
-nothing to resume from. A walk written as "repeat while `X-Has-More` is true" spins on a request it cannot advance; one
-written as "repeat while a cursor is present" stops mid-collection and reports success. Loop on the cursor, and check
-the two headers together: no cursor while `X-Has-More` is `true` is an error, not the end. Sorting on a field that
-is always present — `identifiers/key` — avoids the state entirely, which is the same recommendation the uniqueness
-requirement below makes, for a second reason.
+page — more items exist — but no cursor could be minted for them. Two things cause it: the last item on the page has
+no value for the sort field, so there is nothing to resume from; or the next item shares that last item's sort value,
+and a cursor would resume past it. A walk written as "repeat while `X-Has-More` is true" spins on a request it cannot
+advance; one written as "repeat while a cursor is present" stops mid-collection and reports success. Loop on the
+cursor, and read the two headers together: **a missing `X-Cursor-Next` on a page reporting `X-Has-More: true` means
+stop and treat the walk as incomplete.** It is not the end of one, and retrying will not help — nothing about the
+request will change. Sorting on a field that is unique *and* always present — `identifiers/key` — avoids both causes,
+which is the same recommendation the two requirements below make.
 
 **3. Follow the cursor** — pass the `X-Cursor-Next` value as `after` (or just request the `Link` URL):
 
@@ -129,7 +131,9 @@ GET /v1/products?limit=50&orderby=identifiers/key&after=eyJ2IjoiV0lER0VULTAwMSIs
 
 **4. Repeat** while `X-Cursor-Next` is present. `X-Has-More: false` is the normal end of the collection; a missing
 cursor while `X-Has-More` is still `true` is the stalled walk described above, and should be surfaced rather than
-treated as the end.
+treated as the end. Read `X-Has-More: false` as a walk over the *whole* collection only when the sort field is unique
+and always present — sorting `:desc` on a field that is sometimes empty ends the walk early and still reports
+completion, which is the one failure in this section that says nothing at all.
 
 Cursor pagination combines with the rest of the query pipeline — `~where` filters and a `:desc` sort direction work as
 usual, as long as every request in the walk uses the *same* query apart from `after`. Projections compose too, with one
@@ -138,23 +142,29 @@ current restriction when the sort selector is nested — see
 
 ### Requirements and notes
 
-**Sort on a field with unique values.** This is the one requirement that fails silently, so treat it as the first
-thing to get right. The cursor tracks position by sort value alone — the next page is fetched with a strict
-`field > lastValue` filter, with no secondary tiebreaker. If several items share the sort value that falls on a page
-boundary, every one of them except the last is skipped, and the walk can even report `X-Has-More: false` while items
-remain unread. There is no error and no warning; the export just comes up short.
+**Sort on a field with unique values.** The cursor tracks position by sort value alone — the next page is fetched with
+a strict `field > lastValue` filter, with no secondary tiebreaker — so it cannot resume *inside* a run of items that
+share a value. Rather than skip that run, the walk stops: a page whose last item shares its sort value with the item
+that would follow it mints no token and reports `X-Has-More: true`. On a low-cardinality member that is usually the
+first page.
 
 ```bash
-# Wrong: many products share a status, so items are dropped at every page boundary
+# Wrong: many products share a status, so the walk stops on page one
 GET /v1/products?limit=50&orderby=status
 
 # Right: identifiers/key is unique per resource
 GET /v1/products?limit=50&orderby=identifiers/key
 ```
 
-`identifiers/key` is the safest choice, and being always populated it is also the field that avoids the
-[stalled-walk state](#walking-a-collection) above. `name` is *not* guaranteed unique either — the same product name can
-exist per currency or per store — and low-cardinality fields such as `status` are never safe.
+That is the [stalled-walk state](#walking-a-collection) above, and it is loud: treat it as an incomplete walk rather
+than as the end of one, and do not retry — nothing about the request will change. `identifiers/key` is the safest
+choice, and being always populated it avoids the stall for the other reason too. `name` is *not* guaranteed unique
+either — the same product name can exist per currency or per store — and low-cardinality fields such as `status` are
+never safe.
+
+**Stopping costs only the pagination headers.** The page itself is untouched — same status, same items, same body — so
+`limit` and `orderby` with `offset`, or `limit` on its own, keep working on any sort field, non-unique ones included.
+Only the walk forward is withheld.
 
 **Sort on a field that holds a single value.** A cursor carries your position as one value, so the sort field has to
 *be* one value. A member that renders as a list, an object or a boolean is refused with a `400` on the first request,
@@ -191,19 +201,33 @@ Three things about when it fires:
   value to carry, and an empty page is already a complete walk.
 
 A field that is merely *empty* is a different answer and behaves differently — see the next requirement. "Holds a
-list" and "holds nothing" are not the same problem: one errors, the other stalls silently.
+list" and "holds nothing" are not the same problem: the first is refused outright, the second stops the walk without
+erroring.
 
 **Sort on a field that is always populated, too.** An item with no value for the sort field stalls the walk when it
 lands at the end of a page, as described above — the response carries `X-Has-More: true` with no `X-Cursor-Next`,
-because there is nothing to resume from. This is a quiet failure: the walk stops mid-collection rather than erroring,
-and a successful first page tells you nothing about whether it will finish. Items with no value
+because there is nothing to resume from. Items with no value
 [sort first ascending](operators-catalog.md#orderbyselectordesc), so on a sparsely-populated member they land at the
-end of the very first page and the walk never starts; sorting `:desc` moves that block to the tail rather than
-removing the requirement, since a page whose last item is empty mints no cursor whichever direction you sort in. Note
-that this is a requirement of the
+end of the very first page and the walk never starts. Note that this is a requirement of the
 *walk*, not of the sort — a sparse member sorts perfectly well on its own
 ([what you can sort on](operators-catalog.md#orderbyselectordesc)); it is carrying a position from one request to the
 next that needs a value on every item.
+
+**Sorting `:desc` on such a member is the one failure in this section that is silent, so treat it as the thing to get
+right first.** Descending, the items holding no value sort last — but the resume request filters on the sort field
+(`field < lastValue`), and an item that holds no value at all does not pass that filter. The walk therefore never
+reaches them: it ends on the last item that *has* a value, reports `X-Has-More: false`, and is indistinguishable from
+a walk over the whole collection.
+
+```bash
+# Returns 4 of the 5 stores, over 2 pages, ending X-Has-More: false. The one store with
+# no organizationNumber is never returned, and nothing in the response says so.
+GET /v1/stores?limit=2&orderby=organizationNumber:desc&fields=none
+```
+
+Ascending is safe from this, because those items sort *first* and are read before there is any boundary to resume
+past. Sorting on a field that is unique and always present — `identifiers/key` — is what makes the difference between
+a walk that tells you when it stopped and one that may not.
 
 If you sort a walk on one of your own identifiers rather than on `identifiers/key`, note that a misspelled namespace
 lands in exactly this state instead of erroring — `orderby=identifiers/com.example.Sku` when the items carry
@@ -327,18 +351,21 @@ GET /v1/stores~with(organizationNumber)?limit=2&orderby=organizationNumber # min
 Those three show a cursor **appearing**, which is not the same as a walk worth running — minting says the sort value
 was readable on the page you asked for, and nothing more. `organizationNumber` is not on every store, so the same
 request at `limit=1` mints nothing at all: the store that comes back first has no value to resume from. The other
-requirement bites differently. On `/v1/products`, `instanceType` is populated on every product but holds one of a
-handful of values, so it fails the [uniqueness requirement](#requirements-and-notes) above and a walk on it comes up
-short.
+requirement stops the walk the same way, usually one page in. On `/v1/products`, `instanceType` is populated on every
+product but holds one of a handful of values, so it fails the [uniqueness requirement](#requirements-and-notes)
+above — at `limit=2` the first page's last item shares its value with the next item, and the walk stops there with
+`X-Has-More: true` and no token.
 
-How far short is not something you can tune. Every page resumes past the whole block of items sharing its last item's
-value, so the walk visits at most one page per distinct value and returns at most `limit × (number of distinct
-values)` items. Whether it loses anything at all depends on where the page boundaries happen to fall relative to the
-value boundaries — a property of the data rather than of your request, and not one that moves in any particular
-direction as you change the page size. Raising `limit` is not a fix: a page size whose boundaries happen to align with
-the value boundaries can walk the collection in full while the next size up comes back short. That gives you something
-to check before you run anything: **if `limit × distinct` is smaller than the collection, the walk cannot finish,
-whatever the page size.** Minting is the first of this section's requirements, not a substitute for the others.
+**Whether such a walk finishes at all is a property of the data, not something you can tune.** A page mints a cursor
+only when the next item's sort value differs from its last one's, so every page of a completed walk ends on the
+boundary between two runs of equal values. A walk therefore visits at most one page per distinct value and covers at
+most `limit × (number of distinct values)` items — and whether the page boundaries happen to line up with the value
+boundaries is a property of where the runs fall, not one that moves in any particular direction as you change the page
+size. Raising `limit` is not a fix: a page size whose boundaries align can walk the collection in full while the next
+size up stops part-way. That gives you something to check before you run anything — **if `limit × distinct` is smaller
+than the collection, the walk cannot finish, whatever the page size** — and nothing to check afterwards, because a
+walk that could not finish says so. Minting is the first of this section's requirements, not a substitute for the
+others.
 
 **One exception: a projection built on `default`.** `fields=default` on `/v1/stores` alongside
 `orderby=organizationNumber` returns `organizationNumber` as well, even though the default representation does not

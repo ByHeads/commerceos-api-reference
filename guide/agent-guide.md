@@ -172,11 +172,13 @@ curl -u ":banana" -D - "https://example.app.heads.com/api/v1/products?limit=100&
 
 Cursor pages stay stable while the collection is being written to, and don't slow down as you go deeper. Loop on the
 presence of `X-Cursor-Next`, not on `X-Has-More` — `X-Has-More: true` with no cursor header means the walk *cannot*
-continue, and it is an error rather than the end of the collection. Five more things to watch: `limit` is required on
-every request, sorting on a non-unique field (e.g. `status`) silently skips items, a sort field holding a list, an
-object or a boolean is a `400` on the first request (sort on `identifiers/key`, never on `identifiers`), streamed
-responses never emit the cursor headers, and a `fields=` projection can be as narrow as you like — because that is the
-one spelling the API adds the sort value to for you, so prefer `fields=` on a request you intend to paginate. Without
+continue, and it is an error rather than the end of the collection. Six more things to watch: `limit` is required on
+every request; sorting on a non-unique field (e.g. `status`) stops the walk rather than skipping items, usually on
+page one, so check how much you got back; sorting `:desc` on a field that is sometimes empty is the one failure that
+reports `X-Has-More: false` without the items it never reached; a sort field holding a list, an object or a boolean is
+a `400` on the first request (sort on `identifiers/key`, never on `identifiers`); streamed responses never emit the
+cursor headers; and a `fields=` projection can be as narrow as you like — because that is the one spelling the API
+adds the sort value to for you, so prefer `fields=` on a request you intend to paginate. Without
 it (`~just(name)` alone) the cursor is minted only if the sort value can be read from what you rendered. See
 [`reference/pagination.md`](../reference/pagination.md#cursor-pagination).
 

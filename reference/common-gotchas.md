@@ -488,19 +488,25 @@ Full rules: [Working with Stock → Direction and Sign Rules](working-with/stock
 
 ---
 
-## 26. Cursor Pagination Silently Skips Items on a Non-Unique Sort Field
+## 26. Cursor Pagination Stops Early on a Non-Unique Sort Field
 
-A cursor walk asks for the next page with a strict `field > lastValue` filter and no secondary tiebreaker. Sort on a
-field where several items share a value and every item on a page boundary except the last one is dropped — with no
-error, and often with `X-Has-More: false` while records remain. The export just comes up short.
+A cursor walk asks for the next page with a strict `field > lastValue` filter and no secondary tiebreaker, so it
+cannot resume *inside* a run of items sharing a value. Rather than skip that run, the walk stops: a page whose last
+item shares its sort value with the item that would follow it mints no token and reports `X-Has-More: true`. On a
+low-cardinality member that is usually the first page, so the export is a fraction of the collection.
 
 ```bash
-# WRONG - hundreds of products share each status value
+# WRONG - hundreds of products share each status value, so the walk stops on page one
 GET /v1/products?limit=50&orderby=status
 
 # RIGHT - unique per resource
 GET /v1/products?limit=50&orderby=identifiers/key
 ```
+
+The stop is loud — it is the same no-cursor-with-more state described two paragraphs down, so a walk that tests for
+the cursor catches it. Do not retry: nothing about the request will change. And note that only the pagination headers
+are withheld; the page itself is untouched, so `limit` and `orderby` with `offset`, or `limit` on its own, keep
+working on any sort field.
 
 `name` is not a safe substitute either: the same name can exist per currency or per store. Compound sorting is not a
 workaround — an `orderby` listing more than one field is a `400` whether or not an `after` token is present.
@@ -521,6 +527,14 @@ item on a page has no value for the sort field, no next cursor can be minted, so
 request it cannot advance; one written as "repeat while a cursor is present" stops mid-collection and reports success.
 Test for the cursor, and treat its absence while `X-Has-More` is `true` as an error. `identifiers/key` is unique *and*
 always populated, which is why it is the recommendation for both failures.
+
+**Sorting `:desc` on such a field is the one case a cursor test does not catch, and it is the only silent failure
+left.** Descending, the items holding no value sort last — but the resume request filters on the sort field
+(`field < lastValue`), and an item holding no value does not pass that filter, so the walk never reaches them. It ends
+on the last item that has a value and reports `X-Has-More: false`, which looks exactly like a complete walk.
+`GET /v1/stores?limit=2&orderby=organizationNumber:desc&fields=none` returns four of five stores this way; the one
+store with no `organizationNumber` never appears. Ascending is safe from it, because those items sort first and are
+read before there is any boundary to resume past.
 
 **A `~just(...)` projection can land you in that same no-cursor state on the first request, where a `fields=` one
 cannot — and the `fields=` parameter is the whole of the difference.** The sort value is fetched under a name of its
