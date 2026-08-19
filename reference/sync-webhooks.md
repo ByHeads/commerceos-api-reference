@@ -94,7 +94,17 @@ Two parallel maps hold per-webhook configuration that the webhook's URL template
 
 Both share the same shape and write semantics:
 
-- **Keys must be namespaced** (e.g. `com.example.tenantCode`). Non-namespaced keys are filtered out with a lenient skip.
+- **Keys must be namespaced, and this is the one place in the API that says so out loud.** A key that is not [exactly three dot-separated segments](overview.md#external-identifiers) (e.g. `com.example.tenantCode`) is rejected with a `400` naming it, and the **whole request fails** — a payload mixing valid and invalid keys lands none of it, on either map:
+
+  ```
+  POST /v1/sync-webhooks
+  [{"identifiers": {…}, "secrets": {"com.test.good": "A", "com.example.orders.id": "B"}}]
+  → 400  Invalid secret key 'com.example.orders.id'. Keys must be namespaced — exactly three
+         dot-separated segments (e.g. `com.example.thing`), matching the schema's
+         `namespaced key` type. A fourth segment is rejected just as a missing one is.
+  ```
+
+  Do not generalise from this. Everywhere else — `identifiers` on every resource, this one included — the same key is [silently discarded at `200`](overview.md#a-malformed-identifier-key-is-discarded-not-rejected), which is the behaviour to design against.
 - **Values can be any JSON** (`dynamic?`).
 - **PATCH merges into the existing map.** PATCHing `{secrets: {a: 1}}` adds key `a`; existing keys stay. Same for `variables`. To clear an entry, set its value to `null` (or use the sub-resource — see below).
 - **Sub-resource:** `/v1/sync-webhooks/{id}/secrets` and `/v1/sync-webhooks/{id}/variables` both support GET / PATCH / PUT (full round-trip).

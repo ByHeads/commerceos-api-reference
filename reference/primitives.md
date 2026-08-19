@@ -561,7 +561,21 @@ com.my-company.customer_123
 ```
 example.id               # Only 2 segments (1 dot)
 com.mycompany.erp.id     # 4 segments (3 dots) - not allowed
+com-mycompany.erp.id     # Dash in the first segment
+uk.co.acme.customerId    # A co.uk domain reversed is already 3 segments
 ```
+
+**What happens to a key that is not one.** The format is not enforced uniformly, and the two behaviours are worth telling apart before you pick a namespace:
+
+| Where the key appears | A key outside the format |
+|---|---|
+| A request **body** (`identifiers`, on any resource) | Silently discarded — `200`, and nothing is stored |
+| A **URL segment** (`/v1/kv/com.test`, `/v1/products/com.a.b.c=X`) | `404` — the request does not route |
+| `~orderBy(identifiers/…)` / `~distinctBy(identifiers/…)` | `400`, naming the key |
+| `~where(identifiers/…)` / `~just(identifiers/…)` | `200`, passed through untouched |
+| `sync-webhooks` `secrets` / `variables` keys | `400`, naming the key — the whole request fails and nothing persists |
+
+The first row is the expensive one: identifiers are what an upsert matches on, so a write whose only identifier is malformed cannot recognise what it wrote last time and creates a fresh record on every retry. See [A Malformed Identifier Key Is Discarded, Not Rejected](overview.md#a-malformed-identifier-key-is-discarded-not-rejected).
 
 **Used for:** External identifier keys (the left side of identifier assignments like `com.example.id=123`).
 

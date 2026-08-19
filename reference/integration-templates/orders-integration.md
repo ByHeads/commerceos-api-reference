@@ -1018,7 +1018,7 @@ For high-traffic events (flash sales, Black Friday):
 
 ### Pre-Launch
 
-- [ ] **Identifier namespace** — Confirm namespace (e.g., `com.acme.order-id`)
+- [ ] **Identifier namespace** — Confirm namespace (e.g., `com.acme.order-id`), and that every key is **exactly three** dot-separated segments — a malformed key is dropped at `200` and the order is re-created on every run ([why](../overview.md#a-malformed-identifier-key-is-discarded-not-rejected))
 - [ ] **Field mapping** — Document external → CommerceOS mapping
 - [ ] **Product setup** — All products exist with prices
 - [ ] **Customer setup** — Customer records exist or create on first order

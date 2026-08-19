@@ -81,7 +81,7 @@ The `$prior` selector references data from the source context. `"$first"` limits
 
 Agents represent people, companies, or stores:
 
-- `identifiers` - External ID support with reverse-domain keys
+- `identifiers` - External ID support with reverse-domain keys — exactly three dot-separated segments; anything else is [silently discarded on write](overview.md#a-malformed-identifier-key-is-discarded-not-rejected)
 - `name` - Full name
 - `nationality`, `languages`, `vatId`
 - `addresses` - Nested object with `main`, `home`, `invoice`, `delivery`, `visiting`

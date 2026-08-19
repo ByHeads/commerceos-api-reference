@@ -147,6 +147,10 @@ Use reverse-domain notation based on your actual domain:
 | `acme.com` | `com.acme.` | `com.acme.pim-id` |
 | `retailcorp.se` | `se.retailcorp.` | `se.retailcorp.item-code` |
 
+> **Check the segment count before you commit to a namespace — this one is expensive to get wrong.** A key is recognised only if it is **exactly three** dot-separated segments, so `com.acme.pim-id` works and `com.acme.pim.id` does not. Two shapes reach four segments without looking wrong: nesting a namespace a level deeper (`com.acme.products.id`), and reversing a country-code domain, where the domain alone spends all three (`acme.co.uk` → `uk.co.acme.` leaves nothing to name the identifier with — use `uk.co-acme.pimId` or `com.acme.pimId`).
+>
+> A key outside that shape is **discarded on write with a `200`**, and identifiers are what an upsert matches on — so a product whose only identifier is malformed is not recognised on the next run and is created again, every run, without bound. A `GET` by that key is a `404`, indistinguishable from "not synced yet". Validate by reading the `identifiers` back off the write's own response. Full rules: [A Malformed Identifier Key Is Discarded, Not Rejected](../overview.md#a-malformed-identifier-key-is-discarded-not-rejected).
+
 ### Identifier Key Naming
 
 | PIM Entity | Recommended Key | Notes |
@@ -1192,7 +1196,7 @@ PUT /v1/prices/com.acme.price-id=PRICE-MISMATCH
 
 ### Pre-Launch
 
-- [ ] **Identifier namespace** — Confirm reverse-domain namespace (e.g., `com.acme.pim-id`)
+- [ ] **Identifier namespace** — Confirm reverse-domain namespace (e.g., `com.acme.pim-id`), and that every key is **exactly three** dot-separated segments — a malformed key is dropped at `200` and the product is re-created on every run ([why](../overview.md#a-malformed-identifier-key-is-discarded-not-rejected))
 - [ ] **Field mapping** — Document PIM → CommerceOS field mapping
 - [ ] **VAT mapping** — Map PIM tax classes to CommerceOS VAT codes
 - [ ] **Category mapping** — Map PIM categories to CommerceOS categories

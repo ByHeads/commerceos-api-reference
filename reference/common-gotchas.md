@@ -1024,6 +1024,41 @@ Full rules: [What you can sort on](operators-catalog.md#orderbyselectordesc).
 
 ---
 
+## 40. A Malformed Identifier Key Is Dropped, and Every Retry Then Creates Another Record
+
+An identifier key that is not [exactly three dot-separated segments](overview.md#external-identifiers) is discarded on write. The request is a `200`, every other member lands, and the key is simply absent. Nothing in the status, and nothing in an error, says so.
+
+```bash
+# WRONG - four segments; the key never reaches storage
+POST /v1/products
+[{"identifiers": {"com.example.orders.id": "ORD-1"}, "name": "Widget"}]
+→ 200  {"identifiers": {"key": "3550a3df…"}, "name": "Widget", …}
+
+# RIGHT - three segments
+POST /v1/products
+[{"identifiers": {"com.example.orderId": "ORD-1"}, "name": "Widget"}]
+→ 200  {"identifiers": {"key": "3550a3df…", "com.example.orderId": "ORD-1"}, "name": "Widget", …}
+```
+
+**The cost is not the missing key, it is the missing match.** An upsert recognises an incoming record by its identifiers. Discard the only one and there is nothing left to match on, so the same payload creates a new record every time it is sent — a scheduled sync that retries grows the collection without bound:
+
+```bash
+3 × POST [{"identifiers": {"com.example.orders.id": "DUP-1"}, "name": "Dup Probe"}]    → 3 products
+3 × POST [{"identifiers": {"com.example.ordersid":  "DUP-2"}, "name": "Dup Control"}]  → 1 product
+```
+
+**Reading the record back does not diagnose it.** `GET /v1/products/com.example.orders.id=ORD-1` is a `404`, which is also what "not created yet" looks like, so a client polling for its own write sees nothing unusual. Check the **write's own response** instead — if the key you sent is not in the `identifiers` it echoes back, it was refused.
+
+Three related points:
+
+- **Four segments is the likely mistake, not one.** It is what you get by nesting a namespace a level deeper (`com.acme.orders.id`), and it reads as more than satisfying a "reverse domain notation" rule rather than less. It is also what reversing a `co.uk` or `com.au` domain gives you before you have named anything: `uk.co.acme.customerId`.
+- **A path segment fails loudly instead.** The same key in a URL does not route — `PUT /v1/kv/com.test` is a `404` where the identical key in a body is a silent `200`.
+- **One resource is strict.** `sync-webhooks` rejects a bad `secrets` or `variables` key with a `400` naming it, and persists nothing from that request. Do not generalise from it — `identifiers` on every resource, that resource included, takes the lenient path.
+
+Related: [gotcha 39](#39-a-null-in-a-response-does-not-prove-the-field-exists) (a `null` is not proof a field exists), [External Identifiers](overview.md#external-identifiers).
+
+---
+
 ## API Response Behaviors
 
 ### Empty Collection Results

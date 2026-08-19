@@ -134,6 +134,10 @@ Use reverse-domain notation based on your actual domain:
 | `retailcorp.se` | `se.retailcorp.` | `se.retailcorp.customer-id` |
 | `example-retail.io` | `io.example-retail.` | `io.example-retail.crm-customer` |
 
+> **Exactly three segments, and the count is worth checking before you commit.** `com.acme.crm-id` is recognised; `com.acme.crm.id` is not. Two shapes overshoot without looking wrong — nesting a namespace a level deeper (`com.acme.customers.id`), and reversing a country-code domain, where the domain alone uses all three (`acme.co.uk` → `uk.co.acme.` has no segment left for the identifier; use `uk.co-acme.crmId` or `com.acme.crmId`).
+>
+> The cost of getting it wrong is not a missing field. A key outside the shape is **dropped on write at `200`**, and identifiers are what an upsert matches a person against — so a customer whose only identifier is malformed is created again on every sync run rather than updated, and a `GET` by that key is a `404` that looks exactly like "not synced yet". Read the `identifiers` back off the write's own response to confirm the key was accepted. Full rules: [A Malformed Identifier Key Is Discarded, Not Rejected](../overview.md#a-malformed-identifier-key-is-discarded-not-rejected).
+
 ### Identifier Key Naming
 
 | CRM Entity | Recommended Key | Notes |
@@ -964,7 +968,7 @@ For records that fail after all retries:
 
 ### Pre-Launch
 
-- [ ] **Identifier namespace** — Confirm reverse-domain namespace (e.g., `com.acme.crm-id`)
+- [ ] **Identifier namespace** — Confirm reverse-domain namespace (e.g., `com.acme.crm-id`), and that every key is **exactly three** dot-separated segments — a malformed key is dropped at `200` and the record is re-created on every run ([why](../overview.md#a-malformed-identifier-key-is-discarded-not-rejected))
 - [ ] **Field mapping** — Document CRM → CommerceOS field mapping
 - [ ] **Dedup strategy** — Define dedup rules (email? phone? national ID?)
 - [ ] **Conflict resolution** — Document which system wins for each field

@@ -187,9 +187,58 @@ PUT /people/com.myapp.userId=123 '{"givenName": "John"}'
 GET /people/com.myapp.userId=123
 ```
 
-**The shape of a namespaced key.** What the API recognises as a namespaced identifier key is **exactly three dot-separated segments, with no dash in the first** — `com.myapp.userId`, `com.example.sku`. A dash is fine in the second and third segments, and case is not significant to the shape. A key outside that shape is not recognised as one: `com.example.orders.id` has four segments and is ordinary reverse-domain notation, but sorting on it is a `400` reading `Invalid sort key 'identifiers/com.example.orders.id': field not found` — the shape is rejected before any identifier is looked up, so the message names the wrong cause. The sort is also the only place the shape is checked — `~where`, `~just` and `~distinctBy` take a key of any shape at `200` and pass it through without complaint — so a key that reads fine everywhere else can still fail there. See [what you can sort on](operators-catalog.md#orderbyselectordesc) for both sides of that line.
+**The shape of a namespaced key.** What the API recognises as a namespaced identifier key is **exactly three dot-separated segments**, at most 128 characters, with **no dash in the first** — `com.myapp.userId`, `com.example.sku`. A dash is fine in the second and third segments, and case is not significant to the shape. Full grammar: [namespaced key](primitives.md#namespaced-key).
 
-**Adding an identifier to an object you can only find by another one.** Identifiers listed alongside the payload are used to *select* the object, so they cannot at the same time be written. Put the new identifier inside a `@value` envelope instead:
+"Exactly three" is the part to check, because the natural way to overshoot it is to write something that looks *more* correct rather than less:
+
+```
+com.example.thing     valid        com.example.orders.id   INVALID  four segments
+com.he-ads.b          valid        com.example             INVALID  two
+com.a.b-c             valid        sku                     INVALID  one
+com_x.a.b             valid        com-heads.a.b           INVALID  dash in the first segment
+a.b.c                 valid        uk.co.acme.customerId   INVALID  four — see below
+```
+
+That last row is the one worth planning around. Reversing a domain with a country-code second level — `acme.co.uk`, `acme.com.au` — spends all three segments on the domain alone, so there is nothing left to name the identifier with. Pick a prefix that leaves you a third segment (`uk.co-acme.customerId`, or simply `com.acme.customerId`) before you write it into an integration.
+
+**Where the shape is enforced, and where it is not.** `~orderBy` and `~distinctBy` reject a key outside the shape with a `400` — `Invalid sort key 'identifiers/com.example.orders.id': field not found`, and `Invalid distinct key …` respectively. The message reads as "you have no such identifier" when it means "that is not a key I will accept", so count the segments before going to look for the data. `~where` and `~just` take a key of any shape at `200` and pass it through without complaint, so a key that reads fine in a filter can still be a `400` in a sort. See [what you can sort on](operators-catalog.md#orderbyselectordesc) for both sides of that line. On a **write**, the shape decides whether the key is stored at all — which is the half that costs the most, and is next.
+
+### A Malformed Identifier Key Is Discarded, Not Rejected
+
+A key outside the shape, sent in a request **body**, is silently dropped. The write succeeds with a `200`, everything else in the payload lands, and the key is simply not there. Measured on `POST`, `PATCH` and `PUT` alike:
+
+```bash
+POST /v1/products
+[{"identifiers": {"com.example.sku": "W-1", "com.example.orders.id": "ORD-1"}, "name": "Widget"}]
+→ 200  {"identifiers": {"key": "…", "com.example.sku": "W-1"}, "name": "Widget", …}
+                                     ↑ com.example.orders.id is gone
+```
+
+**The consequence is not "an attribute went missing".** Identifiers are what an upsert matches an incoming record against, so a write whose *only* identifier is malformed has nothing to recognise itself by on the next run — it creates a new record every time:
+
+```bash
+3 × POST [{"identifiers": {"com.example.orders.id": "DUP-1"}, "name": "Dup Probe"}]    → 3 products
+3 × POST [{"identifiers": {"com.example.ordersid":  "DUP-2"}, "name": "Dup Control"}]  → 1 product
+```
+
+One character apart. For a scheduled sync that retries, the first form is unbounded growth rather than a lost field.
+
+**A lookup will not tell you.** Asking for the record back by the key you sent is a `404` — the same answer as "not created yet" — so a client polling for its own write never learns the identifier was refused:
+
+```bash
+GET /v1/products/com.example.orders.id=ORD-1   # 404  malformed key
+GET /v1/products/com.example.nope=ORD-1        # 200  null — well formed, nothing carries it
+```
+
+The two *are* distinguishable, just not in a way that names the write as the cause. **The check that works is to read the identifiers back off the write's own response** and confirm the key is present before treating it as assigned — the response body above already shows the difference, at no extra request.
+
+**In a URL segment the same key behaves differently.** A malformed key in a path does not route at all, so `PUT /v1/kv/com.test` is a `404` where the identical key in a body is a silent `200`. Position, not payload, decides which you get.
+
+**One resource rejects it instead, and only one.** [`sync-webhooks`](sync-webhooks.md#per-webhook-configuration-store) validates the keys of its `secrets` and `variables` maps and answers `400` naming the offending key, failing the whole request and persisting nothing — so a payload mixing valid and invalid keys lands none of it. Every other resource in the API, `identifiers` on all of them included, takes the lenient path above. Treat the webhook behaviour as the exception rather than the rule.
+
+### Adding an Identifier to an Object You Can Only Find by Another One
+
+Identifiers listed alongside the payload are used to *select* the object, so they cannot at the same time be written. Put the new identifier inside a `@value` envelope instead:
 
 ```bash
 PUT /people
