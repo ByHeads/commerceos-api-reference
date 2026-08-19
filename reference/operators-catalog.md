@@ -158,6 +158,13 @@ GET /v1/products~where(status=Active,hidden=false)
 - Value parsing: `null`, `undefined`, `true`, `false` are parsed as literals; numbers and ISO dates are coerced
 - Date comparison uses `.getTime()` for both sides
 - For OR semantics across predicates, use [`~either(...)`](#eitherpredicates)
+- **A field name is never validated — an unrecognised one is read as `null`.** The predicate still runs; it just compares against nothing. So a typo does not fail, it quietly matches the whole collection or none of it, decided only by the value you wrote against it:
+  ```
+  GET /v1/products~where(hidden=false)~count   # 137 - hidden is a product member
+  GET /v1/stores~where(hidden=false)~count     # 0   - hidden is not a store member; 200, no error
+  GET /v1/stores~where(hidden=null)~count      # 5   - the same wrong name, inverted by the value alone
+  ```
+  Every one of those is a `200`. The `=null` form is the benign half — it passes everything through, which at least looks wrong — while a real-looking value silently returns an empty collection that reads exactly like "nothing matched". A name that filters therefore proves nothing about whether the resource declares it; [`~orderBy` is the test](#orderbyselectordesc) ([why](common-gotchas.md#39-a-null-in-a-response-does-not-prove-the-field-exists)). Misspelled *operators* fail the same quiet way — see [gotcha 24](common-gotchas.md#24-misspelled-operators-fail-silently).
 
 ---
 
@@ -222,6 +229,9 @@ GET /v1/trade-orders~orderBy(customer/name)
 > GET /v1/stores~orderBy(hidden)~take(5)           → 400   Invalid sort key 'hidden': field not found
 > ```
 >
+> That is the benign half of the filter's silence. Written against a real-looking value the same typo returns an empty
+> collection instead of the whole one — see the [`~where` notes](#wherepredicates).
+>
 > **The sort itself is the test.** `~orderBy(X)~take(1)` against a non-empty collection is a `400` if and only if the
 > resource does not declare `X`. No response body answers that question: naming an undeclared member in a projection
 > returns `"X": null` — the operator echoes back the name you gave it — while `fields=all` *omits* a declared member
@@ -264,6 +274,8 @@ ascending, the empty block is at the head, so a walk over a sparse member can st
   GET /v1/products~orderBy(identifiers/com-example.a.b)~take(4)        → 400  dash in the first segment
   ```
   Both halves cost something, and the answer to "why didn't my sort work" is the same sentence in both cases — the key was never looked up.
+
+  **The shape is checked here and nowhere else.** `~orderBy` is the only operator that rejects on it: `~where`, `~just` and `~distinctBy` all take `identifiers/com.example.orders.id` at `200`, echoing the path back rather than validating it. So a key that a filter or a projection accepts can still be a `400` on a sort.
 
   **Well formed, so silent.** A misspelling *inside* a valid key is invisible: no error, a `200`, and the collection in its natural order. `com.example.itemId` and `com.example.itemID` differ by one character's case, are both admitted, and nothing in the response distinguishes the one that sorted from the one that did not. This is the realistic mistake, because reaching for your own namespace instead of `identifiers/key` is a reasonable thing to do — for your own records it is unique and always populated. Verify a sort like this by checking that the first and last items actually differ in the value you sorted on. On a cursor walk it surfaces as the [no-cursor stall](pagination.md#requirements-and-notes) instead, since no item has a value to resume from.
 

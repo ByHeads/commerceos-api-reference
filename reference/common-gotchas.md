@@ -898,15 +898,19 @@ Full rules: [Transaction chunking](../features/streaming.md#3-transaction-chunki
 
 ## 39. A `null` in a Response Does Not Prove the Field Exists
 
-Every operator that **names** a member adds it to the output, and for a name the resource does not declare it adds `null` rather than failing. So `~with(X)`, `~just(...,X)` and `~where(X=null)` all report `"X": null` whether or not `X` is a member of that resource — which is also exactly what a declared member the record happens to leave empty reports.
+`~with(X)`, `~just(...,X)` and `~where(X=null)` all **add** `X` to the output, and for a name the resource does not declare they add `null` rather than failing. So all three report `"X": null` whether or not `X` is a member of that resource — which is also exactly what a declared member the record happens to leave empty reports.
 
 ```bash
-# Both come back null, and only one of them is a real store member
-GET /v1/stores~just(organizationNumber,hidden)~take(1)
-→ [{"@type":"store","organizationNumber":null,"hidden":null}]
+# organizationNumber proves itself real on row 2; on row 1 it is indistinguishable from a member
+# that does not exist on this resource at all
+GET /v1/stores~just(name,organizationNumber,hidden)~take(2)
+→ [{"@type":"store","name":"Shade Stockholm","organizationNumber":null,"hidden":null},
+   {"@type":"store","name":"Shade Göteborg","organizationNumber":"5566391237","hidden":null}]
 ```
 
-`organizationNumber` is declared on `store`; `hidden` belongs to `product` and does not exist on a store at all.
+`organizationNumber` is declared on `store` — the second row proves it. `hidden` belongs to `product` and does not exist on a store at all, so it is `null` on every row, and nothing in the first row distinguishes the two.
+
+Not every operator that names a member projects it: [`~orderBy`](operators-catalog.md#orderbyselectordesc) reads its selector without adding it to the output, [`~without`](operators-catalog.md#withoutselectors) removes, and [`~simpleJust`](operators-catalog.md#simplejustnames) filters the object it was already given. The three above are the ones that add.
 
 **`fields=all` does not settle it either** — it omits a declared member the record leaves empty, so an absence is a property of that record rather than of the type. One request over the store collection shows both halves at once:
 
