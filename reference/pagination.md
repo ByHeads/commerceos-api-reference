@@ -259,12 +259,21 @@ a cursor and walk to the end of the collection:
 GET /v1/products?limit=25&orderby=identifiers/key&fields=name
 ```
 
-Two response shapes are worth knowing in advance, neither of them a sign of trouble. Naming a **nested path** in
+Three response shapes are worth knowing in advance, none of them a sign of trouble. Naming a **nested path** in
 `fields=` gives you the value at the end of that path under the name of its first segment, rather than the object
 containing it — so `fields=identifiers/com.example.sku` returns `"identifiers": "<your sku>"`, and
 `fields=identifiers/key` returns the database key under that same name. That is how a nested projection renders
 whether or not you are paginating. And `fields=default` returns `identifiers` as a **complete object**, for the reason
 given under the `default` exception below.
+
+The third only shows up once the walk is under way, so a check on page 1 will not find it: from the second page on,
+a request that does not name its fields carries one member more than page 1 did — a literal `identifiers/key`
+alongside the real `identifiers` object. Resuming means filtering on the sort path, the filter is a
+[`~where`](operators-catalog.md#wherepredicates), and a `~where` on a nested path renders that path as a member of
+its own. Measured on `?orderby=identifiers/key`, it is there under `fields=default`, under `fields=all` and with no
+`fields=` at all; naming the members you want (`fields=name`, `fields=name,identifiers`, even `fields=none`) filters
+it out on every page. That is the remedy and it is worth doing anyway — but treat this as an observation about the
+current build rather than a shape to code against.
 
 > **A `fields=` parameter is what makes the projection irrelevant.** The sort value is fetched behind the scenes only
 > when the request carries a `fields=` list — that is the one spelling the API rewrites for you. Without one you get
@@ -335,7 +344,9 @@ whatever the page size.** Minting is the first of this section's requirements, n
 `orderby=organizationNumber` returns `organizationNumber` as well, even though the default representation does not
 cover it. Which members `default` covers is a property of the type rather than of your request, so the sort field is
 added and then left in place rather than risk deleting a member you were entitled to — one extra member beats silent
-data loss. Every other projection is returned exactly as requested.
+data loss. Every other projection is returned exactly as requested on the first page, and on every page of a walk
+whose `fields=` list names the members it wants — see the third response shape above for what the others pick up once
+the walk resumes.
 
 What gets added is the **root** of the sort selector, not the leaf. For a flat member the two are the same thing. For a
 nested selector such as `identifiers/key` the root is `identifiers`, so `fields=default` comes back carrying the whole
