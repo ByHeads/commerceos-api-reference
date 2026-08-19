@@ -161,9 +161,9 @@ See [`reference/operators.md`](../reference/operators.md#a-skip-is-only-cheap-wh
 
 **Using a Cursor (for whole-collection walks):**
 ```bash
-# First page - BOTH limit and orderby are required, and the sort field must have
-# unique values that are always populated. Omit limit and you get the whole
-# collection with no pagination headers, so the walk can never start.
+# First page - BOTH limit and orderby are required, and the sort field must hold
+# a single value that is unique and always populated. Omit limit and you get the
+# whole collection with no pagination headers, so the walk can never start.
 curl -u ":banana" -D - "https://example.app.heads.com/api/v1/products?limit=100&orderby=identifiers/key"
 
 # Follow X-Cursor-Next from the response headers; send the same limit every time
@@ -172,9 +172,11 @@ curl -u ":banana" -D - "https://example.app.heads.com/api/v1/products?limit=100&
 
 Cursor pages stay stable while the collection is being written to, and don't slow down as you go deeper. Loop on the
 presence of `X-Cursor-Next`, not on `X-Has-More` — `X-Has-More: true` with no cursor header means the walk *cannot*
-continue, and it is an error rather than the end of the collection. Four more things to watch: `limit` is required on
-every request, sorting on a non-unique field (e.g. `status`) silently skips items, streamed responses never emit the
-cursor headers, and alongside a nested sort selector like `identifiers/key` a `fields=` projection narrower than the
+continue, and it is an error rather than the end of the collection. Five more things to watch: `limit` is required on
+every request, sorting on a non-unique field (e.g. `status`) silently skips items, a sort field holding a list, an
+object or a boolean is a `400` on the first request (sort on `identifiers/key`, never on `identifiers`), streamed
+responses never emit the cursor headers, and alongside a nested sort selector like `identifiers/key` a `fields=`
+projection narrower than the
 parent object currently stops the cursor being minted at all — project the parent (`fields=name,identifiers`) or drop
 the projection. See
 [`reference/pagination.md`](../reference/pagination.md#cursor-pagination).

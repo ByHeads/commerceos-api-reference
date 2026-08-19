@@ -156,6 +156,43 @@ GET /v1/products?limit=50&orderby=identifiers/key
 [stalled-walk state](#walking-a-collection) above. `name` is *not* guaranteed unique either — the same product name can
 exist per currency or per store — and low-cardinality fields such as `status` are never safe.
 
+**Sort on a field that holds a single value.** A cursor carries your position as one value, so the sort field has to
+*be* one value. A member that renders as a list, an object or a boolean is refused with a `400` on the first request,
+and the `details` name both the field and what it holds:
+
+```bash
+GET /v1/products?limit=2&orderby=gtin
+# 400  Cursor pagination requires a sort field holding a single text or numeric value: 'gtin' holds a list
+
+GET /v1/products?limit=2&orderby=identifiers
+# 400  ... 'identifiers' holds an object
+
+GET /v1/product-nodes?limit=2&orderby=hidden&fields=name
+# 400  ... 'hidden' holds a boolean
+```
+
+The object case is the one you are most likely to hit by accident: sort on `identifiers/key`, a member *inside* the
+object, rather than on `identifiers` itself. The boolean example carries a `fields=` parameter deliberately: `hidden`
+is outside that resource's default representation, and without a projection the request comes back `200` with
+`X-Has-More: true` and no cursor — the stall described in the next requirement — rather than this error. The refusal
+needs the sort value to have been resolved. If you saw this refused on the second request instead, with
+`Malformed cursor token`, that was the older behaviour — the token minted on page 1 held an empty list and page 2
+rejected it, which pointed at the token rather than at the sort field. Nothing about your token handling needs
+changing.
+
+Three things about when it fires:
+
+- **On every page, not only pages that have a successor.** A `limit` larger than the whole collection is still a
+  `400`. That is deliberate — otherwise the sort field would appear to work until the collection outgrew one page.
+- **On any request shaped as a page**, which means `orderby` together with a positive `limit`, including one paging by
+  `offset` — that shape gets cursor headers too. The path-operator form is not a walk and is unaffected either way:
+  both `~orderBy(gtin)~take(2)` and `~orderBy(gtin)?limit=2` sort a list-valued member and return `200`.
+- **Not on an empty page.** `~where(status=__nope__)?limit=2&orderby=gtin` returns `200 []`; no item on the page has a
+  value to carry, and an empty page is already a complete walk.
+
+A field that is merely *empty* is a different answer and behaves differently — see the next requirement. "Holds a
+list" and "holds nothing" are not the same problem: one errors, the other stalls silently.
+
 **Sort on a field that is always populated, too.** An item with no value for the sort field stalls the walk when it
 lands at the end of a page, as described above — the response carries `X-Has-More: true` with no `X-Cursor-Next`,
 because there is nothing to resume from. This is a quiet failure: the walk stops mid-collection rather than erroring,

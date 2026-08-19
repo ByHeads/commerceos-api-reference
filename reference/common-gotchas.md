@@ -505,6 +505,16 @@ GET /v1/products?limit=50&orderby=identifiers/key
 `name` is not a safe substitute either: the same name can exist per currency or per store. Compound sorting is not a
 workaround — an `orderby` listing more than one field is a `400` whether or not an `after` token is present.
 
+**A sort field holding more than one value is refused outright, and that one is not silent.** A cursor carries your
+position as a single value, so a member that renders as a list, an object or a boolean is a `400` on the *first*
+request — `Cursor pagination requires a sort field holding a single text or numeric value: 'gtin' holds a list`, and
+likewise `'identifiers' holds an object` or `'hidden' holds a boolean`. The object case is the easy mistake: sort on
+`identifiers/key`, not on `identifiers`. The refusal needs the sort value to have been resolved, so on a member outside
+the resource's default representation you see it only once the request carries a `fields=` parameter; without one it
+stalls silently instead, as above. It fires on every page, including a `limit` bigger than the whole collection,
+so a list-valued sort field cannot appear to work until the data outgrows one page. Only the query-parameter form is
+affected — `~orderBy(gtin)~take(2)` is a plain sort, not a walk, and still returns `200`.
+
 **A sort field that is sometimes empty fails a second way, and it is worth checking for explicitly.** When the last
 item on a page has no value for the sort field, no next cursor can be minted, so the response carries
 `X-Has-More: true` with **no** `X-Cursor-Next`. A walk written as "repeat while `X-Has-More` is true" spins on a
