@@ -23,17 +23,14 @@ Agents expose name-related fields differently depending on their type:
 **Person essentials:** `identifiers`, `fullName`, `givenName`, `familyName`, `personalNumber`
 **Company/Store essentials:** `identifiers`, `name`
 
-For **Person** entities, `fullName` is derived from `givenName` and `familyName` and is returned by default. The `name` field is an alias for it and requires `~with(name)`:
+For **Person** entities, `fullName` is derived from `givenName` and `familyName` and is returned by default. The `name` field (mapped to internal `fullName` property) requires `~with(name)`:
 
 ```bash
 # fullName is returned by default for people
-GET /people~take(10)
+GET /people~orderBy(fullName)~take(10)
 
 # If you need the `name` alias, use ~with
-GET /people~with(name)~take(10)
-
-# Sort on identifiers/key — a name member is not a sort key on this collection
-GET /people~orderBy(identifiers/key)~take(10)
+GET /people~with(name)~orderBy(name)~take(10)
 ```
 
 For **Company** and **Store** entities, `name` is returned by default:
@@ -41,15 +38,8 @@ For **Company** and **Store** entities, `name` is returned by default:
 ```bash
 # name is returned by default for companies/stores
 GET /companies~orderBy(name)~take(10)
-GET /stores~take(10)
+GET /stores~orderBy(name)~take(10)
 ```
-
-> **Which members you can sort a collection on varies by type, and a `400` is how you find out.** `~orderBy(name)`
-> returns rows on `companies` but is rejected on `stores` and on `people` with
-> `Invalid sort key 'name': field not found`; the same applies to `fullName`, `givenName` and `familyName` on `people`.
-> Those members still **filter** normally on every one of these types — only the sort is refused. `identifiers/key`
-> sorts on all of them, which is one more reason it is the recommended sort key for a full walk
-> ([Cursor pagination](pagination.md#requirements-and-notes)).
 
 **Key behaviors:**
 - `fullName` is essential only for `person` type

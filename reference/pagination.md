@@ -156,6 +156,15 @@ GET /v1/products?limit=50&orderby=identifiers/key
 [stalled-walk state](#walking-a-collection) above. `name` is *not* guaranteed unique either — the same product name can
 exist per currency or per store — and low-cardinality fields such as `status` are never safe.
 
+**Sort on a field that is always populated, too — and note that an empty value fails two different ways.** An item
+with no value for the sort field stalls the walk when it lands at the end of a page, as described above. When it lands
+at the *start* of the collection, the request fails outright with a `400` whose `details` read
+`Invalid sort key '<field>': field not found` — the sort key is validated against the first record, and a real member
+with no value on that record does not pass. The message names the field, so it reads like a typo even when the field is
+spelled correctly and exists on the type; a filter that changes nothing but which record comes first makes it
+disappear. Treat both as the same requirement rather than two unrelated errors, and see
+[gotcha 39](common-gotchas.md#39-sorting-on-an-empty-field-is-a-400-not-an-empty-slot) for the worked pair.
+
 Compound sorting is not a workaround, and not just for pagination: **a multi-field `orderby` is rejected with a `400`
 whether or not you are paginating.** Two layers reach the same answer — `~orderBy` takes one selector, so
 `?orderby=status,name` on its own fails with `details` of `Invalid sort key 'status,name': field not found`, and with an
@@ -217,8 +226,8 @@ string holding the database key** instead of the object you would otherwise get;
 named literally `identifiers/key`, slash included:
 
 ```json
-{"@type":"product","identifiers":"000102bbad34ea7ce61b1cb07af62c4c","name":"prod-0nh1tggndz3",
- "gtin":[],"status":"Active","identifiers/key":"000102bbad34ea7ce61b1cb07af62c4c"}
+{"@type":"product","identifiers":"0239ada480742fd8d2b8b31367cb7d18","name":"501 Original Jeans W28 L36 Stonewash",
+ "gtin":[],"status":"Active","identifiers/key":"0239ada480742fd8d2b8b31367cb7d18"}
 ```
 
 **That second member also appears on the two projections that do work.** `fields=all`, and omitting `fields`

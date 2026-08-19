@@ -897,6 +897,40 @@ Full rules: [Transaction chunking](../features/streaming.md#3-transaction-chunki
 
 ---
 
+## 39. Sorting on an Empty Field Is a `400`, Not an Empty Slot
+
+`Invalid sort key '<field>': field not found` does not always mean the field does not exist. A sort key is validated
+against the **first record of the collection being sorted**, and a real member that simply has no value on that record
+fails the check — so the same sort succeeds or fails depending on which record happens to come first.
+
+```bash
+# 400 — details: Invalid sort key 'unit': field not found
+GET /v1/products~orderBy(unit)~take(3)
+
+# 200 — same field, same collection, but the first record now has a unit
+GET /v1/products~where(unit!=null)~orderBy(unit)~take(3)
+```
+
+`unit` is a perfectly valid product member in both requests. The first one fails only because the product that happens
+to sort first has no `unit` set. That is why the error is so easy to misread: it names the field, so it reads like a
+typo, and a `~where` that changes nothing but the ordering of the input makes it disappear.
+
+The practical consequences:
+
+- **Do not conclude a field is unsortable from one `400`.** Test it against a filtered collection before deciding, and
+  do not conclude anything about the *type* — a sort that works on one tenant's data can fail on another's.
+- **A sort that works today can start failing tomorrow**, when a record with the field empty is created and happens to
+  land first. Sparse fields are the risk: optional members, and computed ones like a person's `fullName`, which is
+  absent when neither `givenName` nor `familyName` is set.
+- **This is the loud half of the always-populated rule.** The
+  [cursor requirements](pagination.md#requirements-and-notes) already ask for a sort field that is always present
+  because an empty value stalls a walk silently. An empty value on the *first* record fails immediately instead. Both
+  point the same way: sort a full walk on `identifiers/key`, which is unique and never empty.
+- A genuinely misspelled or nonexistent field gives the identical message, so the wording cannot tell you which of the
+  two you have hit.
+
+---
+
 ## API Response Behaviors
 
 ### Empty Collection Results
@@ -921,8 +955,7 @@ Person entities expose both computed and raw name fields:
 **Key points:**
 - `fullName` is included by default in person responses
 - `name` (inherited from agent) requires `~with(name)` to include
-- Both `name` and `fullName` can be used for **filtering**; sorting the plain `people` collection on either is
-  rejected — see the note below
+- Both `name` and `fullName` can be used for sorting and filtering
 - Setting name values directly is supported; computed values derive from givenName/familyName
 
 ```bash
@@ -931,19 +964,13 @@ GET /v1/people/com.example.id=123
 # → {"givenName": "John", "familyName": "Doe", "fullName": "John Doe", ...}
 
 # name requires explicit inclusion (agent-level alias)
-GET /v1/people~with(name)~take(10)
+GET /v1/people~orderBy(name)~with(name)~take(10)
 
-# Both name members filter fine
-GET /v1/people~where(fullName=~Doe)~take(10)
-
-# Sort a full walk on identifiers/key — the name members are not accepted here
-GET /v1/people~orderBy(identifiers/key)~take(10)
+# Or use fullName directly (already included)
+GET /v1/people~orderBy(fullName)~take(10)
 ```
 
-> **A name member is not a sort key on the `people` collection.** `~orderBy(fullName)`, `~orderBy(givenName)`,
-> `~orderBy(familyName)` and `~orderBy(name)` are each rejected with a `400` reading
-> `Invalid sort key '<field>': field not found`, in the path-operator form and the `?orderby=` form alike. Filtering on
-> those same members works, so the failure only shows up once you add the sort. Some filtered queries *do* accept a name
-> sort (`~where(nationality=SE)~orderBy(name)` returns rows), so seeing one work is not evidence that the unfiltered
-> collection will. `identifiers/key` sorts reliably and is what a full walk should use anyway
-> ([Cursor pagination](pagination.md#requirements-and-notes)).
+> **A name member is only a dependable sort key while every record has one.** A person with no `givenName` and no
+> `familyName` has no `fullName` either, and a sort key that is empty on the first record of the collection is a `400`
+> rather than a sort — see [Sorting on an Empty Field Is a `400`](#39-sorting-on-an-empty-field-is-a-400-not-an-empty-slot).
+> Sort a full walk on `identifiers/key` instead.
