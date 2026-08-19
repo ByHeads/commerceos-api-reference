@@ -72,6 +72,14 @@ GET /v1/products~without(createdAt,updatedAt,createdBy)
 **Notes:**
 - Useful for removing audit fields or other clutter
 - Works on default fields and expanded fields
+- **A name the resource does not declare is a silent no-op**, so a typo ships the very field you meant to drop — for the audit-field case above, the clutter is still in the response and nothing says so:
+  ```
+  GET /v1/products~without(status)~take(1)       # status is gone
+  GET /v1/products~without(statuS)~take(1)       # status is still there; 200, no error
+  GET /v1/products~without(nosuchfield)~take(1)  # unchanged
+  ```
+  [`~orderBy` is the test](#orderbyselectordesc) for whether the name exists; the same silence covers [`~where`](#wherepredicates) and [`~distinctBy`](#distinctbyselector) ([why](common-gotchas.md#39-a-null-in-a-response-does-not-prove-the-field-exists))
+- **A nested path removes its first segment, not its leaf.** `~without(identifiers/com.example.sku)` drops the entire `identifiers` object — the primary `key` with it — and it does so whether or not that identifier exists. There is no way to remove one member of a nested object and keep the rest — the projections all act on the root ([details](#orderbyselectordesc)), so `~just(name,identifiers/key)` does not give you a trimmed object either; it returns the key hoisted under the name `identifiers`
 
 ---
 
@@ -118,6 +126,7 @@ GET /v1/products~simpleJust(name,status,gtin)
 - Unlike `~just`, does not resolve selectors or nested paths
 - Faster for simple property name filtering
 - Operates on the output object's property names directly
+- A name that is not on the object is simply absent from the result — `~simpleJust(name,statuS)~take(1)` returns `name` and no `statuS`. It is not an error, but unlike [`~just`](#justselectors), which projects an unrecognised name as `null`, the mistake is at least visible
 
 ---
 
@@ -167,7 +176,7 @@ GET /v1/products~where(status=Active,hidden=false)
   ```
   GET /v1/products~where(hidden=false)~count   # 137 - hidden is a product member
   GET /v1/stores~where(hidden=false)~count     # 0   - hidden is not a store member; 200, no error
-  GET /v1/stores~where(hidden=null)~count      # 5   - the same wrong name, inverted by the value alone
+  GET /v1/stores~where(hidden=null)~count      # 5   - every store; the same wrong name, inverted by the value alone
   ```
   Every one of those is a `200`. The `=null` form is the benign half — it passes everything through, which at least looks wrong — while a real-looking value silently returns an empty collection that reads exactly like "nothing matched". A name that filters therefore proves nothing about whether the resource declares it; [`~orderBy` is the test](#orderbyselectordesc) ([why](common-gotchas.md#39-a-null-in-a-response-does-not-prove-the-field-exists)). Misspelled *operators* fail the same quiet way — see [gotcha 24](common-gotchas.md#24-misspelled-operators-fail-silently).
 
@@ -280,7 +289,9 @@ ascending, the empty block is at the head, so a walk over a sparse member can st
   ```
   Both halves cost something, and the answer to "why didn't my sort work" is the same sentence in both cases — the key was never looked up.
 
-  **The shape is checked here and nowhere else.** `~orderBy` is the only operator that rejects on it: `~where`, `~just` and `~distinctBy` all take `identifiers/com.example.orders.id` at `200`, echoing the path back rather than validating it. So a key that a filter or a projection accepts can still be a `400` on a sort.
+  **The shape is checked here and nowhere else.** `~orderBy` is the only operator that rejects on it: `~where`, `~just`, `~with`, `~without` and `~distinctBy` all take `identifiers/com.example.orders.id` at `200`. What they do with it differs. `~where` and `~distinctBy` add the literal path as a member name and leave the real `identifiers` object alone. The projections act on the path's **first segment** instead — `~just`, `~with` and `fields=` render whatever the path resolved to *under the root's name*, so a leaf that resolves to nothing replaces the whole `identifiers` object with `null`, and `~without` drops that object outright. It is the same collapse that turns `identifiers` into a bare key string on a `fields=identifiers/key` walk. So a key that a filter or a projection accepts can still be a `400` on a sort — and under `~with` or `~without`, accepting it costs you the object you already had.
+
+  A `null` root is not itself a diagnosis, though: `~just(name,parentGroup/name)` renders `"parentGroup": null` on a product with no parent group, and sorting on that same path is a `200`. The sort is still the only test.
 
   **Well formed, so silent.** A misspelling *inside* a valid key is invisible: no error, a `200`, and the collection in its natural order. `com.example.itemId` and `com.example.itemID` differ by one character's case, are both admitted, and nothing in the response distinguishes the one that sorted from the one that did not. This is the realistic mistake, because reaching for your own namespace instead of `identifiers/key` is a reasonable thing to do — for your own records it is unique and always populated. Verify a sort like this by checking that the first and last items actually differ in the value you sorted on. On a cursor walk it surfaces as the [no-cursor stall](pagination.md#requirements-and-notes) instead, since no item has a value to resume from.
 
@@ -344,6 +355,13 @@ GET /v1/trade-orders~distinctBy(customer/identifiers/key)
 - Evaluates selector per item
 - Drops subsequent items with duplicate selector values
 - Supports nested paths
+- **The selector is never validated, and an unrecognised one collapses the collection to a single item.** Every item evaluates it to nothing, so they all count as duplicates of each other and exactly one survives — a `200`, no error, and the rest silently discarded:
+  ```
+  GET /v1/products~count                          # 156
+  GET /v1/products~distinctBy(name)~count         # 147
+  GET /v1/products~distinctBy(nosuchfield)~count  # 1   - 200, and 155 items are gone
+  ```
+  The count will not tell you which happened: a genuinely single-valued member answers `1` too, so `~distinctBy(status)~count` is also `1` on a catalogue where every product is Active. [`~orderBy` is the test](#orderbyselectordesc) for whether the resource declares the name; the same silence covers [`~where`](#wherepredicates) and [`~without`](#withoutselectors) ([why](common-gotchas.md#39-a-null-in-a-response-does-not-prove-the-field-exists))
 
 ---
 

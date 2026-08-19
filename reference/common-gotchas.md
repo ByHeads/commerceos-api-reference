@@ -923,7 +923,7 @@ GET /v1/stores~just(name,organizationNumber,hidden)~take(2)
 
 `organizationNumber` is declared on `store` — the second row proves it. `hidden` belongs to `product` and does not exist on a store at all, so it is `null` on every row, and nothing in the first row distinguishes the two.
 
-Not every operator that names a member projects it: [`~orderBy`](operators-catalog.md#orderbyselectordesc) reads its selector without adding it to the output, [`~without`](operators-catalog.md#withoutselectors) removes, and [`~simpleJust`](operators-catalog.md#simplejustnames) filters the object it was already given. The three above are the ones that add.
+Not every operator that names a member projects it: [`~orderBy`](operators-catalog.md#orderbyselectordesc) reads its selector without adding it to the output, [`~without`](operators-catalog.md#withoutselectors) removes, and [`~simpleJust`](operators-catalog.md#simplejustnames) filters the object it was already given. Of the operators named here, the three above are the ones that add.
 
 **`fields=all` does not settle it either** — it omits a declared member the record leaves empty, so an absence is a property of that record rather than of the type. One request over the store collection shows both halves at once:
 
