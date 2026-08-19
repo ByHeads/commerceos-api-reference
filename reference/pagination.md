@@ -114,14 +114,21 @@ GET /v1/products?limit=50&orderby=identifiers/key
 All three are listed in `Access-Control-Expose-Headers`, so browser clients can read them cross-origin.
 
 **`X-Has-More: true` with no `X-Cursor-Next` is a real state, and it means the walk stops here.** It is not the last
-page — more items exist — but no cursor could be minted for them. Two things cause it: the last item on the page has
-no value for the sort field, so there is nothing to resume from; or the next item shares that last item's sort value,
-and a cursor would resume past it. A walk written as "repeat while `X-Has-More` is true" spins on a request it cannot
-advance; one written as "repeat while a cursor is present" stops mid-collection and reports success. Loop on the
-cursor, and read the two headers together: **a missing `X-Cursor-Next` on a page reporting `X-Has-More: true` means
-stop and treat the walk as incomplete.** It is not the end of one, and retrying will not help — nothing about the
-request will change. Sorting on a field that is unique *and* always present — `identifiers/key` — avoids both causes,
-which is the same recommendation the two requirements below make.
+page — more items exist — but no cursor could be minted for them. Three things cause it: the last item on the page has
+no value for the sort field, so there is nothing to resume from; the next item shares that last item's sort value, and
+a cursor would resume past it; or the request rendered an item the sort value cannot be read from, which is what a
+path-operator projection does when it does not reach the sort field — `~just(name)` stalls under
+`orderby=identifiers/key` and mints under `orderby=name`
+([where the sort value comes from](#requirements-and-notes)). A walk written as "repeat while `X-Has-More` is true"
+spins on a request it cannot advance; one written as "repeat while a cursor is present" stops mid-collection and
+reports success. Loop on the cursor, and read the two headers together: **a missing `X-Cursor-Next` on a page
+reporting `X-Has-More: true` means stop and treat the walk as incomplete.** It is not the end of one, and retrying
+will not help — nothing about the request will change.
+
+Sorting on a field that is unique *and* always present — `identifiers/key` — avoids the first two causes, which is the
+same recommendation the two requirements below make. It does not avoid the third: `~just(name)` alongside
+`orderby=identifiers/key` stalls on page one. That cause is a property of what the request rendered rather than of the
+field you sorted on, so the fix for it is to add a `fields=` parameter rather than to change the sort.
 
 **3. Follow the cursor** — pass the `X-Cursor-Next` value as `after` (or just request the `Link` URL):
 
@@ -224,6 +231,13 @@ a walk over the whole collection.
 # no organizationNumber is never returned, and nothing in the response says so.
 GET /v1/stores?limit=2&orderby=organizationNumber:desc&fields=none
 ```
+
+Neither the size of the loss nor the shape of the member is particular to that example. `unit` on `/v1/products` is a
+string held by 100 of 156 products, and `?limit=98&orderby=unit:desc&fields=none` returns 100 items over 2 pages
+ending `X-Has-More: false` — 56 records never returned, on a collection thirty times larger, reported as a completed
+walk. (The `fields=` parameter is doing real work in both examples: `unit` and `organizationNumber` are outside their
+resources' default representations, so without one the request stalls on the third cause above instead of reaching
+this one.)
 
 Ascending is safe from this, because those items sort *first* and are read before there is any boundary to resume
 past. Sorting on a field that is unique and always present — `identifiers/key` — is what makes the difference between

@@ -503,7 +503,7 @@ GET /v1/products?limit=50&orderby=status
 GET /v1/products?limit=50&orderby=identifiers/key
 ```
 
-The stop is loud — it is the same no-cursor-with-more state described two paragraphs down, so a walk that tests for
+The stop is loud — it is the same no-cursor-with-more state described three paragraphs down, so a walk that tests for
 the cursor catches it. Do not retry: nothing about the request will change. And note that only the pagination headers
 are withheld; the page itself is untouched, so `limit` and `orderby` with `offset`, or `limit` on its own, keep
 working on any sort field.
@@ -1005,6 +1005,7 @@ GET /v1/people~orderBy(fullName)~take(10)
 
 > **A name member sorts, but it is not a dependable key for walking a collection.** A person with neither a
 > `givenName` nor a `familyName` has no `fullName` either, and two people can share one — so a paginated walk sorted on
-> a name can skip records at a page boundary or stall on one that has none. Sort a full walk on `identifiers/key`,
-> which is unique and populated on every record, and keep name sorts for the case where the alphabetical order is
-> itself the point. See [cursor requirements](pagination.md#requirements-and-notes).
+> a name can **stop at a page boundary** or stall on one that has none, reporting `X-Has-More: true` with no next
+> cursor rather than coming back short. Sort a full walk on `identifiers/key`, which is unique and populated on every
+> record, and keep name sorts for the case where the alphabetical order is itself the point.
+> See [cursor requirements](pagination.md#requirements-and-notes).
