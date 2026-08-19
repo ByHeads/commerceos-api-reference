@@ -33,6 +33,7 @@ GET /v1/products~with(prices,categories)
 - Selectors support nested paths: `~with(items~with(product))`
 - Multiple fields are comma-separated
 - Use for expanding relations without fetching all fields
+- **A name the resource does not declare comes back as `null` rather than as an error**, so `"X": null` is not evidence that `X` exists. Same for `~just` and for a `~where` predicate. To settle it, [sort on the name](common-gotchas.md#39-a-null-in-a-response-does-not-prove-the-field-exists)
 - A selector may be a single-quoted **string literal**, optionally continued with a `/` member chain or a `~` pipe: `~with(slug:'Brød & Melk'/ld)` → `"brød-melk"`. Percent-encode `,` as `%2C` and `?` as `%3F` inside the quotes — the URL is split before the literal is read. See [String Literals as a Starting Point](primitives.md#string-literals-as-a-starting-point)
 
 ---
@@ -53,6 +54,7 @@ GET /v1/products~withAll
 **Notes:**
 - May be expensive for resources with many relations
 - Prefer `~with(...)` for targeted expansion
+- **It is not a member list.** A declared member the object leaves empty is omitted rather than returned as `null`, so a member's absence here says something about that object, not about the resource ([why this matters](common-gotchas.md#39-a-null-in-a-response-does-not-prove-the-field-exists))
 
 ---
 
@@ -90,6 +92,7 @@ GET /v1/products~just(name,status)
 - Clears existing subunits before applying
 - Use for strict whitelisting of fields
 - `~just()` with empty args returns minimal object
+- A name the resource does not declare is projected as `null` rather than rejected — see the [`~with` note](#withselectors)
 
 ---
 
@@ -222,8 +225,9 @@ GET /v1/trade-orders~orderBy(customer/name)
 > **The sort itself is the test.** `~orderBy(X)~take(1)` against a non-empty collection is a `400` if and only if the
 > resource does not declare `X`. No response body answers that question: naming an undeclared member in a projection
 > returns `"X": null` — the operator echoes back the name you gave it — while `fields=all` *omits* a declared member
-> that happens to be empty. So a `null` proves nothing and an absence proves nothing. Two cases the `400` does not
-> reach are in the notes below.
+> that happens to be empty. So a `null` proves nothing and an absence proves nothing
+> ([worked example](common-gotchas.md#39-a-null-in-a-response-does-not-prove-the-field-exists)). Two cases the `400`
+> does not reach are in the notes below.
 
 **Notes:**
 - `~orderBy` accepts a single selector. A comma does not start a second sort key — it becomes part of the selector, which then resolves to nothing, so `~orderBy(status,name)` (or `?orderby=status,name`) is a `400` with `details` of `Invalid sort key 'status,name': field not found`. This holds whether or not you are paginating; with a cursor `after` token present the request is rejected one layer earlier, with `Cursor pagination with compound sort not yet supported`
@@ -233,12 +237,12 @@ GET /v1/trade-orders~orderBy(customer/name)
   GET /v1/products~where(name=__nope__)~orderBy(nosuchfield)~take(5)  → 200, []
   GET /v1/products~orderBy(nosuchfield)~take(5)                       → 400
   ```
-- **A sort on `identifiers/<namespace>` is accepted whether or not any item carries that namespace.** The identifier namespace is open, so there is no declared member list to check a spelling against — a typo there is not an error, it is an unsorted result:
+- **A sort on `identifiers/<namespace>` is accepted whether or not any item carries that namespace.** The identifier namespace is open, so what is checked there is reverse-domain **form**, not existence — a well-formed name is admitted and sorts by nothing, which is an unsorted result rather than an error:
   ```
-  GET /v1/products~orderBy(identifiers/com.example.sku)~take(4)   → 200, sorted
-  GET /v1/products~orderBy(identifiers/com.example.Sku)~take(4)   → 200, the collection in its natural order
+  GET /v1/products~orderBy(identifiers/nope)~take(4)              → 400  not reverse-domain form
+  GET /v1/products~orderBy(identifiers/com.example.nope)~take(4)  → 200  well formed, so accepted — and unsorted, since nothing carries it
   ```
-  Verify one by checking that the first and last items actually differ in the value you sorted on. Typos *inside* a typed path are still caught — `identifiers/kye`, `prices/nosuchthing` and `nosuchparent/key` are all `400`. On a cursor walk the same mistake surfaces as the [no-cursor stall](pagination.md#requirements-and-notes) instead, since no item has a value to resume from.
+  That boundary is worth knowing, because the realistic mistake falls on the silent side: a case slip inside a namespace you own (`com.example.itemId` for `com.example.itemID`) is still well formed. Verify a sort like this by checking that the first and last items actually differ in the value you sorted on. Typos *inside* a typed path are still caught — `identifiers/kye`, `prices/nosuchthing` and `nosuchparent/key` are all `400`. On a cursor walk the same mistake surfaces as the [no-cursor stall](pagination.md#requirements-and-notes) instead, since no item has a value to resume from.
 - Collects all items in memory before sorting — not suitable for very large collections
 - **Blocks the short-circuit.** A `~take`/`~first` after a sort still waits for the whole collection to be sorted; that is inherent, since the top N cannot be known without seeing every row. If you need *any* N rows rather than the *first* N, leave `~orderBy` out and the request stops early ([details](operators.md#limiters-stop-the-scan-early)).
 

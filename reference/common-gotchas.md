@@ -896,6 +896,43 @@ Full rules: [Transaction chunking](../features/streaming.md#3-transaction-chunki
 
 ---
 
+## 39. A `null` in a Response Does Not Prove the Field Exists
+
+Every operator that **names** a member adds it to the output, and for a name the resource does not declare it adds `null` rather than failing. So `~with(X)`, `~just(...,X)` and `~where(X=null)` all report `"X": null` whether or not `X` is a member of that resource — which is also exactly what a declared member the record happens to leave empty reports.
+
+```bash
+# Both come back null, and only one of them is a real store member
+GET /v1/stores~just(organizationNumber,hidden)~take(1)
+→ [{"@type":"store","organizationNumber":null,"hidden":null}]
+```
+
+`organizationNumber` is declared on `store`; `hidden` belongs to `product` and does not exist on a store at all.
+
+**`fields=all` does not settle it either** — it omits a declared member the record leaves empty, so an absence is a property of that record rather than of the type. One request over the store collection shows both halves at once:
+
+```bash
+GET /v1/stores?fields=all
+→ Shade Stockholm   … no organizationNumber key at all
+  Shade Göteborg    … "organizationNumber": "5566391237"
+```
+
+**The sort is the test.** `~orderBy(X)~take(1)` against a collection with rows in it is a `400` if and only if the resource does not declare `X`, whatever any individual record holds:
+
+```bash
+# RIGHT - ask the sort, not the body
+GET /v1/stores~orderBy(organizationNumber)~take(1)   # 200 - declared, though the first store has none
+GET /v1/stores~orderBy(hidden)~take(1)               # 400 Invalid sort key 'hidden': field not found
+```
+
+Two related points:
+
+- **Ask over a collection that has rows in it.** With nothing to sort, the check short-circuits and any key passes: `products~where(status=__nope__)~orderBy(nosuchfieldxyz)~take(1)` is a `200` with an empty body.
+- **It cannot answer for `identifiers/<namespace>`.** That namespace is open, so what is checked there is reverse-domain **form**, not existence — `identifiers/nope` is a `400`, while `identifiers/com.example.nope` is a `200` returning the collection in its natural order. The realistic mistake therefore lands on the silent side: a case slip inside a namespace you own is still well formed. Verify a sort like that by checking that the first and last items actually differ in the value you sorted on.
+
+Full rules: [What you can sort on](operators-catalog.md#orderbyselectordesc).
+
+---
+
 ## API Response Behaviors
 
 ### Empty Collection Results
