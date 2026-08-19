@@ -295,21 +295,29 @@ given under the `default` exception below.
 > (`~just(name,identifiers/key)` → `Invalid sort key 'identifiers/key': field not found`).
 
 **Where the sort value comes from, in one rule.** A cursor is minted only if the `orderby` selector can be read from
-the item as the request renders it. Three things put it there: the resource's default representation; any operator that
-names it (`~just`, `~with`, even a `~where` predicate); or the API's own fetch-and-remove, which fires **only when the
-request carries a `fields=` parameter**. That covers the path-operator stall above and a second one you may have met on
-its own — a flat member outside the default representation, which stalls with no projection at all and walks the moment
-you add any `fields=` list, however narrow:
+the item as the request renders it. Three things can put it there: the resource's default representation; an operator
+that projects it (`~just`, `~with`, `~simpleJust`, even a `~where` predicate); or the API's own fetch-and-remove, which
+fires **only when the request carries a `fields=` parameter**.
+
+Read that as a description of the item that comes back, not as a checklist of what the request named. Naming a member
+is not the same as adding one: `~without(name)` alongside `orderby=name` stalls even though `name` is in the product
+default representation, and `~orderBy` reads its own selector without projecting it at all
+([which operators add and which do not](common-gotchas.md#39-a-null-in-a-response-does-not-prove-the-field-exists)).
+
+The rule covers the path-operator stall above and a second one you may have met on its own — a flat member outside the
+default representation, which stalls with no projection at all:
 
 ```bash
-GET /v1/products?limit=2&orderby=unit:desc              # X-Has-More: true, no X-Cursor-Next
-GET /v1/products?limit=2&orderby=unit:desc&fields=none  # mints; each item carries @type alone
-GET /v1/products~with(unit)?limit=2&orderby=unit:desc   # mints; unit is now on the item
+GET /v1/products?limit=2&orderby=instanceType                     # X-Has-More: true, no X-Cursor-Next
+GET /v1/products?limit=2&orderby=instanceType&fields=none         # mints; each item carries @type alone
+GET /v1/products~with(instanceType)?limit=2&orderby=instanceType  # mints; instanceType is on the item
 ```
 
-Those sort `:desc` deliberately. `unit` is a sparsely-populated member, and ascending puts the records with no value at
-the head — so if the first page ends on one of them, all three requests stall on the always-populated requirement above
-instead. Different problem, same symptom.
+Those three show a cursor **appearing**, which is not the same as a walk worth running. `instanceType` is populated on
+every product but holds one of a handful of values, so it fails the [uniqueness requirement](#requirements-and-notes)
+above and a walk on it comes up short. How far short depends on the page size: a smaller `limit` loses more, because
+every page resumes past all the items sharing the last one's value. Minting is the first of this section's
+requirements, not a substitute for the others.
 
 **One exception: a projection built on `default`.** `fields=default` on `/v1/stores` alongside
 `orderby=organizationNumber` returns `organizationNumber` as well, even though the default representation does not
