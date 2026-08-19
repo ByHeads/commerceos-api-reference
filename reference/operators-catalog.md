@@ -295,6 +295,20 @@ ascending, the empty block is at the head, so a walk over a sparse member can st
 **Notes:**
 - `~orderBy` accepts a single selector. A comma does not start a second sort key — it becomes part of the selector, which then resolves to nothing, so `~orderBy(status,name)` (or `?orderby=status,name`) is a `400` with `details` of `Invalid sort key 'status,name': field not found`. This holds whether or not you are paginating; with a cursor `after` token present the request is rejected one layer earlier, with `Cursor pagination with compound sort not yet supported`
 - Nested paths supported: `~orderBy(customer/name)`
+- **A sort key names a member, and `$this` is the one spelling that does not.** `$this` means the item itself, so
+  `~orderBy($this)` is [`~order`](#orderascdesc) under another name: on a collection of scalars it works and matches
+  `~order(asc)`, and on a collection of resources it is a `400` — the same rejection, with the operator named after
+  itself:
+  ```
+  GET /v1/people/{key}/languages~order(desc)~orderBy($this)  → 200  ["en","sv"]
+  GET /v1/products~orderBy($this)~take(2)                    → 400
+  ```
+  ```
+  orderBy($this) sorts items by their own value, which needs a collection of scalars:
+  these items are objects — use orderBy(<member>) to sort on a member
+  ```
+  The alias form `~orderBy(x:$this)`, the descending form `~orderBy($this:desc)` and the query parameter
+  `?orderby=$this` all reach the same place. If you meant to sort objects, name the member.
 - **An empty collection validates nothing.** With no items to sort the check short-circuits and any key is accepted, so a sort key confirmed against a test set that happens to be empty can still fail against real data:
   ```
   GET /v1/products~where(name=__nope__)~orderBy(nosuchfield)~take(5)  → 200, []
@@ -323,19 +337,47 @@ ascending, the empty block is at the head, so a walk over a sparse member can st
 
 #### ~order(asc|desc)
 
-Order a primitive stream in ascending or descending order.
+Sort a collection of **scalars** by the items themselves. Where [`~orderBy`](#orderbyselectordesc) takes a member to
+sort on, `~order` has none to take — the item *is* the value — so this is the operator for a collection of strings or
+numbers, and `~orderBy` is the one for a collection of objects.
 
-**Signature:** `~order` or `~order(asc)` or `~order(desc)`
+**Signature:** `~order(asc)`, `~order(desc)`, or `~order()` for the ascending default. The parentheses are not
+optional; see the first note below.
 
-**Example:**
+**Examples:**
 ```
-GET /v1/products/names~order(desc)
+GET /v1/people/{key}/languages             → ["en","sv"]
+GET /v1/people/{key}/languages~order(asc)  → ["en","sv"]
+GET /v1/people/{key}/languages~order(desc) → ["sv","en"]
 ```
+
+Scalar collections are thinner on the ground than they look: a person's `languages` and a product's `gtin` are the two
+you can navigate to directly. The result is an ordinary array, so the array operators chain onto it —
+`languages~order(desc)~first` is `"sv"`.
+
+> **Over a collection of resources it is a `400`, and the message names what to write instead.** `/v1/products` holds
+> objects, not scalars, so `~order(asc)` on it is rejected with `details` of:
+>
+> ```
+> order sorts items by their own value, which needs a collection of scalars:
+> these items are objects — use orderBy(<member>) to sort on a member
+> ```
+>
+> An object has no one value to be sorted *by*, so name the member you mean: `~orderBy(name)`.
 
 **Notes:**
-- Default is `asc` if no parameter
-- Works on streams of primitive values (strings, numbers)
-- For object collections, use `~orderBy(selector)`
+- **The parentheses are not optional, and leaving them off fails quietly.** A bare `~order` is not the ascending
+  default — it returns the operator itself as an object, `200`, and everything downstream then applies to *that*
+  rather than to your collection. `languages~order` is `{"@type":"order"}`, `languages~order~count` answers `1`, and
+  `products~order~take(2)` answers `{"@type":"take"}` — a request that looks like it ran. Write `~order()` for
+  ascending. This is the inverse of the parameterless operators, which must *not* carry empty parentheses
+  ([gotcha 9](common-gotchas.md#9-parameterless-operators-no-empty-parentheses)).
+- The argument is `asc` or `desc` exactly. Anything else — including a case slip — is a `404`, not a silent no-op:
+  `~order(ASC)`, `~order(Desc)` and `~order(nonsense)` are all "The requested resource was not found."
+- **An empty collection accepts it**, the same way it accepts any [sort key](#orderbyselectordesc):
+  `products~where(name=__nope__)~order(asc)` is `200 []`. So a shape mismatch confirmed against a test set that
+  happens to be empty can still be a `400` against real data.
+- `~orderBy($this)` is the same read under another spelling — see the [`~orderBy` notes](#orderbyselectordesc).
 
 ---
 

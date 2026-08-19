@@ -142,6 +142,25 @@ GET /products~count
 GET /products~map(status)~distinct
 ```
 
+**`~order` is the inverse, and it fails the quieter way.** It takes an argument, so it keeps its parentheses even when
+you want the ascending default — write `~order()`, not `~order`. A bare `~order` is not rejected: it returns the
+operator itself as an object at `200`, and the rest of the chain then acts on that object instead of on your
+collection.
+
+```bash
+# WRONG - 200, and the collection is gone
+GET /v1/people/{key}/languages~order         # {"@type":"order"}
+GET /v1/people/{key}/languages~order~count   # 1
+GET /v1/products~order~take(2)               # {"@type":"take"}
+
+# RIGHT
+GET /v1/people/{key}/languages~order()       # ["en","sv"]
+GET /v1/people/{key}/languages~order(desc)   # ["sv","en"]
+```
+
+The argument itself is strict in the other direction — `asc` and `desc` are the only two values, and a case slip
+(`~order(ASC)`) is a `404`. See [`~order`](operators-catalog.md#orderascdesc).
+
 ---
 
 ## 10. Products Belong to Groups via `parentGroup`

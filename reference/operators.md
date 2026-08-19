@@ -200,8 +200,8 @@ GET /v1/products~either(status=Inactive,name=~Apple)~where(name=~Pro)
 
 > **Note (v26.1+):** the `/before/` and `/after/` time-relative endpoints already return results in timestamp order, so chaining `~orderBy(timestamp)` after them is redundant. For every other query — including `~where(timestamp...)` filters, plain collection listings, and any sort by a non-timestamp field — `~orderBy(...)` is still required when you want a specific order.
 
-- `~orderBy(field)` or `~orderBy(field:desc)` - Order objects by selector value (single selector only; a comma-separated multi-field sort key is a `400`, with or without pagination). Any member the resource declares can be sorted on, including one that is empty on some or all items — see [what you can sort on](operators-catalog.md#orderbyselectordesc).
-- `~order` / `~order(desc)` - Order primitive streams in ascending/descending order.
+- `~orderBy(field)` or `~orderBy(field:desc)` - Order objects by selector value (single selector only; a comma-separated multi-field sort key is a `400`, with or without pagination). Any member the resource declares can be sorted on, including one that is empty on some or all items — see [what you can sort on](operators-catalog.md#orderbyselectordesc). The selector has to name a member: `$this` means the item itself, so `~orderBy($this)` is `~order` under another spelling and is a `400` over a collection of resources.
+- `~order(asc)` / `~order(desc)` - Sort a collection of **scalars** by the items themselves — the operator for a string or number collection such as a person's `languages`, where there is no member to sort on. Over a collection of resources it is a `400` telling you to name one with `~orderBy` instead. `~order()` is the ascending default; a bare `~order` is [not](operators-catalog.md#orderascdesc).
 - `~take(N)` - Take first N items.
 - `~skip(N)` - Skip first N items.
 - `~first` - Return first item (reducer). Returns `null` if collection is empty.
@@ -219,6 +219,9 @@ GET /v1/products~orderBy(name:desc)
 
 # Order by nested field
 GET /v1/trade-orders~orderBy(customer/name)
+
+# A collection of scalars has no member to sort on — use ~order, and keep the parentheses
+GET /v1/people/{key}/languages~order(desc)     → ["sv","en"]
 
 # Pagination: skip 20, take 10
 GET /v1/products~skip(20)~take(10)
@@ -270,7 +273,9 @@ GET /v1/trade-orders~distinctBy(customer/identifiers/key)
 - `~toLower`, `~toUpper`, `~toString`
 
 **Special case**:
-- `~order` can be used without parameter (defaults to `asc`) or with `~order(desc)`
+- `~order` takes `asc` or `desc`, and `~order()` is the ascending default — but the **parentheses are required either
+  way**. A bare `~order` returns the operator as an object instead of applying it, at `200`, and the rest of the chain
+  then acts on that object rather than on your collection ([details](operators-catalog.md#orderascdesc)).
 
 ---
 
