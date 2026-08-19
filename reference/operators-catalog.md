@@ -256,12 +256,18 @@ ascending, the empty block is at the head, so a walk over a sparse member can st
   GET /v1/products~where(name=__nope__)~orderBy(nosuchfield)~take(5)  → 200, []
   GET /v1/products~orderBy(nosuchfield)~take(5)                       → 400
   ```
-- **A sort on `identifiers/<namespace>` is accepted whether or not any item carries that namespace.** The identifier namespace is open, so what is checked there is reverse-domain **form**, not existence — a well-formed name is admitted and sorts by nothing, which is an unsorted result rather than an error:
+- **A key under `identifiers/` is checked for its shape, not for its existence.** The identifier namespace is open, so there is no member list to check a name against. What is checked instead is that the key is written as **exactly three dot-separated segments, with no dash in the first** — `com.example.sku`. Nothing is looked up, so the shape is the whole test, and which side of it your key falls on decides which of two failures you get:
   ```
-  GET /v1/products~orderBy(identifiers/nope)~take(4)              → 400  not reverse-domain form
-  GET /v1/products~orderBy(identifiers/com.example.nope)~take(4)  → 200  well formed, so accepted — and unsorted, since nothing carries it
+  GET /v1/products~orderBy(identifiers/com.example.nope)~take(4)       → 200  well formed, so admitted — and sorted by nothing
+  GET /v1/products~orderBy(identifiers/nope)~take(4)                   → 400  one segment
+  GET /v1/products~orderBy(identifiers/com.example.orders.id)~take(4)  → 400  four segments
+  GET /v1/products~orderBy(identifiers/com-example.a.b)~take(4)        → 400  dash in the first segment
   ```
-  That boundary is worth knowing, because the realistic mistake falls on the silent side: a case slip inside a namespace you own (`com.example.itemId` for `com.example.itemID`) is still well formed. Verify a sort like this by checking that the first and last items actually differ in the value you sorted on. Typos *inside* a typed path are still caught — `identifiers/kye`, `prices/nosuchthing` and `nosuchparent/key` are all `400`. On a cursor walk the same mistake surfaces as the [no-cursor stall](pagination.md#requirements-and-notes) instead, since no item has a value to resume from.
+  Both halves cost something, and the answer to "why didn't my sort work" is the same sentence in both cases — the key was never looked up.
+
+  **Well formed, so silent.** A misspelling *inside* a valid key is invisible: no error, a `200`, and the collection in its natural order. `com.example.itemId` and `com.example.itemID` differ by one character's case, are both admitted, and nothing in the response distinguishes the one that sorted from the one that did not. This is the realistic mistake, because reaching for your own namespace instead of `identifiers/key` is a reasonable thing to do — for your own records it is unique and always populated. Verify a sort like this by checking that the first and last items actually differ in the value you sorted on. On a cursor walk it surfaces as the [no-cursor stall](pagination.md#requirements-and-notes) instead, since no item has a value to resume from.
+
+  **Malformed, so `400` — and the message misattributes the cause.** `com.example.orders.id` is perfectly ordinary reverse-domain notation, and it is rejected on shape alone, before any identifier is consulted. The `details` read `Invalid sort key 'identifiers/com.example.orders.id': field not found`, which sounds like "you have no such identifier" when it means "that is not a key I will accept". Count the segments before you go looking for the data. Typos *inside* a typed path are caught the same way — `identifiers/kye`, `prices/nosuchthing` and `nosuchparent/key` are all `400`.
 - Collects all items in memory before sorting — not suitable for very large collections
 - **Blocks the short-circuit.** A `~take`/`~first` after a sort still waits for the whole collection to be sorted; that is inherent, since the top N cannot be known without seeing every row. If you need *any* N rows rather than the *first* N, leave `~orderBy` out and the request stops early ([details](operators.md#limiters-stop-the-scan-early)).
 

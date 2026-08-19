@@ -187,6 +187,8 @@ PUT /people/com.myapp.userId=123 '{"givenName": "John"}'
 GET /people/com.myapp.userId=123
 ```
 
+**The shape of a namespaced key.** What the API recognises as a namespaced identifier key is **exactly three dot-separated segments, with no dash in the first** — `com.myapp.userId`, `com.example.sku`. A dash is fine in the second and third segments, and case is not significant to the shape. A key outside that shape is not recognised as one: `com.example.orders.id` has four segments and is ordinary reverse-domain notation, but sorting on it is a `400` reading `Invalid sort key 'identifiers/com.example.orders.id': field not found` — the shape is rejected before any identifier is looked up, so the message names the wrong cause. See [what you can sort on](operators-catalog.md#orderbyselectordesc) for both sides of that line.
+
 **Adding an identifier to an object you can only find by another one.** Identifiers listed alongside the payload are used to *select* the object, so they cannot at the same time be written. Put the new identifier inside a `@value` envelope instead:
 
 ```bash

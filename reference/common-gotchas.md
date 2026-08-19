@@ -927,7 +927,7 @@ GET /v1/stores~orderBy(hidden)~take(1)               # 400 Invalid sort key 'hid
 Two related points:
 
 - **Ask over a collection that has rows in it.** With nothing to sort, the check short-circuits and any key passes: `products~where(status=__nope__)~orderBy(nosuchfieldxyz)~take(1)` is a `200` with an empty body.
-- **It cannot answer for `identifiers/<namespace>`.** That namespace is open, so what is checked there is reverse-domain **form**, not existence — `identifiers/nope` is a `400`, while `identifiers/com.example.nope` is a `200` returning the collection in its natural order. The realistic mistake therefore lands on the silent side: a case slip inside a namespace you own is still well formed. Verify a sort like that by checking that the first and last items actually differ in the value you sorted on.
+- **It cannot answer for `identifiers/<namespace>`.** That namespace is open, so what is checked there is the key's **shape**, not its existence: exactly three dot-separated segments with no dash in the first. `identifiers/com.example.nope` is admitted on those grounds alone and returns the collection in its natural order, while `identifiers/nope` and `identifiers/com.example.orders.id` are both a `400` reading `field not found` — which here means "not a key I will accept" rather than "you have no such identifier". The realistic mistake lands on the silent side, since a case slip inside a namespace you own is still well formed. Verify a sort like that by checking that the first and last items actually differ in the value you sorted on.
 
 Full rules: [What you can sort on](operators-catalog.md#orderbyselectordesc).
 
