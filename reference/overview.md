@@ -370,6 +370,38 @@ A misspelled parameter **name** falls into the same bucket: it is ignored, silen
 >
 > The failure mode to recognize: a `204` (or an empty `200`) from a collection you know is not empty, right after you added or edited an `Accept` parameter. Drop the parameter and the data comes back.
 
+### Error Response Framing
+
+An error body is **the same JSON document on every content type** — same members, same `@type` discriminator, same status code. Only its *framing* follows the `Accept` header, and the response's `Content-Type` tells you which one you got:
+
+| Accept header | Error `Content-Type` | Error body |
+|---------------|----------------------|------------|
+| `application/x-ndjson` or `ndjson`, with or without `;stream=true` | `application/x-ndjson` | One newline-terminated line |
+| `application/json`, `json`, `text/csv`, `application/sql`, `application/vnd.ms-sqlserver.csv`, `text/plain`, `text/html`, `*/*`, or no `Accept` at all | `application/json` | Indented JSON |
+
+A client reading NDJSON therefore gets an error as one more line of the stream it was already parsing, rather than as a multi-line document a line-oriented reader can make nothing of:
+
+```bash
+curl -sS "https://example.app.heads.com/api/v1/products?limit=50&orderby=identifiers/key&after=not-a-token" \
+  -H "Accept: application/x-ndjson" -u ":banana"
+```
+
+```json
+{"@type":"bad request","error":"The request was invalid and could not be processed.","details":"Malformed cursor token: invalid base64url or JSON"}
+```
+
+That single line is valid input to `jq`, and appending a failed request's output to a `.ndjson` file leaves the file readable. Ask for the same failure as `application/json` and you get the identical document, indented over several lines.
+
+This is framing, not a new error type: no new `@type`, no new members. A client that already parses error bodies needs no change; one that splits responses on newlines might.
+
+**Errors are never rendered as CSV or SQL rows.** A failed `text/csv` or `application/sql` export answers with the indented JSON error body, so check the status code before handing a response to a CSV or SQL parser — see [Gotcha 36](common-gotchas.md#36-an-error-response-is-json-whatever-format-you-asked-for).
+
+**Every error response carries a `Content-Type`.** There is no need to sniff the body to find out what an error response contains.
+
+**`Error-Info` is unaffected by framing.** Every error response also carries the same document as compact, single-line JSON in the `Error-Info` response header, identically on every content type.
+
+> **Not the same thing as a mid-stream error.** Everything above is the ordinary HTTP error response — the status code is real and the body is the whole response. A `"@type": "mid-stream error"` element instead appears *inside* an otherwise successful `200` body, when a failure strikes after the headers are already on the wire. Both are line-framed for NDJSON, so one line-oriented reader handles both; only the status code distinguishes them. See [Streaming → Error handling](../features/streaming.md#4-error-handling).
+
 ### Format-Specific Behaviors
 
 **JSON (`application/json`):**
@@ -383,6 +415,7 @@ A misspelled parameter **name** falls into the same bucket: it is ignored, silen
 - Empty collections yield empty output (no lines) — returned as `204 No Content` buffered, or `200` with an empty body when `;stream=true`
 - Add `;stream=true` to build and send lines incrementally (see [Streaming](../features/streaming.md))
 - Trailing newlines are accepted on import
+- An error response is framed as one line too, so it parses as a record of the stream — check the status code before treating a parsed line as data ([Error response framing](#error-response-framing))
 
 **CSV (`text/csv`):**
 - Header row derived from first item's fields
@@ -390,6 +423,7 @@ A misspelled parameter **name** falls into the same bucket: it is ignored, silen
 - Empty collections yield empty output (no header) — `204 No Content` buffered, `200` with an empty body when `;stream=true`
 - Add `;stream=true` to emit the header row and then each data row as the collection advances
 - Single item yields header + 1 data row
+- A failed request answers with a JSON error body, never CSV rows ([Error response framing](#error-response-framing))
 
 **text/plain and text/html:**
 - Require string output; non-string values cause error
@@ -403,6 +437,7 @@ A misspelled parameter **name** falls into the same bucket: it is ignored, silen
 - Supports `batchSize` parameter for streaming batches (e.g., `Accept: application/sql; batchSize=100`)
 - Add `;stream=true` to send statements incrementally. A chunk is a whole `batchSize` group, so lower `batchSize` for an earlier first byte (see [Streaming](../features/streaming.md))
 - SQL Server CSV escapes special characters for BULK INSERT compatibility
+- A failed request answers with a JSON error body, never SQL statements or CSV rows ([Error response framing](#error-response-framing))
 
 ### Known Limitations
 

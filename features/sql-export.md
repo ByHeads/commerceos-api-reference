@@ -420,7 +420,9 @@ With `;stream=true`, the `200` and its headers are already on the wire before th
 
 `innerError` is the ordinary error body the same failure would have produced as an HTTP error response, `@type` included — so the handler you already have for error responses reads it unchanged.
 
-Without `;stream=true` the same failure is reported as a proper HTTP error status with no body — so a buffered export gives you a clean failure signal, at the cost of a slower first byte. Either way, test your mapped types with small datasets before production use to catch validation errors early. See [Streaming](streaming.md#4-error-handling) for the full contract.
+Without `;stream=true` the same failure is reported as a proper HTTP error status and carries no SQL at all — so a buffered export gives you a clean failure signal, at the cost of a slower first byte.
+
+**A failed export answers with a JSON error body, never with SQL statements.** That holds for `application/sql` and `application/vnd.ms-sqlserver.csv` alike, buffered or streamed, so check the status code before feeding a response file to a SQL client — see [Error response framing](../reference/overview.md#error-response-framing). Either way, test your mapped types with small datasets before production use to catch validation errors early. See [Streaming](streaming.md#4-error-handling) for the full contract.
 
 ---
 

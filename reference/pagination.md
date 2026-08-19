@@ -168,8 +168,10 @@ nothing is added or removed.
 
 **Other notes:**
 
-- **`orderby` is required with `after`.** Omitting it returns `400 Cursor pagination requires 'orderby' to be
-  specified`. A malformed or truncated token also returns 400.
+- **`orderby` is required with `after`.** Omitting it returns a `400` whose `details` read `Cursor pagination requires
+  'orderby' to be specified`. A malformed or truncated token also returns 400, with `details` of
+  `Malformed cursor token: …`. Both are ordinary error bodies — `@type` of `bad request`, framed to match your `Accept`
+  header like any other error ([Error response framing](overview.md#error-response-framing)).
 - **`limit` defaults to 100** when omitted. Send it explicitly so page sizes are predictable.
 - **`offset` is ignored** when `after` is present — use one pagination style per request, not both.
 - **The token is opaque.** Do not parse, edit or construct it; always use the value from the response headers.

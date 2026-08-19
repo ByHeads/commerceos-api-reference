@@ -239,6 +239,8 @@ If transaction 3 fails, items 1–400 remain committed. Only the items in the fa
 
 How errors are reported depends on whether streaming is enabled.
 
+Independently of that, **the framing of an error body follows the `Accept` header**. Ask for `application/x-ndjson` and an ordinary HTTP error response arrives as a single newline-terminated line, with `content-type: application/x-ndjson`; every other content type gets the same document indented, as `application/json`. So on an NDJSON export both failure shapes below — the ordinary error response and the appended `mid-stream error` line — are one line each, and one line-oriented reader handles both. The status code is what tells them apart. Full rules: [Error response framing](../reference/overview.md#error-response-framing).
+
 ### Without Streaming (Default)
 
 The API buffers all results, so if an error occurs at any point, a proper HTTP error response is returned with the correct status code. The error body includes `processedCount` (number of items committed before the failure) and `failedAtIndex` (the 0-based index of the item that caused the error):
@@ -382,6 +384,8 @@ The same request without `stream=true` fails cleanly: nothing has been sent yet,
 | Buffered | Yes | Response body | No — all or nothing per response |
 | Streaming, line-delimited | May be 200 despite error | Last line of the stream | Yes — everything before the error is valid |
 | Streaming, `application/json` | May be 200 despite error | Last element of the array | Yes — everything before the error is valid |
+
+In every row the error is a JSON document, and on an NDJSON request it is a single line — so the check is the same shape whichever row you are in: read the last line (or last array element), then decide from the status code whether you are looking at a failed request or a truncated successful one.
 
 ---
 

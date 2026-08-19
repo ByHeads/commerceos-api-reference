@@ -94,14 +94,13 @@ curl -H "Authorization: Bearer YOUR_TOKEN" "https://example.app.heads.com/api/v1
 
 ### 2.3 Error Response Decoding
 
-All error responses include an `Error-Info` header and a JSON body. Known Pillow errors include `@type`:
+All error responses include an `Error-Info` header and a JSON body. Recognized errors carry an `@type` discriminator, a general `error` message and an occurrence-specific `details` message:
 
 ```json
 {
-  "@type": "error",
-  "error": "BadRequest",
-  "message": "Must have at least 1 item",
-  "details": { ... }
+  "@type": "bad request",
+  "error": "The request was invalid and could not be processed.",
+  "details": "Must have at least 1 item"
 }
 ```
 
@@ -115,8 +114,10 @@ Unknown 500 errors return a simpler body without `@type`:
 ```
 
 **Response headers:**
-- `Error-Info`: Contains machine-readable error info (present for both known and unknown errors)
-- `Content-Type`: `application/json`
+- `Error-Info`: Contains machine-readable error info (present for both known and unknown errors), as compact single-line JSON, identical on every content type
+- `Content-Type`: always present on an error response — `application/x-ndjson` if you asked for NDJSON, `application/json` otherwise
+
+**The body is the same document whatever you asked for; only its framing follows `Accept`.** Request `application/x-ndjson` and the error arrives as a single newline-terminated line, so it parses as one more record of the stream you were already reading — which also means a client that `jq`s every line will happily parse an error as data. Check the status code. Every other content type, `text/csv` and `application/sql` included, gets the indented JSON form: errors are never rendered as CSV or SQL rows. See [Error response framing](../reference/overview.md#error-response-framing).
 
 **Quick Reference:**
 

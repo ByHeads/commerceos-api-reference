@@ -794,6 +794,35 @@ Full rules: [Accept parameter tolerance](overview.md#accept-parameter-tolerance)
 
 ---
 
+## 36. An Error Response Is JSON, Whatever Format You Asked For
+
+`Accept` selects the format of a **successful** response. An error is always a JSON document — only its framing follows the header. So a failing CSV export does not answer with a header row and an error row; it answers with a JSON object.
+
+```bash
+# Asked for CSV. On failure the body is JSON, not CSV — a CSV parser chokes,
+# or worse, reads the first line of the indented object as a header row.
+curl -sS ".../v1/products~where(nosuchfield=1)" -H "Accept: text/csv" -u ":banana" -o products.csv
+```
+
+**Check the status code before handing a response to a format-specific parser.** The `Content-Type` on the response says which framing you got, so it works as the check too.
+
+NDJSON is the case that looks fine and is not. An error there arrives as **one newline-terminated line**, which is exactly what a line-oriented reader expects — so a loader that parses every line and treats it as a record will parse the error object into its dataset without complaint:
+
+```json
+{"@type":"bad request","error":"The request was invalid and could not be processed.","details":"Malformed cursor token: invalid base64url or JSON"}
+```
+
+That framing is deliberate and it is what you want (an indented multi-line document would corrupt an `.ndjson` file outright), but it means **the line parsing successfully is not evidence the request succeeded**. Test the status code, or test the line for `@type`.
+
+Two related points:
+
+- **This is not the mid-stream error.** A `"@type": "mid-stream error"` element appears inside an otherwise successful `200` body when a failure strikes after the headers are sent — see [gotcha 32](#32-an-empty-streamed-collection-is-200-not-204). What is described here is the ordinary error response, where the status code is real. Both are one line on NDJSON, so the status code is what distinguishes them.
+- **The document does not change with the format.** Same `@type`, same `error`, same `details`, same `Error-Info` header, whatever you accepted. Only the indentation and the `Content-Type` differ, so one error handler covers every export format you use.
+
+Full rules: [Error response framing](overview.md#error-response-framing).
+
+---
+
 ## API Response Behaviors
 
 ### Empty Collection Results

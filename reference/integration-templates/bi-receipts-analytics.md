@@ -242,7 +242,9 @@ curl -H "Accept: application/x-ndjson;stream=true" \
 
 `;stream=true` works on every collection format, so a loader that wants one well-formed JSON document can use `Accept: application/json;stream=true` and get the same head start — but NDJSON stays the better choice here, because a JSON array only parses once the whole thing has landed, while NDJSON parses a line at a time.
 
-Four things to build into the loader:
+Five things to build into the loader:
+
+- **Check the status code before parsing lines.** An error response to an NDJSON request is itself one newline-terminated JSON line, so a loader that parses every line and inserts it will happily insert the error object as a row. It carries no receipt fields, so it usually surfaces as a mystery record of nulls rather than as a failure. Reject on a non-`2xx` status; a line-level `@type` check catches it too.
 
 - **Check the last line.** A failure part-way through a streamed export cannot change the status code — it arrives as `{"@type": "mid-stream error", ...}` on an otherwise `200` response. Treating a truncated export as complete is how a warehouse silently ends up short a day's receipts. Reject the batch and re-run it. On a streamed `application/json` export the marker is the **last array element** instead, and the body still parses cleanly — so "it parsed" is not a completeness check. Test `@type` and nothing else: `processedCount` is JSON-only, so a check keyed on it silently passes on every NDJSON export. Log `innerError` — it is the ordinary error body the failure would have produced as an HTTP error response, `@type` included, identical on both formats, so whatever you already log error responses with covers it.
 - **Decide whether the export needs a snapshot.** A streamed response is read in batches across separate transactions, so a receipt written mid-export can be visible to the tail of the body and invisible to the head. For a nightly incremental load over a closed time window that is a non-issue; for anything that reconciles two rows against each other, run it buffered.
