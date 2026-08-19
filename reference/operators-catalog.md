@@ -229,6 +229,25 @@ GET /v1/trade-orders~orderBy(customer/name)
 > ([worked example](common-gotchas.md#39-a-null-in-a-response-does-not-prove-the-field-exists)). Two cases the `400`
 > does not reach are in the notes below.
 
+**Where the empty ones land.** An item with no value for the sort field sorts **first** ascending and **last**
+descending. It is a straight reversal, not a "nulls always last" convention:
+
+```
+GET /v1/stores~orderBy(organizationNumber)       → Shade Stockholm (no number), then 5566391237 … 5566397388
+GET /v1/stores~orderBy(organizationNumber:desc)  → 5566397388 … 5566391237, then Shade Stockholm
+```
+
+On a sparsely-populated member that puts every blank record in one block at the head of an ascending sort, and the
+block can fill the whole first page — `products~orderBy(unit)~take(6)` comes back as six products with no `unit` at
+all. The sort will not drop them for you. If you want only the records that *have* the field, say so before you sort:
+
+```
+GET /v1/products~where(unit!=null)~orderBy(unit)~take(3)
+```
+
+On a cursor walk the direction decides where the [no-cursor stall](pagination.md#requirements-and-notes) bites:
+ascending, the empty block is at the head, so a walk over a sparse member can stall on its very first page.
+
 **Notes:**
 - `~orderBy` accepts a single selector. A comma does not start a second sort key — it becomes part of the selector, which then resolves to nothing, so `~orderBy(status,name)` (or `?orderby=status,name`) is a `400` with `details` of `Invalid sort key 'status,name': field not found`. This holds whether or not you are paginating; with a cursor `after` token present the request is rejected one layer earlier, with `Cursor pagination with compound sort not yet supported`
 - Nested paths supported: `~orderBy(customer/name)`

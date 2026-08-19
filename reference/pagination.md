@@ -159,7 +159,11 @@ exist per currency or per store — and low-cardinality fields such as `status` 
 **Sort on a field that is always populated, too.** An item with no value for the sort field stalls the walk when it
 lands at the end of a page, as described above — the response carries `X-Has-More: true` with no `X-Cursor-Next`,
 because there is nothing to resume from. This is a quiet failure: the walk stops mid-collection rather than erroring,
-and a successful first page tells you nothing about whether it will finish. Note that this is a requirement of the
+and a successful first page tells you nothing about whether it will finish. Items with no value
+[sort first ascending](operators-catalog.md#orderbyselectordesc), so on a sparsely-populated member they land at the
+end of the very first page and the walk never starts; sorting `:desc` moves that block to the tail rather than
+removing the requirement, since a page whose last item is empty mints no cursor whichever direction you sort in. Note
+that this is a requirement of the
 *walk*, not of the sort — a sparse member sorts perfectly well on its own
 ([what you can sort on](operators-catalog.md#orderbyselectordesc)); it is carrying a position from one request to the
 next that needs a value on every item.
