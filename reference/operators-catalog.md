@@ -293,7 +293,7 @@ On a cursor walk the direction decides where the [no-cursor stall](pagination.md
 ascending, the empty block is at the head, so a walk over a sparse member can stall on its very first page.
 
 **Notes:**
-- `~orderBy` accepts a single selector. A comma does not start a second sort key — it becomes part of the selector, which then resolves to nothing, so `~orderBy(status,name)` (or `?orderby=status,name`) is a `400` with `details` of `Invalid sort key 'status,name': field not found`. This holds whether or not you are paginating; with a cursor `after` token present the request is rejected one layer earlier, with `Cursor pagination with compound sort not yet supported`
+- **There is no compound sort.** `~orderBy` accepts a single selector, and a comma does not start a second sort key — it becomes part of the selector, which then names a member no type declares, so `~orderBy(status,name)` (or `?orderby=status,name`) is a `400` with `details` of `Invalid sort key 'status,name': field not found`. That is the ordinary unknown-key rejection, so it inherits the empty-collection exception below: over a collection with nothing in it, `~orderBy(status,name)` is a `200`. With a cursor `after` token present the request is rejected one layer earlier, with `Cursor pagination with compound sort not yet supported`, and that layer has no such exception — it refuses an empty collection too ([both layers side by side](pagination.md#requirements-and-notes))
 - Nested paths supported: `~orderBy(customer/name)`
 - **A sort key names a member, and `$this` is the one spelling that does not.** `$this` means the item itself, so
   `~orderBy($this)` is [`~order`](#orderascdesc) under another name: on a collection of scalars it works and matches

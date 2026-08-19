@@ -249,11 +249,27 @@ lands in exactly this state instead of erroring — `orderby=identifiers/com.exa
 you asked for. The identifier namespace is open, so there is no member list to check the spelling against
 ([details](operators-catalog.md#orderbyselectordesc)).
 
-Compound sorting is not a workaround, and not just for pagination: **a multi-field `orderby` is rejected with a `400`
-whether or not you are paginating.** Two layers reach the same answer — `~orderBy` takes one selector, so
-`?orderby=status,name` on its own fails with `details` of `Invalid sort key 'status,name': field not found`, and with an
-`after` token present the cursor rewrite rejects it first with `Cursor pagination with compound sort not yet supported`.
-There is no first page whose `Link` could point at a request that then fails.
+Compound sorting is not a workaround: **there is no compound sort.** `~orderBy` takes one selector, so `status,name`
+is read as a single member name that no type declares, and `?orderby=status,name` fails with `details` of
+`Invalid sort key 'status,name': field not found`.
+
+**Two layers refuse it, and they do not refuse it the same way.** The operator form is rejected by the ordinary
+unknown-key rule, which carries the ordinary exception: with no items to sort the check
+[short-circuits](operators-catalog.md#orderbyselectordesc) and any key is accepted. The cursor layer has no such
+exception — with an `after` token present the request is refused whatever the collection holds:
+
+```bash
+GET /v1/products?limit=2&orderby=status,name                         # 400 Invalid sort key 'status,name': field not found
+GET /v1/products~where(status=__nope__)?limit=2&orderby=status,name  # 200 []
+GET /v1/products?limit=2&orderby=status,name&after=<token>           # 400 Cursor pagination with compound sort not yet supported
+GET /v1/products~where(status=__nope__)?limit=2&orderby=status,name&after=<token>   # 400 same, empty collection included
+```
+
+What decides is emptiness, not the filter — the same `~where` narrowed to the 156 products that *do* match is a `400`
+again. The cost is that compound-sort support cannot be probed: a client testing for it with a filtered request, which
+is the natural way to test without touching real data, gets that `200` and concludes it is supported. The `200` is not
+a first page you could walk from either — it comes back `X-Has-More: false` with no `Link` and no `X-Cursor-Next`, so
+there is no first page whose `Link` could point at a request that then fails.
 
 **Sort values may contain anything — including `&`, `,` and `?`.** The token carries the last sort value into the next
 request, and it is escaped so that a value like `Black & Decker` or `Shirt, Blue` cannot rewrite the query it is sent

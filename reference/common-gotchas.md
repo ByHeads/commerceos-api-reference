@@ -528,7 +528,8 @@ are withheld; the page itself is untouched, so `limit` and `orderby` with `offse
 working on any sort field.
 
 `name` is not a safe substitute either: the same name can exist per currency or per store. Compound sorting is not a
-workaround — an `orderby` listing more than one field is a `400` whether or not an `after` token is present.
+workaround — there is no compound sort, and an `orderby` listing more than one field is a `400`
+([why, and the one shape that answers `200`](pagination.md#requirements-and-notes)).
 
 **A sort field holding more than one value is refused outright, and that one is not silent.** A cursor carries your
 position as a single value, so a member that renders as a list, an object or a boolean is a `400` on the *first*
