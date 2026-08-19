@@ -881,17 +881,23 @@ GET /v1/people~where(identifiers/com.acme.synced-to-crm=null)~take(500)
 For very large datasets, use cursor-based pagination with a sortable field:
 
 ```bash
-# First page: order by fullName
-GET /v1/people~orderBy(fullName)~take(500)
+# First page: order by identifiers/key
+GET /v1/people~orderBy(identifiers/key)~take(500)
 
-# Next page: start after last fullName from previous response
-# Replace "LastNameFromPreviousPage" with the actual last value
-GET /v1/people~where(fullName>"LastNameFromPreviousPage")~orderBy(fullName)~take(500)
+# Next page: start after the last key from the previous response
+# Replace "<last key>" with the actual value
+GET /v1/people~where(identifiers/key>"<last key>")~orderBy(identifiers/key)~take(500)
 ```
 
 > **Note**: Path members use `/` separators, not dots. For example, use `identifiers/key` not `identifiers.key`.
 >
 > **Sort on `identifiers/key` for a full walk, not on `fullName`.** The resume idiom above carries its position in the last value it saw, so it inherits the same two requirements as a [cursor walk](../pagination.md#requirements-and-notes): the sort field must be **unique** — two people sharing a `fullName` at a page boundary means one of them is skipped — and **always populated**, or the walk has nothing to resume from. `identifiers/key` satisfies both. Being read-only does not matter here; you are sorting on it, not writing it. Sort on a user-facing field only when the *order itself* is the point, and accept that such a walk can drop records.
+>
+> On `people` it is not even a trade-off, because the sort the old example asked for is rejected outright. `GET /v1/people~orderBy(fullName)~take(500)` returns a `400` reading `Invalid sort key 'fullName': field not found`, and so does `?orderby=fullName`, and the same for `givenName` and `familyName`. Sorting the plain `people` collection on `identifiers/key` works. Note that a name member remains perfectly usable as a *filter* — `~where(fullName>"…")` is fine — which is why the two look interchangeable right up until you try the sort.
+>
+> Do not read that as "name members are never sortable": some *filtered* variants are accepted (`~where(nationality=SE)~orderBy(name)` returns rows), so a name sort you have seen work on one query does not tell you the same sort works on the unfiltered collection. Sort a full walk on `identifiers/key` and the question does not arise.
+>
+> **If you switch to the `after` token form, do not add a `fields=` projection.** A nested sort selector such as `identifiers/key` combined with a projection narrower than the parent object currently returns `X-Has-More: true` with no `X-Cursor-Next`, so the walk never starts. Project the parent (`fields=fullName,identifiers`) or drop the projection — see [Cursor pagination](../pagination.md#requirements-and-notes).
 
 ---
 

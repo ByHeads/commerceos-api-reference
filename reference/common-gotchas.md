@@ -512,6 +512,15 @@ request it cannot advance; one written as "repeat while a cursor is present" sto
 Test for the cursor, and treat its absence while `X-Has-More` is `true` as an error. `identifiers/key` is unique *and*
 always populated, which is why it is the recommendation for both failures.
 
+**Sorting on `identifiers/key` costs you one thing: you cannot project it away.** As of 2026-08-19, a nested sort
+selector combined with a `fields=` projection that does not include the parent object lands in exactly the no-cursor
+state above — on the *first* request, so the walk never starts. Project the parent (`fields=name,identifiers`) or drop
+the projection; `fields=all` and omitting `fields` are fine too. Switching to the path-operator form does not help —
+`~just(name)` stalls the walk exactly like `fields=name`. A flat sort field has no such restriction. Two tells that you
+are in this state without reading the headers: `identifiers` comes back as a bare key string instead of an object, and
+the item carries a member named literally `identifiers/key`. See
+[Cursor pagination](pagination.md#requirements-and-notes).
+
 Three related surprises in the same feature:
 
 - **`limit` is required to start a walk — it does not default to 100 on the first request.** With `orderby` alone you
@@ -520,8 +529,8 @@ Three related surprises in the same feature:
 - **Streaming turns the walk off — and so does an export format.** With `Accept: application/json;stream=true` the body
   starts before the pagination headers could be computed, so `Link` / `X-Cursor-Next` / `X-Has-More` are never sent. The
   line-oriented formats (NDJSON, CSV, SQL) do not carry them either, streamed or buffered. An `after` token is still
-  honored in every format, so the request succeeds and returns `limit` items — it just gives you nothing to continue
-  from. Walk the pages with buffered JSON.
+  honored in every format, so the request succeeds and returns at most `limit` items — it just gives you nothing to
+  continue from. Walk the pages with buffered JSON.
 - **A stored token cannot outlive a change of sort.** Replaying a token minted under `orderby=name` with
   `orderby=price` — or with `:desc` flipped — is a `400`, not a silently wrong page. The natural client bug is exactly
   this: a token kept in state and re-sent after the user changed the sort control.
@@ -912,7 +921,8 @@ Person entities expose both computed and raw name fields:
 **Key points:**
 - `fullName` is included by default in person responses
 - `name` (inherited from agent) requires `~with(name)` to include
-- Both `name` and `fullName` can be used for sorting and filtering
+- Both `name` and `fullName` can be used for **filtering**; sorting the plain `people` collection on either is
+  rejected — see the note below
 - Setting name values directly is supported; computed values derive from givenName/familyName
 
 ```bash
@@ -921,8 +931,19 @@ GET /v1/people/com.example.id=123
 # → {"givenName": "John", "familyName": "Doe", "fullName": "John Doe", ...}
 
 # name requires explicit inclusion (agent-level alias)
-GET /v1/people~orderBy(name)~with(name)~take(10)
+GET /v1/people~with(name)~take(10)
 
-# Or use fullName directly (already included)
-GET /v1/people~orderBy(fullName)~take(10)
+# Both name members filter fine
+GET /v1/people~where(fullName=~Doe)~take(10)
+
+# Sort a full walk on identifiers/key — the name members are not accepted here
+GET /v1/people~orderBy(identifiers/key)~take(10)
 ```
+
+> **A name member is not a sort key on the `people` collection.** `~orderBy(fullName)`, `~orderBy(givenName)`,
+> `~orderBy(familyName)` and `~orderBy(name)` are each rejected with a `400` reading
+> `Invalid sort key '<field>': field not found`, in the path-operator form and the `?orderby=` form alike. Filtering on
+> those same members works, so the failure only shows up once you add the sort. Some filtered queries *do* accept a name
+> sort (`~where(nationality=SE)~orderBy(name)` returns rows), so seeing one work is not evidence that the unfiltered
+> collection will. `identifiers/key` sorts reliably and is what a full walk should use anyway
+> ([Cursor pagination](pagination.md#requirements-and-notes)).

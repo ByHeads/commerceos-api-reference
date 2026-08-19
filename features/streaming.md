@@ -117,7 +117,7 @@ In practice that means a record updated mid-export can appear with its new value
 > **Streaming responses carry no pagination headers.** The body starts before `Link`, `X-Cursor-Next` and `X-Has-More`
 > could be computed, so a streamed response never emits them — and neither do the line-oriented formats even when
 > buffered, since those bodies are not in a shape the header post-processing can annotate. An `after` cursor token is
-> still honored — the response is exactly `limit` items starting after that token — but there is no next cursor to
+> still honored — the response holds at most `limit` items starting after that token — but there is no next cursor to
 > continue from, so a page walk must use buffered JSON.
 > See [Cursor pagination](../reference/pagination.md#cursor-pagination).
 

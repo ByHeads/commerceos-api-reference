@@ -131,8 +131,10 @@ GET /v1/products?limit=50&orderby=identifiers/key&after=eyJ2IjoiV0lER0VULTAwMSIs
 cursor while `X-Has-More` is still `true` is the stalled walk described above, and should be surfaced rather than
 treated as the end.
 
-Cursor pagination combines with the rest of the query pipeline — `~where` filters, `fields` projections and a
-`:desc` sort direction all work as usual, as long as every request in the walk uses the *same* query apart from `after`.
+Cursor pagination combines with the rest of the query pipeline — `~where` filters and a `:desc` sort direction work as
+usual, as long as every request in the walk uses the *same* query apart from `after`. Projections compose too, with one
+current restriction when the sort selector is nested — see
+[`fields` and the sort field](#requirements-and-notes) below.
 
 ### Requirements and notes
 
@@ -175,39 +177,70 @@ for `application/json` without `;stream=true`. A streamed body starts before the
 line-oriented formats (`application/x-ndjson`, `text/csv`, `application/sql`) are not in a shape the header
 post-processing can annotate — so neither gets them, streamed or not. This is inherent, not a bug.
 
-An `after` token *is* still honored in every format — the response is exactly `limit` items starting after the token —
-but with no next-cursor header there is nothing to continue from. **Walk the pages with buffered JSON**, then re-request
-a page in the export format if you need the rows as NDJSON or CSV. See
+An `after` token *is* still honored in every format — the response holds at most `limit` items starting after the
+token — but with no next-cursor header there is nothing to continue from. **Walk the pages with buffered JSON**, then
+re-request a page in the export format if you need the rows as NDJSON or CSV. See
 [`features/streaming.md`](../features/streaming.md).
 
-**`fields` may omit the sort field.** The API fetches the `orderby` selector internally to compute the next cursor and
-strips it back out before responding, so a projection that excludes it still paginates correctly and the response
-contains exactly the fields you asked for:
+**`fields` may omit the sort field, when the sort field is a flat member.** The API fetches the `orderby` selector
+internally to compute the next cursor and strips it back out before responding, so a projection that excludes it still
+paginates correctly and the response contains exactly the fields you asked for:
 
 ```bash
-# Paginates fine; each item comes back with name and status only, no identifiers
-GET /v1/products?limit=50&orderby=identifiers/key&fields=name,status
+# Paginates fine; each item comes back with status only, no name
+GET /v1/products?limit=50&orderby=name&fields=status
 ```
 
-A nested sort selector is handled as a whole path, not as its first segment: `orderby=identifiers/key` with
-`fields=name` fetches and then removes `identifiers/key` specifically, pruning the `identifiers` object only because
-that injection was the sole thing in it. Ask for a sibling — `fields=identifiers/com.example.sku` — and the object
-comes back holding just that member. Nothing is added or removed at all when the projection already reaches the sort
-value, whether by naming it, by naming an ancestor (`fields=identifiers` covers `orderby=identifiers/key`), or through
-`fields=all`.
+Naming the sort field yourself (`fields=name,status`) changes nothing — it is already there, so nothing is added and
+nothing is stripped.
 
-**The one exception is a projection built on `default`.** `fields=default,gtin` with `orderby=name` returns `name` as
-well, even though you did not ask for it. Which members `default` covers is a property of the type rather than of your
-request, so the sort field is added and then left in place rather than risk deleting a member you were entitled to —
-one extra member beats silent data loss. Every other projection is returned exactly as requested.
+> **Projecting alongside a nested sort selector (as of 2026-08-19).** While walking with a nested selector such as
+> `orderby=identifiers/key`, **project the parent object — `fields=name,identifiers` — or drop the projection
+> entirely.** A narrower projection currently returns `X-Has-More: true` with no `X-Cursor-Next`, so the walk cannot
+> start at all — not on a later page, on the *first* request. Projecting the parent costs one extra object per item;
+> the alternative is an export that never begins.
+
+The stall covers every projection that does not reach the parent, including the one that names the sort path exactly:
+
+| With `orderby=identifiers/key` | Walk starts? | Response |
+|---|---|---|
+| `fields=name,identifiers` — names the parent | **yes** | exactly as requested |
+| `fields=all`, or no `fields=` at all | **yes** | as requested, plus one unrequested member (below) |
+| `fields=name`, `fields=name,status`, `fields=none` | no | `identifiers` collapses to a bare key string |
+| `fields=identifiers/key` — the exact sort path | no | same |
+| `fields=identifiers/com.example.sku` — a sibling | no | `identifiers` is the bare key string, under the member name you asked to hold a sku |
+| `fields=default`, `fields=default,gtin` | no | bare key string, *and* the literal member below |
+| a path-operator projection, `~just(name)` | no | `~just` is not a way around it |
+
+Two visible symptoms let you recognise the state without reading the headers. `identifiers` comes back as a **bare
+string holding the database key** instead of the object you would otherwise get; and the item carries an extra member
+named literally `identifiers/key`, slash included:
+
+```json
+{"@type":"product","identifiers":"000102bbad34ea7ce61b1cb07af62c4c","name":"prod-0nh1tggndz3",
+ "gtin":[],"status":"Active","identifiers/key":"000102bbad34ea7ce61b1cb07af62c4c"}
+```
+
+**That second member also appears on the two projections that do work.** `fields=all`, and omitting `fields`
+altogether, both paginate correctly and both return an `identifiers/key` member alongside the proper `identifiers`
+object. It is harmless to ignore, but a client that validates items against a strict schema will reject it, so it is
+worth knowing before you point a generated client at a nested-sort walk. Naming the parent
+(`fields=name,identifiers`) is the one shape that both paginates and returns exactly what you asked for.
+
+**One exception, and it applies to a flat sort field only: a projection built on `default`.** `fields=default,gtin`
+with `orderby=name` returns `name` as well, even though you did not ask for it. Which members `default` covers is a
+property of the type rather than of your request, so the sort field is added and then left in place rather than risk
+deleting a member you were entitled to — one extra member beats silent data loss. Every other projection over a flat
+sort field is returned exactly as requested. With a *nested* selector `default` does not get this treatment; it stalls
+like the rest.
 
 **Other notes:**
 
 - **`limit` is required to start a walk.** The first request emits pagination headers only when `orderby` *and* a
   positive `limit` are both present. Without `limit` the response is the whole collection — not a page, and with
-  nothing to resume from. (`limit=0` is treated the same way, since a zero-item page has no last item to mint a cursor
-  from.) On an `after` request `limit` falls back to 100, but there is no reason to lean on that: send the same `limit`
-  on every request of a walk.
+  nothing to resume from. `limit=0` gets the same treatment — no pagination headers — since a zero-item page has no
+  last item to mint a cursor from; it returns an empty collection rather than the whole one. On an `after` request
+  `limit` falls back to 100, but there is no reason to lean on that: send the same `limit` on every request of a walk.
 - **`orderby` is required with `after`.** Omitting it returns a `400` whose `details` read `Cursor pagination requires
   'orderby' to be specified`. A malformed or truncated token also returns 400, with `details` of
   `Malformed cursor token: …`. Both are ordinary error bodies — `@type` of `bad request`, framed to match your `Accept`

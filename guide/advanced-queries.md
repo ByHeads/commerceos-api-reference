@@ -72,13 +72,16 @@ Note: Query 10 uses `contactMethods/email` because `email` lives under the `cont
 
 ### Ordering
 ```
-16. GET /people~orderBy(familyName)~take(20)
-17. GET /people~orderBy(givenName:desc)~take(20)
+16. GET /people~orderBy(identifiers/key)~take(20)
+17. GET /people~orderBy(identifiers/key:desc)~take(20)
 18. GET /people~where(nationality=SE)~orderBy(name)
 19. GET /people~orderBy(identifiers/key:desc)~take(10)
 20. GET /people~where(familyName=~Berg)~orderBy(givenName)
 ```
 Note: Query 19 corrected - people don't have `createdAt` (only product nodes do).
+Note: Queries 16-17 sort on `identifiers/key`. Sorting the plain `people` collection on `familyName`, `givenName`,
+`fullName` or `name` is rejected with `Invalid sort key '<field>': field not found` — those members filter fine, and
+queries 18 and 20 show name sorts that *are* accepted once a filter narrows the collection first.
 
 ### Complex Combinations
 ```

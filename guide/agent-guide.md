@@ -172,9 +172,11 @@ curl -u ":banana" -D - "https://example.app.heads.com/api/v1/products?limit=100&
 
 Cursor pages stay stable while the collection is being written to, and don't slow down as you go deeper. Loop on the
 presence of `X-Cursor-Next`, not on `X-Has-More` — `X-Has-More: true` with no cursor header means the walk *cannot*
-continue (the last item on the page has no sort value), and it is an error rather than the end of the collection.
-Three more things to watch: `limit` is required on every request, sorting on a non-unique field (e.g. `status`)
-silently skips items, and streamed responses never emit the cursor headers — see
+continue, and it is an error rather than the end of the collection. Four more things to watch: `limit` is required on
+every request, sorting on a non-unique field (e.g. `status`) silently skips items, streamed responses never emit the
+cursor headers, and alongside a nested sort selector like `identifiers/key` a `fields=` projection narrower than the
+parent object currently stops the cursor being minted at all — project the parent (`fields=name,identifiers`) or drop
+the projection. See
 [`reference/pagination.md`](../reference/pagination.md#cursor-pagination).
 
 **Important:** There is no `totalCount` in list responses. To count items:
