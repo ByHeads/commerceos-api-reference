@@ -129,9 +129,16 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/products~just(nam
 # ~typeless - Remove @type annotations (NO parentheses!)
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/products~first~typeless"
 
-# ~entries - Convert object to array of {index, key, value}
+# ~entries - Convert a keyed object to an array of {key, value}
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/agents/com.heads.seedID=ourcompany/addresses~entries"
+
+# ~entries~with(index) - add a 1-based position (a plain ~entries has no index member)
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/agents/com.heads.seedID=ourcompany/addresses~entries~with(index)"
 ```
+
+> **`~entries` needs an object.** Pointed at a *collection* — of scalars or of resources — it returns one wrapper per
+> element carrying neither key nor value (`[{"@type":"entry"},{"@type":"entry"}]`), at `200` and with no error. The
+> count survives and the data does not. See [`~entries`](../../reference/operators-catalog.md#entries).
 
 ### Splitting a String
 
@@ -176,6 +183,20 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/products/com.exam
 | `~distinct` | Unique primitive values (use after path navigation like `/status~distinct`) |
 | `~flat` | Flatten arrays |
 | `~typeless` | Remove @type |
+
+Empty parentheses on these are an error you will see (`~first()` is a `404`). The rule runs the other way for every
+operator that *takes* an argument — `~take`, `~where`, `~just`, `~order` and the rest — where leaving the parentheses
+off is a `200` that returns the operator instead of your data:
+
+```bash
+# WRONG - 200, and the collection is gone
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/products~take"   # {"@type":"take"}
+
+# RIGHT
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/products~take(2)"
+```
+
+See [gotcha 9](../../reference/common-gotchas.md#9-parentheses-required-on-argument-taking-operators-forbidden-on-the-rest).
 
 ---
 

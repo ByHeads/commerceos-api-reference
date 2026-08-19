@@ -370,8 +370,9 @@ you can navigate to directly. The result is an ordinary array, so the array oper
   default — it returns the operator itself as an object, `200`, and everything downstream then applies to *that*
   rather than to your collection. `languages~order` is `{"@type":"order"}`, `languages~order~count` answers `1`, and
   `products~order~take(2)` answers `{"@type":"take"}` — a request that looks like it ran. Write `~order()` for
-  ascending. This is the inverse of the parameterless operators, which must *not* carry empty parentheses
-  ([gotcha 9](common-gotchas.md#9-parameterless-operators-no-empty-parentheses)).
+  ascending. This is not an `~order` quirk: [every argument-taking operator](operators.md#parameter-rules) does the
+  same when written bare, and `~order` is only the one whose optional-sounding argument invites it
+  ([gotcha 9](common-gotchas.md#9-parentheses-required-on-argument-taking-operators-forbidden-on-the-rest)).
 - The argument is `asc` or `desc` exactly. Anything else — including a case slip — is a `404`, not a silent no-op:
   `~order(ASC)`, `~order(Desc)` and `~order(nonsense)` are all "The requested resource was not found."
 - **An empty collection accepts it**, the same way it accepts any [sort key](#orderbyselectordesc):
@@ -494,20 +495,47 @@ GET /v1/products~with(categories)~flat
 
 #### ~entries
 
-Convert an object to key-value entries.
+Convert a keyed **object** into an array of its key-value pairs — the way to walk a member whose keys you do not know
+ahead of time.
 
 **Signature:** `~entries` (no parameters)
 
 **Example:**
 ```
-GET /v1/products/com.example.sku=ABC/properties~entries
+GET /v1/agents/{key}/addresses~entries
+→ [{"@type":"entry","key":"main","value":{"@type":"address","line1":"Kungsgatan 10", ...}},
+   {"@type":"entry","key":"home"},
+   {"@type":"entry","key":"invoice"}]
 ```
 
-**Output format:** `[{index, key, value}, ...]`
+**Output format:** `[{key, value}, ...]`. A slot the object leaves empty keeps its `key` and simply has no `value`,
+which is the ordinary [null omission](overview.md#format-specific-behaviors) rather than anything to do with this
+operator.
 
 **Notes:**
-- Excludes `@type` from entries
-- Index is 1-based
+- `@type` is not one of the entries — the operator walks the object's members, not its type annotation. Each entry
+  carries an `@type` of its own (`"entry"`).
+- **`index` is not in the output unless you ask for it.** `~entries~with(index)` adds a 1-based position to every
+  entry; a plain `~entries` has no `index` member at all.
+- **It needs an object, and over a collection it silently discards everything.** Given a collection — of scalars or of
+  resources, it makes no difference — `~entries` returns one wrapper per element carrying **neither key nor value**:
+
+  ```
+  GET /v1/people/{key}/languages       → ["en","sv"]
+  GET /v1/people/{key}/languages~entries → [{"@type":"entry"},{"@type":"entry"}]
+
+  GET /v1/products~count               → 156
+  GET /v1/products~entries~count       → 156        ← the count survives
+  GET /v1/products~entries~first       → {"@type":"entry"}   ← and nothing else does
+  ```
+
+  The element count is preserved and every value is gone, at `200`, with no error. So reaching for `~entries` to index
+  a collection is the one shape to avoid: to pair a scalar collection with positions, request the index
+  (`~entries~with(index)`) and you get `[{"@type":"entry","index":null}, ...]` — the positions are lost too.
+- **The tell is a missing `key`.** An entry with a `key` and no `value` is an empty slot on a real object; an entry
+  with *neither* means `~entries` had nothing to key on and you handed it a collection. Asking the entries directly
+  will not tell you — `~just(key,value)` answers `{"key":null,"value":null}` whether or not those members ever held
+  anything, the same silence as [naming a member that does not exist](common-gotchas.md#39-a-null-in-a-response-does-not-prove-the-field-exists).
 
 ---
 

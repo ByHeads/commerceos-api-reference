@@ -879,7 +879,8 @@ A bulk write commits in chunks of **200 items**, so a failure part-way through l
 |---------|---------|-----|
 | Wrong path casing | 404 | `/customerRelations` not `/customer-relations` (nested) |
 | Missing `identifiers` wrapper | 400 | `{"identifiers": {"id": "..."}}` not `{"id": "..."}` |
-| Empty parentheses on operator | Unexpected result | `~first` not `~first()` |
+| Empty parentheses on a parameterless operator | 404 or 500 | `~first` not `~first()` |
+| Parentheses left off an argument-taking operator | `200` returning `{"@type":"take"}` and no data | `~take(2)` not `~take` — same for `~where`, `~just`, `~order` and the rest |
 | Currency as string | 400 | `{"identifiers": {"currencyCode": "SEK"}}` |
 | Wrong reference field | 400 | Stores use `owner` not `parent` |
 | POST vs PUT confusion | 409 or incomplete | POST creates new, PUT upserts |
@@ -913,7 +914,8 @@ When something doesn't work:
    - Right Content-Type header?
 
 5. **Operator syntax correct?**
-   - No parentheses on parameterless operators?
+   - No parentheses on parameterless operators, and parentheses present on every operator that takes an argument?
+     (A response of `{"@type":"<an operator name>"}` means one is missing somewhere in the chain.)
    - Correct operator name?
 
 ---

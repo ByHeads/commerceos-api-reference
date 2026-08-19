@@ -60,6 +60,10 @@ Comprehensive curl examples demonstrating the full capabilities of the CommerceO
 | `~flat` | Flatten arrays |
 | `~typeless` | Remove @type |
 
+Every *other* operator takes an argument and must carry its parentheses — `~take` without them is a `200` returning
+`{"@type":"take"}` instead of your data. See
+[gotcha 9](../reference/common-gotchas.md#9-parentheses-required-on-argument-taking-operators-forbidden-on-the-rest).
+
 ### Common Identifier Patterns
 
 | Resource | Identifier Pattern |

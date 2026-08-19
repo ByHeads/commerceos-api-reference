@@ -127,14 +127,16 @@ POST /stores '{"owner": {"@type": "company", "identifiers": {"com.myapp.id": "12
 
 ---
 
-## 9. Parameterless Operators: No Empty Parentheses
+## 9. Parentheses: Required on Argument-Taking Operators, Forbidden on the Rest
 
-Operators without parameters must be used WITHOUT parentheses:
+Both halves of this rule are easy to get wrong, and they fail in opposite ways — one loudly, one silently.
+
+**A parameterless operator with empty parentheses fails loudly.**
 
 ```bash
 # WRONG - Empty parentheses break the query
-GET /products~first()   # Returns "not found"
-GET /products~count()   # Error
+GET /products~first()   # 404 "The requested resource was not found."
+GET /products~count()   # 500
 
 # RIGHT - No parentheses
 GET /products~first
@@ -142,24 +144,35 @@ GET /products~count
 GET /products~map(status)~distinct
 ```
 
-**`~order` is the inverse, and it fails the quieter way.** It takes an argument, so it keeps its parentheses even when
-you want the ascending default — write `~order()`, not `~order`. A bare `~order` is not rejected: it returns the
-operator itself as an object at `200`, and the rest of the chain then acts on that object instead of on your
-collection.
+**An argument-taking operator with the parentheses left off fails quietly, and it does so on every one of them.** The
+request is a `200` carrying a small object that names the operator, and your collection is gone:
 
 ```bash
-# WRONG - 200, and the collection is gone
+# WRONG - 200, and the data is gone
+GET /v1/products~take                        # {"@type":"take"}
+GET /v1/products~where                       # {"@type":"where"}
+GET /v1/products~just                        # {"@type":"just"}
 GET /v1/people/{key}/languages~order         # {"@type":"order"}
-GET /v1/people/{key}/languages~order~count   # 1
-GET /v1/products~order~take(2)               # {"@type":"take"}
 
 # RIGHT
+GET /v1/products~take(2)
+GET /v1/products~where(status=Active)
 GET /v1/people/{key}/languages~order()       # ["en","sv"]
-GET /v1/people/{key}/languages~order(desc)   # ["sv","en"]
 ```
 
-The argument itself is strict in the other direction — `asc` and `desc` are the only two values, and a case slip
-(`~order(ASC)`) is a `404`. See [`~order`](operators-catalog.md#orderascdesc).
+The object **replaces** the collection, so anything after it applies to the object rather than to your data:
+`languages~order~count` answers `1` — the count of one object, not of your languages.
+
+**The confusing shape is a bare operator in the middle of a chain**, because the response names an operator you wrote
+*correctly*. `products~order~take(2)` answers `{"@type":"take"}`: the bare `~order` produced the object, and `~take(2)`
+then took from it. Nothing in the response points at the parentheses you left off, so when a chain answers with a
+`{"@type":"<some operator>"}` object, read the whole chain from the left for a naked operator name rather than
+suspecting the one that got named.
+
+`~order` is the one most often typed bare, because its argument is optional in meaning but not in spelling — write
+`~order()` for the ascending default. The argument itself is strict in the other direction: `asc` and `desc` are the
+only two values, and a case slip (`~order(ASC)`) is a `404`. See [`~order`](operators-catalog.md#orderascdesc), and
+[Parameter Rules](operators.md#parameter-rules) for which operators fall on which side of the line.
 
 ---
 
@@ -474,7 +487,7 @@ There are also **no operator aliases**: every operator must be spelled in full. 
 
 This is a frequent cause of "the sync webhook reports success but no records were written" — the delivery succeeded, it just delivered nothing. When a mapped type or a webhook side-effect write produces an unexpectedly empty result, check the operator spelling against [`operators-catalog.md`](operators-catalog.md) before looking anywhere else.
 
-Related: [gotcha 9](#9-parameterless-operators-no-empty-parentheses) — a parameterless operator written with empty parentheses (`~first()`) is a different failure and *does* misbehave visibly.
+Related: [gotcha 9](#9-parentheses-required-on-argument-taking-operators-forbidden-on-the-rest) — a parameterless operator written with empty parentheses (`~first()`) is a different failure and *does* misbehave visibly.
 
 ---
 

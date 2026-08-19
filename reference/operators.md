@@ -247,7 +247,9 @@ GET /v1/trade-orders~distinctBy(customer/identifiers/key)
   - **Field projection:** Use `~just(...)` for simple field selection, or create a mapped type when you need reshaping.
   - **Full guide:** See [Mapped Types](mapped-types.md) for body structure, selectors, aliasing, `$prior` aggregation, and X-Request-Map usage.
 - `~flat` - Flatten nested arrays one level deep.
-- `~entries` - Convert object to `{index, key, value}[]` entries (excludes `@type`).
+- `~entries` - Convert a keyed **object** to `{key, value}[]` entries. Add `~with(index)` for a 1-based position; a
+  plain `~entries` carries no `index`. Over a *collection* it returns one empty wrapper per element and loses the data
+  — see [`~entries`](operators-catalog.md#entries).
 - `~array` - Wrap single item in an array. Spelled in full — there is no `~arr` alias, and a misspelled operator resolves silently to an empty value (see [gotcha 24](common-gotchas.md#24-misspelled-operators-fail-silently)).
 - `~typeless` - Set context flag to strip `@type` from output.
 - `~join(separator)` - Join array elements to string; default separator is `,`. Inverse of the string split member `/={separator}`.
@@ -264,7 +266,7 @@ GET /v1/trade-orders~distinctBy(customer/identifiers/key)
 
 **Parameterized operators** (require arguments):
 - `~where(...)`, `~either(...)`, `~with(...)`, `~without(...)`, `~just(...)`, `~simpleJust(...)`
-- `~orderBy(...)`, `~distinctBy(...)`
+- `~order(...)`, `~orderBy(...)`, `~distinctBy(...)`
 - `~map(...)`, `~join(...)`, `~take(...)`, `~skip(...)`, `~repeat(...)`
 
 **Non-parameterized operators** (no parentheses):
@@ -272,10 +274,25 @@ GET /v1/trade-orders~distinctBy(customer/identifiers/key)
 - `~flat`, `~entries`, `~array`, `~typeless`
 - `~toLower`, `~toUpper`, `~toString`
 
-**Special case**:
-- `~order` takes `asc` or `desc`, and `~order()` is the ascending default — but the **parentheses are required either
-  way**. A bare `~order` returns the operator as an object instead of applying it, at `200`, and the rest of the chain
-  then acts on that object rather than on your collection ([details](operators-catalog.md#orderascdesc)).
+> **Write the parentheses. An argument-taking operator without them answers with the operator instead of a result.**
+> This holds for every operator in the first list — the bare form is a `200` carrying a small object naming the
+> operator, and your collection is gone:
+>
+> ```
+> GET /v1/products~take    → {"@type":"take"}
+> GET /v1/products~where   → {"@type":"where"}
+> GET /v1/products~just    → {"@type":"just"}
+> ```
+>
+> The object **replaces** the collection, so everything after it applies to the object rather than to your data. That
+> is what makes it hard to spot mid-chain: `products~order~take(2)` answers `{"@type":"take"}`, naming an operator you
+> wrote correctly rather than the one you got wrong. Nothing in the response points at the missing parentheses.
+>
+> `~order` is the one where this is easiest to type by accident, because its argument is optional in meaning but not in
+> spelling: write `~order()` for the ascending default, never a bare `~order`
+> ([details](operators-catalog.md#orderascdesc)). The rule runs the other way for the second list, where empty
+> parentheses are the mistake — see
+> [gotcha 9](common-gotchas.md#9-parentheses-required-on-argument-taking-operators-forbidden-on-the-rest).
 
 ---
 
