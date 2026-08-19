@@ -79,7 +79,14 @@ GET /v1/products~without(createdAt,updatedAt,createdBy)
   GET /v1/products~without(nosuchfield)~take(1)  # unchanged
   ```
   [`~orderBy` is the test](#orderbyselectordesc) for whether the name exists; the same silence covers [`~where`](#wherepredicates) and [`~distinctBy`](#distinctbyselector) ([why](common-gotchas.md#39-a-null-in-a-response-does-not-prove-the-field-exists))
-- **A nested path removes its first segment, not its leaf.** `~without(identifiers/com.example.sku)` drops the entire `identifiers` object — the primary `key` with it — and it does so whether or not that identifier exists. There is no way to remove one member of a nested object and keep the rest — the projections all act on the root ([details](#orderbyselectordesc)), so `~just(name,identifiers/key)` does not give you a trimmed object either; it returns the key hoisted under the name `identifiers`
+- **A nested path removes its first segment, not its leaf.** `~without(identifiers/com.example.sku)` drops the entire `identifiers` object — the primary `key` with it — and it does so whether or not that identifier exists. There is no *path* spelling that keeps part of a nested object: the projections all act on the root ([details](#orderbyselectordesc)), so `~just(name,identifiers/key)` does not give you a trimmed object either; it returns the key hoisted under the name `identifiers`
+- **Nesting the operator does keep the rest.** Write `~without` inside the projection instead of writing a path, and it acts on the nested object rather than on its root:
+  ```
+  GET /v1/products~just(name,identifiers~without(com.heads.seedID))~take(1)
+  → [{"@type":"product","name":"1 kr",
+      "identifiers":{"@type":"common identifiers","key":"5347b808…"}}]
+  ```
+  One identifier dropped, the rest kept — primary `key` included. The same nesting works under `~with` (leaving the rest of the default representation intact), in the `?fields=` form, under an alias (`ids:identifiers~without(...)`), and composed with itself. The nested name is no better validated than a top-level one: `~with(owner~without(namE))` leaves `name` in place, `200`, no error. Reaching for the keep-only form first is the natural move and is the one that does not work here — see the [`~just` notes](#justselectors)
 
 ---
 
@@ -101,6 +108,14 @@ GET /v1/products~just(name,status)
 - Use for strict whitelisting of fields
 - `~just()` with empty args returns minimal object
 - A name the resource does not declare is projected as `null` rather than rejected — see the [`~with` note](#withselectors)
+- **It cannot filter a namespaced identifier out of `identifiers`.** Nested inside another operator it behaves normally on an ordinary object — `/v1/stores~with(owner~just(name,vatId))~take(1)` returns `@type`, `name` and `vatId`, against a control of `@type`, `identifiers` and `name`. But `identifiers` is an open type, and its namespaced keys are rendered whatever you project:
+  ```
+  GET /v1/products~with(identifiers~just(key))~take(1)
+  → "identifiers":{"@type":"common identifiers","key":"5347b808…","com.heads.seedID":"1 SEK"}   # seedID survives
+  GET /v1/products~with(identifiers~just(com.heads.seedID))~take(1)
+  → "identifiers":{"@type":"common identifiers","com.heads.seedID":"1 SEK"}                     # key dropped
+  ```
+  So `identifiers~just(key)` hands back the whole object and reads as proof the nesting syntax does not work. It does — reach for [`~without`](#withoutselectors) instead, which drops the identifier you name and keeps the rest
 - It is not interchangeable with `?fields=` on a [cursor walk](pagination.md#requirements-and-notes), because the sort
   value is fetched behind the scenes only for a request carrying a `fields=` list. Without one the cursor is minted
   only if the `orderby` selector can be read from what you projected: `~just(name)` alongside `orderby=identifiers/key`
