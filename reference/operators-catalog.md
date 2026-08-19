@@ -86,7 +86,9 @@ GET /v1/products~without(createdAt,updatedAt,createdBy)
   → [{"@type":"product","name":"1 kr",
       "identifiers":{"@type":"common identifiers","key":"5347b808…"}}]
   ```
-  One identifier dropped, the rest kept — primary `key` included. The same nesting works under `~with` (leaving the rest of the default representation intact), in the `?fields=` form, under an alias (`ids:identifiers~without(...)`), and composed with itself. The nested name is no better validated than a top-level one: `~with(owner~without(namE))` leaves `name` in place, `200`, no error. Reaching for the keep-only form first is the natural move and is the one that does not work here — see the [`~just` notes](#justselectors)
+  One identifier dropped, the rest kept — primary `key` included. The same nesting works under `~with` (leaving the rest of the default representation intact), under an alias (`ids:identifiers~without(...)`), and composed with itself. It is not specific to `identifiers`: a `localized text` member trims the same way, so `~just(name,receiptText~without(sv-SE))` comes back carrying the `en-US` entry and nothing else
+- **Put the nesting inside `fields=`, not alongside it.** A `fields=` list re-projects the member whole, so it undoes a narrowing written as a path operator — `~with(identifiers~without(com.heads.seedID))?fields=name,identifiers` brings `com.heads.seedID` back. That is [`fields=` deciding the response shape](#justselectors) working as documented, and it is silent. Write `?fields=name,identifiers~without(com.heads.seedID)` instead, or send no `fields=` at all
+- **A nested name is no better validated than a top-level one**, and on the construction above that costs something concrete: `identifiers~without(com.heads.seedId)` — one character of case — is a `200` that ships the internal identifier you were stripping for a partner. An invented namespaced name, and a locale spelled with the wrong case, are the same silent no-op. Reaching for the keep-only form first is the natural move and is the one that does not work here — see the [`~just` notes](#justselectors)
 
 ---
 
@@ -108,14 +110,17 @@ GET /v1/products~just(name,status)
 - Use for strict whitelisting of fields
 - `~just()` with empty args returns minimal object
 - A name the resource does not declare is projected as `null` rather than rejected — see the [`~with` note](#withselectors)
-- **It cannot filter a namespaced identifier out of `identifiers`.** Nested inside another operator it behaves normally on an ordinary object — `/v1/stores~with(owner~just(name,vatId))~take(1)` returns `@type`, `name` and `vatId`, against a control of `@type`, `identifiers` and `name`. But `identifiers` is an open type, and its namespaced keys are rendered whatever you project:
+- **It cannot filter a key out of an open type.** Nested inside another operator it behaves normally on an ordinary object — `/v1/stores~with(owner~just(name,vatId))~take(1)` returns `@type`, `name` and `vatId`, against a control of `@type`, `identifiers` and `name`. But an open type's keys are rendered whatever you project, so naming one keeps nothing out:
   ```
   GET /v1/products~with(identifiers~just(key))~take(1)
   → "identifiers":{"@type":"common identifiers","key":"5347b808…","com.heads.seedID":"1 SEK"}   # seedID survives
   GET /v1/products~with(identifiers~just(com.heads.seedID))~take(1)
   → "identifiers":{"@type":"common identifiers","com.heads.seedID":"1 SEK"}                     # key dropped
+  GET /v1/products~with(identifiers~just(com.heads.seedId))~take(1)                             # one character of case
+  → "identifiers":{"@type":"common identifiers","com.heads.seedID":"1 SEK"}                     # identical response
   ```
-  So `identifiers~just(key)` hands back the whole object and reads as proof the nesting syntax does not work. It does — reach for [`~without`](#withoutselectors) instead, which drops the identifier you name and keeps the rest
+  Rows 2 and 3 are the same body: the inner `~just` never selected the identifier at all, it merely declined to name `key`. So a misspelled namespaced key is invisible here, with none of the [`null` a bad name usually echoes](common-gotchas.md#39-a-null-in-a-response-does-not-prove-the-field-exists) — that echo only appears for a name outside [reverse-domain form](#orderbyselectordesc). `identifiers~just(key)` therefore hands back the whole object and reads as proof the nesting syntax does not work. It does — reach for [`~without`](#withoutselectors) instead, which drops the key you name and keeps the rest
+- **The same holds for every open type, and `identifiers` is not the one you will meet first.** A `localized text` member — `receiptText`, `signText`, `promotionTitle` and the rest — behaves identically on both halves: `receiptText~just(en-US)` returns both locales, `receiptText~without(sv-SE)` returns the one. In the keep-only form a name that is not a valid language tag is a `500` (`Incorrect locale information provided`) rather than a `null`; the `~without` form takes it at `200` as an ordinary silent no-op. What separates an open type from an ordinary one is not that it holds a declared member: `payment-methods~with(identifiers~just(key))~take(1)` does drop the declared `methodId`, while the namespaced key on `products` survives the same request. The line is **open types that render as typed objects**, and the `@type` in the body is the tell — `instanceProperties` has none (`{"currencyCode":"SEK","divisible":false,"faceValue":1}`) and no nested operator reaches into it at all, `~just`, `~without` and an invented name alike returning it whole
 - It is not interchangeable with `?fields=` on a [cursor walk](pagination.md#requirements-and-notes), because the sort
   value is fetched behind the scenes only for a request carrying a `fields=` list. Without one the cursor is minted
   only if the `orderby` selector can be read from what you projected: `~just(name)` alongside `orderby=identifiers/key`
