@@ -243,25 +243,27 @@ Independently of that, **the framing of an error body follows the `Accept` heade
 
 ### Without Streaming (Default)
 
-The API buffers all results, so if an error occurs at any point, a proper HTTP error response is returned with the correct status code. The error body includes `processedCount` (number of items committed before the failure) and `failedAtIndex` (the 0-based index of the item that caused the error):
+The API buffers all results, so if an error occurs at any point, a proper HTTP error response is returned with the correct status code:
 
 ```json
 {
   "@type": "bad request",
   "error": "The request was invalid and could not be processed.",
-  "details": "Invalid value for field 'name'.",
-  "processedCount": 200,
-  "failedAtIndex": 200
+  "details": "Invalid value for field 'name'."
 }
 ```
 
 `error` is the general category of the failure and `details` the occurrence-specific message. The HTTP status code (e.g., 400) is set correctly because headers hadn't been sent yet.
+
+A buffered error body carries **no per-item counters** — neither `processedCount` nor `failedAtIndex`. If what you need is how far a batch write got before it failed, the answer is the chunk boundary rather than an index: the failing chunk rolls back and every chunk before it stays committed ([Transaction chunking](#3-transaction-chunking)).
 
 ### With Streaming
 
 **Streaming does not change how a request fails.** Everything decided before the first byte of the body — authentication, scopes, an unknown resource or key, a malformed query or cursor token, an unsupported content type, and **every mutation** — still produces an ordinary HTTP error response with the correct status code and the usual error body, exactly as it would without `stream=true`. A `GET` for a product that does not exist is a `404` whether or not you asked for streaming, and a batch mutation that fails on its 200th item still answers with a normal `4xx`: a mutation does all of its writing before the response body starts, so the status line is still free to carry the failure.
 
 The one exception is a failure that strikes *while the collection is being read out*, after the `200` status line and headers have already gone on the wire. There is no status code left to change at that point, so the failure is appended to the body instead. That is an internal fault — a record that cannot be built, a read that fails part-way through a collection — rather than something a client can provoke with a bad request, and it is correspondingly rare. Handle it because it is the one failure a `200` will not tell you about, not because you should expect to see it. The response is **truncated, not corrupted**: everything delivered before the marker is valid.
+
+**The marker covers the read machinery too, not just the data.** A streamed collection is read one 200-item batch at a time, each in its own read transaction ([Transaction chunking](#3-transaction-chunking)), and a failure of one of *those* transactions between batches produces exactly the same marker — array closed for `application/json`, one more line for everything else. There is nothing extra for a client to do: "check the last line" already covers it. It is worth knowing only because it means the marker is the complete account of how a streamed `GET` can go wrong after the `200`.
 
 *Where* the marker lands depends on the content type. **Line-delimited formats** (`application/x-ndjson`, `text/csv`, `application/sql`) get one more line appended:
 
@@ -277,7 +279,7 @@ The one exception is a failure that strikes *while the collection is being read 
 }
 ```
 
-Note what is **not** there: `processedCount` and `failedAtIndex` belong to the buffered error body above, and a streamed line-delimited marker carries neither.
+Note what is **not** there: `processedCount` is carried only by the `application/json` form below, and `failedAtIndex` is carried by nothing at all — see [Which fields each form carries](#which-fields-each-form-carries).
 
 **`application/json`** cannot do that — a second JSON value after the closing `]` would make the body unparseable. So the array **closes itself** and the error becomes its **last element**:
 
@@ -319,6 +321,8 @@ The specific type may add its own members on top of those (a `"conflict"` carrie
 
 `innerError` is sanitized rather than raw. An unexpected server-side failure surfaces as `{"@type": "internal error", "error": "Internal server error.", "details": "<message>"}` — never a stack trace or an internal frame.
 
+**It is never absent, and it always has a `@type`.** If a cause cannot be sanitized into a body at all, a generic `{"@type": "internal error", "error": "Internal server error."}` goes out in its place rather than the key being dropped — so a discriminated-union parser over `innerError`'s `@type` is safe to write, on every content type, without a fallback branch for a missing key. Only `details` is optional.
+
 The generated OpenAPI spec reflects this: `innerError` is declared as the error model rather than as an untyped value, so `<base-uri>/openapi/spec.json` describes its members and a generated client types it like any other error.
 
 #### Which Fields Each Form Carries
@@ -331,10 +335,12 @@ The three error bodies do not carry the same fields, and **`"@type": "mid-stream
 | `error` | Yes | Yes | Yes |
 | `details` | Yes | — (it is inside `innerError`) | — (it is inside `innerError`) |
 | `innerError` | — (it *is* the error) | Yes | Yes |
-| `processedCount` | Yes | — | Yes |
-| `failedAtIndex` | Yes | — | — |
+| `processedCount` | — | — | Yes |
+| `failedAtIndex` | — | — | — |
 
-The absences are the ones that catch people out. A completeness check written as `if (last.processedCount !== undefined)` never fires on an NDJSON, CSV or SQL export, and `failedAtIndex` appears only on the buffered batched-write body — either check waves a truncated export through as complete. Key detection on `@type` and read `innerError` for the cause.
+The absences are the ones that catch people out. A completeness check written as `if (last.processedCount !== undefined)` never fires on an NDJSON, CSV or SQL export, and one written on `failedAtIndex` never fires at all — either check waves a truncated export through as complete. Key detection on `@type` and read `innerError` for the cause.
+
+**`failedAtIndex` is reserved.** It is declared on the `mid-stream error` model in the OpenAPI spec, so a generated client will have a field for it and a schema browser will list it — but no response currently carries it, on any content type or in any form. Treat its absence as the norm rather than as a signal, and do not write a branch that depends on it appearing.
 
 The rows above describe the **outer** marker. `innerError` itself always carries its own `@type`, on both streamed forms — see [`innerError` Is an Ordinary Error Body](#innererror-is-an-ordinary-error-body).
 
@@ -356,7 +362,7 @@ This is the practical cost of streaming a `GET`. Once the first line is on the w
 }
 ```
 
-The appended wrapper carries `innerError` but neither `processedCount` nor `failedAtIndex` — those two belong to the buffered error body ([field matrix](#which-fields-each-form-carries)). The lines already delivered are valid; the collection is simply incomplete. Note that this is the *only* failure mode streaming introduces: a mutation, or anything rejected before the read starts, still fails with a real HTTP status.
+The appended wrapper carries `innerError` but neither `processedCount` (which only the streamed `application/json` form carries) nor `failedAtIndex` (which nothing carries) — see the [field matrix](#which-fields-each-form-carries). The lines already delivered are valid; the collection is simply incomplete. Note that this is the *only* failure mode streaming introduces: a mutation, or anything rejected before the read starts, still fails with a real HTTP status. It covers a failure of the read transaction between batches as well as a failure to build a record, so the one check below is the whole of what a streaming client owes this.
 
 A streaming client must check for that line. Reject the export rather than treating a truncated collection as complete — a partial export that looks successful is how stale rows end up in a warehouse:
 
