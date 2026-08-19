@@ -205,16 +205,40 @@ GET /v1/trade-orders~orderBy(customer/name)
 
 > **What you can sort on.** `~orderBy(field)` — and the `?orderby=field` form — accepts any member the resource
 > declares, whether or not every item has a value for it. Items missing a value sort first ascending and last
-> descending. A key the resource does not declare is a `400 Invalid sort key '<field>': field not found`, which means
-> exactly what it says: check the spelling against the resource's member list. There is no compound sort —
-> `~orderBy(status,name)` asks for one member named `status,name` and is rejected on those grounds.
+> descending. A key the resource does not declare is a `400 Invalid sort key '<field>': field not found`. There is no
+> compound sort — `~orderBy(status,name)` asks for one member named `status,name` and is rejected on those grounds.
 >
 > A sort is a property of the collection, not of whichever item happens to come first, so `~skip`, `~take`, a preceding
-> `~where` and a `fields=` projection all leave a sort's admissibility alone. A member that filters can be sorted on.
+> `~where` and a `fields=` projection all leave a sort's admissibility alone. A member that **filters**, though, tells
+> you nothing about whether it sorts — the filter layer validates no names at all and reads one it does not recognise
+> as null, so every name filters, including one you invented:
+>
+> ```
+> GET /v1/stores~where(hidden=null)~take(5)        → 200   (hidden is a product member, not a store member)
+> GET /v1/stores~where(nosuchfield=null)~take(5)   → 200   ← any name at all is accepted here
+> GET /v1/stores~orderBy(hidden)~take(5)           → 400   Invalid sort key 'hidden': field not found
+> ```
+>
+> **The sort itself is the test.** `~orderBy(X)~take(1)` against a non-empty collection is a `400` if and only if the
+> resource does not declare `X`. No response body answers that question: naming an undeclared member in a projection
+> returns `"X": null` — the operator echoes back the name you gave it — while `fields=all` *omits* a declared member
+> that happens to be empty. So a `null` proves nothing and an absence proves nothing. Two cases the `400` does not
+> reach are in the notes below.
 
 **Notes:**
 - `~orderBy` accepts a single selector. A comma does not start a second sort key — it becomes part of the selector, which then resolves to nothing, so `~orderBy(status,name)` (or `?orderby=status,name`) is a `400` with `details` of `Invalid sort key 'status,name': field not found`. This holds whether or not you are paginating; with a cursor `after` token present the request is rejected one layer earlier, with `Cursor pagination with compound sort not yet supported`
 - Nested paths supported: `~orderBy(customer/name)`
+- **An empty collection validates nothing.** With no items to sort the check short-circuits and any key is accepted, so a sort key confirmed against a test set that happens to be empty can still fail against real data:
+  ```
+  GET /v1/products~where(name=__nope__)~orderBy(nosuchfield)~take(5)  → 200, []
+  GET /v1/products~orderBy(nosuchfield)~take(5)                       → 400
+  ```
+- **A sort on `identifiers/<namespace>` is accepted whether or not any item carries that namespace.** The identifier namespace is open, so there is no declared member list to check a spelling against — a typo there is not an error, it is an unsorted result:
+  ```
+  GET /v1/products~orderBy(identifiers/com.example.sku)~take(4)   → 200, sorted
+  GET /v1/products~orderBy(identifiers/com.example.Sku)~take(4)   → 200, the collection in its natural order
+  ```
+  Verify one by checking that the first and last items actually differ in the value you sorted on. Typos *inside* a typed path are still caught — `identifiers/kye`, `prices/nosuchthing` and `nosuchparent/key` are all `400`. On a cursor walk the same mistake surfaces as the [no-cursor stall](pagination.md#requirements-and-notes) instead, since no item has a value to resume from.
 - Collects all items in memory before sorting — not suitable for very large collections
 - **Blocks the short-circuit.** A `~take`/`~first` after a sort still waits for the whole collection to be sorted; that is inherent, since the top N cannot be known without seeing every row. If you need *any* N rows rather than the *first* N, leave `~orderBy` out and the request stops early ([details](operators.md#limiters-stop-the-scan-early)).
 

@@ -164,6 +164,12 @@ and a successful first page tells you nothing about whether it will finish. Note
 ([what you can sort on](operators-catalog.md#orderbyselectordesc)); it is carrying a position from one request to the
 next that needs a value on every item.
 
+If you sort a walk on one of your own identifiers rather than on `identifiers/key`, note that a misspelled namespace
+lands in exactly this state instead of erroring — `orderby=identifiers/com.example.Sku` when the items carry
+`com.example.sku` is a `200` with `X-Has-More: true` and no `X-Cursor-Next`, because no item has a value under the name
+you asked for. The identifier namespace is open, so there is no member list to check the spelling against
+([details](operators-catalog.md#orderbyselectordesc)).
+
 Compound sorting is not a workaround, and not just for pagination: **a multi-field `orderby` is rejected with a `400`
 whether or not you are paginating.** Two layers reach the same answer — `~orderBy` takes one selector, so
 `?orderby=status,name` on its own fails with `details` of `Invalid sort key 'status,name': field not found`, and with an
