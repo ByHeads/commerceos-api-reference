@@ -299,24 +299,28 @@ the item as the request renders it. Three things can put it there: the resource'
 that projects it (`~just`, `~with`, even a `~where` predicate); or the API's own fetch-and-remove, which
 fires **only when the request carries a `fields=` parameter**.
 
-Read that as a description of the item that comes back, not as a checklist of what the request named. Naming a member
-is not the same as adding one: `~without(name)` alongside `orderby=name` stalls even though `name` is in the product
-default representation, `~simpleJust(status)` alongside `orderby=name` stalls because it removed the member the
-default representation had already put there, and `~orderBy` reads its own selector without projecting it at all
+Read that as a description of the item that comes back, not as a checklist of what the request named:
+`~simpleJust(status)` alongside `orderby=name` stalls because it removed the member the default representation had
+already put there. Naming a member is not the same as adding one either — `~without(name)` alongside `orderby=name`
+stalls even though `name` is in the product default representation, and `~orderBy` reads its own selector without
+projecting it at all
 ([which operators add and which do not](common-gotchas.md#39-a-null-in-a-response-does-not-prove-the-field-exists)).
 
 The rule covers the path-operator stall above and a second one you may have met on its own — a flat member outside the
 default representation, which stalls with no projection at all:
 
 ```bash
-GET /v1/products?limit=2&orderby=instanceType                     # X-Has-More: true, no X-Cursor-Next
-GET /v1/products?limit=2&orderby=instanceType&fields=none         # mints; each item carries @type alone
-GET /v1/products~with(instanceType)?limit=2&orderby=instanceType  # mints; instanceType is on the item
+GET /v1/stores?limit=2&orderby=organizationNumber                          # X-Has-More: true, no X-Cursor-Next
+GET /v1/stores?limit=2&orderby=organizationNumber&fields=none              # mints; each item carries @type alone
+GET /v1/stores~with(organizationNumber)?limit=2&orderby=organizationNumber # mints; organizationNumber is on the item
 ```
 
-Those three show a cursor **appearing**, which is not the same as a walk worth running. `instanceType` is populated on
-every product but holds one of a handful of values, so it fails the [uniqueness requirement](#requirements-and-notes)
-above and a walk on it comes up short.
+Those three show a cursor **appearing**, which is not the same as a walk worth running — minting says the sort value
+was readable on the page you asked for, and nothing more. `organizationNumber` is not on every store, so the same
+request at `limit=1` mints nothing at all: the store that comes back first has no value to resume from. The other
+requirement bites differently. On `/v1/products`, `instanceType` is populated on every product but holds one of a
+handful of values, so it fails the [uniqueness requirement](#requirements-and-notes) above and a walk on it comes up
+short.
 
 How far short is not something you can tune. Every page resumes past the whole block of items sharing its last item's
 value, so the walk visits at most one page per distinct value and returns at most `limit × (number of distinct
