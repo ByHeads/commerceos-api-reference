@@ -516,9 +516,8 @@ always populated, which is why it is the recommendation for both failures.
 selector combined with a `fields=` projection that does not include the parent object lands in exactly the no-cursor
 state above — on the *first* request, so the walk never starts. Project the parent (`fields=name,identifiers`) or drop
 the projection; `fields=all` and omitting `fields` are fine too. Switching to the path-operator form does not help —
-`~just(name)` stalls the walk exactly like `fields=name`. A flat sort field has no such restriction. Two tells that you
-are in this state without reading the headers: `identifiers` comes back as a bare key string instead of an object, and
-the item carries a member named literally `identifiers/key`. See
+`~just(name)` stalls the walk exactly like `fields=name`. A flat sort field has no such restriction. The tell, without
+reading the headers: `identifiers` comes back as a bare key string instead of an object. See
 [Cursor pagination](pagination.md#requirements-and-notes).
 
 Three related surprises in the same feature:
@@ -897,40 +896,6 @@ Full rules: [Transaction chunking](../features/streaming.md#3-transaction-chunki
 
 ---
 
-## 39. Sorting on an Empty Field Is a `400`, Not an Empty Slot
-
-`Invalid sort key '<field>': field not found` does not always mean the field does not exist. A sort key is validated
-against the **first record of the collection being sorted**, and a real member that simply has no value on that record
-fails the check — so the same sort succeeds or fails depending on which record happens to come first.
-
-```bash
-# 400 — details: Invalid sort key 'unit': field not found
-GET /v1/products~orderBy(unit)~take(3)
-
-# 200 — same field, same collection, but the first record now has a unit
-GET /v1/products~where(unit!=null)~orderBy(unit)~take(3)
-```
-
-`unit` is a perfectly valid product member in both requests. The first one fails only because the product that happens
-to sort first has no `unit` set. That is why the error is so easy to misread: it names the field, so it reads like a
-typo, and a `~where` that changes nothing but the ordering of the input makes it disappear.
-
-The practical consequences:
-
-- **Do not conclude a field is unsortable from one `400`.** Test it against a filtered collection before deciding, and
-  do not conclude anything about the *type* — a sort that works on one tenant's data can fail on another's.
-- **A sort that works today can start failing tomorrow**, when a record with the field empty is created and happens to
-  land first. Sparse fields are the risk: optional members, and computed ones like a person's `fullName`, which is
-  absent when neither `givenName` nor `familyName` is set.
-- **This is the loud half of the always-populated rule.** The
-  [cursor requirements](pagination.md#requirements-and-notes) already ask for a sort field that is always present
-  because an empty value stalls a walk silently. An empty value on the *first* record fails immediately instead. Both
-  point the same way: sort a full walk on `identifiers/key`, which is unique and never empty.
-- A genuinely misspelled or nonexistent field gives the identical message, so the wording cannot tell you which of the
-  two you have hit.
-
----
-
 ## API Response Behaviors
 
 ### Empty Collection Results
@@ -970,7 +935,8 @@ GET /v1/people~orderBy(name)~with(name)~take(10)
 GET /v1/people~orderBy(fullName)~take(10)
 ```
 
-> **A name member is only a dependable sort key while every record has one.** A person with no `givenName` and no
-> `familyName` has no `fullName` either, and a sort key that is empty on the first record of the collection is a `400`
-> rather than a sort — see [Sorting on an Empty Field Is a `400`](#39-sorting-on-an-empty-field-is-a-400-not-an-empty-slot).
-> Sort a full walk on `identifiers/key` instead.
+> **A name member sorts, but it is not a dependable key for walking a collection.** A person with neither a
+> `givenName` nor a `familyName` has no `fullName` either, and two people can share one — so a paginated walk sorted on
+> a name can skip records at a page boundary or stall on one that has none. Sort a full walk on `identifiers/key`,
+> which is unique and populated on every record, and keep name sorts for the case where the alphabetical order is
+> itself the point. See [cursor requirements](pagination.md#requirements-and-notes).

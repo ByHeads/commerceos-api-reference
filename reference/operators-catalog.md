@@ -203,6 +203,15 @@ GET /v1/trade-orders~orderBy(customer/name)
 
 **Query param equivalent:** `?orderby=name` or `?orderby=name:desc`
 
+> **What you can sort on.** `~orderBy(field)` — and the `?orderby=field` form — accepts any member the resource
+> declares, whether or not every item has a value for it. Items missing a value sort first ascending and last
+> descending. A key the resource does not declare is a `400 Invalid sort key '<field>': field not found`, which means
+> exactly what it says: check the spelling against the resource's member list. There is no compound sort —
+> `~orderBy(status,name)` asks for one member named `status,name` and is rejected on those grounds.
+>
+> A sort is a property of the collection, not of whichever item happens to come first, so `~skip`, `~take`, a preceding
+> `~where` and a `fields=` projection all leave a sort's admissibility alone. A member that filters can be sorted on.
+
 **Notes:**
 - `~orderBy` accepts a single selector. A comma does not start a second sort key — it becomes part of the selector, which then resolves to nothing, so `~orderBy(status,name)` (or `?orderby=status,name`) is a `400` with `details` of `Invalid sort key 'status,name': field not found`. This holds whether or not you are paginating; with a cursor `after` token present the request is rejected one layer earlier, with `Cursor pagination with compound sort not yet supported`
 - Nested paths supported: `~orderBy(customer/name)`

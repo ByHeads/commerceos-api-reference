@@ -156,14 +156,13 @@ GET /v1/products?limit=50&orderby=identifiers/key
 [stalled-walk state](#walking-a-collection) above. `name` is *not* guaranteed unique either — the same product name can
 exist per currency or per store — and low-cardinality fields such as `status` are never safe.
 
-**Sort on a field that is always populated, too — and note that an empty value fails two different ways.** An item
-with no value for the sort field stalls the walk when it lands at the end of a page, as described above. When it lands
-at the *start* of the collection, the request fails outright with a `400` whose `details` read
-`Invalid sort key '<field>': field not found` — the sort key is validated against the first record, and a real member
-with no value on that record does not pass. The message names the field, so it reads like a typo even when the field is
-spelled correctly and exists on the type; a filter that changes nothing but which record comes first makes it
-disappear. Treat both as the same requirement rather than two unrelated errors, and see
-[gotcha 39](common-gotchas.md#39-sorting-on-an-empty-field-is-a-400-not-an-empty-slot) for the worked pair.
+**Sort on a field that is always populated, too.** An item with no value for the sort field stalls the walk when it
+lands at the end of a page, as described above — the response carries `X-Has-More: true` with no `X-Cursor-Next`,
+because there is nothing to resume from. This is a quiet failure: the walk stops mid-collection rather than erroring,
+and a successful first page tells you nothing about whether it will finish. Note that this is a requirement of the
+*walk*, not of the sort — a sparse member sorts perfectly well on its own
+([what you can sort on](operators-catalog.md#orderbyselectordesc)); it is carrying a position from one request to the
+next that needs a value on every item.
 
 Compound sorting is not a workaround, and not just for pagination: **a multi-field `orderby` is rejected with a `400`
 whether or not you are paginating.** Two layers reach the same answer — `~orderBy` takes one selector, so
@@ -214,27 +213,19 @@ The stall covers every projection that does not reach the parent, including the 
 | With `orderby=identifiers/key` | Walk starts? | Response |
 |---|---|---|
 | `fields=name,identifiers` — names the parent | **yes** | exactly as requested |
-| `fields=all`, or no `fields=` at all | **yes** | as requested, plus one unrequested member (below) |
+| `fields=all`, or no `fields=` at all | **yes** | exactly as requested |
 | `fields=name`, `fields=name,status`, `fields=none` | no | `identifiers` collapses to a bare key string |
 | `fields=identifiers/key` — the exact sort path | no | same |
 | `fields=identifiers/com.example.sku` — a sibling | no | `identifiers` is the bare key string, under the member name you asked to hold a sku |
-| `fields=default`, `fields=default,gtin` | no | bare key string, *and* the literal member below |
+| `fields=default`, `fields=default,gtin` | no | bare key string |
 | a path-operator projection, `~just(name)` | no | `~just` is not a way around it |
 
-Two visible symptoms let you recognise the state without reading the headers. `identifiers` comes back as a **bare
-string holding the database key** instead of the object you would otherwise get; and the item carries an extra member
-named literally `identifiers/key`, slash included:
+One visible symptom lets you recognise the state without reading the headers: `identifiers` comes back as a **bare
+string holding the database key** instead of the object you would otherwise get.
 
 ```json
-{"@type":"product","identifiers":"0239ada480742fd8d2b8b31367cb7d18","name":"501 Original Jeans W28 L36 Stonewash",
- "gtin":[],"status":"Active","identifiers/key":"0239ada480742fd8d2b8b31367cb7d18"}
+{"@type":"product","name":"501 Original Jeans W28 L36 Stonewash","identifiers":"0239ada480742fd8d2b8b31367cb7d18"}
 ```
-
-**That second member also appears on the two projections that do work.** `fields=all`, and omitting `fields`
-altogether, both paginate correctly and both return an `identifiers/key` member alongside the proper `identifiers`
-object. It is harmless to ignore, but a client that validates items against a strict schema will reject it, so it is
-worth knowing before you point a generated client at a nested-sort walk. Naming the parent
-(`fields=name,identifiers`) is the one shape that both paginates and returns exactly what you asked for.
 
 **One exception, and it applies to a flat sort field only: a projection built on `default`.** `fields=default,gtin`
 with `orderby=name` returns `name` as well, even though you did not ask for it. Which members `default` covers is a

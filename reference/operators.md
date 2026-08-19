@@ -200,7 +200,7 @@ GET /v1/products~either(status=Inactive,name=~Apple)~where(name=~Pro)
 
 > **Note (v26.1+):** the `/before/` and `/after/` time-relative endpoints already return results in timestamp order, so chaining `~orderBy(timestamp)` after them is redundant. For every other query — including `~where(timestamp...)` filters, plain collection listings, and any sort by a non-timestamp field — `~orderBy(...)` is still required when you want a specific order.
 
-- `~orderBy(field)` or `~orderBy(field:desc)` - Order objects by selector value (single selector only; a comma-separated multi-field sort key is a `400`, with or without pagination).
+- `~orderBy(field)` or `~orderBy(field:desc)` - Order objects by selector value (single selector only; a comma-separated multi-field sort key is a `400`, with or without pagination). Any member the resource declares can be sorted on, including one that is empty on some or all items — see [what you can sort on](operators-catalog.md#orderbyselectordesc).
 - `~order` / `~order(desc)` - Order primitive streams in ascending/descending order.
 - `~take(N)` - Take first N items.
 - `~skip(N)` - Skip first N items.
