@@ -186,21 +186,28 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/products/com.exam
 | `~flat` | Flatten arrays |
 | `~typeless` | Remove @type |
 
-Empty parentheses on these are a mistake, but not always one you will see: `~first()`, `~last()` and `~flat()` are a
-`404` and `~count()` a `500`, while `~distinct()` and `~typeless()` answer `200 null` over a collection and leave you
-hunting for an error that never arrives. The rule runs the other way for every operator that *takes* an argument —
-`~take`, `~where`, `~just`, `~order` and the rest — where leaving the parentheses off is a `200` that returns the
-operator instead of your data:
+Empty parentheses on these are a mistake, but not always one you will see: `~first()`, `~last()`, `~count()` and
+`~flat()` are a `404`, while `~distinct()` and `~typeless()` answer `200 null` over a collection and leave you
+hunting for an error that never arrives.
+
+For an operator that *takes* an argument the rule is different: parentheses are not what matters, the argument is. A
+bare `~where` and a `~where()` are the same request, and only four operators refuse to run without an argument —
+`~take`, `~orderBy`, `~distinctBy` and `~map`, each with a `400` naming itself and the shape it wants:
 
 ```bash
-# WRONG - 200, and the collection is gone
-curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/products~take"   # {"@type":"take"}
+# WRONG - 400 "Operator 'take' requires an argument — write '~take(<number>)'."
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/products~take"
 
 # RIGHT
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/products~take(2)"
 ```
 
-See [gotcha 9](../../reference/common-gotchas.md#9-parentheses-required-on-argument-taking-operators-forbidden-on-the-rest).
+Every other one answers `200` and runs with no argument, so a forgotten predicate or projection is silent —
+`products~where~count` is the whole collection and `products~just` strips every member. `~order`, `~join` and `~array`
+are the ones where the no-argument default is what you wanted, so `~array`, `~array()` and `~array('a','b')` are all
+valid ([details](../../reference/operators-catalog.md#array)).
+
+See [gotcha 9](../../reference/common-gotchas.md#9-parentheses-are-forbidden-on-parameterless-operators-and-a-missing-argument-is-not-always-an-error).
 
 ---
 

@@ -60,9 +60,11 @@ Comprehensive curl examples demonstrating the full capabilities of the CommerceO
 | `~flat` | Flatten arrays |
 | `~typeless` | Remove @type |
 
-Every *other* operator takes an argument and must carry its parentheses — `~take` without them is a `200` returning
-`{"@type":"take"}` instead of your data. See
-[gotcha 9](../reference/common-gotchas.md#9-parentheses-required-on-argument-taking-operators-forbidden-on-the-rest).
+Every *other* operator takes an argument, and there the parentheses are not the point — the argument is. `~take`,
+`~orderBy`, `~distinctBy` and `~map` refuse to run without one (`400`, with a message naming the operator); the rest
+answer `200` and run with no argument at all, so `products~where` returns the whole collection unfiltered and
+`products~just` strips every member. See
+[gotcha 9](../reference/common-gotchas.md#9-parentheses-are-forbidden-on-parameterless-operators-and-a-missing-argument-is-not-always-an-error).
 
 ### Common Identifier Patterns
 

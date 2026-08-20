@@ -343,8 +343,8 @@ Sort a collection of **scalars** by the items themselves. Where [`~orderBy`](#or
 sort on, `~order` has none to take — the item *is* the value — so this is the operator for a collection of strings or
 numbers, and `~orderBy` is the one for a collection of objects.
 
-**Signature:** `~order(asc)`, `~order(desc)`, or `~order()` for the ascending default. The parentheses are not
-optional; see the first note below.
+**Signature:** `~order(asc)`, `~order(desc)`, or — for the ascending default — `~order()` or a bare `~order`. See the
+first note below.
 
 **Examples:**
 ```
@@ -368,13 +368,13 @@ you can navigate to directly. The result is an ordinary array, so the array oper
 > An object has no one value to be sorted *by*, so name the member you mean: `~orderBy(name)`.
 
 **Notes:**
-- **The parentheses are not optional, and leaving them off fails quietly.** A bare `~order` is not the ascending
-  default — it returns the operator itself as an object, `200`, and everything downstream then applies to *that*
-  rather than to your collection. `languages~order` is `{"@type":"order"}`, `languages~order~count` answers `1`, and
-  `products~order~take(2)` answers `{"@type":"take"}` — a request that looks like it ran. Write `~order()` for
-  ascending. This is not an `~order` quirk: [every argument-taking operator](operators.md#parameter-rules) does the
-  same when written bare, and `~order` is only the one whose optional-sounding argument invites it
-  ([gotcha 9](common-gotchas.md#9-parentheses-required-on-argument-taking-operators-forbidden-on-the-rest)).
+- **The argument is optional, and leaving it off means ascending.** `languages~order`, `languages~order()` and
+  `languages~order(asc)` are the same request, and it genuinely sorts rather than passing its input through —
+  `languages~order(desc)~order` comes back `["en","sv"]`. Write whichever spelling reads best; `~order()` makes the
+  intent explicit. This is not an `~order` quirk: a bare argument-taking operator is
+  [read as that operator with no arguments](operators.md#parameter-rules) throughout, and `~order` is only the one
+  whose no-argument default happens to be the one people want
+  ([gotcha 9](common-gotchas.md#9-parentheses-are-forbidden-on-parameterless-operators-and-a-missing-argument-is-not-always-an-error)).
 - The argument is `asc` or `desc` exactly. Anything else — including a case slip — is a `404`, not a silent no-op:
   `~order(ASC)`, `~order(Desc)` and `~order(nonsense)` are all "The requested resource was not found."
 - **An empty collection accepts it**, the same way it accepts any [sort key](#orderbyselectordesc):
@@ -407,7 +407,7 @@ GET /v1/people/{key}/languages~distinct
   [registered mapped type](#maptypename) by name, not a member projection). To collapse a collection of resources by
   one of their members, reach for `~distinctBy(member)` instead.
 - Empty parentheses are silent here: `products~distinct()` is a `200` returning `null`, not an error. See
-  [gotcha 9](common-gotchas.md#9-parentheses-required-on-argument-taking-operators-forbidden-on-the-rest).
+  [gotcha 9](common-gotchas.md#9-parentheses-are-forbidden-on-parameterless-operators-and-a-missing-argument-is-not-always-an-error).
 
 ---
 
@@ -468,18 +468,59 @@ GET /v1/products~map(com.example.export)
 
 #### ~array
 
-Wrap a single item in an array.
+Build an array from the value piped into it, its arguments, or both.
 
-**Signature:** `~array` (no parameters)
+**Signature:** `~array`, `~array()`, or `~array(selector|'literal', ...)`. It is the one operator whose parentheses
+are optional: with no arguments all three spellings mean the same thing.
 
 **Example:**
 ```
-GET /v1/products/com.example.sku=ABC~array
+GET /v1/products/com.example.sku=ABC~array          # [{product}]
+GET /v1/products/com.example.sku=ABC/name~array     # ["Widget"]
 ```
 
 **Notes:**
-- Useful for ensuring consistent array output
-- Input: single object; Output: array with one element
+- **What it collects.** A single value or object piped in gives a one-element array. Nothing piped in — a directory
+  such as the API root or `/v1` — gives `[]`. Each argument then contributes one more element, in the order written:
+
+  ```
+  GET /v1/products~first/name~array              # ["1 kr"]
+  GET /v1/products~first/name~array('a','b')     # ["1 kr","a","b"]
+  GET /v1~array                                  # []
+  GET /v1~array('a')                             # ["a"]
+  ```
+- **An argument is a resource selector or a single-quoted literal.** A selector contributes whatever it resolves to,
+  with its type intact; a literal contributes the string. An unquoted word is read as a selector, so it is almost
+  always a `null`:
+
+  ```
+  GET /api/array(api/v1/products~count)                       # [156]
+  GET /api/array(api/v1/products~first/name,'x')              # ["1 kr","x"]
+  GET /api/array(abc)                                         # [null]   - unquoted, read as a selector
+  ```
+- **Arguments are positional.** A repeated argument repeats, and one that resolves to nothing holds its slot as
+  `null` rather than being dropped — so the element count is the argument count (plus one for a piped value), and the
+  positions are stable:
+
+  ```
+  GET /api/array('a','a')                        # ["a","a"]
+  GET /api/array('a',api/v1/nosuchthing,'b')     # ["a",null,"b"]
+  ```
+- **Over a collection it applies per element**, like any other operator, so `[a,b]` becomes `[[a],[b]]` rather than
+  one array holding both. Arguments go into each element's array. An **empty** collection has no elements to apply to,
+  so it answers `[]` and the arguments never appear at all:
+
+  ```
+  GET /v1/products~take(2)~array                 # [[{product}],[{product}]]
+  GET /v1/products~take(2)~array('x')            # [[{product},"x"],[{product},"x"]]
+  GET /v1/products~first/gtin~array('x')         # []   - gtin is empty; 'x' is not reached
+  ```
+
+  An argument that resolves to a collection is *not* spliced — it contributes one element holding the whole
+  collection: `GET /api/array(api/v1/products~take(2))` → `[[{product},{product}]]`.
+- **`array` is also a path segment at the API graph root**, where there is nothing piped in and the arguments are the
+  whole list: `GET /api/array('a','b')` → `["a","b"]`. This works only at the root — it is not a member of an entity
+  type, so `/v1/products/{key}/array` is a `404`.
 - Common in sync-webhook side-effect writes, where a collection target expects an array even for a single item: `"api/v1/stock-entries": "$this~map(com.example.entry)~array"` (see [`then.set` key routing](sync-webhooks.md#thenset-key-routing))
 - **The name is `~array` — there is no `~arr` alias.** A misspelled operator resolves silently to an empty value rather than erroring; see [Misspelled Operators Fail Silently](common-gotchas.md#24-misspelled-operators-fail-silently)
 
@@ -555,6 +596,10 @@ operator.
   `~entries~withAll` separates them the same way. The `null` on its own still does not prove the member is real —
   that is [a different question](common-gotchas.md#39-a-null-in-a-response-does-not-prove-the-field-exists) — it
   simply is not the situation here, because on the object side the keys come back with values in them.
+- **Empty parentheses are silent here, on every target.** `~entries()` is a `200` returning `null` over a collection,
+  over a single object and over a string alike — it is the only parameterless operator with no target that surfaces
+  the mistake. See
+  [gotcha 9](common-gotchas.md#9-parentheses-are-forbidden-on-parameterless-operators-and-a-missing-argument-is-not-always-an-error).
 
 ---
 

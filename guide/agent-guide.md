@@ -631,6 +631,11 @@ These operators take no arguments - don't add `()`:
 | `~distinct` | `~distinct()` |
 | `~typeless` | `~typeless()` |
 
+`~array` is not on this list — it takes arguments, so `~array`, `~array()` and `~array('a','b')` are all valid; see
+[`~array`](../reference/operators-catalog.md#array). For the operators that *do* take an argument, leaving it off is
+rarely an error: only `~take`, `~orderBy`, `~distinctBy` and `~map` return a `400`, while `~where`, `~just` and the
+rest answer `200` having done nothing.
+
 ### 5.3 Operators That Don't Exist
 
 | Wrong Pattern | Correct Alternative |
@@ -879,8 +884,8 @@ A bulk write commits in chunks of **200 items**, so a failure part-way through l
 |---------|---------|-----|
 | Wrong path casing | 404 | `/customerRelations` not `/customer-relations` (nested) |
 | Missing `identifiers` wrapper | 400 | `{"identifiers": {"id": "..."}}` not `{"id": "..."}` |
-| Empty parentheses on a parameterless operator | `404` or `500` — or, for `~distinct()` / `~typeless()` over a collection, a silent `200 null` | `~first` not `~first()` |
-| Parentheses left off an argument-taking operator | `200` returning `{"@type":"take"}` and no data | `~take(2)` not `~take` — same for `~where`, `~just`, `~order` and the rest |
+| Empty parentheses on a parameterless operator | `404` — or, for `~distinct()` / `~typeless()` / `~withAll()` over a collection, a silent `200 null`, and for `~entries()` a silent `200 null` whatever the target | `~first` not `~first()`. `~array()` is not on this list — `~array` takes arguments |
+| Argument left off an argument-taking operator | `400` for `~take` / `~orderBy` / `~distinctBy` / `~map`; otherwise a silent `200` running the operator with no argument — `~where` filters nothing, `~just` keeps nothing | Supply the argument: `~take(2)`, `~where(status=Active)`, `~just(name)` |
 | Currency as string | 400 | `{"identifiers": {"currencyCode": "SEK"}}` |
 | Wrong reference field | 400 | Stores use `owner` not `parent` |
 | POST vs PUT confusion | 409 or incomplete | POST creates new, PUT upserts |
@@ -914,8 +919,9 @@ When something doesn't work:
    - Right Content-Type header?
 
 5. **Operator syntax correct?**
-   - No parentheses on parameterless operators, and parentheses present on every operator that takes an argument?
-     (A response of `{"@type":"<an operator name>"}` means one is missing somewhere in the chain.)
+   - No parentheses on parameterless operators, and an actual argument supplied to every operator that takes one?
+     (A `400` naming an operator means its argument is missing. A response of `{"@type":"<an operator name>"}` means
+     something upstream produced a `null` — usually empty parentheses on a parameterless operator.)
    - Correct operator name?
 
 ---

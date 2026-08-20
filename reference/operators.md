@@ -201,7 +201,7 @@ GET /v1/products~either(status=Inactive,name=~Apple)~where(name=~Pro)
 > **Note (v26.1+):** the `/before/` and `/after/` time-relative endpoints already return results in timestamp order, so chaining `~orderBy(timestamp)` after them is redundant. For every other query — including `~where(timestamp...)` filters, plain collection listings, and any sort by a non-timestamp field — `~orderBy(...)` is still required when you want a specific order.
 
 - `~orderBy(field)` or `~orderBy(field:desc)` - Order objects by selector value (single selector only; there is no compound sort, and a comma-separated multi-field sort key is a `400`). Any member the resource declares can be sorted on, including one that is empty on some or all items — see [what you can sort on](operators-catalog.md#orderbyselectordesc). The selector has to name a member: `$this` means the item itself, so `~orderBy($this)` is `~order` under another spelling and is a `400` over a collection of resources.
-- `~order(asc)` / `~order(desc)` - Sort a collection of **scalars** by the items themselves — the operator for a string or number collection such as a person's `languages`, where there is no member to sort on. Over a collection of resources it is a `400` telling you to name one with `~orderBy` instead. `~order()` is the ascending default; a bare `~order` is [not](operators-catalog.md#orderascdesc).
+- `~order(asc)` / `~order(desc)` - Sort a collection of **scalars** by the items themselves — the operator for a string or number collection such as a person's `languages`, where there is no member to sort on. Over a collection of resources it is a `400` telling you to name one with `~orderBy` instead. `~order`, `~order()` and `~order(asc)` all mean the ascending default ([details](operators-catalog.md#orderascdesc)).
 - `~take(N)` - Take first N items.
 - `~skip(N)` - Skip first N items.
 - `~first` - Return first item (reducer). Returns `null` if collection is empty.
@@ -250,7 +250,12 @@ GET /v1/trade-orders~distinctBy(customer/identifiers/key)
 - `~entries` - Convert a keyed **object** to `{key, value}[]` entries. Add `~with(index)` for a 1-based position; a
   plain `~entries` carries no `index`. Over a *collection* it returns one empty wrapper per element and loses the data
   — see [`~entries`](operators-catalog.md#entries).
-- `~array` - Wrap single item in an array. Spelled in full — there is no `~arr` alias, and a misspelled operator resolves silently to an empty value (see [gotcha 24](common-gotchas.md#24-misspelled-operators-fail-silently)).
+- `~array` - Build an array from the value piped into it **and/or** its arguments. A value gives `[value]`;
+  nothing piped in (a directory such as the API root or `/v1`) gives `[]`; each argument — a resource selector
+  or a single-quoted literal — contributes one more element in the order written. Spelled in full — there is no
+  `~arr` alias, and a misspelled operator resolves silently to an empty value (see
+  [gotcha 24](common-gotchas.md#24-misspelled-operators-fail-silently)). See
+  [`~array`](operators-catalog.md#array) for argument positioning and behaviour over a collection.
 - `~typeless` - Set context flag to strip `@type` from output.
 - `~join(separator)` - Join array elements to string; default separator is `,`. Inverse of the string split member `/={separator}`.
 - `~toLower` - Convert string to lowercase; returns `undefined` for non-strings.
@@ -264,35 +269,40 @@ GET /v1/trade-orders~distinctBy(customer/identifiers/key)
 
 ## Parameter Rules
 
-**Parameterized operators** (require arguments):
+**Argument-taking operators** — write them with an argument:
 - `~where(...)`, `~either(...)`, `~with(...)`, `~without(...)`, `~just(...)`, `~simpleJust(...)`
 - `~order(...)`, `~orderBy(...)`, `~distinctBy(...)`
-- `~map(...)`, `~join(...)`, `~take(...)`, `~skip(...)`, `~repeat(...)`
+- `~map(...)`, `~join(...)`, `~take(...)`, `~skip(...)`, `~repeat(...)`, `~array(...)`
 
-**Non-parameterized operators** (no parentheses):
+**Parameterless operators** — never write parentheses:
 - `~withAll`, `~first`, `~last`, `~count`, `~distinct`
-- `~flat`, `~entries`, `~array`, `~typeless`
+- `~flat`, `~entries`, `~typeless`
 - `~toLower`, `~toUpper`, `~toString`
 
-> **Write the parentheses. An argument-taking operator without them answers with the operator instead of a result.**
-> This holds for every operator in the first list — the bare form is a `200` carrying a small object naming the
-> operator, and your collection is gone:
+> **The parentheses are not what decides anything in the first list — the argument is.** A bare operator and one with
+> empty parentheses mean the same request, so `~where` and `~where()` are identical. Four of them refuse to run
+> without an argument, and the message names the operator and the shape it wants:
 >
 > ```
-> GET /v1/products~take    → {"@type":"take"}
-> GET /v1/products~where   → {"@type":"where"}
-> GET /v1/products~just    → {"@type":"just"}
+> GET /v1/products~take        → 400  Operator 'take' requires an argument — write '~take(<number>)'.
+> GET /v1/products~orderBy     → 400  Operator 'orderBy' requires an argument — write '~orderBy(<resource selector>)'.
+> GET /v1/products~distinctBy  → 400  ... '~distinctBy(<resource selector>)'.
+> GET /v1/products~map         → 400  ... '~map(<namespaced key>)'.
 > ```
 >
-> The object **replaces** the collection, so everything after it applies to the object rather than to your data. That
-> is what makes it hard to spot mid-chain: `products~order~take(2)` answers `{"@type":"take"}`, naming an operator you
-> wrote correctly rather than the one you got wrong. Nothing in the response points at the missing parentheses.
+> **The rest answer `200` and run with no argument at all**, which for a filter or a projection means it does nothing
+> — or, in the case of `~just`, removes everything:
 >
-> `~order` is the one where this is easiest to type by accident, because its argument is optional in meaning but not in
-> spelling: write `~order()` for the ascending default, never a bare `~order`
-> ([details](operators-catalog.md#orderascdesc)). The rule runs the other way for the second list, where empty
-> parentheses are the mistake — see
-> [gotcha 9](common-gotchas.md#9-parentheses-required-on-argument-taking-operators-forbidden-on-the-rest).
+> ```
+> GET /v1/products~where~count    → 156   the whole collection, unfiltered
+> GET /v1/products~just~take(2)   → [{"@type":"product"},{"@type":"product"}]
+> ```
+>
+> So a missing argument is not something you can rely on the status code to catch. `~order`, `~join` and `~array` are
+> the ones where the no-argument default is genuinely useful — `~order` sorts ascending, `~join` joins on `,`, and
+> `~array` wraps the piped value. The rule runs the other way for the second list, where empty parentheses are the
+> mistake — see
+> [gotcha 9](common-gotchas.md#9-parentheses-are-forbidden-on-parameterless-operators-and-a-missing-argument-is-not-always-an-error).
 
 ---
 

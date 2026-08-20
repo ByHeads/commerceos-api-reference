@@ -127,9 +127,11 @@ POST /stores '{"owner": {"@type": "company", "identifiers": {"com.myapp.id": "12
 
 ---
 
-## 9. Parentheses: Required on Argument-Taking Operators, Forbidden on the Rest
+## 9. Parentheses Are Forbidden on Parameterless Operators, and a Missing Argument Is Not Always an Error
 
-Both halves of this rule are easy to get wrong, and neither half reliably announces itself.
+Two mistakes, pointing in opposite directions, and neither reliably announces itself. Adding empty parentheses to an
+operator that takes no arguments breaks it. Leaving the argument off an operator that takes one usually does *not*
+break it — it quietly runs the operator with nothing to work on.
 
 **Empty parentheses on a parameterless operator are a mistake, but not always a visible one.** Four of them fail
 loudly whatever you applied them to:
@@ -139,7 +141,7 @@ loudly whatever you applied them to:
 GET /products~first()   # 404 "The requested resource was not found."
 GET /products~last()    # 404
 GET /products~flat()    # 404
-GET /products~count()   # 500
+GET /products~count()   # 404
 
 # RIGHT - No parentheses
 GET /products~first
@@ -155,44 +157,59 @@ a `404` when the target is a single object or a string:
 GET /products~distinct()    # 200 null
 GET /products~typeless()    # 200 null
 GET /products~withAll()     # 200 null
-GET /products~entries()     # 200 null
-GET /products~array()       # 200 null
+GET /products~toLower()     # 200 null
 ```
 
-That `null` then flows downstream exactly like the bare-operator failure below: `products~distinct()~count` answers
-`1`, and `products~typeless()~take(2)` answers `{"@type":"take"}`. So the two halves of this rule can produce the
-same misleading response, and a chain that goes wrong one way is indistinguishable from one that went wrong the
-other.
+`~entries()` is the one that never announces itself: it is a `200 null` on a collection, on a single object and on a
+string alike, so there is no target you can retry it against to surface the mistake.
 
-**An argument-taking operator with the parentheses left off fails quietly, and it does so on every one of them.** The
-request is a `200` carrying a small object that names the operator, and your collection is gone:
+That `null` then flows downstream and takes the rest of the chain with it: `products~distinct()~count` answers `1` —
+the count of one null, not of your products — and `products~typeless()~take(2)` answers `{"@type":"take"}`, an object
+naming an operator you wrote correctly. Neither response points back at the parentheses, so when a chain answers with
+a plausible-looking `1` or with a `{"@type":"<some operator>"}` object, read it from the left for a parameterless
+operator carrying empty parentheses.
+
+> **`~array()` is not on either list, and is not a mistake.** `~array` takes arguments, so its empty parentheses are
+> an empty argument list rather than a typo: `products~first/name~array()` and `products~first/name~array` are the
+> same request and both answer `["1 kr"]`. If you are carrying the habit of reading `~array()` as a mistake, it is on
+> the other side of this line — see [`~array`](operators-catalog.md#array) and the half of the rule below.
+
+**An argument-taking operator with its parentheses left off is read as that operator with no arguments**, and the
+bare and empty-parens spellings mean exactly the same request. Four operators cannot do anything without an argument
+and say so, naming themselves and the shape they want:
 
 ```bash
-# WRONG - 200, and the data is gone
-GET /v1/products~take                        # {"@type":"take"}
-GET /v1/products~where                       # {"@type":"where"}
-GET /v1/products~just                        # {"@type":"just"}
-GET /v1/people/{key}/languages~order         # {"@type":"order"}
-
-# RIGHT
-GET /v1/products~take(2)
-GET /v1/products~where(status=Active)
-GET /v1/people/{key}/languages~order()       # ["en","sv"]
+# WRONG - 400, and the message tells you what to write
+GET /v1/products~take        # "Operator 'take' requires an argument — write '~take(<number>)'."
+GET /v1/products~orderBy     # "Operator 'orderBy' requires an argument — write '~orderBy(<resource selector>)'."
+GET /v1/products~distinctBy  # "Operator 'distinctBy' requires an argument — write '~distinctBy(<resource selector>)'."
+GET /v1/products~map         # "Operator 'map' requires an argument — write '~map(<namespaced key>)'."
 ```
 
-The object **replaces** the collection, so anything after it applies to the object rather than to your data:
-`languages~order~count` answers `1` — the count of one object, not of your languages.
+**Every other argument-taking operator answers `200` and applies its no-argument default**, which is where the quiet
+failures live. For some that default is the thing you wanted — `~order` sorts ascending, `~join` joins on `,`,
+`~array` wraps. For the filtering and projection family it is a filter that does not filter and a projection with
+nothing in it:
 
-**The confusing shape is a bare operator in the middle of a chain**, because the response names an operator you wrote
-*correctly*. `products~order~take(2)` answers `{"@type":"take"}`: the bare `~order` produced the object, and `~take(2)`
-then took from it. Nothing in the response points at the parentheses you left off, so when a chain answers with a
-`{"@type":"<some operator>"}` object, read the whole chain from the left for a naked operator name rather than
-suspecting the one that got named.
+```bash
+# WRONG - 200, and nothing was filtered
+GET /v1/products~where~count                 # 156 - the whole collection, no predicate applied
+GET /v1/products~where(hidden=true)~count    # 19  - what you meant to ask
 
-`~order` is the one most often typed bare, because its argument is optional in meaning but not in spelling — write
-`~order()` for the ascending default. The argument itself is strict in the other direction: `asc` and `desc` are the
-only two values, and a case slip (`~order(ASC)`) is a `404`. See [`~order`](operators-catalog.md#orderascdesc), and
-[Parameter Rules](operators.md#parameter-rules) for which operators fall on which side of the line.
+# WRONG - 200, and every member is gone
+GET /v1/products~just~take(2)                # [{"@type":"product"},{"@type":"product"}]
+GET /v1/products~just(name)~take(2)          # what you meant to ask
+```
+
+`~either` behaves like `~where`, `~simpleJust` like `~just`, and `~with`, `~without` and `~skip` add, remove and skip
+nothing. None of them errors, so a bare projection or predicate is only visible in the body — an unfiltered count, or
+items stripped to their `@type`.
+
+`~order` is the one most often typed bare, and it is on the harmless side: `languages~order`, `languages~order()`
+and `languages~order(asc)` all answer `["en","sv"]`. The argument is strict in the other direction — `asc` and `desc`
+are the only two values, and a case slip (`~order(ASC)`) is a `404`. See
+[`~order`](operators-catalog.md#orderascdesc), and [Parameter Rules](operators.md#parameter-rules) for which
+operators fall on which side of the line.
 
 ---
 
@@ -514,7 +531,7 @@ There are also **no operator aliases**: every operator must be spelled in full. 
 
 This is a frequent cause of "the sync webhook reports success but no records were written" — the delivery succeeded, it just delivered nothing. When a mapped type or a webhook side-effect write produces an unexpectedly empty result, check the operator spelling against [`operators-catalog.md`](operators-catalog.md) before looking anywhere else.
 
-Related: [gotcha 9](#9-parentheses-required-on-argument-taking-operators-forbidden-on-the-rest) — a parameterless operator written with empty parentheses is a different mistake that lands on both sides of this line. `~first()` and `~count()` misbehave visibly; `~distinct()` and `~typeless()` answer `200 null` over a collection, which is the same silence as a misspelling.
+Related: [gotcha 9](#9-parentheses-are-forbidden-on-parameterless-operators-and-a-missing-argument-is-not-always-an-error) — a parameterless operator written with empty parentheses is a different mistake that lands on both sides of this line. `~first()` and `~count()` misbehave visibly; `~distinct()` and `~typeless()` answer `200 null` over a collection, which is the same silence as a misspelling.
 
 ---
 
