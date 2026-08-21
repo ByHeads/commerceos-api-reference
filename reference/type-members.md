@@ -97,6 +97,30 @@ manualDiscount, discountable
 ```
 - Plus inherited: `status`, `items`
 
+## Trade Record Members
+
+```
+identifiers, items, orders (non-essential), timestamp (non-essential)
+```
+- `items` and `orders` are read-only; `identifiers` and any registered dynamic properties are writable under `trade-records:write`
+- See [Trade Records](trade-records.md#member-reference)
+
+## Trade Record Item Members
+
+```
+identifiers, actions
+```
+- Read-only under both trade-record scopes
+
+## Trade Record Item Action Members
+
+```
+type, quantity, amount, product (non-essential), currency (non-essential),
+tradeOrderItemEffects (non-essential), return (non-essential)
+```
+- `type` is one of `Reserve`, `Unreserve`, `Commit`, `Fulfill`, `Cancel`, `CommitReturn`, `FulfillReturn`, `CancelReturn`
+- `return` is present only on a `FulfillReturn`
+
 ## Trade Relationship Members
 
 ```

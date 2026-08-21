@@ -70,6 +70,7 @@ commerceos-api-reference/
 │   ├── pagination.md             # Pagination patterns and best practices
 │   ├── primitives.md             # Primitive types and values
 │   ├── receipts.md               # Receipt data model and operations
+│   ├── trade-records.md          # Ledger log of order activity; writable sync markers
 │   ├── mapped-types.md           # Data transformation
 │   ├── mapped-types-dry-run.md   # Stateless dry-run endpoint for mapped types
 │   ├── sync-webhooks.md          # Automated data synchronization

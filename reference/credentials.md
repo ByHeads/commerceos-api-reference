@@ -204,10 +204,12 @@ POST /v1/users/com.example.userId=U-1/apikeyCredentials
 | Kind | Values |
 |---|---|
 | Read | `org:read`, `geo:read`, `suppliers:read`, `customers:read`, `supply-chains:read`, `users:read`, `products:read`, `prices:read`, `prices.sales:read`, `surcharges:read`, `pos:read`, `retail:read`, `logistics:read`, `trade-records:read`, `payment-means:read`, `labels:read`, `stock:read`, `media:read`, `wallet:read` |
-| Write | `geo:write`, `supply-chains:write`, `products:write`, `prices:write`, `discounts.system:write`, `discounts.manual:write`, `surcharges:write`, `pos:write`, `retail:write`, `receipts:write`, `pos-slips:write`, `logistics:write`, `payment-records:write`, `shipment-records:write`, `orders.sales:write`, `orders.payments:write`, `labels:write`, `stock:write`, `periods:write`, `media:write`, `wallet:write`, `links:write` |
+| Write | `geo:write`, `supply-chains:write`, `products:write`, `prices:write`, `discounts.system:write`, `discounts.manual:write`, `surcharges:write`, `pos:write`, `retail:write`, `receipts:write`, `pos-slips:write`, `logistics:write`, `payment-records:write`, `shipment-records:write`, `trade-records:write`, `orders.sales:write`, `orders.payments:write`, `labels:write`, `stock:write`, `periods:write`, `media:write`, `wallet:write`, `links:write` |
 | Other | `me`, `advanced`, `config`, `integrations`, `admin` |
 
 Note there is no `orders:read`: order data is read through `trade-records:read` and `logistics:read`, while `orders.sales:write` and `orders.payments:write` cover the write side.
+
+A few `:write` scopes include their own read side rather than sitting beside it, so you do not need both halves. `trade-records:write` is one — it opens the same reads as `trade-records:read` plus a narrow writable surface on each record. See [Trade Records → Scopes](trade-records.md#scopes).
 
 Two broad legacy scopes are also accepted, and they do not mean what their names suggest:
 

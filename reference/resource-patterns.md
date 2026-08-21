@@ -523,7 +523,7 @@ GET /agents/key=987654321
 
 ### Array Index Access
 
-Array members support numeric index access:
+A **plain array** — a list of scalars such as `gtin` or `plu` — supports numeric index access:
 
 ```bash
 # Access first element (0-indexed)
@@ -535,6 +535,16 @@ GET /products/com.test.sku=ABC/gtin/-1
 # Get array length
 GET /products/com.test.sku=ABC/gtin/count
 ```
+
+> **A collection keyed by identifiers does not take a positional index.** Where the elements are addressed by database key or common identifiers — a trade order's `items`, and every collection you reach an element of as `/items/{itemKey}` — a number is just a key that matches nothing, so the request is a `404` rather than the first element:
+>
+> ```bash
+> GET /trade-orders/com.test.orderId=ORD1/items/0        # 404 — 0 is not a key
+> GET /trade-orders/com.test.orderId=ORD1/items~first    # the first element
+> GET /trade-orders/com.test.orderId=ORD1/items~last
+> ```
+>
+> `~first`, `~last`, `~take(n)` and `~skip(n)` work on both kinds. Reach for them whenever you are not naming a specific element, and the question of which kind of collection you are on stops mattering. See [gotcha 42](common-gotchas.md#42-a-positional-index-on-a-keyed-collection-is-a-404).
 
 ### Sub-Collection Navigation
 
@@ -566,7 +576,7 @@ GET /trade-orders/com.test.orderId=ORD1/customer/addresses/main
 GET /trade-orders/com.test.orderId=ORD1/items/count
 
 # Navigate through product to its category's child categories
-GET /products/com.test.sku=ABC/categories/0/category/childCategories
+GET /products/com.test.sku=ABC/categories~first/category/childCategories
 ```
 
 > **Note:** Product categories do not expose a `parent` member. Use `childCategories` for hierarchical navigation downward.

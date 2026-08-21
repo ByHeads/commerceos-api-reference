@@ -21,6 +21,8 @@ Operators in URL paths chain left-to-right as written:
 
 Order is literal, and it decides cost as well as meaning: a limiter placed after a filter stops the scan at the Nth match (placed before it, the answer changes too), and a `~skip` with nothing filtering or sorting in front of it steps over the skipped records without building them. See [Operators → Operator Application Order](operators.md#operator-application-order).
 
+**Reach an element with an operator, not with a number.** `/{collection}/0` means "the element whose key is `0`", so on a collection addressed by key or identifiers — a trade order's `items`, for one — it is a `404` rather than the first element. A plain array of scalars such as `gtin` does take `/0`, and the two are indistinguishable in a response. `~first`, `~last`, `~take(n)` and `~skip(n)` work on both (see [gotcha 42](common-gotchas.md#42-a-positional-index-on-a-keyed-collection-is-a-404)).
+
 ### Query Parameter Order
 
 When using query parameters instead of path operators, they are canonicalized to a fixed order regardless of how they appear in the URL:
@@ -131,3 +133,4 @@ Resources support user-defined external identifiers:
 - **Provisioning is an `admin` operation.** There is no `users:write`; `users:read` is read-only. The `admin` scope is excluded from the generated OpenAPI spec, so these endpoints are not described by `/api-docs`
 - **Credential secrets are write-only.** Reads return `"********"`; writing that placeholder back sets the secret to those eight characters (see [gotcha 33](common-gotchas.md#33-a-read-modify-write-on-credentials-overwrites-the-secret))
 - `DELETE` on a **user** deactivates; `DELETE` on a **credential** purges
+- **A scope problem does not answer `403`.** Several resources exist twice, read-only under `<area>:read` and writable under `<area>:write`, at the same path. A write that lands on the read-only twin is a `200` that persists nothing; a token holding neither scope gets a `404`. Confirm a write by reading it back, never by its status (see [gotcha 41](common-gotchas.md#41-a-write-under-a-read-only-scope-is-a-silent-200))

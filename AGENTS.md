@@ -53,6 +53,7 @@ commerceos-api-reference/
 │   ├── pagination.md             # Pagination patterns and strategies
 │   ├── primitives.md             # Primitive types and values
 │   ├── receipts.md               # Receipt data model and operations
+│   ├── trade-records.md          # Ledger log of order activity; trade-records:write markers
 │   ├── mapped-types.md           # Data transformation
 │   ├── resource-patterns.md      # Common resource patterns
 │   ├── type-members.md           # Type member reference
@@ -99,6 +100,7 @@ commerceos-api-reference/
 | Task recipes | [`guide/agent-guide.md`](guide/agent-guide.md) |
 | Troubleshooting | [`guide/agent-guide.md`](guide/agent-guide.md) |
 | Type members | [`reference/type-members.md`](reference/type-members.md) |
+| Trade records (order audit trail) | [`reference/trade-records.md`](reference/trade-records.md) |
 | Users, credentials, roles | [`reference/users.md`](reference/users.md), [`reference/credentials.md`](reference/credentials.md), [`reference/user-roles.md`](reference/user-roles.md) |
 | Provisioning access | [`guide/provisioning-users.md`](guide/provisioning-users.md) |
 | Common pitfalls | [`reference/common-gotchas.md`](reference/common-gotchas.md) |

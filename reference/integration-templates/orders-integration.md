@@ -119,7 +119,7 @@ Trade order status is a read-only string array that reflects the current state o
 > **Note:** `tryCancel` only works on `Committed` orders. Address changes are only allowed on `New` or `Reserved` orders.
 
 **Item-Level Status:**
-Each item has `statusDetails` showing per-quantity status (e.g., how many units are shipped vs pending). This enables partial fulfillment tracking.
+Each item has `statusDetails`, one row per phase the line is split across, each carrying the quantity in that phase — so a line of 3 with 2 delivered reads `[{"quantity":"2","status":"Fulfilled"},{"quantity":"1","status":"Committed"}]`. This is what makes partial fulfilment measurable rather than just visible: the order-level `status` array tells you *which* phases are in play, and only `statusDetails` tells you how much is in each. See [Per-Line Status Breakdown](../working-with/orders.md#per-line-status-breakdown-statusdetails).
 
 **Actions Reference:**
 
@@ -642,7 +642,12 @@ For partial shipments, the system creates multiple shipment orders as items are 
 ```bash
 # Get order with item-level fulfillment status
 GET /v1/trade-orders/com.acme.order-id=WEB-2024-123456~with(items~with(statusDetails,shipmentItems))
+
+# One line's breakdown - reach the line with ~first; items/0 is a 404
+GET /v1/trade-orders/com.acme.order-id=WEB-2024-123456/items~first/statusDetails
 ```
+
+For *why* each move happened — which action, when, and against which quantity — read the order's [trade records](../trade-records.md), which are the ledger's own log of the same events.
 
 ### Query Order Shipments
 

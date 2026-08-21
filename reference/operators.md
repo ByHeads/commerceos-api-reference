@@ -522,10 +522,11 @@ The collections that support the pattern, and the modes each one accepts, are:
 | [`/v1/stock-transfers`](../guide/examples/inventory.md#stock-transfers--time-relative-queries) | `create` | — |
 | [`/v1/stock-counts`](../guide/examples/inventory.md#stock-counts--time-relative-queries) | `modify` | `create` |
 | [`/v1/stock-adjustments`](../guide/examples/inventory.md#stock-adjustments--time-relative-queries) | `create` | — |
+| [`/v1/trade-records`](trade-records.md#time-relative-queries) | `create` | — |
 | [`/v1/receipts`](receipts.md#beforeafter-timestamps) | `create` | — |
 | [`/v1/z-reports`](../guide/examples/pos.md#z-reports--time-relative-queries) | `create` | — |
 
-Asking for a mode the collection does not accept returns a 404 whose message lists the supported modes.
+Asking for a mode the collection does not accept returns a `404` whose `details` lists the modes that collection does accept — `Supported modes: create`, for instance. A collection that records no last-modified time accepts `create` and nothing else.
 
 ### Inclusivity and chaining
 

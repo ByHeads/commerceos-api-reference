@@ -70,6 +70,7 @@ Trade orders represent sales or purchase transactions between agents. Orders tra
 | **Shipment** | Physical delivery of order items to the customer |
 | **Committed** | Order status indicating approval and stock reservation |
 | **Fulfilled** | Order status indicating delivery completion |
+| **Trade Record** | The ledger's log of an action taken on an order — a reservation, delivery, return or cancellation, and the quantity it moved. See [Trade Records](../trade-records.md) |
 
 ---
 
@@ -128,20 +129,53 @@ Trade orders represent sales or purchase transactions between agents. Orders tra
 ### Status Behavior
 
 **Partial Statuses:**
-```bash
-# An order with 3 items where 2 are fulfilled
-GET /v1/trade-orders/com.example.orderId=ORD-001~with(status,items.statusDetails)
 
-# Response shows composite status with item-level details
+An order whose lines are in different phases carries all of their statuses at once:
+
+```bash
+GET /v1/trade-orders/com.example.orderId=ORD-001~with(status,items~with(statusDetails))
+```
+
+```json
 {
   "status": ["Committed", "Fulfilled"],
   "items": [
-    {"statusDetails": {"fulfilled": true}},
-    {"statusDetails": {"fulfilled": true}},
-    {"statusDetails": {"fulfilled": false}}
+    { "statusDetails": [ { "quantity": "1", "status": "Fulfilled" } ] },
+    { "statusDetails": [ { "quantity": "1", "status": "Committed" } ] }
   ]
 }
 ```
+
+The order-level `status` is the union, so it cannot tell you *how much* of the order is where. `statusDetails` on each line can — see below.
+
+### Per-Line Status Breakdown (`statusDetails`)
+
+A single line can itself be split across phases: order three, approve all three, deliver two, and that one line is now part `Fulfilled` and part `Committed`. `statusDetails` is one row per phase, each row carrying the quantity in that phase:
+
+```bash
+GET /v1/trade-orders/com.example.orderId=ORD-001/items~first/statusDetails
+```
+
+```json
+[
+  { "@type": "trade order status detail", "quantity": "2", "status": "Fulfilled" },
+  { "@type": "trade order status detail", "quantity": "1", "status": "Committed" }
+]
+```
+
+Rows come back in reverse causal order — the most recent phase first — and a line sitting wholly in one phase gives exactly one row. `quantity` is a decimal string, and each row's `status` is a single value rather than an array; the array is on the *order*, not on the row.
+
+Both members are read-only. To see what produced each move — which action, when, and against which record — read the order's [trade records](../trade-records.md).
+
+> **Reach a line with `~first`, not with `/0`.** `items` is keyed by database key or common identifiers, so a positional index on it is a `404`:
+>
+> ```bash
+> GET /v1/trade-orders/{id}/items/0/statusDetails          # 404 — 0 is not a key
+> GET /v1/trade-orders/{id}/items~first/statusDetails      # the first line
+> GET /v1/trade-orders/{id}/items/{itemKey}/statusDetails  # a specific line
+> ```
+>
+> Positional indexing works *within* `statusDetails`, which is an ordinary array: `.../items~first/statusDetails/1` returns the second row. See [Accessing Order Items](#accessing-order-items).
 
 ---
 
@@ -182,6 +216,7 @@ GET /v1/trade-orders/com.example.orderId=ORD-001~with(status,items.statusDetails
 | `balanceAmount` | decimal | Remaining balance after payments |
 | `payments` | Payment[] | Associated payments |
 | `shipments` | Shipment[] | Associated shipments |
+| `records` | TradeRecord[] | Non-essential — the ledger's log of what was actually done to this order. Use `~with(records)`; see [Trade Records](../trade-records.md) |
 
 ### Order Item Fields
 
@@ -207,7 +242,7 @@ GET /v1/trade-orders/com.example.orderId=ORD-001~with(status,items.statusDetails
 | `vatPercentage` | decimal | VAT percentage applied |
 | `classification` | string | `Goods`, `Services`, or `Shipping` |
 | `discountable` | boolean | Whether item accepts discounts |
-| `statusDetails` | object | Item-level status information |
+| `statusDetails` | array | One row per phase the line is split across — `quantity` and `status` (see [Per-Line Status Breakdown](#per-line-status-breakdown-statusdetails)) |
 
 ---
 
@@ -470,9 +505,12 @@ GET /v1/trade-orders/com.example.orderId=ORD-001/items/count
 
 # Items with full details
 GET /v1/trade-orders/com.example.orderId=ORD-001/items~withAll
+
+# First item — use the operator, not a positional index
+GET /v1/trade-orders/com.example.orderId=ORD-001/items~first
 ```
 
-> **Note:** Access items by their identifier or key, not by index. Use the item's `id` field from the items collection.
+> **Note:** `items` is keyed by database key or common identifiers, so a **positional index does not resolve** — `/items/0` is a `404`, not the first line. Address a line by its key or identifier, or reach one with an operator: `~first`, `~last`, `~take(n)`, `~where(...)~first`. This applies to every collection whose elements you address by key; a plain scalar array such as `gtin` does take `/0`. See [Array Index Access](../resource-patterns.md#array-index-access).
 
 ---
 
@@ -2189,3 +2227,4 @@ Once created, order items cannot be modified. This ensures:
 - [Customers](customers.md) - Customer/supplier agent management
 - [Stock](stock.md) - Inventory and shipment management
 - [Receipts](../receipts.md) - Completed transaction records
+- [Trade Records](../trade-records.md) - What the ledger actually did to an order, action by action

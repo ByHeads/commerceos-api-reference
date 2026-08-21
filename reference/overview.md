@@ -47,7 +47,7 @@ The API organizes resources into logical groups. Each group maps to OAuth2 scope
 | Organization | People, companies, and stores used across orders and inventory | [Customers guide](working-with/customers.md) | [Examples](../guide/examples/organization.md) |
 | Products | Catalog items, categories, groups/families, and pricing metadata | [Products guide](working-with/products.md) | [Examples](../guide/examples/products.md) |
 | Pricing | Price rules, validity periods, and currency handling | [Prices guide](working-with/prices.md), [VAT guide](working-with/vat.md) | [Examples](../guide/examples/pricing.md) |
-| Orders | Trade orders, items, payments, and returns | [Orders guide](working-with/orders.md) | [Examples](../guide/examples/orders.md) |
+| Orders | Trade orders, items, payments, returns, and the trade records logging what was done to them | [Orders guide](working-with/orders.md), [Trade Records](trade-records.md) | [Examples](../guide/examples/orders.md) |
 | Inventory | Stock places, stock transactions, and adjustment reasons | [Stock guide](working-with/stock.md) | [Examples](../guide/examples/inventory.md) |
 | POS | Terminals, profiles, receipts, and payment methods | [Receipts](receipts.md) | [Examples](../guide/examples/pos.md) |
 | Users | User accounts, credentials, and role assignments | [Users](users.md), [Credentials](credentials.md), [Roles & Permissions](user-roles.md), [Provisioning guide](../guide/provisioning-users.md) | [Examples](../guide/examples/users.md) |
@@ -158,6 +158,7 @@ The API is organized around resource families like Agents, Products, Orders, Inv
 | **products** | Catalog items, categories, groups/families, and pricing metadata used by ordering and stock. |
 | **stock** | Stock places, stock transactions, and adjustment reasons tied to products and stores. |
 | **orders.sales** / **orders.payments** | Trade orders and trade order items, plus payment orders for capturing order payments. |
+| **trade-records** | The ledger's log of what was actually done to an order — reservations, deliveries, returns, cancellations. `trade-records:read` reads it; `trade-records:write` additionally opens external identifiers and registered dynamic properties on a record, and includes the reads. See [`trade-records.md`](trade-records.md). |
 | **pos** | Terminals, profiles, functions, devices, printers, and currency denominations for in-store flows. |
 | **prices** | Price definitions, validity windows, and currency-scoped pricing. |
 | **supply-chains** | Trade relationships, delivery terms, and payment terms between agents. |

@@ -124,6 +124,65 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/trade-orders/befo
 >
 > **Recommended:** use `/after/` and `/before/` for any time-windowed read of trade orders — they are index-backed and the canonical pattern. Use `~where(timestamp...)` only when you need to combine the time filter with a non-time predicate.
 
+### Per-line status breakdown
+
+```bash
+# The status of every line, split by phase
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-2024-001~with(items~with(statusDetails))"
+
+# One line's breakdown - reach the line with ~first, not with /0
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-2024-001/items~first/statusDetails"
+# [{"@type":"trade order status detail","quantity":"2","status":"Fulfilled"},
+#  {"@type":"trade order status detail","quantity":"1","status":"Committed"}]
+
+# A single row, by position - statusDetails is an ordinary array, so /1 works here
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-2024-001/items~first/statusDetails/1"
+```
+
+> **`items/0` is a `404`.** Order items are keyed by database key or common identifiers, so a number matches no element. Use `~first`, `~last` or the item's own key. See [Working with Orders → Per-Line Status Breakdown](../../reference/working-with/orders.md#per-line-status-breakdown-statusdetails).
+
+---
+
+## Trade Records
+
+The ledger's log of what was actually done to an order. See [Trade Records](../../reference/trade-records.md) for the full resource, the scopes, and the writable marker surface.
+
+```bash
+# What the ledger did to one order
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-2024-001~with(records)"
+
+# Every action on the most recent record
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/trade-records~with(items~with(actions))~first"
+
+# Records created in the last 48 hours - creation time is the only mode
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/trade-records/after/-=48~take(500)"
+
+# Only the deliveries, counted
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/trade-records~first~with(items/*actions~flat~where(type=Fulfill)~count)"
+```
+
+Under `trade-records:write` a record takes an external identifier and any registered dynamic property — enough for an exactly-once sync marker, and nothing else:
+
+```bash
+# 1. Register the marker on the type, once, at deploy time
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/trade-records/properties/dynamic" \
+  -H "Content-Type: application/json" \
+  -d '{"com.myapp.synced": {"propertyType": "boolean", "description": "Pushed to the finance system"}}'
+
+# 2. Ask for the records still to push
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/trade-records~where(!com.myapp.synced)~take(100)"
+
+# 3. Mark one as done, and stamp your own ID on it
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/trade-records/{key}" \
+  -H "Content-Type: application/json" \
+  -d '{"com.myapp.synced": true, "identifiers": {"com.myapp.recordId": "TR-X1"}}'
+
+# 4. Verify by reading it back - the 200 above does not prove the write landed
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/trade-records/{key}~with(com.myapp.synced)"
+```
+
+> **Check the readback, not the status.** A token holding only `trade-records:read` answers `200` and persists nothing; a token holding neither trade-record scope answers `404`. Neither looks like a permission error. See [gotcha 41](../../reference/common-gotchas.md#41-a-write-under-a-read-only-scope-is-a-silent-200).
+
 ---
 
 ## Trade Relationships

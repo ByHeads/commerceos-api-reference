@@ -1076,6 +1076,65 @@ Related: [gotcha 39](#39-a-null-in-a-response-does-not-prove-the-field-exists) (
 
 ---
 
+## 41. A Write Under a Read-Only Scope Is a Silent `200`
+
+Several resources come as a pair: a read-only collection under `<area>:read` and a writable twin under `<area>:write`, both mounted at the same path. Which one a request lands on is decided by the scopes the token holds — and **being on the wrong one is not an error**.
+
+```bash
+# The token holds trade-records:read only
+PATCH /v1/trade-records/{key}   {"com.example.synced": true}
+→ 200
+
+GET /v1/trade-records/{key}~with(com.example.synced)
+→ {"@type": "trade record", …}          # the marker is not there
+```
+
+The endpoint is in the read scope's graph, so the request routes normally; it just arrives at members that have no setter, and a write with nowhere to go is discarded rather than refused.
+
+**A token holding neither scope answers `404`, not `403`.** An unmapped path does not exist for that token, and a path that does not exist is not found:
+
+| Token holds | Result |
+|---|---|
+| the write scope | `200`, and the change persists |
+| the read scope only | `200`, and nothing persists |
+| neither | `404` |
+
+So the status code cannot distinguish "written" from "silently dropped", and a scope problem never looks like a permission problem. **Read the value back after any write whose target might be read-only** — that round-trip, not the `200`, is the confirmation. It matters most for an exactly-once sync marker: a dedup that trusts the `200` re-sends the same records on every run, forever, with no error anywhere to show for it.
+
+Two related points:
+
+- **A write to a read-only *member* behaves the same way**, even when the token holds the write scope. `PATCH /v1/trade-records/{key} {"items": []}` is a `200` that changes nothing, as is a member the type does not declare at all. Only the writable members of the resource you landed on take a value; everything else in the payload is quietly ignored.
+- **A marker sent alongside a rejected member still lands.** The payload is not rejected as a whole, so a mixed body applies its writable half — see [gotcha 30](#30-an-outer-member-beats-the-same-member-inside-value) for the other way a payload's halves can disagree.
+
+Related: [Trade Records → Scopes](trade-records.md#scopes), [gotcha 39](#39-a-null-in-a-response-does-not-prove-the-field-exists), [Credentials → Scopes](credentials.md#scope-names).
+
+---
+
+## 42. A Positional Index on a Keyed Collection Is a `404`
+
+`/{collection}/0` reads as "the element whose key is `0`", not "the first element". On a collection whose elements are addressed by database key or common identifiers — a trade order's `items`, and every collection you reach an element of as `/items/{itemKey}` — no element has that key, so the request is a `404`.
+
+```bash
+# WRONG - 0 is not a key
+GET /v1/trade-orders/{id}/items/0/statusDetails
+
+# RIGHT - reach the element with an operator
+GET /v1/trade-orders/{id}/items~first/statusDetails
+
+# RIGHT - or name the element
+GET /v1/trade-orders/{id}/items/{itemKey}/statusDetails
+```
+
+**A plain array of scalars does take an index**, which is why the mistake is easy to make: `GET /v1/products/{id}/gtin/0` returns the first GTIN, and `/gtin/-1` the last. The two kinds of collection look identical in a response — both render as a JSON array — so nothing about the output tells you which rule applies.
+
+The reliable move is not to work out which kind you are on. `~first`, `~last`, `~take(n)` and `~skip(n)` work on both, so use them whenever you are not naming a specific element, and the distinction stops mattering.
+
+**Positional indexing inside a nested array still works.** The rule is about the collection you are indexing, not about how deep you are: `.../items~first/statusDetails/1` returns the second status row, because `statusDetails` is an ordinary array even though `items` is not.
+
+Related: [Array Index Access](resource-patterns.md#array-index-access), [Accessing Order Items](working-with/orders.md#accessing-order-items).
+
+---
+
 ## API Response Behaviors
 
 ### Empty Collection Results
