@@ -476,7 +476,7 @@ Every error body names what went wrong in its `@type` discriminator. **Branch on
 | `invalid index` | 400 | The index value is not valid for the indexer — e.g. a bare number where identifiers were expected | `usedIndex`, `indexerOwner`, `indexType` |
 | `failed coercion` | 400 | A value could not be coerced to the type the target expects | `targetType`, `failedCoercions` |
 | `unauthorized` | 401 | Missing or unusable credentials | — |
-| `forbidden` | 403 | Authenticated, but the authorized scopes do not permit this | `authorizedScopes` |
+| `forbidden` | 403 | Declared, but never raised — a scope problem is a `404`, a `400` or a silent `200` (see below) | `authorizedScopes` |
 | `not found` | 404 | No such resource | `url` |
 | `method not available` | 405 | The method is not supported on this target | `method` |
 | `not acceptable` | 406 | No serializer for the requested `Accept` type | — |
@@ -486,12 +486,13 @@ Every error body names what went wrong in its `@type` discriminator. **Branch on
 
 **Every type draws on the same three base members**, whatever its discriminator: `error` (the general category — always present), `details` (the occurrence-specific message) and `suggestion` (advice for avoiding the failure next time). Only `error` is guaranteed; `details` and `suggestion` appear when there is something specific to say. The type-specific members above are added on top.
 
-Two details worth knowing before you write the switch:
+Three details worth knowing before you write the switch:
 
 - **`failed indexing` is a write-side failure, and it echoes your input back.** It means a nested reference in your payload — `{"product": {"identifiers": {"com.example.sku": "NOPE"}}}` — named no object that exists. The identifiers you sent come back in `usedIndex`, and `suggestion` names the type that was being looked for, so you can tell a typo from a genuinely absent record without a second request.
+- **`forbidden` is in the schema and never on the wire.** Nothing in the API raises it, so no response carries it — it is declared, which is why a generated client has the type and a schema browser lists it. A token that is short a scope does not get refused: the resources its scopes do not cover are simply absent from the graph it can see, so a read of one is a `404`, a write that needed the missing writable resource is a `400`, and a write that landed on a read-only twin is a `200` that persists nothing. **Confirm a write by reading the value back, not by its status** — see [gotcha 41](common-gotchas.md#41-a-write-under-a-read-only-scope-is-a-silent-200). If a `403` does reach your client it came from something in front of the API — a gateway, proxy or load balancer — and it will not carry an error body in the shape above.
 - **`failedCoercions` is a list, not a message.** Each entry describes one value that could not be converted — `success`, `targetType`, `inputValue`, `path` (where in your payload it sat) and `message`. On a bulk write it is the fastest way to find which element and which member were wrong.
 
-**Treat an unrecognized `@type` as a plain error rather than as a parse failure.** New types can be added, so the forward-compatible default branch reports `error` — the one member every type is guaranteed to have — along with `details` when it is present. Two values will never turn up as an HTTP error body: `mid-stream error`, which appears only *inside* a committed `200` (see [Streaming → Error handling](../features/streaming.md#4-error-handling)), and `error` itself, which is the base every type above inherits from rather than something the API emits on its own.
+**Treat an unrecognized `@type` as a plain error rather than as a parse failure.** New types can be added, so the forward-compatible default branch reports `error` — the one member every type is guaranteed to have — along with `details` when it is present. Three values will never turn up as an HTTP error body: `mid-stream error`, which appears only *inside* a committed `200` (see [Streaming → Error handling](../features/streaming.md#4-error-handling)); `error` itself, which is the base every type above inherits from rather than something the API emits on its own; and `forbidden`, which nothing raises.
 
 > **Changed 2026-08-19.** An invalid index used to go out as `"invalid index type"`, which is not a type the published schema defines. It is now `"invalid index"`, matching the schema and the client you generate from it. Only relevant if you hard-coded the old string from an observed response — a client that follows the unrecognized-`@type` advice above was already handling it.
 

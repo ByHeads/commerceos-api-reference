@@ -911,13 +911,15 @@ GET /v1/people~where(identifiers/key>"<last key>")~orderBy(identifiers/key)~take
 
 | Error Type | Retry? | Strategy |
 |------------|--------|----------|
-| 400 Bad Request | No | Fix payload and re-submit |
+| 400 Bad Request | No | Fix the payload — or, on a write, check the key's scopes first |
 | 401 Unauthorized | Yes | Refresh token, retry once |
-| 403 Forbidden | No | Check scopes/permissions |
-| 404 Not Found | No | Create referenced entities first |
+| 403 Forbidden | No | Not raised by the API; came from a gateway or proxy in front of it |
+| 404 Not Found | No | Create referenced entities first — or check the key reaches this collection |
 | 409 Conflict | Yes | Fetch current, merge, retry |
 | 429 Rate Limited | Yes | Exponential backoff |
 | 5xx Server Error | Yes | Exponential backoff, max 5 retries |
+
+**A missing scope does not show up in this table as itself.** The API raises no permission error at all: a collection the key's scopes do not reach is absent rather than refused, so it answers `404`, a write that needed a writable resource behind it answers `400`, and a write that landed on a read-only twin answers `200` and persists nothing. So a `400` on a sync that has been working can mean the key was re-scoped rather than the payload changed, and a `200` is not evidence a write landed — read the value back. See [gotcha 41](../common-gotchas.md#41-a-write-under-a-read-only-scope-is-a-silent-200).
 
 ### Idempotency with PUT
 

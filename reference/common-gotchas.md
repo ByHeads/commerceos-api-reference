@@ -1091,20 +1091,26 @@ GET /v1/trade-records/{key}~with(com.example.synced)
 
 The endpoint is in the read scope's graph, so the request routes normally; it just arrives at members that have no setter, and a write with nowhere to go is discarded rather than refused.
 
-**A token holding neither scope answers `404`, not `403`.** An unmapped path does not exist for that token, and a path that does not exist is not found:
+**A scope problem answers `200`, `400` or `404` — never `403`.** Nothing in the API raises a `forbidden` error, and there is nowhere for it to: scopes decide which resources are in a token's graph at all, so a request the scopes do not cover never reaches a permission check that could refuse it. Four situations, and no permission error among them:
 
-| Token holds | Result |
+| The token's scopes… | Result |
 |---|---|
-| the write scope | `200`, and the change persists |
-| the read scope only | `200`, and nothing persists |
-| neither | `404` |
+| cover the resource, writable | `200`, and the change persists |
+| cover it read-only | `200`, and **nothing persists** — the request routes onto members that have no setter |
+| do not cover it, and you are reading | `404` — a path that is not in the graph is not found |
+| do not cover the writable resource the body needs | `400` — the request routed, but there was nothing to unify the body against |
+
+**The `400` is the expensive one**, because it is the status an integrator reads as "my payload is wrong" and never as "my token is wrong". `POST /v1/products` under `products:read` is a `400`, and so is a `PATCH` on a product from a token that does not reach products at all — the bodies are fine in both cases. **If a write answers `400` and the payload looks right, check the token's scopes before you start rewriting it.**
+
+An uncovered *write* can land on either `400` or `404`, and which one turns on the path rather than on the scope: `PATCH /v1/trade-records/{key}` from a token holding neither trade-record scope is a `404`, while the same shape against a product is a `400`. Neither says anything more specific than "not with this token".
 
 So the status code cannot distinguish "written" from "silently dropped", and a scope problem never looks like a permission problem. **Read the value back after any write whose target might be read-only** — that round-trip, not the `200`, is the confirmation. It matters most for an exactly-once sync marker: a dedup that trusts the `200` re-sends the same records on every run, forever, with no error anywhere to show for it.
 
-Two related points:
+Three related points:
 
 - **A write to a read-only *member* behaves the same way**, even when the token holds the write scope. `PATCH /v1/trade-records/{key} {"items": []}` is a `200` that changes nothing, as is a member the type does not declare at all. Only the writable members of the resource you landed on take a value; everything else in the payload is quietly ignored.
 - **A marker sent alongside a rejected member still lands.** The payload is not rejected as a whole, so a mixed body applies its writable half — see [gotcha 30](#30-an-outer-member-beats-the-same-member-inside-value) for the other way a payload's halves can disagree.
+- **A `403` that does reach your client did not come from the API.** Since nothing in the error layer raises one, it came from whatever sits in front of the API — a gateway, proxy or load balancer — and it will not carry the `@type` error body every API error carries. See [Error Types](overview.md#error-types).
 
 Related: [Trade Records → Scopes](trade-records.md#scopes), [gotcha 39](#39-a-null-in-a-response-does-not-prove-the-field-exists), [Credentials → Scopes](credentials.md#scope-names).
 

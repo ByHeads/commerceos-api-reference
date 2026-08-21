@@ -218,6 +218,8 @@ Two broad legacy scopes are also accepted, and they do not mean what their names
 
 Grant the narrowest set that works. A key that only reads the catalogue should carry `products:read` and nothing else.
 
+**Getting the set wrong is not an error you will see.** A scope this key does not hold does not make its resources refuse the request — it makes them absent, so a read of one is a `404`, a write that needed a writable resource the scopes do not reach is a `400`, and a write that landed on a read-only twin is a `200` that persists nothing. There is no `403` anywhere in that list, so plan to verify a new key's scopes by exercising it rather than by watching for a permission error: read something it should reach, and read back something it should be able to write. See [gotcha 41](common-gotchas.md#41-a-write-under-a-read-only-scope-is-a-silent-200).
+
 ---
 
 ### BankID and mobile credentials

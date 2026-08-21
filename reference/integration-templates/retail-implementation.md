@@ -570,7 +570,7 @@ Be aware of required fields for key resources:
 | Issue | Impact | Prevention |
 |-------|--------|------------|
 | Missing identifiers | Cannot look up or update resources | Always include namespaced identifier |
-| Invalid scope | 403 Forbidden | Verify OAuth client has required scopes |
+| Invalid scope | A `404`, a `400`, or a silent `200` — never a `403` | Verify the OAuth client's scopes directly; exercise the key and read back after a write ([gotcha 41](../common-gotchas.md#41-a-write-under-a-read-only-scope-is-a-silent-200)) |
 | Missing `instanceType` | IMEI/instance tracking fails | Set `instanceType: "MobileDevice"` or `"MobilePlan"` on products |
 | Missing required fields | 400 Bad Request | Check required fields for each resource type |
 

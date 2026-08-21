@@ -39,7 +39,7 @@ GET /v1/trade-records/{key}~with(orders)
 
 `trade-records:write` includes the read side, so a key that only stamps markers needs just the one scope. The broad legacy `write:api` expands to every fine-grained scope and therefore covers it; the broad `read:api` does **not** include `trade-records:read`, so list that one explicitly if you want a read-only key. See [Credentials → Scopes](credentials.md#scope-names).
 
-> **A missing scope does not answer `403` here.** Whether a write lands depends on which scope routed it, and neither failure looks like a permission error:
+> **A missing scope does not answer `403`** — not here, and nowhere else in the API. Whether a write lands depends on which scope routed it, and neither failure looks like a permission error:
 >
 > | Token holds | `PATCH /v1/trade-records/{key}` |
 > |---|---|
@@ -55,6 +55,8 @@ GET /v1/trade-records/{key}~with(orders)
 > ```
 >
 > If the readback is missing or `false`, the key is short a scope. Same shape as [gotcha 41](common-gotchas.md#41-a-write-under-a-read-only-scope-is-a-silent-200).
+>
+> The `404` on the last row is this resource's answer, not a general rule: on some other collections the same missing-scope write answers `400` instead. Neither is a permission error, and neither is worth branching on — the readback is.
 
 ---
 
