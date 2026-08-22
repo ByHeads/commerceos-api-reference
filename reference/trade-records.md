@@ -56,7 +56,7 @@ GET /v1/trade-records/{key}~with(orders)
 >
 > If the readback is missing or `false`, the key is short a scope. Same shape as [gotcha 41](common-gotchas.md#41-a-write-under-a-read-only-scope-is-a-silent-200).
 >
-> The `404` on the last row is the general rule rather than this resource's quirk: a collection the token's scopes do not reach is absent from its graph, so an ordinary read or write against it answers `404` whatever the path spelling ([gotcha 41](common-gotchas.md#41-a-write-under-a-read-only-scope-is-a-silent-200) has the two exceptions, `DELETE` and `~count`). Not a permission error, and not worth branching on — the readback is. To settle it before you write anything, ask [`/v1/scopes`](overview.md#checking-what-a-key-can-do-v1scopes) what the key holds: `GET /v1/scopes~where($this=trade-records:write)` answers `["trade-records:write"]` or `[]`.
+> The `404` on the last row is the general rule rather than this resource's quirk: a collection the token's scopes do not reach is absent from its graph, so an ordinary read or write against it answers `404` whatever the path spelling ([gotcha 41](common-gotchas.md#41-a-write-under-a-read-only-scope-is-a-silent-200) has the one exception, `DELETE`). Not a permission error, and not worth branching on — the readback is. To settle it before you write anything, ask [`/v1/scopes`](overview.md#checking-what-a-key-can-do-v1scopes) what the key holds: `GET /v1/scopes~where($this=trade-records:write)` answers `["trade-records:write"]` or `[]`.
 
 ---
 

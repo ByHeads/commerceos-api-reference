@@ -121,7 +121,7 @@ GET /v1/scopes~where($this=products:write)
 Two things to know before you build a gate on that:
 
 - **A misspelled scope name answers `[]`, exactly like one that is not granted.** If the name comes from configuration, fetch the whole array and compare there instead, so a typo reads as a name that matches nothing rather than as a missing grant. Same silence as [gotcha 39](common-gotchas.md#39-a-null-in-a-response-does-not-prove-the-field-exists).
-- **Do not add `~count`.** `~count` on a path the API cannot resolve answers `200 1` rather than `404`, so a typo in the endpoint itself — `/v1/scope~where(…)~count` — reports `1` and reads as *granted*. Without `~count` that same typo is a plain `404`, which is what you want a gate to see.
+- **A typo in the *endpoint* fails loudly, so the two mistakes look different.** `/v1/scope~where(…)` — collection misspelled — is a plain `404`, where a misspelled *scope* is a `200` with an empty array. A gate can therefore treat any non-`200` as "I asked the wrong question" and an empty array as "not granted". Appending `~count` is fine if a number is easier to test than an array (`1` granted, `0` not); it does not change either failure.
 
 > **EPI Integration OAuth2 Requirements:** External Payment Integrations (EPI) require a confidential OAuth2 client with specific scopes for the `install` action to succeed. See [EPI Integrations & Configurations](../guide/examples/configuration.md#epi-integrations--configurations) for required scopes and setup.
 

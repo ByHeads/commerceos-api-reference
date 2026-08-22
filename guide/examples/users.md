@@ -145,7 +145,7 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/apikey-credenti
 curl -X GET -u ":generate-a-long-random-value-here" "https://example.app.heads.com/api/v1/scopes"
 
 # Same question, one scope: ["products:write"] when granted, [] when not.
-# Leave ~count off - on a mistyped path ~count answers 1, which reads as granted.
+# A misspelled scope name also answers [] - a misspelled collection is a 404.
 curl -X GET -u ":generate-a-long-random-value-here" "https://example.app.heads.com/api/v1/scopes~where(\$this=products:write)"
 
 # Revoke one key. DELETE on a CREDENTIAL purges it (unlike DELETE on a user,

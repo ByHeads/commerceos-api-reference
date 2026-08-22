@@ -825,9 +825,9 @@ GET /v1/products~where(status=Active)~count
 **Notes:**
 - Returns `0` for empty collections
 - Returns a number, not an array
-- **Consumes the whole collection** — unlike `~take`/`~first` there is nothing to short-circuit, since every matching item has to be seen to be counted. Use `~where(...)~take(1)~count` when all you need to know is whether *any* item matches — but see the reachability note below before you read a `1` from it as an answer about your data.
+- **Consumes the whole collection** — unlike `~take`/`~first` there is nothing to short-circuit, since every matching item has to be seen to be counted. Use `~where(...)~take(1)~count` when all you need to know is whether *any* item matches: the limiter stops the scan at the first one, so the answer is `1` or `0` and costs at most one match.
 - Use `~count~toString` for `text/plain` output
-- **A chain ending in `~count` never answers `404`.** Point one at a path that does not resolve — a collection your token's scopes do not reach, or a name the API has never heard of — and it answers `200 1`, where the same collection reachable and empty answers `0`. Every other spelling of the same path is the ordinary `404`, so `~count` is the one operator that turns "you cannot see this" into a plausible number, and the number points the wrong way. It applies to the composed form too: `~where(...)~take(1)~count` is `1` there as well. Never use a count to test whether something exists or is reachable — see [gotcha 41](common-gotchas.md#41-a-write-under-a-read-only-scope-is-a-silent-200)
+- **Only a collection gets counted. Everything else answers `1`** — a single object, a scalar, and a `null` alike, since one value is one thing. So a count cannot tell you whether a lookup found anything: `products/com.example.sku=REAL~count` and `products/com.example.sku=NOPE~count` are both `1`, where the second request without the `~count` is the `200 null` that says the record is not there ([gotcha 39](common-gotchas.md#39-a-null-in-a-response-does-not-prove-the-field-exists)). Only an *empty collection* counts `0`, so `/gtin~count` is `0` on a product with no barcodes while `/parentGroup~count` is `1` on one with no parent group. **Count a collection; read anything else back and look at it**
 
 ---
 

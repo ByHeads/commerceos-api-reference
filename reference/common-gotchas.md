@@ -724,7 +724,7 @@ The failure is quiet: the request succeeds with `200` and an empty (or short) co
 Written the right way round it is also the faster form. A limiter stops pulling items through the chain once it is satisfied, so `~where(...)~take(10)` costs ten matches rather than a full scan, no matter how large the collection is. Two things to know about that:
 
 - **`~orderBy` between the filter and the limiter cancels it.** `~where(...)~orderBy(name)~take(10)` has to sort every match before it can slice the first ten. That is unavoidable if you genuinely want the alphabetically-first ten; if any ten will do, drop the sort.
-- **`~count` and `~last` never short-circuit** — both have to reach the end of the stream. To ask "does anything match?" without counting everything, use `~where(...)~take(1)~count` — and read a `1` from it carefully, because a chain ending in `~count` answers `1` for a path that does not resolve at all ([gotcha 41](#41-a-write-under-a-read-only-scope-is-a-silent-200)).
+- **`~count` and `~last` never short-circuit** — both have to reach the end of the stream. To ask "does anything match?" without counting everything, use `~where(...)~take(1)~count`: it stops at the first match and answers `1`, or reaches the end and answers `0`.
 - **A filter or a sort in front of a `~skip` costs it the same way.** `~skip(N)~take(M)` on its own steps over the N skipped records without building them; `~where(...)~skip(N)~take(M)` cannot, because the skip is then counting matches and the earlier records have to be read to be counted ([details](operators.md#a-skip-is-only-cheap-while-nothing-filters-sorts-or-projects-before-it)). Order the filter first anyway — it is still the only order that answers the right question.
 - **A *projection* in front of a `~skip` costs it too, and here the order is free to change.** `~just(name)~skip(1000)~take(10)` applies the projection to all 1010 records; `~skip(1000)~take(10)~just(name)` returns the same thing and applies it to ten. Watch for this with `?fields=`, which is always normalized ahead of the skip — `?fields=name&offset=1000&limit=10` pays the full cost and cannot be rewritten to avoid it without switching to path operators.
 
@@ -1101,9 +1101,9 @@ The endpoint is in the read scope's graph, so the request routes normally; it ju
 | cover the resource, writable | `200`, and the change persists |
 | cover it read-only | `200`, and **nothing persists** — the request routes onto members that have no setter |
 | cover it read-only, and the write is a `POST` whose identifiers name no existing record | `400`, reported as a lookup failure against your own identifiers |
-| do not cover it at all | `404` — in every path spelling, on every method but `DELETE`, and with the one operator exception below |
+| do not cover it at all | `404` — in every path spelling, on every method but `DELETE` |
 
-> **Changed 2026-08-22.** A write to a resource the token does not reach used to answer `400` in one path spelling — `PATCH /v1/products/com.example.sku=…`, where the trailing identifier segment was read as a comparison rather than as a lookup — while every other spelling of the same missing path answered `404`. All of them answer `404` now. Only relevant if you branched on that `400`; it was never a payload problem, and the advice for it was already "check the scopes".
+> **Changed 2026-08-22.** A path the token does not reach used to answer something other than `404` in two spellings; both answer `404` now, like every other one. A *write* answered `400` for `PATCH /v1/products/com.example.sku=…`, where the trailing identifier segment was read as a comparison rather than as a lookup — only relevant if you branched on that `400`, and it was never a payload problem. A *read* ending in `~count` answered `200 1`, which made a count unusable as an answer about your own data. It is an ordinary count again, so `~where(...)~take(1)~count` can be read at face value and a gate built on `/v1/scopes~where(…)~count` is sound.
 
 **The surviving `400` is the expensive one**, because it is the status an integrator reads as "my payload is wrong" and never as "my token is wrong" — and this one goes further and blames a specific field. A `POST` for a product that does not exist yet, from a token holding `products:read`:
 
@@ -1127,19 +1127,6 @@ And where it does route, the body is not evidence either. Under a read-only twin
 
 So the status code cannot distinguish "written" from "silently dropped", and a scope problem never looks like a permission problem. **Read the value back after any write whose target might be read-only** — that round-trip, not the `200`, is the confirmation. It matters most for an exactly-once sync marker: a dedup that trusts the `200` re-sends the same records on every run, forever, with no error anywhere to show for it.
 
-**`~count` is the one operator that does not answer `404`, and what it answers points the wrong way.** Append it to a collection the token cannot reach and you get `200 1` — where the same collection, reachable and empty, counts `0`:
-
-```bash
-# the token holds org:read
-GET /v1/products          → 404
-GET /v1/products~count    → 200 1        # not a count of anything; not reachable either
-
-# the token holds products:read, and the catalogue is empty
-GET /v1/products~count    → 200 0
-```
-
-Everything else — `~take(2)`, `~first`, `~where(...)`, `~just(...)`, `?limit=2` — is the ordinary `404`. It is the trailing `~count` that does it, so the composed form is caught too: the `~where(...)~take(1)~count` idiom for "does anything match?" also answers `1`. So **never probe reachability with a count**: it is the one spelling that turns "you cannot see this" into a plausible number, and the number points the wrong way.
-
 **What no status can tell you, [`/v1/scopes`](overview.md#checking-what-a-key-can-do-v1scopes) can.** A read-only resource and its writable twin sit at the same path and answer a `GET` identically, so probing an endpoint cannot answer "may this key write products?". Asking directly can, in one request and without touching data:
 
 ```bash
@@ -1147,7 +1134,7 @@ GET /v1/scopes                                # every fine-grained scope this ke
 GET /v1/scopes~where($this=products:write)    # ["products:write"] when granted, [] when not
 ```
 
-Worth doing at start-up in anything that syncs: it is the difference between finding out now and finding out from a month of markers that never landed. Leave `~count` off that second one for the reason just above — with it, a typo in the path answers `1` and reads as granted.
+Worth doing at start-up in anything that syncs: it is the difference between finding out now and finding out from a month of markers that never landed.
 
 Three related points:
 
