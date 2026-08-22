@@ -49,6 +49,10 @@ notesForPicking, labels, images, categories, prices, xrefs, application
 salesChannels
 ```
 
+A product **family** also carries `status ('Active', 'Inactive', 'Pending')`, but **non-essential** —
+unlike the essential `status` on a product below, it is absent from a default representation until
+you ask for it with `~with(status)` or a `fields=` list.
+
 ## Product-specific Members
 
 ```
@@ -137,6 +141,7 @@ intervalEnd, acceptedMembershipTerms, acceptedPromotionalMaterial, creditAllowed
 ```
 identifiers (receiptID), ordinal (read-only), prefix (read-only), currencyCode (read-only),
 seller, buyer, relationship, user, device, posTerminal, timestamp (read-only, essential),
+type ('Sale', 'Return', 'Mixed', 'Other') (non-essential),
 items, labels, totalAmount (read-only), totalTaxAmount (read-only), totalDiscountAmount (read-only),
 roundingAmount (read-only), totalPayableAmount (read-only), totalPaidAmount (read-only),
 totalExternalSettlementsAmount (read-only), externalSettlements (read-only), vatGroups (read-only),
@@ -146,6 +151,7 @@ payments (read-only), orders (read-only, non-essential)
 ## Receipt Item Members
 
 ```
+type ('Sale', 'Return', 'Other') (non-essential),
 description (read-only), product, instances, quantity (read-only), unitAmount (read-only),
 discounts, taxAmount (read-only), salesAmount (read-only), totalAmount (read-only),
 discountAmount (read-only), vatAmount (read-only), vatPercentage (read-only),

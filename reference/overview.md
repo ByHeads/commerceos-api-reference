@@ -505,6 +505,8 @@ Accept: application/sql;mode=null              # same statements as any other mo
 
 Only `numberHandling` makes the choice observable. `null`, `number` and the bare content type all serialize `"id": 0`, against `"id": "0"` for `numberHandling=string`. `mode` is a hint the SQL serializer does not act on, so `insert`, `sync`, `merge` and `null` produce byte-identical output — see [SQL export](../features/sql-export.md#22-serializer-parameters).
 
+> **In the OpenAPI spec the token is carried by `nullable`, not by the enum.** Both parameters publish their named values only — `"enum": ["insert", "sync", "merge"]` and `"enum": ["string", "number"]` — with `"nullable": true` beside them, and each one's `description` says what `null` selects. So a generated client that types `mode` as a three-value enum is not contradicting this page: the fourth spelling is the nullable flag rather than a missing enum member. See [OpenAPI extensions](openapi-extensions.md#properties-with-a-fixed-set-of-values-carry-none-of-these).
+
 ### Error Response Framing
 
 An error body is **the same JSON document on every content type** — same members, same `@type` discriminator, same status code. Only its *framing* follows the `Accept` header, and the response's `Content-Type` tells you which one you got:

@@ -334,12 +334,20 @@ Both approaches trigger the replace handler with an empty whitelist, removing al
 
 ```json
 {
-  "name": {
-    "type": "string",
-    "x-cos-required": true
+  "baseUrl": {
+    "$ref": "#/components/schemas/url",
+    "description": "The base URL at which CommerceOS can reach the integration.",
+    "readOnly": false,
+    "nullable": false,
+    "x-cos-required": true,
+    "x-cos-essential": true
   }
 }
 ```
+
+**Notes:**
+- Emitted only where the member states it, and spelled both `true` and `false`. Most properties carry no `x-cos-required` at all, so an **absent** one means "not stated" rather than `false`
+- Two other places carry the same fact and are the ones worth reading: the schema's standard OpenAPI `required` array (`"required": ["baseUrl"]`), and `x-pillow-type.requiredOnCreate`
 
 ---
 
@@ -353,12 +361,19 @@ Both approaches trigger the replace handler with an empty whitelist, removing al
 
 ```json
 {
-  "identifiers": {
-    "type": "object",
-    "x-cos-essential": true
+  "nationality": {
+    "$ref": "#/components/schemas/country code",
+    "description": "The [ISO 3166-1 alpha-2](https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2) country code representing the agent's nationality.",
+    "readOnly": false,
+    "nullable": true,
+    "x-cos-essential": false
   }
 }
 ```
+
+**Notes:**
+- Emitted only where the member states it, and spelled both `true` and `false`. Most properties carry no `x-cos-essential` at all, so an **absent** one means "not stated" rather than `false`
+- It is the one of the three with no second home in the spec — required-on-create is also in the `required` array, and read-only is also in `readOnly`, but nothing else carries essentialness. The member lists in [Type members](type-members.md) are the reference's own record of it
 
 ---
 
@@ -372,13 +387,60 @@ Both approaches trigger the replace handler with an empty whitelist, removing al
 
 ```json
 {
-  "createdAt": {
-    "type": "string",
-    "format": "date-time",
+  "timestamp": {
+    "$ref": "#/components/schemas/date-time",
+    "description": "The time at which the record was created.",
+    "readOnly": true,
+    "nullable": false,
     "x-cos-readonly": true
   }
 }
 ```
+
+**Notes:**
+- Unlike its two siblings this one is emitted **only when `true`** — there is no `x-cos-readonly: false`, so absence carries no information
+- The standard `readOnly` keyword carries the same fact and is on every `$ref`-typed property whether the answer is `true` or `false`. Read that instead
+
+---
+
+### Properties With a Fixed Set of Values Carry None of These
+
+A property whose type is a fixed set of literal values — a product status, a receipt type, a stock movement's direction — is published as an **inline schema with an `enum`** rather than as a `$ref` to a model, and that changes what comes with it:
+
+```json
+{
+  "status": {
+    "type": "string",
+    "description": "The status of the product, indicating whether it is active, inactive, or pending.",
+    "enum": ["Active", "Inactive", "Pending"],
+    "examples": [],
+    "nullable": false
+  }
+}
+```
+
+That is the whole property. **None of the four extensions above appears on it**, and neither does the standard `readOnly` keyword — where a `$ref`-typed property such as `product.name` carries `x-pillow-type` and its `readOnly` flag alongside the type reference. On a property with an `enum`, `enum` and `nullable` are the only machine-readable facts, and the `description` is where the meaning of the individual values is written down.
+
+Two other property shapes are bare in the same way, and neither is likely to matter: the `@type` discriminator, which is a fixed synthetic string on every polymorphic type, and the handful of properties published as an `anyOf` union of several models.
+
+**Three of the four cost you nothing** — two are recorded elsewhere in the spec, and the third has no instances to record:
+
+| Extension | Read this instead on an `enum` property |
+|---|---|
+| `x-cos-required` | The schema's standard `required` array. It is built from the member rather than from the property's shape, so it is unaffected — and no member with a fixed value set is required on create today, so no `required` array currently names one. |
+| `x-pillow-type.nullable` | The property's own `nullable` flag, which is always present and spelled both `true` and `false`. |
+| `x-cos-readonly` | The standard `readOnly` keyword — except that it is absent here too. No member with a fixed value set is read-only today. |
+| `x-cos-essential` | **Nothing.** This is the one with live instances. |
+
+**Three members with a fixed set of values are non-essential**, and nothing in the spec says so:
+
+- `receipt.type`
+- `receipt item.type`
+- `product family.status`
+
+They are not in the default representation, so ask for them with `~with(type)` or a `fields=` list. Nothing in the spec records that — on a property with an `enum` the extension is not emitted at all, and an absent one is indistinguishable from a member that simply never stated the flag. The member lists in [Type members](type-members.md) mark all three, and are the fallback for anything the spec cannot say.
+
+**Two `enum` properties are also `nullable`** — `SQL settings.mode` and `numberHandling` on the JSON settings types. Their `enum` lists the named values only; the acceptance of JSON `null` is carried by `nullable: true` and explained in the `description`. See [The literal `null` as a parameter value](overview.md#the-literal-null-as-a-parameter-value) for what `null` means on those two.
 
 ---
 
@@ -390,8 +452,8 @@ When generating client code:
 
 1. **Array operations:** Use `x-array-members` to generate helper methods for `count`, `add`, `replace`, and `remove` on collection types
 2. **Type relationships:** Use `x-conceptOf` to understand collection-to-element relationships
-3. **Required fields:** Use `x-cos-required` to generate validation for create operations
-4. **Field expansion:** Use `x-cos-essential` to understand default vs. expanded field sets
+3. **Required fields:** Prefer the standard `required` array, or `x-pillow-type.requiredOnCreate` — `x-cos-required` is absent from most properties and from every property with a fixed set of values
+4. **Field expansion:** Use `x-cos-essential` to understand default vs. expanded field sets, but treat an **absent** one as unknown rather than as `false` — most properties do not carry it, and no property with an `enum` ever does (see [Properties with a fixed set of values](#properties-with-a-fixed-set-of-values-carry-none-of-these))
 5. **Tag grouping:** Use `x-tagGroups` to organize generated client modules by domain
 6. **Map types:** Use `x-additionalPropertiesName` for meaningful dictionary type names
 
@@ -421,3 +483,5 @@ When generating documentation:
 | `x-cos-required` | Property schemas | Required on create |
 | `x-cos-essential` | Property schemas | Included in default response |
 | `x-cos-readonly` | Property schemas | Read-only property |
+
+> **The four property extensions apply to `$ref`-typed properties.** A property published as an inline schema with an `enum` carries none of them — see [Properties with a fixed set of values](#properties-with-a-fixed-set-of-values-carry-none-of-these).

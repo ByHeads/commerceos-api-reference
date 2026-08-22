@@ -94,6 +94,8 @@ Accept: application/sql; batchSize=500
 > The same holds for a non-boolean `stream` (`;stream=truex`). Parameters the serializer does not recognize at all — `charset`, `q`, a misspelled name — are ignored harmlessly, so a typo in the *name* is silent where a typo in the *value* is not. See [Accept parameter tolerance](../reference/overview.md#accept-parameter-tolerance).
 >
 > `null` is case-insensitive and tolerates surrounding spaces (`;mode=NULL`, `;mode= null `), but `;mode=nullx` and an empty `;mode=` are both rejected. Since `mode` has no effect on the output, all four accepted values produce byte-identical SQL — the token is worth knowing only so that a client emitting `null` for "unset" is not surprised by a `400`.
+>
+> In the OpenAPI spec the parameter publishes `"enum": ["insert", "sync", "merge"]` with `"nullable": true` beside it — the token is the nullable flag rather than a fourth enum member, and the property's `description` says so. A generated client typing `mode` as a three-value enum is not contradicting this page.
 
 > **Changed 2026-08-22 — an unusable value used to be silent.** `Accept: application/sql;mode=upsert` previously answered a success status with an empty body and no indication of the cause. It is the `400` above now. If you avoided the `mode` parameter because a typo cost you the whole export, that risk is gone.
 
