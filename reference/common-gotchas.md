@@ -1152,6 +1152,7 @@ Three related points:
 - **A write to a read-only *member* behaves the same way**, even when the token holds the write scope. `PATCH /v1/trade-records/{key} {"items": []}` is a `200` that changes nothing, as is a member the type does not declare at all. Only the writable members of the resource you landed on take a value; everything else in the payload is quietly ignored.
 - **A marker sent alongside a rejected member still lands.** The payload is not rejected as a whole, so a mixed body applies its writable half — see [gotcha 30](#30-an-outer-member-beats-the-same-member-inside-value) for the other way a payload's halves can disagree.
 - **A `403` that does reach your client did not come from the API.** Since nothing in the error layer raises one, it came from whatever sits in front of the API — a gateway, proxy or load balancer — and it will not carry the `@type` error body every API error carries. See [Error Types](overview.md#error-types).
+- **Scopes are not the only cause of this symptom.** A member retained as a deprecated stub swallows a write the same way, for every token — see [gotcha 46](#46-deprecated-does-not-tell-you-whether-a-member-still-works).
 
 Related: [`/v1/scopes`](overview.md#checking-what-a-key-can-do-v1scopes), [Trade Records → Scopes](trade-records.md#scopes), [gotcha 39](#39-a-null-in-a-response-does-not-prove-the-field-exists), [Credentials → Scopes](credentials.md#scope-names).
 
@@ -1301,6 +1302,39 @@ Four related points:
 It applies to a CSV **upload** as well, since `Content-Type` is parsed the same way, and to `application/vnd.ms-sqlserver.csv`, which takes a `delimiter` of its own.
 
 Full rules: [CSV serializer parameters](overview.md#csv-serializer-parameters).
+
+---
+
+## 46. `DEPRECATED` Does Not Tell You Whether a Member Still Works
+
+A member marked `[DEPRECATED]` in the schema may still do exactly what it says, or it may be an inert stub that reads empty and discards what you write. Nothing in the marking, the response shape or the status code distinguishes the two — and both are shipped, documented and reachable through a generated client.
+
+The two currently in the reference land on opposite sides of that line:
+
+| Member | Marked | Actually |
+|---|---|---|
+| [`product package.manifest`](../guide/examples/product-packages.md#the-deprecated-manifest) | deprecated in favour of `product` and `size` | **works** — a one-entry facade; writing an entry writes the pair |
+| [`POS profile.functions`](../guide/examples/pos.md#pos-profiles) | deprecated in favour of `tileSets` | **inert** — always reads `[]`, and a write is accepted and discarded |
+
+The inert one is the expensive shape, because a configuration written through it is a `200` that lands nowhere:
+
+```bash
+POST /v1/pos-profiles   [{"identifiers": {"posProfileId": "standard"},
+                          "functions": [{"identifiers": {"posFunctionId": "lock-fn"}}]}]
+→ 200
+
+GET /v1/pos-profiles/posProfileId=standard/functions
+→ []                                    # and it reads [] under every configuration
+```
+
+**The check is the same one that catches a [read-only scope](#41-a-write-under-a-read-only-scope-is-a-silent-200): read the member back and compare it against what you sent.** That round-trip, not the `200`, is what tells you a deprecated member is still carrying data — and it is worth doing once, at integration time, rather than discovering it from a terminal that shows no buttons.
+
+Two related points:
+
+- **This is not a scope problem, so `/v1/scopes` will not find it.** The member is inert for every token, including one holding `write:api`. Gotcha 41's symptom, a different cause.
+- **A `DELETE` on the inert member does report the truth.** `DELETE /v1/pos-profiles/{id}/functions` answers `{"deletedCount": 0}`, because the count reports removals that reached a setter rather than removals that were attempted — see [What a `DELETE` reports](overview.md#what-a-delete-reports). It is the one response on this member that is not a flat `200`.
+
+Related: [gotcha 41](#41-a-write-under-a-read-only-scope-is-a-silent-200), [POS tile sets](../guide/examples/pos.md#pos-tile-sets), [The deprecated `manifest`](../guide/examples/product-packages.md#the-deprecated-manifest).
 
 ---
 

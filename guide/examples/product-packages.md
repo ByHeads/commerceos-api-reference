@@ -15,21 +15,26 @@ Understanding the type hierarchy is critical for working with packages:
 
 ```
 product node (base)
-└── product composition (abstract — has manifest)
-    ├── product package (adds packageClass)
-    └── product set (no additional fields — for bundles like "Combo Meal")
+└── product composition (abstract — no members of its own)
+    ├── product package — one product, one size, and a package class
+    └── product set — a multi-entry manifest, for bundles like "Combo Meal"
 ```
+
+A product package holds **exactly one `(product, size)` pair**: ten Levis 501 to a carton, six cans of cola to a shrink-wrap. That pair is what makes unit-to-package conversion work — order 30 units of a package of 10 and the system knows that is three cartons.
 
 | Property | Purpose |
 |----------|---------|
 | `packageClass` | References a `product package class` — the classification (Carton, Pallet, etc.). **Required on create.** |
-| `manifest` | Array of entries, each with a `product` reference and `quantity`. Defines what's inside the package. |
-| `name` | Display name. May inherit from the package class if omitted. |
+| `product` | The product, family or group the package contains. **Required on create.** |
+| `size` | How many units of `product` fit in one package. Not enforced — omit it and you get a package of **1**. |
+| `name` | Display name. Inherits the package class's name if omitted, so "Krt" rather than "Levis 501 Carton x10". |
+| `active` | Whether the package is available for use in new transactions. |
 | `identifiers` | External identifiers for lookup. |
+| `manifest` | **Deprecated** — a one-entry facade over `product` and `size`. See [The deprecated `manifest`](#the-deprecated-manifest). |
 
-**Key concept — simple vs complex packages:**
-- A **simple package** has one manifest entry (e.g., "Carton of 10 Levis 501"). The system can compute unit-to-package quantity conversions directly.
-- A **complex package** has multiple manifest entries (e.g., "Mixed Snack Pallet with 24 chips + 24 nuts"). Automatic quantity conversion is not supported for complex packages.
+> **The member is `size`, and it is not `quantity`.** `quantity` is what the entries of the deprecated `manifest` call it, and it is not a member of the package itself — so a payload putting `quantity` next to `product` is accepted, the value is dropped, and you get a package of one with nothing in the `200` to say so.
+
+> **There is no such thing as a mixed package.** A package cannot hold two different products: "a pallet of 24 chips + 24 nuts" is not expressible. It used to be, as a multi-entry manifest, and a manifest carrying more than one entry is now rejected with a `400`. For a group of different products, use a [product set](#section-3-packages-vs-sets) instead.
 
 ---
 
@@ -103,9 +108,9 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/product-package-c
 
 ## Section 2: Product Packages — Creating and Managing
 
-A product package requires two things: (1) a package class, and (2) a manifest listing the products and quantities inside.
+A product package needs three things: the package class it belongs to, the product it contains, and how many of that product fit inside one.
 
-### Create a simple package — Carton of 10
+### Create a package — Carton of 10
 
 ```bash
 curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/product-packages" \
@@ -113,17 +118,14 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/product-packages
   -d '{
     "@type": "product package",
     "identifiers": { "com.example.id": "levis-501-carton" },
+    "name": "Levis 501 Carton x10",
     "packageClass": { "identifiers": { "com.example.id": "carton" } },
-    "manifest": [
-      {
-        "product": { "identifiers": { "com.example.id": "levis-501-family" } },
-        "quantity": "10"
-      }
-    ]
+    "product": { "identifiers": { "com.example.id": "levis-501-family" } },
+    "size": "10"
   }'
 ```
 
-This is a **simple package** — one manifest entry. The manifest references a product family, meaning any variant (size, color) of Levis 501 can be packed in this carton.
+`product` here names a product *family*, so any variant (size, colour) of Levis 501 can be packed in this carton. It can equally name a single SKU or a whole product group — whichever level the packing rule actually applies at.
 
 ### Create a 6-pack of soda
 
@@ -135,18 +137,34 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/product-packages
     "identifiers": { "com.example.id": "6pack-cola" },
     "name": "6-Pack Cola",
     "packageClass": { "identifiers": { "com.example.id": "shrink-wrap" } },
-    "manifest": [
-      {
-        "product": { "identifiers": { "sku": "COLA-33CL" } },
-        "quantity": "6"
-      }
-    ]
+    "product": { "identifiers": { "sku": "COLA-33CL" } },
+    "size": "6"
   }'
 ```
 
-Here an explicit `name` is set. Without it, the name may inherit from the package class (e.g., "Shrink-wrap"), which is often not descriptive enough.
+The explicit `name` earns its place: without one the package takes the package class's name, and this would be listed as "Shrink-wrap".
 
-### Create a complex package — Mixed Snack Pallet
+### What a create refuses, and what it accepts too quietly
+
+Two members are enforced, each with its own `400`:
+
+```
+# packageClass missing
+Missing or invalid member 'packageClass' of the input object. Expected object of type product package class
+
+# neither product nor a legacy manifest
+A package must have a product (or a legacy manifest with exactly one entry).
+```
+
+**`size` is not enforced**, even though the schema marks it required on create alongside the other two — so a generated client will insist on it while the server will not. Omit it and the package is created as a package of **1** — a `200`, no diagnostic. The same happens to a payload that spells it `quantity`, which is the name the [deprecated manifest](#the-deprecated-manifest) entries use and is *not* a member of the package: unknown members are dropped in silence, so a "6-Pack" arrives holding one can. Read the pair back after creating a package:
+
+```bash
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/product-packages/com.example.id=6pack-cola~just(product,size)"
+```
+
+### There is no mixed package
+
+A package holds one product. A "pallet of 24 chips + 24 nuts" cannot be expressed as a package, and reaching for the deprecated multi-entry manifest to do it is refused:
 
 ```bash
 curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/product-packages" \
@@ -154,22 +172,23 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/product-packages
   -d '{
     "@type": "product package",
     "identifiers": { "com.example.id": "mixed-snack-pallet" },
-    "name": "Mixed Snack Pallet",
     "packageClass": { "identifiers": { "com.example.id": "pallet" } },
     "manifest": [
-      {
-        "product": { "identifiers": { "com.example.categoryId": "chips" } },
-        "quantity": "24"
-      },
-      {
-        "product": { "identifiers": { "com.example.categoryId": "nuts" } },
-        "quantity": "24"
-      }
+      { "product": { "identifiers": { "com.example.categoryId": "chips" } }, "quantity": "24" },
+      { "product": { "identifiers": { "com.example.categoryId": "nuts" } }, "quantity": "24" }
     ]
   }'
 ```
 
-This is a **complex package** — multiple manifest entries. Automatic unit-to-package quantity conversion is not supported for complex packages.
+```
+400  A product package can have at most one manifest entry.
+     The manifest is deprecated - use `product` and `size` instead.
+```
+
+The request is refused outright — nothing is written under that identifier. Two ways to model it instead:
+
+- **One package per product.** A chips pallet ×24 and a nuts pallet ×24, each referenced where it applies. This is what you want when the two products are ordered and shipped as separate lines that happen to travel together.
+- **A [product set](#section-3-packages-vs-sets).** A set carries a genuine multi-entry manifest and is the type for "these things go together". It is not a packaging unit, so it does not appear on supply relations.
 
 ### List all product packages
 
@@ -177,44 +196,76 @@ This is a **complex package** — multiple manifest entries. Automatic unit-to-p
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/product-packages"
 ```
 
-### Get a specific package with full manifest
+### Get a specific package
 
 ```bash
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/product-packages/com.example.id=levis-501-carton?fields=all"
 ```
 
-### Update a package manifest
+### Change a package's size
 
 ```bash
 curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/product-packages/com.example.id=6pack-cola" \
   -H "Content-Type: application/json" \
-  -d '{
-    "manifest": [
-      {
-        "product": { "identifiers": { "sku": "COLA-33CL" } },
-        "quantity": "8"
-      }
-    ]
-  }'
+  -d '{ "size": "8" }'
 ```
 
-This changes the 6-pack into an 8-pack by replacing the manifest entirely.
+This turns the 6-pack into an 8-pack. Note what it does *not* touch: the `name`. A package called "6-Pack Cola" keeps saying six, so send `name` alongside `size` whenever the name carries the count.
+
+### Retire a package
+
+```bash
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/product-packages/com.example.id=6pack-cola" \
+  -H "Content-Type: application/json" \
+  -d '{ "active": false }'
+```
+
+`active` marks whether a package is available for use in new transactions. Clearing it retires the package without deleting it, leaving existing references intact.
+
+### The deprecated `manifest`
+
+`manifest` predates `product` and `size` and is kept so integrations written against the older, multi-entry model keep working. It is a **one-entry facade** over that pair rather than storage of its own:
+
+- **Reading** it gives one entry whose `product` and `quantity` mirror the package's `product` and `size`. `manifest~count` is `1`, or `0` when the package has no product.
+- **Writing one entry** writes `product` and `size` — on create, as a member of a `PATCH` on the package, or against `.../manifest` directly, including the `add`, `replace` and `remove` envelopes.
+- **Writing more than one entry** is the `400` above, wherever you send it.
+- **Writing an empty array** (`PUT .../manifest` with `[]`) clears `product`, exactly as `DELETE .../product` does. `size` is left where it was.
+- **The leaf paths write through too:** `PATCH .../manifest/0/quantity` sets `size`, and `PATCH .../manifest/0/product` sets `product`.
+
+These two requests are the same write:
+
+```bash
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/product-packages/com.example.id=6pack-cola" \
+  -H "Content-Type: application/json" \
+  -d '{ "manifest": [{ "product": { "identifiers": { "sku": "COLA-33CL" } }, "quantity": "8" }] }'
+
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/product-packages/com.example.id=6pack-cola" \
+  -H "Content-Type: application/json" \
+  -d '{ "product": { "identifiers": { "sku": "COLA-33CL" } }, "size": "8" }'
+```
+
+Prefer the second. Everything the manifest can express, `product` and `size` express directly — and only the manifest can be written in a shape the API refuses. It is worth knowing that a deprecated member is not always still functional — this one is, and [`POS profile.functions`](../../reference/common-gotchas.md#46-deprecated-does-not-tell-you-whether-a-member-still-works) is not.
+
+> **The numeric index is not honoured.** Every index resolves to the same single entry, so `manifest/1` reads back what `manifest/0` does even though the collection holds one element, and `{"remove": [...]}` clears that entry whatever product it names. Address `product` and `size` and the question does not arise.
 
 ---
 
-## Section 3: Product Compositions — The Shared Base (Packages vs Sets)
+## Section 3: Packages vs Sets
 
-Both `product package` and `product set` extend `product composition` and share the `manifest` field. They serve fundamentally different purposes:
+`product package` and `product set` both extend `product composition`, but that base carries no members of its own — each subtype declares its own shape, and the two shapes are no longer alike:
 
 | Aspect | Product Package | Product Set |
 |--------|----------------|-------------|
 | Type | `"product package"` | `"product set"` |
-| Additional field | `packageClass` (required) | None |
+| Contents | one `product` and a `size` | a `manifest` of any number of entries, each with its own `product` and `quantity` |
+| Additional field | `packageClass` (required) | none |
 | Purpose | Supply chain packaging units | Bundled products for sale |
 | Examples | "Carton of 10", "6-pack", "Pallet of 48" | "Dinner Set (table + 4 chairs)", "Combo Meal" |
 | Typical use | Referenced in supply relations and trade order items | Used in bundle discount rules |
 
-### Create a product set (for comparison)
+**The multi-entry manifest lives on the set**, and only there. A package's `manifest` is a [deprecated one-entry facade](#the-deprecated-manifest) over `product` and `size`; a set's is the real thing, and nothing about it is deprecated. So "1 table + 4 chairs" is a product set, not a package.
+
+### Create a product set
 
 ```bash
 curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/product-sets" \
@@ -244,10 +295,10 @@ Note the absence of `packageClass` — product sets don't have one because they 
 
 ### When to use which
 
-- **Product package**: You're modeling how items are physically shipped/stored. A carton, a pallet, a shrink-wrapped 6-pack.
-- **Product set**: You're modeling a group of items sold together as a conceptual unit. A combo meal, a furniture set, a gift box.
+- **Product package**: You're modeling how one product is physically shipped or stored. A carton, a pallet, a shrink-wrapped 6-pack.
+- **Product set**: You're modeling several items that go together as a conceptual unit. A combo meal, a furniture set, a gift box — or a mixed pallet, which a package cannot express.
 
-Both use the same manifest structure. The key difference is that packages participate in the supply chain (supply relations, trade order items), while sets participate in commercial rules (bundle discounts).
+Packages participate in the supply chain (supply relations, trade order items); sets participate in commercial rules (bundle discounts).
 
 ---
 
@@ -525,7 +576,7 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/product-package-c
 # List all packages
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/product-packages"
 
-# Get a specific package with full manifest
+# Get a specific package with every field
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/product-packages/com.example.id=levis-501-carton?fields=all"
 
 # Get only package names and classes
@@ -584,12 +635,8 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/product-packages
     "identifiers": { "com.example.id": "tropical-juice-case" },
     "name": "Tropical Juice Case x12",
     "packageClass": { "identifiers": { "com.example.id": "case" } },
-    "manifest": [
-      {
-        "product": { "identifiers": { "com.example.id": "tropical-juice-family" } },
-        "quantity": "12"
-      }
-    ]
+    "product": { "identifiers": { "com.example.id": "tropical-juice-family" } },
+    "size": "12"
   }'
 ```
 
@@ -651,9 +698,11 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/trade-orders/com.
 
 - **Package class is required on create.** You cannot create a `product package` without a `packageClass`. Create or reference an existing class first. Omitting it will fail validation.
 
-- **Manifest products can be families, not just SKUs.** A "Carton of 10 Levis 501" can reference the product family, meaning any variant (size/color) can be packed in it. Use product families for flexible packaging that accommodates multiple SKUs.
+- **A package's `product` can be a family, not just a SKU.** A "Carton of 10 Levis 501" can reference the product family, meaning any variant (size/colour) can be packed in it. Use product families for flexible packaging that accommodates multiple SKUs.
 
-- **Quantities are always in base units.** When specifying `moq` in supply relations or `quantity` in trade order items, always use base units (individual items), not package counts. 100 units in a carton of 10 = 10 cartons. The system handles the conversion for simple packages.
+- **`size` is not enforced on create, and the member is not called `quantity`.** A payload that omits `size`, or that spells it `quantity`, is a `200` that creates a package of one. Read `size` back — this is the one mistake on this page that costs you silently.
+
+- **Quantities are always in base units.** When specifying `moq` in supply relations or `quantity` in trade order items, always use base units (individual items), not package counts. 100 units in a carton of 10 = 10 cartons. The system converts by dividing by the package's `size`.
 
 - **Package names are often inherited from class.** If you don't set `name` on a product package, it may inherit from the package class (e.g., "Krt"). Set an explicit name for clarity — "Levis 501 Carton x10" is far more useful than "Krt" when browsing a list of packages.
 
@@ -661,6 +710,6 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/trade-orders/com.
 
 - **Package classes are intentionally simple.** They have no dimensions, weight, or volume fields. This is by design — the system does not currently model physical packaging attributes. If integrators need to track those, they should use custom identifiers (e.g., `com.myapp.widthCm`) and manage the mapping in an external system.
 
-- **Simple vs complex packages.** A simple package (one manifest entry) has a clear unit-to-package ratio. The system uses this internally for validation. Packages with multiple manifest entries (mixed pallets) are "complex" and don't support automatic quantity conversion.
+- **A package holds one product.** There is no mixed package and no multi-entry manifest — `product` and `size` are single-valued, and the unit-to-package conversion is exactly `size`. For a group of different products, reach for a [product set](#section-3-packages-vs-sets).
 
 - **One package, many orders.** A product package is a reusable definition. Define "Tropical Juice Case x12" once and reference it from multiple supply relations and trade orders. Don't create duplicate packages for each order.

@@ -1,6 +1,6 @@
 # Point of Sale (POS) Examples
 
-Curl examples for POS terminals, profiles, functions, receipts, devices, printers, and payment terminals.
+Curl examples for POS terminals, profiles, tile sets, functions, receipts, devices, printers, and payment terminals.
 
 **Base URL:** `https://example.app.heads.com/api/v1`
 **API Key:** `banana` (passed via Basic Auth with empty username: `-u ":banana"`)
@@ -51,8 +51,8 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/pos-profiles"
 # Get POS profile by ID
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/pos-profiles/posProfileId=default"
 
-# Get profile with functions
-curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/pos-profiles/posProfileId=default~with(functions)"
+# Get profile with its tile sets (the buttons the terminal shows)
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/pos-profiles/posProfileId=default~with(tileSets)"
 
 # Create a POS profile
 curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/pos-profiles" \
@@ -68,6 +68,8 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/pos-profiles/po
   -H "Content-Type: application/json" \
   -d '{"name": "Fast Food Profile"}'
 ```
+
+> **`functions` is inert — use `tileSets`.** The `functions` member is retained on `POS profile` for backwards compatibility only. It **always reads as an empty array**, whatever the profile is configured with, and a write to it is accepted and discarded: `POST`ing a profile with `functions`, or `PUT`ting the collection directly, returns `200` and stores nothing. There is no configuration under which it returns anything. What decides the buttons a terminal shows is [`tileSets`](#pos-tile-sets). (`DELETE .../functions` is the one request that says so, reporting `deletedCount: 0`.) See [gotcha 46](../../reference/common-gotchas.md#46-deprecated-does-not-tell-you-whether-a-member-still-works).
 
 ---
 
@@ -108,6 +110,98 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/pos-functions" \
     "paymentMethod": {"identifiers": {"methodId": "com.heads.card"}}
   }'
 ```
+
+The `/v1/pos-functions` collection itself is entirely alive — this is where the functions live, and a tile references one of them by identifier. It is only the `functions` member *on a profile* that is dead.
+
+---
+
+## POS Tile Sets
+
+A profile's `tileSets` is what a terminal renders. A tile set is a grid holding tiles; a tile is one of three subtypes, chosen with `@type`:
+
+| `@type` | What it does | Carries |
+|---|---|---|
+| `function tile` | Invokes a POS function when pressed | `function` |
+| `product tile` | Adds a product, or opens a category | `productNode` |
+| `tile set` | Opens a nested tile set (a sub-menu) | `rows`, `columns`, `tiles` |
+
+Every tile also takes `name`, `icon`, `imageUrl`, `color`, `hotkey`, `visibility` (`Visible` / `Hidden`), `requiredPermission` (only users holding that permission see the tile), and `inputMask` (a scanner pattern that triggers it). Placement is either explicit — `row` and `column`, both 1-indexed, with optional `rowSpan` / `columnSpan` — or automatic: leave the tile set's `rows` and `columns` unset and tiles flow in `order`.
+
+### Create a profile with a tile set
+
+```bash
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/pos-profiles" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "identifiers": { "posProfileId": "standard" },
+    "name": "Standard Checkout",
+    "tileSets": [{
+      "@type": "POS tile set",
+      "identifiers": { "tileId": "main" },
+      "name": "Main",
+      "rows": 2,
+      "columns": 5,
+      "tiles": [{
+        "@type": "function tile",
+        "identifiers": { "tileId": "tile-pay-card" },
+        "name": "Card Payment",
+        "icon": "CreditCard",
+        "hotkey": "F12",
+        "order": 1,
+        "color": "green",
+        "visibility": "Visible",
+        "function": { "identifiers": { "posFunctionId": "pay-card" } }
+      }]
+    }]
+  }'
+```
+
+> **The `@type` on a tile is load-bearing.** `tiles` holds the abstract `POS tile`, so the discriminator is what selects which subtype is being written — a tile sent without one carries neither `function` nor `productNode`. (`"@type": "POS tile set"` on the set itself is harmless to include and worth keeping for symmetry.) Note also that `POS function` is the only spelling for a function: there is no `lock function` or similarly named subtype, and sending one is rejected with a 400 saying the type key is not defined in the current type schema. Reference an existing function by `identifiers` alone.
+
+### Read the tile sets back
+
+```bash
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/pos-profiles/posProfileId=standard/tileSets"
+```
+
+The nested `function` on each function tile is resolved in the response, so one request gives you the whole button layout.
+
+### A product tile and a nested set
+
+```bash
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/pos-profiles" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "identifiers": { "posProfileId": "kiosk" },
+    "name": "Kiosk",
+    "tileSets": [{
+      "@type": "POS tile set",
+      "identifiers": { "tileId": "drinks" },
+      "name": "Drinks",
+      "columns": 4,
+      "tiles": [
+        {
+          "@type": "product tile",
+          "identifiers": { "tileId": "tile-cola" },
+          "name": "Cola",
+          "order": 1,
+          "productNode": { "identifiers": { "com.example.sku": "COLA-33CL" } }
+        },
+        {
+          "@type": "tile set",
+          "identifiers": { "tileId": "tile-hot-drinks" },
+          "name": "Hot Drinks",
+          "order": 2,
+          "rows": 2,
+          "columns": 3,
+          "tiles": []
+        }
+      ]
+    }]
+  }'
+```
+
+`columns` is set and `rows` is not, so this set auto-flows: tiles fill four to a row in `order`. The second tile is a `tile set` — a tile that opens a nested grid rather than doing anything itself.
 
 ---
 

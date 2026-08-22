@@ -22,13 +22,13 @@ Comprehensive curl examples demonstrating the full capabilities of the CommerceO
 | [Discount Coupons](./examples/discount-coupons.md) | Coupon codes that activate discount rules | Literal codes, regex patterns, redemption caps, stackable |
 | [Surcharge Rules](./examples/surcharge-rules.md) | Surcharge rules, surcharge reasons, pant (deposits) | Bottle deposits, environmental fees, tariffs |
 | [Receipt Discounts & Surcharges](./examples/receipt-discounts-surcharges.md) | Extracting discount/surcharge data from receipts | Field expansion, per-rule breakdown, ERP integration |
-| [Product Packages](./examples/product-packages.md) | Package classes, product packages, supply relations | Cartons, pallets, manifests, package discount rules |
+| [Product Packages](./examples/product-packages.md) | Package classes, product packages, supply relations | Cartons, pallets, product vs size, package discount rules |
 | [Units of Measure](./examples/units-of-measure.md) | Product units — Piece, Kilogram, Meter, Liter, etc. | Weight-based goods, measured goods, inheritance |
 | [Inventory](./examples/inventory.md) | Stock places, adjustments, resets | Stock queries, warehouse zones |
 | [Stock & Inventory Guide](./examples/stock-inventory-guide.md) | Comprehensive stock management | Two-dimensional model, counts, transfers, tracking, batches |
 | [Serial Number Tracking](./examples/serial-number-tracking.md) | Track individual units by serial number | Quick start: configure, receive, sell, read back |
 | [Product Instances & Tracking](./examples/product-instances-tracking.md) | Serial numbers, batches, instance types | MobileDevice, Artifact, productInstances, batch tracking |
-| [Point of Sale](./examples/pos.md) | Terminals, profiles, receipts, devices, printers | Receipt creation, payment terminals |
+| [Point of Sale](./examples/pos.md) | Terminals, profiles, tile sets, receipts, devices, printers | Tile layouts, receipt creation, payment terminals |
 | [Users & Auth](./examples/users.md) | Users, credentials, permissions, roles, role assignments, OAuth2, auth providers | User management, authentication (needs the `admin` scope — see the [provisioning guide](./provisioning-users.md)) |
 | [Configuration](./examples/configuration.md) | Countries, languages, templates, mapped types, dynamic properties, webhooks | System settings, integrations |
 | [Query Operators](./examples/query-operators.md) | Operators reference | Filtering, pagination, projection |
