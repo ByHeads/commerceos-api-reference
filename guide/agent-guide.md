@@ -125,9 +125,18 @@ Unknown 500 errors return a simpler body without `@type`:
 |--------|---------|--------------|
 | 400 | Bad Request | Missing required field, invalid data format |
 | 401 | Unauthorized | Missing or invalid authentication |
-| 404 | Not Found | Wrong endpoint path, resource doesn't exist |
+| 404 | Not Found | Wrong endpoint path, resource doesn't exist, or your key's scopes do not reach it |
 | 409 | Conflict | Duplicate identifier, concurrent modification |
 | 500 | Server Error | Internal error - check server logs |
+
+**A missing scope hides in this table rather than appearing in it.** The API raises no permission error — there is no `403` — so a collection your key does not reach is simply absent and answers `404`, and a write that lands on a read-only resource answers `200` and persists nothing. Before you debug either one, ask the key what it holds:
+
+```bash
+curl -u ":banana" "https://example.app.heads.com/api/v1/scopes"
+curl -u ":banana" "https://example.app.heads.com/api/v1/scopes~where(\$this=products:write)"
+```
+
+See [Checking what a key can do](../reference/overview.md#checking-what-a-key-can-do-v1scopes) and [gotcha 41](../reference/common-gotchas.md#41-a-write-under-a-read-only-scope-is-a-silent-200).
 
 ### 2.4 Pagination Basics
 

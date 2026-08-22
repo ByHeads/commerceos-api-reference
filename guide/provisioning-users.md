@@ -209,6 +209,17 @@ curl -X GET -u ":banana" \
   "https://example.app.heads.com/api/v1/users/com.example.userId=U-1~with(roleAssignments)"
 ```
 
+**Check a new API key by asking it what it holds**, rather than by exercising an endpoint — a `GET` succeeds under a read-only scope and under its writable twin alike, so it cannot tell you whether the key may write:
+
+```bash
+# Run this with the NEW key, not the provisioning key
+curl -X GET -u ":generate-a-long-random-value-here" \
+  "https://example.app.heads.com/api/v1/scopes"
+# → ["products:read", "products:write", "stock:read"]
+```
+
+See [Checking what a key can do](../reference/overview.md#checking-what-a-key-can-do-v1scopes). A scope you left off is not an error the integration will ever see — its collections are simply absent, and a write that lands on a read-only twin is a `200` that persists nothing ([gotcha 41](../reference/common-gotchas.md#41-a-write-under-a-read-only-scope-is-a-silent-200)).
+
 **Use `~withAll` or `~with(roleAssignments)` — a plain `GET` will not show you the roles.** The default user representation carries the identifiers, the agent and seven of the nine credential collections, and nothing about roles. Checking a plain `GET` will tell you the user has no roles when it has several. `pinCredentials`, `scanTokenCredentials`, `labels`, `config`, `posMode` and `hidden` are absent from it too.
 
 ---

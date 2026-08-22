@@ -370,7 +370,7 @@ That is the ordinary read-only-scope behaviour — see [gotcha 41](common-gotcha
 
 **Two of the write surfaces answer `204` instead**, and they are the only place here where a dropped write is visible from the status alone: a `PATCH` on `.../description` or `.../requiredOnCreate` under a read scope is a `204` with no body, against `200` and the new value when it lands.
 
-**If the token does not reach the collection at all, the request is a `404`** rather than a silent `200` — `/v1/picking-orders/properties/dynamic` under `shipment-records:write`, for instance. The same three shapes as any other scope problem, and never a `403`.
+**If the token does not reach the collection at all, the request is a `404`** rather than a silent `200` — `/v1/picking-orders/properties/dynamic` under `shipment-records:write`, for instance. The same two shapes as any other scope problem, and never a `403`: absent means `404`, present-but-read-only means a `200` that registers nothing.
 
 ### Which scope registers which collection
 

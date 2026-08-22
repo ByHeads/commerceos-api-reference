@@ -95,6 +95,34 @@ curl -H "Authorization: Bearer TOKEN" example.app.heads.com/api/v1/void
 
 Both an API key and an OAuth2 client are **credentials on a user** — that is what makes a request attributable to someone. Creating them, and choosing the scopes they carry, is covered in [Credentials](credentials.md); the whole provisioning flow is walked through in [Provisioning Users and Access](../guide/provisioning-users.md).
 
+### Checking What a Key Can Do (`/v1/scopes`)
+
+`GET /v1/scopes` answers with the fine-grained scopes the requesting credential holds, as a plain array of strings.
+
+```bash
+curl -u ":MySecretKey" example.app.heads.com/api/v1/scopes
+```
+```json
+["products:read", "products:write", "labels:write"]
+```
+
+The list arrives already expanded. A key granted one of the broad legacy scopes gets the fine-grained names that scope stands for, and the legacy name itself does not appear in the answer: `read:api` reports the fixed set of read scopes it covers, and `write:api` reports every fine-grained scope there is. [Scope names](credentials.md#scope-names) has both expansions in full.
+
+**This is the only way to ask the question.** No status code separates a read-only resource from its writable twin — `GET /v1/products` is a `200` under `products:read` and under `products:write` alike, and a write that lands on the read-only twin is *also* a `200`, one that persists nothing ([gotcha 41](common-gotchas.md#41-a-write-under-a-read-only-scope-is-a-silent-200)). So no amount of probing endpoints tells you whether this key may write products. This endpoint says so directly, in one request, without touching any data.
+
+It is an ordinary collection of strings, so operators apply to it and a pre-flight check is a single request:
+
+```bash
+GET /v1/scopes~where($this=products:write)
+→ ["products:write"]    # granted
+→ []                    # not granted
+```
+
+Two things to know before you build a gate on that:
+
+- **A misspelled scope name answers `[]`, exactly like one that is not granted.** If the name comes from configuration, fetch the whole array and compare there instead, so a typo reads as a name that matches nothing rather than as a missing grant. Same silence as [gotcha 39](common-gotchas.md#39-a-null-in-a-response-does-not-prove-the-field-exists).
+- **Do not add `~count`.** `~count` on a path the API cannot resolve answers `200 1` rather than `404`, so a typo in the endpoint itself — `/v1/scope~where(…)~count` — reports `1` and reads as *granted*. Without `~count` that same typo is a plain `404`, which is what you want a gate to see.
+
 > **EPI Integration OAuth2 Requirements:** External Payment Integrations (EPI) require a confidential OAuth2 client with specific scopes for the `install` action to succeed. See [EPI Integrations & Configurations](../guide/examples/configuration.md#epi-integrations--configurations) for required scopes and setup.
 
 ---
@@ -126,6 +154,7 @@ A handful of endpoints are not backed by stored data — they compute a value on
 | `/v1/uuid` | A freshly generated UUID |
 | `/v1/void` | A constant string, for connectivity checks |
 | `/v1/new` | An ad-hoc object assembled from the selectors you supply |
+| `/v1/scopes` | The fine-grained scopes the requesting credential holds — see [Checking what a key can do](#checking-what-a-key-can-do-v1scopes) |
 
 See [Query Operator Examples](../guide/examples/query-operators.md#system-resources) for runnable curl versions.
 
@@ -478,7 +507,7 @@ Every error body names what went wrong in its `@type` discriminator. **Branch on
 | `invalid index` | 400 | The index value is not valid for the indexer — e.g. a bare number where identifiers were expected | `usedIndex`, `indexerOwner`, `indexType` |
 | `failed coercion` | 400 | A value could not be coerced to the type the target expects | `targetType`, `failedCoercions` |
 | `unauthorized` | 401 | Missing or unusable credentials | — |
-| `forbidden` | 403 | Declared, but never raised — a scope problem is a `404`, a `400` or a silent `200` (see below) | `authorizedScopes` |
+| `forbidden` | 403 | Declared, but never raised — a scope problem is a `404` or a silent `200` (see below) | `authorizedScopes` |
 | `not found` | 404 | No such resource | `url` |
 | `method not available` | 405 | The method is not supported on this target | `method` |
 | `not acceptable` | 406 | No serializer for the requested `Accept` type | — |
@@ -490,8 +519,8 @@ Every error body names what went wrong in its `@type` discriminator. **Branch on
 
 Three details worth knowing before you write the switch:
 
-- **`failed indexing` is a write-side failure, and it echoes your input back.** It means a nested reference in your payload — `{"product": {"identifiers": {"com.example.sku": "NOPE"}}}` — named no object that exists. The identifiers you sent come back in `usedIndex`, and `suggestion` names the type that was being looked for, so you can tell a typo from a genuinely absent record without a second request.
-- **`forbidden` is in the schema and never on the wire.** Nothing in the API raises it, so no response carries it — it is declared, which is why a generated client has the type and a schema browser lists it. A token that is short a scope does not get refused: the resources its scopes do not cover are simply absent from the graph it can see, so a read of one is a `404`, a write that needed the missing writable resource is a `400`, and a write that landed on a read-only twin is a `200` that persists nothing. **Confirm a write by reading the value back, not by its status** — see [gotcha 41](common-gotchas.md#41-a-write-under-a-read-only-scope-is-a-silent-200). If a `403` does reach your client it came from something in front of the API — a gateway, proxy or load balancer — and it will not carry an error body in the shape above.
+- **`failed indexing` is a write-side failure, and it echoes your input back.** It means a nested reference in your payload — `{"product": {"identifiers": {"com.example.sku": "NOPE"}}}` — named no object that exists. The identifiers you sent come back in `usedIndex`, and `suggestion` names the type that was being looked for, so you can tell a typo from a genuinely absent record without a second request. One other thing raises it, and the payload is blameless there: a `POST` that has to *create* a record while the token only reaches the read-only twin of the collection reports the same error about its own identifiers — see [gotcha 41](common-gotchas.md#41-a-write-under-a-read-only-scope-is-a-silent-200).
+- **`forbidden` is in the schema and never on the wire.** Nothing in the API raises it, so no response carries it — it is declared, which is why a generated client has the type and a schema browser lists it. A token that is short a scope does not get refused: the resources its scopes do not cover are simply absent from the graph it can see, so a read or a write against one is a `404` whatever the path spelling, and a write that landed on a read-only twin is a `200` that persists nothing. **Confirm a write by reading the value back, not by its status** — see [gotcha 41](common-gotchas.md#41-a-write-under-a-read-only-scope-is-a-silent-200), and ask [`/v1/scopes`](#checking-what-a-key-can-do-v1scopes) what the key actually holds. If a `403` does reach your client it came from something in front of the API — a gateway, proxy or load balancer — and it will not carry an error body in the shape above.
 - **`failedCoercions` is a list, not a message.** Each entry describes one value that could not be converted — `success`, `targetType`, `inputValue`, `path` (where in your payload it sat) and `message`. On a bulk write it is the fastest way to find which element and which member were wrong.
 
 **Treat an unrecognized `@type` as a plain error rather than as a parse failure.** New types can be added, so the forward-compatible default branch reports `error` — the one member every type is guaranteed to have — along with `details` when it is present. Three values will never turn up as an HTTP error body: `mid-stream error`, which appears only *inside* a committed `200` (see [Streaming → Error handling](../features/streaming.md#4-error-handling)); `error` itself, which is the base every type above inherits from rather than something the API emits on its own; and `forbidden`, which nothing raises.

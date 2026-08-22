@@ -724,7 +724,7 @@ The failure is quiet: the request succeeds with `200` and an empty (or short) co
 Written the right way round it is also the faster form. A limiter stops pulling items through the chain once it is satisfied, so `~where(...)~take(10)` costs ten matches rather than a full scan, no matter how large the collection is. Two things to know about that:
 
 - **`~orderBy` between the filter and the limiter cancels it.** `~where(...)~orderBy(name)~take(10)` has to sort every match before it can slice the first ten. That is unavoidable if you genuinely want the alphabetically-first ten; if any ten will do, drop the sort.
-- **`~count` and `~last` never short-circuit** — both have to reach the end of the stream. To ask "does anything match?" without counting everything, use `~where(...)~take(1)~count`.
+- **`~count` and `~last` never short-circuit** — both have to reach the end of the stream. To ask "does anything match?" without counting everything, use `~where(...)~take(1)~count` — and read a `1` from it carefully, because a chain ending in `~count` answers `1` for a path that does not resolve at all ([gotcha 41](#41-a-write-under-a-read-only-scope-is-a-silent-200)).
 - **A filter or a sort in front of a `~skip` costs it the same way.** `~skip(N)~take(M)` on its own steps over the N skipped records without building them; `~where(...)~skip(N)~take(M)` cannot, because the skip is then counting matches and the earlier records have to be read to be counted ([details](operators.md#a-skip-is-only-cheap-while-nothing-filters-sorts-or-projects-before-it)). Order the filter first anyway — it is still the only order that answers the right question.
 - **A *projection* in front of a `~skip` costs it too, and here the order is free to change.** `~just(name)~skip(1000)~take(10)` applies the projection to all 1010 records; `~skip(1000)~take(10)~just(name)` returns the same thing and applies it to ten. Watch for this with `?fields=`, which is always normalized ahead of the skip — `?fields=name&offset=1000&limit=10` pays the full cost and cannot be rewritten to avoid it without switching to path operators.
 
@@ -1091,20 +1091,60 @@ GET /v1/trade-records/{key}~with(com.example.synced)
 
 The endpoint is in the read scope's graph, so the request routes normally; it just arrives at members that have no setter, and a write with nowhere to go is discarded rather than refused.
 
-**A scope problem answers `200`, `400` or `404` — never `403`.** Nothing in the API raises a `forbidden` error, and there is nowhere for it to: scopes decide which resources are in a token's graph at all, so a request the scopes do not cover never reaches a permission check that could refuse it. Four situations, and no permission error among them:
+**A scope problem answers `200` or `404` — never `403`.** Nothing in the API raises a `forbidden` error, and there is nowhere for it to: scopes decide which resources are in a token's graph at all, so a request the scopes do not cover never reaches a permission check that could refuse it. Four situations, and no permission error among them:
 
 | The token's scopes… | Result |
 |---|---|
 | cover the resource, writable | `200`, and the change persists |
 | cover it read-only | `200`, and **nothing persists** — the request routes onto members that have no setter |
-| do not cover it, and you are reading | `404` — a path that is not in the graph is not found |
-| do not cover the writable resource the body needs | `400` — the request routed, but there was nothing to unify the body against |
+| cover it read-only, and the write is a `POST` whose identifiers name no existing record | `400`, reported as a lookup failure against your own identifiers |
+| do not cover it at all | `404` — in every path spelling, on every method but `DELETE`, and with the one operator exception below |
 
-**The `400` is the expensive one**, because it is the status an integrator reads as "my payload is wrong" and never as "my token is wrong". `POST /v1/products` under `products:read` is a `400`, and so is a `PATCH` on a product from a token that does not reach products at all — the bodies are fine in both cases. **If a write answers `400` and the payload looks right, check the token's scopes before you start rewriting it.**
+> **Changed 2026-08-22.** A write to a resource the token does not reach used to answer `400` in one path spelling — `PATCH /v1/products/com.example.sku=…`, where the trailing identifier segment was read as a comparison rather than as a lookup — while every other spelling of the same missing path answered `404`. All of them answer `404` now. Only relevant if you branched on that `400`; it was never a payload problem, and the advice for it was already "check the scopes".
 
-An uncovered *write* can land on either `400` or `404`, and which one turns on the path rather than on the scope: `PATCH /v1/trade-records/{key}` from a token holding neither trade-record scope is a `404`, while the same shape against a product is a `400`. Neither says anything more specific than "not with this token".
+**The surviving `400` is the expensive one**, because it is the status an integrator reads as "my payload is wrong" and never as "my token is wrong" — and this one goes further and blames a specific field. A `POST` for a product that does not exist yet, from a token holding `products:read`:
+
+```bash
+POST /v1/products   [{"identifiers": {"com.example.sku": "NEW-1"}, "name": "New"}]
+→ 400 {"@type": "failed indexing",
+       "error": "Found no matching 'product' using this index. Check identifiers.",
+       "usedIndex": {"com.example.sku": "NEW-1"},
+       "indexerOwner": "products", "indexType": "…", "suggestion": "…"}
+```
+
+The identifiers are correct. A `POST` is an upsert, so it looks the record up first: the lookup runs against the read-only collection and finds nothing, and there is no writable collection behind it to create with — so the only failure it can report is the lookup. Send that same `POST` for a product that *does* exist and it is a plain `200` that changes nothing, the ordinary read-only-twin outcome. **If a write answers `failed indexing` and the identifiers look right, check the token's scopes before you start rewriting the payload.**
+
+**`DELETE` sits outside all of this, and its response says nothing at all.** It never answers `404` — not for a path the token cannot reach, not for a key that does not exist, not even for a collection no scope declares:
+
+```bash
+DELETE /v1/no-such-collection/anything    → 200, empty body
+```
+
+And where it does route, the body is not evidence either. Under a read-only twin a `DELETE` of a key that never existed answers `200 {"deletedCount": 1, "info": "Deleted 1 items"}` and removes nothing, and a delete that genuinely lands reports the identical body — so the two cannot be told apart from the response. **Read the record back**, exactly as after any other write.
 
 So the status code cannot distinguish "written" from "silently dropped", and a scope problem never looks like a permission problem. **Read the value back after any write whose target might be read-only** — that round-trip, not the `200`, is the confirmation. It matters most for an exactly-once sync marker: a dedup that trusts the `200` re-sends the same records on every run, forever, with no error anywhere to show for it.
+
+**`~count` is the one operator that does not answer `404`, and what it answers points the wrong way.** Append it to a collection the token cannot reach and you get `200 1` — where the same collection, reachable and empty, counts `0`:
+
+```bash
+# the token holds org:read
+GET /v1/products          → 404
+GET /v1/products~count    → 200 1        # not a count of anything; not reachable either
+
+# the token holds products:read, and the catalogue is empty
+GET /v1/products~count    → 200 0
+```
+
+Everything else — `~take(2)`, `~first`, `~where(...)`, `~just(...)`, `?limit=2` — is the ordinary `404`. It is the trailing `~count` that does it, so the composed form is caught too: the `~where(...)~take(1)~count` idiom for "does anything match?" also answers `1`. So **never probe reachability with a count**: it is the one spelling that turns "you cannot see this" into a plausible number, and the number points the wrong way.
+
+**What no status can tell you, [`/v1/scopes`](overview.md#checking-what-a-key-can-do-v1scopes) can.** A read-only resource and its writable twin sit at the same path and answer a `GET` identically, so probing an endpoint cannot answer "may this key write products?". Asking directly can, in one request and without touching data:
+
+```bash
+GET /v1/scopes                                # every fine-grained scope this key holds
+GET /v1/scopes~where($this=products:write)    # ["products:write"] when granted, [] when not
+```
+
+Worth doing at start-up in anything that syncs: it is the difference between finding out now and finding out from a month of markers that never landed. Leave `~count` off that second one for the reason just above — with it, a typo in the path answers `1` and reads as granted.
 
 Three related points:
 
@@ -1112,7 +1152,7 @@ Three related points:
 - **A marker sent alongside a rejected member still lands.** The payload is not rejected as a whole, so a mixed body applies its writable half — see [gotcha 30](#30-an-outer-member-beats-the-same-member-inside-value) for the other way a payload's halves can disagree.
 - **A `403` that does reach your client did not come from the API.** Since nothing in the error layer raises one, it came from whatever sits in front of the API — a gateway, proxy or load balancer — and it will not carry the `@type` error body every API error carries. See [Error Types](overview.md#error-types).
 
-Related: [Trade Records → Scopes](trade-records.md#scopes), [gotcha 39](#39-a-null-in-a-response-does-not-prove-the-field-exists), [Credentials → Scopes](credentials.md#scope-names).
+Related: [`/v1/scopes`](overview.md#checking-what-a-key-can-do-v1scopes), [Trade Records → Scopes](trade-records.md#scopes), [gotcha 39](#39-a-null-in-a-response-does-not-prove-the-field-exists), [Credentials → Scopes](credentials.md#scope-names).
 
 ---
 

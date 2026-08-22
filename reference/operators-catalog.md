@@ -825,8 +825,9 @@ GET /v1/products~where(status=Active)~count
 **Notes:**
 - Returns `0` for empty collections
 - Returns a number, not an array
-- **Consumes the whole collection** — unlike `~take`/`~first` there is nothing to short-circuit, since every matching item has to be seen to be counted. Use `~where(...)~take(1)~count` when all you need to know is whether *any* item matches.
+- **Consumes the whole collection** — unlike `~take`/`~first` there is nothing to short-circuit, since every matching item has to be seen to be counted. Use `~where(...)~take(1)~count` when all you need to know is whether *any* item matches — but see the reachability note below before you read a `1` from it as an answer about your data.
 - Use `~count~toString` for `text/plain` output
+- **A chain ending in `~count` never answers `404`.** Point one at a path that does not resolve — a collection your token's scopes do not reach, or a name the API has never heard of — and it answers `200 1`, where the same collection reachable and empty answers `0`. Every other spelling of the same path is the ordinary `404`, so `~count` is the one operator that turns "you cannot see this" into a plausible number, and the number points the wrong way. It applies to the composed form too: `~where(...)~take(1)~count` is `1` there as well. Never use a count to test whether something exists or is reachable — see [gotcha 41](common-gotchas.md#41-a-write-under-a-read-only-scope-is-a-silent-200)
 
 ---
 

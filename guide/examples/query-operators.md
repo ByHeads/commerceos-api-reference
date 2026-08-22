@@ -253,9 +253,19 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/new~with(shortCod
 # A comma inside a literal must be percent-encoded, or it splits the argument list
 # Response: {"label":"BROD, MELK"}
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/new~with(label:'Brod%2C Melk'/upper)"
+
+# What this key is allowed to do
+# Response: ["products:read","products:write","stock:read"]
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/scopes"
+
+# One-request pre-flight check
+# Response: ["products:write"] when granted, [] when not
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/scopes~where(\$this=products:write)"
 ```
 
 > **Note:** The `/void` endpoint returns a constant string (`"･*★\`ﾟ+✧\`*ﾟ✦´★･ﾟ✧'*･"`) rather than an empty response. This is useful for testing API connectivity—a successful response confirms the API is reachable and responding.
+
+> **`/v1/scopes` is the only way to find out whether a key may write.** It lists the credential's fine-grained scopes, with the legacy `read:api` and `write:api` groups already expanded into the names they stand for. Probing an endpoint cannot answer the same question: a read-only resource and its writable twin sit at the same path and answer a `GET` identically. Careful with the filtered form — a misspelled scope name answers `[]` just like one that is not granted, and adding `~count` is worse: `~count` on a path the API cannot resolve answers `1`, so a typo in the endpoint reads as granted. See [Checking what a key can do](../../reference/overview.md#checking-what-a-key-can-do-v1scopes).
 
 > **`/new` returns a bare object.** There is no `@type` key on the response — the endpoint assembles an ad-hoc object rather than materializing a declared type. See [Utility Endpoints](../../reference/overview.md#utility-endpoints) for the full description and [String Literals](../../reference/primitives.md#string-literals-as-a-starting-point) for what a quoted selector can do.
 

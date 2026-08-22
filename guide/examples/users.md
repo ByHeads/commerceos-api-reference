@@ -139,6 +139,15 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/apikey-credenti
   -H "Content-Type: application/json" \
   -d '{"scopes": ["products:read"]}'
 
+# Check what a key can actually do — run this AS that key, not as the admin key.
+# A GET succeeds under a read-only scope and its writable twin alike, so no
+# endpoint probe can answer this; /v1/scopes answers it directly.
+curl -X GET -u ":generate-a-long-random-value-here" "https://example.app.heads.com/api/v1/scopes"
+
+# Same question, one scope: ["products:write"] when granted, [] when not.
+# Leave ~count off - on a mistyped path ~count answers 1, which reads as granted.
+curl -X GET -u ":generate-a-long-random-value-here" "https://example.app.heads.com/api/v1/scopes~where(\$this=products:write)"
+
 # Revoke one key. DELETE on a CREDENTIAL purges it (unlike DELETE on a user,
 # which only deactivates). The account and its other logins are untouched.
 curl -X DELETE -u ":banana" "https://example.app.heads.com/api/v1/apikey-credentials/com.myapp.keyId=erp-integration"
