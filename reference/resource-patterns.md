@@ -330,7 +330,7 @@ PATCH /v1/products/properties/dynamic
 `propertyType` is one of `string`, `number`, `boolean` or `date-time`, and `description` is required and may not be empty. Both are validated, and a bad definition is a `400`:
 
 ```
-Invalid dynamic property type: guid, expected 'string', 'number', 'boolean' or 'date-time
+Invalid dynamic property type: guid, expected 'string', 'number', 'boolean' or 'date-time'
 Missing property 'description'. Please provide a description for the dynamic property.
 ```
 
@@ -345,7 +345,11 @@ PATCH /v1/products/properties/dynamic/com.example.tracking/requiredOnCreate  # b
 
 A `PATCH` at the property URL is a re-registration and needs a complete definition — a partial body such as `{"description": "…"}` is a `400` naming the missing `propertyType`. To change a description, use the `/description` leaf.
 
-`requiredOnCreate` has one quirk worth knowing: **it is ignored in a registration body** and has to be set through its own leaf. Registering with `{"propertyType": "string", "description": "…", "requiredOnCreate": true}` succeeds and reads back `false`. The flag marks the property as required on the concept's create schema in the generated OpenAPI document, so it constrains a generated client rather than the server — a create that omits the property is still accepted.
+`requiredOnCreate` is the one optional member of a definition, and it defaults to `false`. Three spellings set it, and they all work: naming it in the registration body, naming it in a complete definition at the property URL, or writing its own leaf. That also makes a GET of a property a legal body to send back — round-tripping the read shape preserves the flag.
+
+**Because a registration replaces rather than merges, a re-registration that leaves the flag out sets it back to `false`.** It is the only member where that is visible, since the other two are required and so cannot be omitted. Correcting a description by re-registering therefore clears the flag unless you send it again — which is one more reason to use the `/description` leaf instead.
+
+The flag marks the property as required on the concept's create schema in the generated OpenAPI document, so it constrains a generated client rather than the server: a create that omits the property is still accepted. A non-boolean value (`"true"`, `1`) is rejected before the definition is read, and the `400` names neither the member nor the property — `Invalid data format. A value could not be coerced to the expected target type.` — so check the flag first when a registration is refused with a message that says nothing about `propertyType` or `description`.
 
 ### Registering needs a write scope
 
@@ -405,7 +409,7 @@ The last two are dangerous across the whole concept at once: one `PATCH` retypin
 
 **It is a disappearance rather than a deletion, which is worth knowing before you reach for a backup.** A stored value is read through whatever `propertyType` is registered at the time, so restoring the original type under the same name makes the values read again. The recovery has one condition: there is a single value slot per property, so anything written while the other type was registered has replaced what was there. Put the type back before the next sync run writes to the property, not after.
 
-To change only a description, use the `/description` leaf rather than re-registering — it never touches the values.
+To change only a description, use the `/description` leaf rather than re-registering — it never touches the values, and it does not reset `requiredOnCreate` the way a registration body that omits the flag does.
 
 ### Reading and writing a value
 

@@ -148,7 +148,8 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/products/proper
   -H "Content-Type: application/json" \
   -d '"Carrier tracking number"'
 
-# requiredOnCreate is ignored in a registration body; set it through its own leaf
+# requiredOnCreate can go straight in the registration body above; this leaf sets it
+# without re-registering. Either way, a later registration that omits the flag clears it.
 curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/products/properties/dynamic/com.myapp.tracking/requiredOnCreate" \
   -H "Content-Type: application/json" \
   -d 'true'
