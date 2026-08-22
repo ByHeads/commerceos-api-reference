@@ -553,14 +553,16 @@ The header declares four columns and the data row now has five, because nothing 
 
 #### Three Delimiters You Cannot Ask For
 
-**A comma, a semicolon and whitespace have no spelling in an `Accept` parameter** — which is unfortunate, since they are the three an integrator is most likely to want. A comma separates the media types in the header, a semicolon separates the parameters, and a value that is nothing but whitespace is trimmed away before it is read. All three arrive as the **empty** delimiter.
+**A comma, a semicolon and whitespace have no spelling in an `Accept` parameter** — which is unfortunate, since they are the three an integrator is most likely to want. A comma separates the media types in the header, a semicolon separates the parameters, and a value that is nothing but whitespace is trimmed away before it is read.
+
+**Two of the three fail quietly and one does not.** A comma or an all-whitespace value arrives as the **empty** delimiter at `200`. A semicolon written the way you would actually write it — `;delimiter=;`, with nothing after it — is a `400`, because it ends the assignment and leaves an empty parameter behind. Put another parameter after the semicolon and it goes quiet too.
 
 | What you write | What you get |
 |---|---|
-| `;delimiter=,` | `200`, empty delimiter — the comma ends the header value, and everything after it is read as a second media type |
-| `;delimiter=;arrayDelimiter=/` | `200`, empty delimiter — the semicolon ends the value, though parameters after it still apply |
-| `;delimiter=;` with nothing after it | **`400`** — `Invalid content type parameter '=', which takes string` |
-| `;delimiter=<tab>`, `;delimiter=<space>` | `200`, empty delimiter |
+| `;delimiter=,` | `200`, empty delimiter — the comma ends the media type, and every parameter after it goes with it |
+| `;delimiter=<tab>`, `;delimiter=<space>` | `200`, empty delimiter — an all-whitespace value is trimmed to nothing |
+| `;delimiter=;` | **`400`** — `Invalid content type parameter '=', which takes string`. The message names a bare `=` rather than the parameter you wrote |
+| `;delimiter=;arrayDelimiter=/` | `200`, empty delimiter — with a parameter after the semicolon there is no empty one left to reject, and that parameter still applies |
 | `;delimiter=%3B` | `200`, and the delimiter is the three literal characters `%3B` — nothing percent-decodes a parameter value |
 | `;delimiter=";"` | **`400`** — `Invalid content type parameter '"=', which takes string`. The quote is read as part of the parameter *name*, so the standard quoted-string spelling for exactly this problem is rejected |
 
@@ -574,13 +576,13 @@ Accept: text/csv;delimiter=,
 
 That parses cleanly, as one column named `@type"name"gtin"unit`. Nothing in the status code or the body says the delimiter was dropped.
 
-**The comma is worse than the semicolon in one further way: it swallows every parameter after it.** `;delimiter=;arrayDelimiter=/` loses the delimiter but keeps the array delimiter; `;delimiter=,;arrayDelimiter=/` loses both, because everything past the comma has become a second media type that matches nothing.
+**The two are lost at different stages, and that is why the comma takes the rest of the header with it.** A semicolon reaches the parameters and ends one assignment; a comma never reaches them at all, because the header is a comma-separated *list of media types* and is cut there first. So `;delimiter=;arrayDelimiter=/` loses the delimiter and keeps the array delimiter, while `;delimiter=,;arrayDelimiter=/` loses both — everything past the comma has become a second media type that matches nothing. The same is true of any parameter, not just the array delimiter: `;delimiter=,;quoteChar=~~` returns a body byte-identical to `;delimiter=,` on its own.
 
 **`arrayDelimiter` has the same three holes**, and its failure is quieter still — `;arrayDelimiter=,` joins an array's elements with nothing at all, so `["7312345678901", "7312345678902"]` comes back as `"73123456789017312345678902"` and there is no boundary left to find. A value is also read only as far as its first comma, so `;arrayDelimiter=x,y` sets it to `x`.
 
 **Anything else works, at any length** — `|`, `::`, `[+]`, even `a b`. **Leading whitespace is kept and trailing whitespace is trimmed**, so `;delimiter= |` is a two-character delimiter (space, then pipe) while `;delimiter=| ` is just `|`. That asymmetry is also why an all-whitespace value ends up empty.
 
-**Two values you will see written down cannot be sent.** The `CSV settings` type declares `{"delimiter": ","}` and `{"delimiter": ";"}` as its own examples, and `delimiter`'s description names a comma as the default. All of that is accurate about the *setting*; none of it can be written into a header, because both characters are among the three above.
+**The one value you will see written down cannot be sent.** Both CSV formats document `delimiter` in the generated spec as *"default is comma"* — accurate about the **setting**, and the one spelling of it a header cannot carry, so writing the documented default out explicitly is the request in this section a reader is likeliest to make by accident. There is nothing else in the spec to copy from: the settings types carry example objects of their own, but the spec is generated without them, so the description is all a reader sees.
 
 ### Accept Parameter Tolerance
 

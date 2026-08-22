@@ -109,7 +109,7 @@ Accept: application/sql; batchSize=500
 
 Anything else is a name it does not recognize, so it is absorbed and ignored without an error — including `arrayDelimiter` and `quoteChar`, which belong to `text/csv` and have no counterpart here.
 
-> **A comma, a semicolon and whitespace cannot be spelled as a `delimiter`**, on this format or on `text/csv`. `;delimiter=,` and `;delimiter=<whitespace>` answer `200` with the fields run together, and `;delimiter=%3B` sets the delimiter to the literal text `%3B`. Use any other string. See [Gotcha 45](../reference/common-gotchas.md#45-three-csv-delimiters-have-no-spelling-in-an-accept-header) and [CSV serializer parameters](../reference/overview.md#csv-serializer-parameters).
+> **A comma, a semicolon and whitespace cannot be spelled as a `delimiter`**, on this format or on `text/csv`. `;delimiter=,` and `;delimiter=<whitespace>` answer `200` with the fields run together, `;delimiter=;` answers `400`, and `;delimiter=%3B` sets the delimiter to the literal text `%3B`. Use any other string. See [Gotcha 45](../reference/common-gotchas.md#45-three-csv-delimiters-have-no-spelling-in-an-accept-header) and [CSV serializer parameters](../reference/overview.md#csv-serializer-parameters).
 
 ---
 
