@@ -99,6 +99,18 @@ Accept: application/sql; batchSize=500
 
 > **Changed 2026-08-22 — an unusable value used to be silent.** `Accept: application/sql;mode=upsert` previously answered a success status with an empty body and no indication of the cause. It is the `400` above now. If you avoided the `mode` parameter because a typo cost you the whole export, that risk is gone.
 
+**`application/vnd.ms-sqlserver.csv` has a different set.** The two formats do not share their parameters: `batchSize` and `mode` are declared by `application/sql`, and the SQL Server CSV format declares these instead.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `delimiter` | string | `,` | Field separator |
+| `nullValue` | string | *(empty string)* | The text written in place of a null |
+| `stream` | boolean | `false` | Serialize and send incrementally — see [Streaming](streaming.md) |
+
+Anything else is a name it does not recognize, so it is absorbed and ignored without an error — including `arrayDelimiter` and `quoteChar`, which belong to `text/csv` and have no counterpart here.
+
+> **A comma, a semicolon and whitespace cannot be spelled as a `delimiter`**, on this format or on `text/csv`. `;delimiter=,` and `;delimiter=<whitespace>` answer `200` with the fields run together, and `;delimiter=%3B` sets the delimiter to the literal text `%3B`. Use any other string. See [Gotcha 45](../reference/common-gotchas.md#45-three-csv-delimiters-have-no-spelling-in-an-accept-header) and [CSV serializer parameters](../reference/overview.md#csv-serializer-parameters).
+
 ---
 
 ## 3. Intermediary Format

@@ -262,6 +262,8 @@ curl -H "Accept: text/csv" \
   "https://your-tenant.api/v1/receipts~just(identifiers,timestamp,totalAmount,currencyCode)~take(10000)"
 ```
 
+Two things to settle before this feeds a warehouse loader. **An array-valued member is always quoted and its elements are joined with `[+]`** — a flat projection like the one above has none, but widen it and `gtin` or `labels` arrive as one field rather than several, with `;arrayDelimiter=` deciding the separator inside it. And **a semicolon delimiter cannot be asked for**: `;delimiter=;` and `;delimiter=,` both answer `200` with every field run together, which a CSV reader loads as a single column rather than rejecting. Pick any other string, and count the columns of the first row you load. See [CSV serializer parameters](../../reference/overview.md#csv-serializer-parameters) and [Gotcha 45](../../reference/common-gotchas.md#45-three-csv-delimiters-have-no-spelling-in-an-accept-header).
+
 ### Export Fields Checklist
 
 **Receipt Level:**

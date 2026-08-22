@@ -472,6 +472,116 @@ Accept: application/json; skipMembers=prices,images
 
 **`skipNulls` + `~with` interaction:** When `skipNulls=true` (default), null fields are omitted. However, if a field is explicitly requested via `~with()`, a null value is included to indicate the field exists but is empty.
 
+### CSV Serializer Parameters
+
+`text/csv` takes four parameters. Three of them describe the shape of the output; `stream` is the delivery flag every collection format has.
+
+```bash
+# Pipe-separated instead of comma-separated
+Accept: text/csv;delimiter=|
+
+# Join the elements of an array member with something other than [+]
+Accept: text/csv;arrayDelimiter=/
+
+# Quote with single quotes instead of double quotes
+Accept: text/csv;quoteChar='
+
+# Emit the header row and then each data row as the collection advances
+Accept: text/csv;stream=true
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `delimiter` | string | `,` | Separates fields. Three values have no spelling — see [Three delimiters you cannot ask for](#three-delimiters-you-cannot-ask-for) |
+| `arrayDelimiter` | string | `[+]` | Joins the elements of an array member inside a single field |
+| `quoteChar` | string | `"` | Wraps a quoted field. An empty value disables quoting |
+| `stream` | boolean | `false` | Serialize and send the collection incrementally instead of building the whole body first — see [Streaming](../features/streaming.md) |
+
+A record that renders as `{"@type": "product", "name": "Shirt, Blue", "gtin": ["7312345678901", "7312345678902"], "unit": null}` comes back like this at the defaults:
+
+```
+@type,name,gtin,unit
+product,"Shirt, Blue","7312345678901[+]7312345678902",
+```
+
+**The same four parameters serve a CSV *upload*.** `Content-Type: text/csv;delimiter=|` is read by the same parser out of the same settings, so a request body is split on the delimiter, array delimiter and quote character you name — and the three unspellable delimiters below are unspellable there too.
+
+**`arrayDelimiter` and `quoteChar` belong to `text/csv` alone.** The SQL Server CSV format has its own smaller set — `delimiter`, `nullValue` and `stream`, and no way to change the quoting or to join an array. Sent to `application/vnd.ms-sqlserver.csv`, `arrayDelimiter` and `quoteChar` are simply names it does not recognize, so they are absorbed and ignored with no error. See [SQL export → Serializer parameters](../features/sql-export.md#22-serializer-parameters).
+
+#### What Gets Quoted
+
+Quoting is decided per field, and it is not a fixed "a comma is quoted" rule — it follows whatever `delimiter` and `quoteChar` you asked for.
+
+| Member value | Field, at the defaults |
+|---|---|
+| `["7312345678901", "7312345678902"]` | `"7312345678901[+]7312345678902"` — joined, then quoted |
+| `["7312345678901"]` | `"7312345678901"` — one element, still quoted |
+| `Shirt, Blue` | `"Shirt, Blue"` — it contains the delimiter |
+| `Widget` | `Widget` — nothing to escape |
+| `a;b` | `a;b` — a semicolon is not the delimiter |
+| unset, or `null` | *(empty, and unquoted)* |
+
+**An array member is always quoted**, whatever it holds and however few elements it has. A scalar is quoted only when it contains the delimiter, the quote character or a newline, and a quote character inside the value is doubled (`x "z"` becomes `"x ""z"""`). So quoting is a property of the member's shape as much as of its value: a one-element `gtin` comes back quoted on the same line as a bare, unquoted `name`.
+
+**Change the delimiter and the quoting changes with it.** Under `;delimiter=|` the name above is no longer quoted, because it no longer contains the delimiter:
+
+```
+@type|name|gtin|unit
+product|Shirt, Blue|"7312345678901[+]7312345678902"|
+```
+
+A loader that assumes a field containing a comma is always quoted will misread that row.
+
+#### `quoteChar` Is a String, Not a Character
+
+Nothing limits it to a single character, and nothing checks it against the delimiter:
+
+```
+Accept: text/csv;quoteChar='    →  product,'Shirt, Blue','7312345678901[+]7312345678902',
+Accept: text/csv;quoteChar=~~   →  product,~~Shirt, Blue~~,~~7312345678901[+]7312345678902~~,
+```
+
+**An empty `quoteChar` disables quoting altogether**, as the parameter's description promises, and it is the only way to get an unquoted field. It is also the only way to get a row that does not line up:
+
+```
+Accept: text/csv;quoteChar=
+@type,name,gtin,unit
+product,Shirt, Blue,7312345678901[+]7312345678902,
+```
+
+The header declares four columns and the data row now has five, because nothing protects the comma inside `Shirt, Blue`. Reach for this only when you know no value can contain the delimiter.
+
+#### Three Delimiters You Cannot Ask For
+
+**A comma, a semicolon and whitespace have no spelling in an `Accept` parameter** — which is unfortunate, since they are the three an integrator is most likely to want. A comma separates the media types in the header, a semicolon separates the parameters, and a value that is nothing but whitespace is trimmed away before it is read. All three arrive as the **empty** delimiter.
+
+| What you write | What you get |
+|---|---|
+| `;delimiter=,` | `200`, empty delimiter — the comma ends the header value, and everything after it is read as a second media type |
+| `;delimiter=;arrayDelimiter=/` | `200`, empty delimiter — the semicolon ends the value, though parameters after it still apply |
+| `;delimiter=;` with nothing after it | **`400`** — `Invalid content type parameter '=', which takes string` |
+| `;delimiter=<tab>`, `;delimiter=<space>` | `200`, empty delimiter |
+| `;delimiter=%3B` | `200`, and the delimiter is the three literal characters `%3B` — nothing percent-decodes a parameter value |
+| `;delimiter=";"` | **`400`** — `Invalid content type parameter '"=', which takes string`. The quote is read as part of the parameter *name*, so the standard quoted-string spelling for exactly this problem is rejected |
+
+**An empty delimiter does not produce a broken file — it produces a plausible one.** Every field is quoted (an empty string is contained in every value), the quotes run together, and a reader takes the whole line as a single column:
+
+```
+Accept: text/csv;delimiter=,
+"@type""name""gtin""unit"
+"product""Shirt, Blue""7312345678901[+]7312345678902"
+```
+
+That parses cleanly, as one column named `@type"name"gtin"unit`. Nothing in the status code or the body says the delimiter was dropped.
+
+**The comma is worse than the semicolon in one further way: it swallows every parameter after it.** `;delimiter=;arrayDelimiter=/` loses the delimiter but keeps the array delimiter; `;delimiter=,;arrayDelimiter=/` loses both, because everything past the comma has become a second media type that matches nothing.
+
+**`arrayDelimiter` has the same three holes**, and its failure is quieter still — `;arrayDelimiter=,` joins an array's elements with nothing at all, so `["7312345678901", "7312345678902"]` comes back as `"73123456789017312345678902"` and there is no boundary left to find. A value is also read only as far as its first comma, so `;arrayDelimiter=x,y` sets it to `x`.
+
+**Anything else works, at any length** — `|`, `::`, `[+]`, even `a b`. **Leading whitespace is kept and trailing whitespace is trimmed**, so `;delimiter= |` is a two-character delimiter (space, then pipe) while `;delimiter=| ` is just `|`. That asymmetry is also why an all-whitespace value ends up empty.
+
+**Two values you will see written down cannot be sent.** The `CSV settings` type declares `{"delimiter": ","}` and `{"delimiter": ";"}` as its own examples, and `delimiter`'s description names a comma as the default. All of that is accurate about the *setting*; none of it can be written into a header, because both characters are among the three above.
+
 ### Accept Parameter Tolerance
 
 Every content type that serializes a collection — `application/json`, `application/x-ndjson`, `text/csv`, `application/sql`, `application/vnd.ms-sqlserver.csv` — accepts parameters it does not recognize and ignores them. A standards-compliant header is safe to send:
@@ -620,7 +730,8 @@ Three details worth knowing before you write the switch:
 
 **CSV (`text/csv`):**
 - Header row derived from first item's fields
-- Commas, quotes, and newlines in values are escaped
+- A value containing the delimiter, the quote character or a newline is quoted; an array member is always quoted, whatever it holds — see [CSV serializer parameters](#csv-serializer-parameters)
+- `delimiter`, `arrayDelimiter` and `quoteChar` change the field separator, the separator *inside* an array field, and the quote character. A comma, a semicolon and whitespace cannot be spelled as a delimiter ([Gotcha 45](common-gotchas.md#45-three-csv-delimiters-have-no-spelling-in-an-accept-header))
 - Empty collections yield empty output (no header) — `204 No Content` buffered, `200` with an empty body when `;stream=true`
 - Add `;stream=true` to emit the header row and then each data row as the collection advances
 - Single item yields header + 1 data row
@@ -635,7 +746,7 @@ Three details worth knowing before you write the switch:
 - Output-only formats (no input/deserialization support)
 - Require mapped type output returning `SqlStatement[]` — see [`features/sql-export.md`](../features/sql-export.md)
 - Arrays/objects in values are rejected; flatten or JSON-stringify before serialization
-- Supports `batchSize` parameter for streaming batches (e.g., `Accept: application/sql; batchSize=100`)
+- `application/sql` supports a `batchSize` parameter for streaming batches (e.g., `Accept: application/sql; batchSize=100`); `application/vnd.ms-sqlserver.csv` does not declare one, and takes `delimiter` and `nullValue` instead — see [SQL export → Serializer parameters](../features/sql-export.md#22-serializer-parameters)
 - Add `;stream=true` to send statements incrementally. A chunk is a whole `batchSize` group, so lower `batchSize` for an earlier first byte (see [Streaming](../features/streaming.md))
 - SQL Server CSV escapes special characters for BULK INSERT compatibility
 - A failed request answers with a JSON error body, never SQL statements or CSV rows ([Error response framing](#error-response-framing))
@@ -651,6 +762,8 @@ Three details worth knowing before you write the switch:
 | `application/json` | Standard JSON body |
 | `application/x-ndjson` | Bulk import (one object per line) |
 | `text/csv` | Tabular import (header + rows) |
+
+`text/csv` on the way in takes the same parameters as on the way out, from the same settings: `Content-Type: text/csv;delimiter=|` parses the body on pipes. See [CSV serializer parameters](#csv-serializer-parameters).
 
 ---
 

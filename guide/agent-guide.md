@@ -776,6 +776,8 @@ Body: {"givenName": "John"}
 
 > **Note:** SQL formats (`application/sql`, `application/vnd.ms-sqlserver.csv`) require a mapped type that produces `SqlStatement[]` output.
 
+> **Note:** `text/csv` takes `delimiter`, `arrayDelimiter` and `quoteChar` alongside `stream`. Two things about them are worth knowing before you script an export: an **array member is always quoted** while a scalar is quoted only when it contains the delimiter, and a comma, a semicolon and whitespace **cannot be spelled** as a delimiter — they answer `200` with every field run together. See [CSV serializer parameters](../reference/overview.md#csv-serializer-parameters) and [Gotcha 45](../reference/common-gotchas.md#45-three-csv-delimiters-have-no-spelling-in-an-accept-header).
+
 ### 7.2 Response Format Options
 
 For large result sets, add **`;stream=true`** to the Accept header — the collection is then serialized and sent as it advances, so the first bytes arrive long before the export is finished. NDJSON is the best pairing for very large exports, because each line parses on its own:

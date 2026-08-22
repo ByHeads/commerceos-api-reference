@@ -910,7 +910,7 @@ Accept: application/sql;mode=merge
 
 Booleans must be spelled `true` or `false` — `1`, `0`, `yes` and `on` are all rejected. The two enums accept their named values plus the literal token `null`: `mode` takes `insert`, `sync`, `merge`, `null`, and `numberHandling` takes `string`, `number`, `null`.
 
-**So a setting that appears to do nothing is a name problem, and there is no status code that will tell you.** A stream that never streams, a `skipNulls` that keeps skipping, a `delimiter` that stays a comma — check the spelling of the name before concluding the parameter is unsupported. Unknown names are ignored deliberately, so that `;charset=utf-8` and `;q=0.9` work on every collection format.
+**So a setting that appears to do nothing is a name problem, and there is no status code that will tell you.** A stream that never streams, a `skipNulls` that keeps skipping, a `delimiter` that stays a comma — check the spelling of the name before concluding the parameter is unsupported. (A `delimiter` that comes back as *nothing* is the opposite problem: the name landed and the value could not be written — see [gotcha 45](#45-three-csv-delimiters-have-no-spelling-in-an-accept-header).) Unknown names are ignored deliberately, so that `;charset=utf-8` and `;q=0.9` work on every collection format.
 
 Two related points:
 
@@ -1238,6 +1238,55 @@ GET /v1/products/com.example.sku=WIDGET-001~with(com.example.tracking)
 **It is a disappearance, not a deletion.** A stored value is read through whatever `propertyType` is registered at the time, so putting the original type back under the same name makes the values readable again. The one condition: there is a single value slot per property, so anything written while the wrong type was registered has replaced what was there. Restore the type before the next sync run writes to the property, not after.
 
 Related: [Dynamic Properties](resource-patterns.md#re-registering-and-what-it-costs), [gotcha 43](#43-registering-a-dynamic-property-under-a-read-scope-is-a-silent-200).
+
+---
+
+## 45. Three CSV Delimiters Have No Spelling in an `Accept` Header
+
+A comma, a semicolon and whitespace cannot be written as a `delimiter` — and they are the three an integrator is most likely to want. The comma separates the media types in the header, the semicolon separates the parameters, and an all-whitespace value is trimmed away before it is read, so all three arrive as the **empty** delimiter.
+
+```bash
+# WRONG - semicolon-separated CSV, the Excel default across most of Europe
+Accept: text/csv;delimiter=;arrayDelimiter=/    # 200, and the fields run together
+
+# WRONG - the documented default, written out
+Accept: text/csv;delimiter=,                    # 200, and the fields run together
+
+# WRONG - tab-separated, or any all-whitespace value: it is trimmed to nothing
+Accept: text/csv;delimiter=<a literal tab>      # 200, and the fields run together
+
+# WRONG - percent-encoding does not help; nothing decodes a parameter value
+Accept: text/csv;delimiter=%3B                  # 200, and the delimiter is the literal text %3B
+
+# RIGHT - any other string, of any length
+Accept: text/csv;delimiter=|
+```
+
+**The failure is not a broken file, it is a plausible one.** With an empty delimiter every field is quoted, the quotes run together, and a CSV reader takes the whole line as a single column:
+
+```
+"@type""name""gtin""unit"
+"product""Shirt, Blue""7312345678901[+]7312345678902"
+```
+
+That parses cleanly as one column named `@type"name"gtin"unit`. There is no error to catch and nothing in the body says the delimiter was dropped — **count the columns of the first row you load.**
+
+Only one spelling is loud, and it is the one nobody writes deliberately: `;delimiter=;` with nothing after the semicolon is a `400`, and the message names a bare `=` rather than the parameter you wrote. The standard quoted-string form is rejected too, because the quote is read as part of the parameter *name*:
+
+```
+Accept: text/csv;delimiter=;      → 400  Invalid content type parameter '=', which takes string
+Accept: text/csv;delimiter=";"    → 400  Invalid content type parameter '"=', which takes string
+```
+
+Three related points:
+
+- **A comma also swallows every parameter after it.** `;delimiter=;arrayDelimiter=/` loses the delimiter and keeps the array delimiter; `;delimiter=,;arrayDelimiter=/` loses both, because everything past the comma is read as a second media type that matches nothing.
+- **`arrayDelimiter` has the same three holes, and fails more quietly.** `;arrayDelimiter=,` joins an array's elements with nothing at all — `["7312345678901", "7312345678902"]` comes back as `"73123456789017312345678902"`, with no boundary left to recover.
+- **This is not the same thing as a misspelled parameter name.** A name the format does not recognize is ignored and the default applies, so `delimiter` silently stays a comma — see [gotcha 35](#35-a-misspelled-accept-parameter-name-is-silent-a-bad-value-is-not). Here the name is right and the *value* is the problem, and the delimiter does not stay a comma: it becomes nothing at all. The two produce different bodies, so the column count tells you which one you hit.
+
+It applies to a CSV **upload** as well, since `Content-Type` is parsed the same way, and to `application/vnd.ms-sqlserver.csv`, which takes a `delimiter` of its own.
+
+Full rules: [CSV serializer parameters](overview.md#csv-serializer-parameters).
 
 ---
 
