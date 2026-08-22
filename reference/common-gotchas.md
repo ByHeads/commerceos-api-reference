@@ -1141,6 +1141,65 @@ Related: [Array Index Access](resource-patterns.md#array-index-access), [Accessi
 
 ---
 
+## 43. Registering a Dynamic Property Under a Read Scope Is a Silent `200`
+
+`PATCH /v1/{collection}/properties/dynamic` needs that collection's **write** scope. Under a read scope the registry is get-only, and the refusal is indistinguishable from success:
+
+```bash
+# the token holds products:read
+PATCH /v1/products/properties/dynamic
+{"com.example.tracking": {"propertyType": "string", "description": "Carrier tracking id"}}
+→ 200 {"@type": "dynamic properties"}          # registered nothing
+```
+
+Everything downstream then fails quietly too. An unregistered key is not a member of the type, so writing its value on a record is another silent `200` and the value never appears on a readback. A deploy that registers its properties and then starts syncing reports success end to end and stores nothing.
+
+**Check the response body, not the status.** A `PATCH` on the registry answers with the registry as it stands, so the property is in the response if it registered and absent if it did not — a deploy script can assert on that without a second request.
+
+**Two endpoints do not need the write scope their name suggests**, and they fail in different ways:
+
+| Registry | Needs | The scope you would guess |
+|---|---|---|
+| `/v1/receipts/properties/dynamic` | `receipts:write` | `retail:write` → silent `200`, registers nothing |
+| `/v1/picking-orders/properties/dynamic` | `logistics:write` | `shipment-records:write` → `404`, that scope does not reach the collection at all |
+
+Both are endpoints an existing integration may already be registering on, so this is a change that arrives without a code change: a key holding only the guessed scope stops registering, and only one of the two failures has a status code to catch.
+
+Two related points:
+
+- **`.../description` and `.../requiredOnCreate` answer `204`** when the write is dropped, which makes them the one part of this surface where the status alone tells you. Every other refusal here is a `200`.
+- **Some concepts cannot be registered on at all.** `z-reports`, `x-reports`, `cash-register-reports`, `payment-cards`, `payment-means`, `singleton-payment-means`, `picking-records` and `trade-record-items` have no writable collection anywhere, so a registration there is a `200` that registers nothing, even under `write:api`.
+
+Related: [Dynamic Properties](resource-patterns.md#dynamic-properties), [gotcha 41](#41-a-write-under-a-read-only-scope-is-a-silent-200), [gotcha 44](#44-retyping-a-dynamic-property-blanks-it-on-every-record), [Credentials → Scope names](credentials.md#scope-names).
+
+---
+
+## 44. Retyping a Dynamic Property Blanks It on Every Record
+
+Re-registering an existing dynamic property with a different `propertyType` — or removing it — makes its stored values stop reading. Every record of the concept answers `null`, from one `PATCH`, with a `200`:
+
+```bash
+# com.example.tracking is registered as a string, and set on the whole catalogue
+PATCH /v1/products/properties/dynamic
+{"com.example.tracking": {"propertyType": "number", "description": "Carrier tracking id"}}
+→ 200
+
+GET /v1/products/com.example.sku=WIDGET-001~with(com.example.tracking)
+→ {"@type": "product", …, "com.example.tracking": null}
+```
+
+**And the `null` says nothing about what happened.** It is the same answer you get for a property that was never registered and for a record that simply has no value — see [gotcha 39](#39-a-null-in-a-response-does-not-prove-the-field-exists). Nothing in the response distinguishes "this was blanked by a retype" from "this was never set", so before concluding the data was never written, read the registry and check the property's current `propertyType` against the one your integration writes.
+
+**Re-registering with the same `propertyType` is safe** — the values keep reading, so correcting a description does no harm. Better still, change a description through its own leaf, `PATCH /v1/products/properties/dynamic/com.example.tracking/description`, which is the operation that means what it says. A `PATCH` at the property URL itself is a full re-registration and needs the whole definition; a partial body there is a `400` about the missing `propertyType`.
+
+**Naming one property does not disturb the others.** The registry body is applied key by key, so this is a hazard for the property you name and for nothing else.
+
+**It is a disappearance, not a deletion.** A stored value is read through whatever `propertyType` is registered at the time, so putting the original type back under the same name makes the values readable again. The one condition: there is a single value slot per property, so anything written while the wrong type was registered has replaced what was there. Restore the type before the next sync run writes to the property, not after.
+
+Related: [Dynamic Properties](resource-patterns.md#re-registering-and-what-it-costs), [gotcha 43](#43-registering-a-dynamic-property-under-a-read-scope-is-a-silent-200).
+
+---
+
 ## API Response Behaviors
 
 ### Empty Collection Results

@@ -291,6 +291,144 @@ Here the envelope buys nothing on its own — it is equivalent to sending `{"tit
 
 ---
 
+## Dynamic Properties
+
+A **dynamic property** is a namespaced member added to a concept — products, receipts, trade records — without a schema change. It is how an integration keeps its own state on records it does not own: a sync marker, a foreign system's status, a last-exported timestamp.
+
+Using one is two steps, and they are separate operations with separate rules:
+
+1. **Register the property on the concept**, once, at deploy time — a write to `/v1/{collection}/properties/dynamic`.
+2. **Read and write its value on individual records**, as a top-level namespaced key.
+
+Until a property is registered it is not a member of the type, so writing that key on a record is a silent no-op: `200`, and nothing on the readback.
+
+### The registry
+
+```bash
+GET /v1/products/properties/dynamic
+```
+
+```json
+{
+  "@type": "dynamic properties",
+  "com.example.tracking": {
+    "@type": "dynamic property",
+    "propertyType": "string",
+    "description": "Carrier tracking id",
+    "requiredOnCreate": false
+  }
+}
+```
+
+Register by naming the property in a `PATCH`:
+
+```bash
+PATCH /v1/products/properties/dynamic
+{"com.example.tracking": {"propertyType": "string", "description": "Carrier tracking id"}}
+```
+
+`propertyType` is one of `string`, `number`, `boolean` or `date-time`, and `description` is required and may not be empty. Both are validated, and a bad definition is a `400`:
+
+```
+Invalid dynamic property type: guid, expected 'string', 'number', 'boolean' or 'date-time
+Missing property 'description'. Please provide a description for the dynamic property.
+```
+
+A property is also addressable on its own, with its two pieces of metadata as leaves under it:
+
+```bash
+GET   /v1/products/properties/dynamic/com.example.tracking
+PATCH /v1/products/properties/dynamic/com.example.tracking                   # a complete definition
+PATCH /v1/products/properties/dynamic/com.example.tracking/description       # body: "Carrier tracking id"
+PATCH /v1/products/properties/dynamic/com.example.tracking/requiredOnCreate  # body: true
+```
+
+A `PATCH` at the property URL is a re-registration and needs a complete definition — a partial body such as `{"description": "…"}` is a `400` naming the missing `propertyType`. To change a description, use the `/description` leaf.
+
+`requiredOnCreate` has one quirk worth knowing: **it is ignored in a registration body** and has to be set through its own leaf. Registering with `{"propertyType": "string", "description": "…", "requiredOnCreate": true}` succeeds and reads back `false`. The flag marks the property as required on the concept's create schema in the generated OpenAPI document, so it constrains a generated client rather than the server — a create that omits the property is still accepted.
+
+### Registering needs a write scope
+
+**Reading the registry works under any scope that reaches the collection; writing it needs that collection's *write* scope.** A read-only resource exposes the registry get-only: listing the properties works; registering, removing or editing one is dropped.
+
+Nothing in the response says so:
+
+```bash
+# the token holds products:read
+PATCH /v1/products/properties/dynamic
+{"com.example.tracking": {"propertyType": "string", "description": "Carrier tracking id"}}
+→ 200 {"@type": "dynamic properties"}          # registered nothing
+```
+
+That is the ordinary read-only-scope behaviour — see [gotcha 41](common-gotchas.md#41-a-write-under-a-read-only-scope-is-a-silent-200) — and it means a deploy step that registers properties can stop working the day a key is re-scoped, with no error anywhere to notice.
+
+**The response body is the check.** A `PATCH` on the registry answers with the registry as it stands, so a property that registered is in the response and one that was dropped is not — a deploy script can assert on that without a second request. The per-property URL behaves the same way: it answers with the definition as stored, so a refused re-registration comes back as the *old* definition.
+
+**Two of the write surfaces answer `204` instead**, and they are the only place here where a dropped write is visible from the status alone: a `PATCH` on `.../description` or `.../requiredOnCreate` under a read scope is a `204` with no body, against `200` and the new value when it lands.
+
+**If the token does not reach the collection at all, the request is a `404`** rather than a silent `200` — `/v1/picking-orders/properties/dynamic` under `shipment-records:write`, for instance. The same three shapes as any other scope problem, and never a `403`.
+
+### Which scope registers which collection
+
+The registry is keyed by the **concept**, not by the endpoint, so a concept reachable through both a read-only and a writable collection stays registrable through the writable one. For most collections the scope is the one you would guess. Two are not:
+
+| Registry | Registers under | Note |
+|---|---|---|
+| `/v1/people/properties/dynamic` | `supply-chains:write` | |
+| `/v1/picking-orders/properties/dynamic` | `logistics:write` | **not** `shipment-records:write`, which does not reach the collection — a `404` |
+| `/v1/pos-slips/properties/dynamic` | `pos-slips:write` or `retail:write` | |
+| `/v1/products/properties/dynamic` | `products:write` | |
+| `/v1/receipts/properties/dynamic` | `receipts:write` | **not** `retail:write`, which reaches the read-only twin — a silent `200` |
+| `/v1/stock-adjustments/…`, `/v1/stock-counts/…`, `/v1/stock-transfers/…` | `stock:write` | |
+| `/v1/trade-orders/properties/dynamic` | `orders.sales:write` | |
+| `/v1/trade-relationships/properties/dynamic` | `supply-chains:write` | |
+| `/v1/trade-records/properties/dynamic` | `trade-records:write` | |
+
+The two bolded rows are the ones that bite an integration that already works: `retail:write` and `shipment-records:write` are the scopes their endpoints look like they belong to. They also fail *differently* — the receipts one is a silent `200`, the picking-orders one a `404` — so a deploy that checks only for an error status catches one of them and not the other.
+
+**Some concepts have no writable collection at all, so their registry is read-only for every token**: `z-reports`, `x-reports`, `cash-register-reports`, `payment-cards`, `payment-means`, `singleton-payment-means`, `picking-records` and `trade-record-items`. Registering on one of those is a `200` that registers nothing, even under the broadest scope there is.
+
+### Re-registering, and what it costs
+
+**Naming one property leaves the others alone.** The body is applied key by key, so `{"com.example.tracking": {…}}` does not disturb `com.example.exported`. A deploy does not have to send the whole registry to change one entry.
+
+**Within a single property, though, a registration replaces rather than merges** — and what that costs turns on whether the `propertyType` changes:
+
+| Operation | Effect on values already stored on records |
+|---|---|
+| register a new property | — |
+| re-register with the same `propertyType` (a new description, say) | none — values keep reading normally |
+| re-register with a different `propertyType` | values stop reading: every record answers `null` |
+| remove it (`{"com.example.tracking": null}`) | values stop reading: every record answers `null` |
+
+The last two are dangerous across the whole concept at once: one `PATCH` retyping a property from `string` to `number` blanks it on every product in the catalogue, with a `200` and no warning. What a record answers afterwards is `"com.example.tracking": null` — the same shape as a property that was never registered and as a record that simply has no value, so the response does not say which of the three you are looking at ([gotcha 39](common-gotchas.md#39-a-null-in-a-response-does-not-prove-the-field-exists)). See [gotcha 44](common-gotchas.md#44-retyping-a-dynamic-property-blanks-it-on-every-record).
+
+**It is a disappearance rather than a deletion, which is worth knowing before you reach for a backup.** A stored value is read through whatever `propertyType` is registered at the time, so restoring the original type under the same name makes the values read again. The recovery has one condition: there is a single value slot per property, so anything written while the other type was registered has replaced what was there. Put the type back before the next sync run writes to the property, not after.
+
+To change only a description, use the `/description` leaf rather than re-registering — it never touches the values.
+
+### Reading and writing a value
+
+A registered property is an ordinary writable member on each record of the concept, addressed as a **top-level namespaced key** — not under `properties`, which carries the registry rather than the values:
+
+```bash
+PATCH /v1/products/com.example.sku=WIDGET-001
+{"com.example.tracking": "TRK-99"}
+```
+
+Values are non-essential, so a plain `GET` does not carry them. Ask for one by name, or navigate to it:
+
+```bash
+GET /v1/products/com.example.sku=WIDGET-001~with(com.example.tracking)
+GET /v1/products/com.example.sku=WIDGET-001/com.example.tracking
+```
+
+**`~withAll` and `fields=all` do not include them**, which is the one place those two do not mean "everything". An audit of what a record carries has to name its dynamic properties explicitly, and the registry is where to get the list.
+
+Setting a value follows the same read/write split as registering it: under a read-only scope the write is a `200` that persists nothing.
+
+---
+
 ## Product Node Hierarchy
 
 Products exist in a hierarchy with different node types:

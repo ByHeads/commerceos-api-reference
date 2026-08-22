@@ -181,7 +181,7 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/trade-records/{
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/trade-records/{key}~with(com.myapp.synced)"
 ```
 
-> **Check the readback, not the status.** A token holding only `trade-records:read` answers `200` and persists nothing; a token holding neither trade-record scope answers `404`. Neither looks like a permission error. See [gotcha 41](../../reference/common-gotchas.md#41-a-write-under-a-read-only-scope-is-a-silent-200).
+> **Check the readback, not the status.** A token holding only `trade-records:read` answers `200` and persists nothing; a token holding neither trade-record scope answers `404`. Neither looks like a permission error. See [gotcha 41](../../reference/common-gotchas.md#41-a-write-under-a-read-only-scope-is-a-silent-200). **Step 1 has the same exposure:** registering the marker needs `trade-records:write` as well, and under the read scope it is a `200` that registers nothing — so check that `com.myapp.synced` is in that `PATCH`'s response body, which is the registry as it stands. See [Dynamic Properties](../../reference/resource-patterns.md#dynamic-properties) and [gotcha 43](../../reference/common-gotchas.md#43-registering-a-dynamic-property-under-a-read-scope-is-a-silent-200).
 
 ---
 

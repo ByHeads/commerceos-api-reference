@@ -1,6 +1,6 @@
 # Configuration & Reference Data Examples
 
-Curl examples for countries, languages, templates, mapped types, payment methods, discount/return reasons, delivery/payment terms, sales channels, customer groups, sync webhooks, shortened links, config API, and EPI integrations.
+Curl examples for countries, languages, templates, mapped types, dynamic properties, payment methods, discount/return reasons, delivery/payment terms, sales channels, customer groups, sync webhooks, shortened links, config API, and EPI integrations.
 
 **Base URL:** `https://example.app.heads.com/api/v1`
 **API Key:** `banana` (passed via Basic Auth with empty username: `-u ":banana"`)
@@ -121,6 +121,53 @@ curl -X PUT -u ":banana" "https://example.app.heads.com/api/v1/products" \
 > **Important: X-Request-Map is currently blocked**
 >
 > Request-body mapping via `X-Request-Map` is not reliable yet. The resolver treats selectors like `"sku"` as reference paths (`regularStringsMapping="reference"`), but raw JSON has no Pillow type context, so resolution fails. Until the resolver supports literal mapping of raw JSON, this feature is effectively unsupported. Use normal payloads or `~map(...)` on reads instead.
+
+---
+
+## Dynamic Properties
+
+Namespaced members an integration adds to a concept without a schema change. Register once at deploy time, then use the key on individual records. Full rules — including which write scope each collection's registry sits behind — in [Dynamic Properties](../../reference/resource-patterns.md#dynamic-properties).
+
+```bash
+# List the dynamic properties defined on products
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/products/properties/dynamic"
+
+# Register one (needs products:write)
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/products/properties/dynamic" \
+  -H "Content-Type: application/json" \
+  -d '{"com.myapp.tracking": {"propertyType": "string", "description": "Carrier tracking id"}}'
+
+# The response is the registry as it stands - if com.myapp.tracking is not in it,
+# the write was dropped for want of a write scope. There is no error to catch.
+
+# Read one property's definition
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/products/properties/dynamic/com.myapp.tracking"
+
+# Change only the description - never re-register just to reword it
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/products/properties/dynamic/com.myapp.tracking/description" \
+  -H "Content-Type: application/json" \
+  -d '"Carrier tracking number"'
+
+# requiredOnCreate is ignored in a registration body; set it through its own leaf
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/products/properties/dynamic/com.myapp.tracking/requiredOnCreate" \
+  -H "Content-Type: application/json" \
+  -d 'true'
+
+# Set the value on a record - a top-level namespaced key, not under properties
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/products/com.myapp.sku=WIDGET-001" \
+  -H "Content-Type: application/json" \
+  -d '{"com.myapp.tracking": "TRK-99"}'
+
+# Read it back - values are non-essential, and ~withAll does NOT include them
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/products/com.myapp.sku=WIDGET-001~with(com.myapp.tracking)"
+
+# Remove the registration - this also stops every stored value reading
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/products/properties/dynamic" \
+  -H "Content-Type: application/json" \
+  -d '{"com.myapp.tracking": null}'
+```
+
+> **Two things that surprise people.** Registering under a scope that only *reads* the collection is a `200` that registers nothing, so a deploy step can stop working silently after a key is re-scoped — check the response body rather than the status ([gotcha 43](../../reference/common-gotchas.md#43-registering-a-dynamic-property-under-a-read-scope-is-a-silent-200)). And re-registering a property with a *different* `propertyType`, or removing it, makes its values stop reading on every record of the concept at once; re-registering with the same `propertyType` is safe ([gotcha 44](../../reference/common-gotchas.md#44-retyping-a-dynamic-property-blanks-it-on-every-record)).
 
 ---
 

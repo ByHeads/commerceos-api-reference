@@ -176,6 +176,8 @@ PATCH /v1/trade-records/properties/dynamic
 
 `propertyType` is one of `string`, `number`, `boolean` or `date-time`, and `description` is required and may not be empty. Read the registry back with `GET /v1/trade-records/properties/dynamic`.
 
+**Registering needs `trade-records:write` too**, and a token holding only `trade-records:read` gets a `200` that registers nothing — the registry is get-only on the read-only resource. The `PATCH` answers with the registry as it stands, so the surest check is that your marker is in the response body. Re-registering the same name with the same `propertyType` is harmless; changing its `propertyType`, or removing it, makes the marker stop reading on every record at once. See [Dynamic Properties](resource-patterns.md#dynamic-properties).
+
 Then set the marker as a **top-level key** on the record — not under `properties`:
 
 ```

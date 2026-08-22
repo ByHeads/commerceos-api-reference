@@ -420,6 +420,30 @@ PUT /v1/labels/com.acme.label-id=limited-edition
 
 ---
 
+### Step 6: Register Dynamic Properties (Optional)
+
+If the sync keeps PIM-side state on each product — a source revision, a last-exported timestamp, a "needs review" flag — define those properties once here rather than trying to write them ad hoc. An unregistered namespaced key is not a member of the type, so writing it on a product is a `200` that stores nothing.
+
+```bash
+PATCH /v1/products/properties/dynamic
+{
+  "com.acme.pimRevision": {"propertyType": "string",    "description": "PIM revision this product was synced from"},
+  "com.acme.lastExported": {"propertyType": "date-time", "description": "When the PIM last pushed this product"}
+}
+```
+
+Then set them as top-level keys on any product write, and read them back with `~with(com.acme.pimRevision)`.
+
+**Three things to build into the deploy step:**
+
+- **It needs `products:write`.** Under `products:read` the request is a `200` that registers nothing, with no error anywhere. The `PATCH` answers with the registry as it stands, so assert that your properties are in that response body rather than trusting the status.
+- **Re-running the step is safe as long as the `propertyType` does not change.** Registering the same name with the same type again is a no-op for stored values. Changing a property's type — or removing it — makes it stop reading on every product in the catalogue at once.
+- **`~withAll` and `fields=all` do not include dynamic property values.** A reconciliation query that dumps "everything" about a product will not show them; name them.
+
+Full rules in [Dynamic Properties](../resource-patterns.md#dynamic-properties).
+
+---
+
 ## Phase 2: Full Catalog Sync
 
 ### Step 1: Create Products

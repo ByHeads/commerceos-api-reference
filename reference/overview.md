@@ -263,6 +263,8 @@ The person is now reachable as both `com.myapp.userId=123` and `com.myapp.crmId=
 - `declared`: Static members from schema definitions
 - `dynamic`: Properties with `propertyType`, `description`, `requiredOnCreate`
 
+A **dynamic property** is a namespaced member an integration adds to a concept without a schema change — a sync marker, a foreign system's status. Register it once on the collection (`PATCH /v1/{collection}/properties/dynamic`), then read and write its value on individual records as a top-level namespaced key. Two things to know before you rely on it: **registering needs the collection's write scope**, and a refusal is a `200` that registers nothing; and a dynamic property's *value* is not included by `~withAll` or `fields=all`, so it has to be named. See [Dynamic Properties](resource-patterns.md#dynamic-properties).
+
 ---
 
 ## Field Expansion

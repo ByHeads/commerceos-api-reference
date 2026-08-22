@@ -886,6 +886,8 @@ A single `then.set` can mix both. The following clears a flag on the source prod
 
 > **Important:** `properties.dynamic.com.example.synced` is **not valid**. The `properties` member exposes metadata about defined properties, not actual values. To set a namespaced dynamic property value, use it as a top-level key (e.g., `"com.myapp.synced": "2024-01-15"`) — but only if the property has been pre-defined via `properties.dynamic`.
 
+Defining it is a separate deploy-time step with its own scope requirement: `PATCH /v1/{collection}/properties/dynamic` needs that collection's **write** scope, and under a read scope it answers `200` and registers nothing. A webhook whose `then.set` writes an undefined property is silent in the same way — the run succeeds and the value is not stored. See [Dynamic Properties](resource-patterns.md#dynamic-properties) and [gotcha 43](common-gotchas.md#43-registering-a-dynamic-property-under-a-read-scope-is-a-silent-200).
+
 #### Side-effect writes to other resources
 
 The value of a resource-path key is a resolver expression, evaluated the same way mapped-type selectors are. Two context references matter here, and they are **not** the same as in the `map` step:

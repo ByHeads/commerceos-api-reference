@@ -218,6 +218,8 @@ Two broad legacy scopes are also accepted, and they do not mean what their names
 
 Grant the narrowest set that works. A key that only reads the catalogue should carry `products:read` and nothing else.
 
+**One thing a narrow set quietly takes away: registering dynamic properties.** `PATCH /v1/{collection}/properties/dynamic` needs that collection's `:write` scope, and two of them are not the scope the endpoint's name suggests — receipt properties need `receipts:write` rather than `retail:write`, and picking-order properties need `logistics:write` rather than `shipment-records:write`. A key that lacks the right one registers nothing and says `200`. If this key runs a deploy step that defines properties, list the write scopes for every collection it registers on. See [Dynamic Properties](resource-patterns.md#which-scope-registers-which-collection) and [gotcha 43](common-gotchas.md#43-registering-a-dynamic-property-under-a-read-scope-is-a-silent-200).
+
 **Getting the set wrong is not an error you will see.** A scope this key does not hold does not make its resources refuse the request — it makes them absent, so a read of one is a `404`, a write that needed a writable resource the scopes do not reach is a `400`, and a write that landed on a read-only twin is a `200` that persists nothing. There is no `403` anywhere in that list, so plan to verify a new key's scopes by exercising it rather than by watching for a permission error: read something it should reach, and read back something it should be able to write. See [gotcha 41](common-gotchas.md#41-a-write-under-a-read-only-scope-is-a-silent-200).
 
 ---
