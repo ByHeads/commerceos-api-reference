@@ -1334,7 +1334,50 @@ Two related points:
 - **This is not a scope problem, so `/v1/scopes` will not find it.** The member is inert for every token, including one holding `write:api`. Gotcha 41's symptom, a different cause.
 - **A `DELETE` on the inert member does report the truth.** `DELETE /v1/pos-profiles/{id}/functions` answers `{"deletedCount": 0}`, because the count reports removals that reached a setter rather than removals that were attempted — see [What a `DELETE` reports](overview.md#what-a-delete-reports). It is the one response on this member that is not a flat `200`.
 
-Related: [gotcha 41](#41-a-write-under-a-read-only-scope-is-a-silent-200), [POS tile sets](../guide/examples/pos.md#pos-tile-sets), [The deprecated `manifest`](../guide/examples/product-packages.md#the-deprecated-manifest).
+Related: [gotcha 41](#41-a-write-under-a-read-only-scope-is-a-silent-200), [gotcha 47](#47-a-declared-type-key-is-not-always-one-you-can-write) — the same "the schema says it exists" trap one level up, on a type rather than a member, [POS tile sets](../guide/examples/pos.md#pos-tile-sets), [The deprecated `manifest`](../guide/examples/product-packages.md#the-deprecated-manifest).
+
+---
+
+## 47. A Declared Type Key Is Not Always One You Can Write
+
+Sending an object into a polymorphic collection means choosing a subtype with `@type`. A key the schema does not define at all is a clean `400`:
+
+```
+POST /v1/pos-profiles   [{..., "tiles": [{"@type": "nesting tile", ...}]}]
+→ 400  The provided type key 'nesting tile' is not defined the current type schema
+```
+
+A key the schema **does** define, but that the resource never constructs, is not. The write is a `200`, the object is stored as the abstract parent, and every member that belonged to the subtype is dropped on the way in:
+
+```bash
+# WRONG — `tile set` is a declared subtype of `POS tile`, described as the nested spelling
+POST /v1/pos-profiles [{"identifiers": {"posProfileId": "kiosk"}, "tileSets": [{
+  "@type": "POS tile set", "identifiers": {"tileId": "drinks"}, "name": "Drinks", "columns": 4,
+  "tiles": [{"@type": "tile set", "identifiers": {"tileId": "hot"}, "name": "Hot Drinks",
+             "order": 2, "rows": 2, "columns": 3, "tiles": []}] }]}]
+→ 200
+
+GET /v1/pos-profiles/posProfileId=kiosk/tileSets/tileId=drinks/tiles
+→ [{"@type": "POS tile", "identifiers": {..., "tileId": "hot"}, "name": "Hot Drinks", "order": 2}]
+                ↑ not what you sent          rows, columns and tiles are gone
+
+# RIGHT — the spelling the resource implements, for a nested set as well as a root one
+  "tiles": [{"@type": "POS tile set", "identifiers": {"tileId": "hot"}, "name": "Hot Drinks",
+             "order": 2, "rows": 2, "columns": 3, "tiles": []}]
+→ the tile reads back as a `POS tile set`, grid intact (`order` is stored but non-essential
+  on that subtype, so it needs `~with(order)`)
+```
+
+**What makes it expensive is that the object is still there.** The tile has its identifier and its name, so it appears on the terminal and in every listing; it simply does nothing when pressed. Nothing is missing to count, and nothing failed to report.
+
+The check is the one [gotcha 46](#46-deprecated-does-not-tell-you-whether-a-member-still-works) and [gotcha 41](#41-a-write-under-a-read-only-scope-is-a-silent-200) prescribe, with one addition: **read the object back and compare the `@type` you got against the `@type` you sent**, not just the members. A downgraded write keeps the members the parent declares, so a comparison that only checks the fields it can see will pass.
+
+Two related points:
+
+- **A generated client cannot warn you either.** The subtype is in the spec with its own members, because it is genuinely declared — what is absent is an implementation behind it, and that is not something the schema records.
+- **This is not the same as a missing `@type`.** Omitting the discriminator entirely leaves the object as the parent for the same reason, so the symptom matches, but the cause is the one the [POS tile sets](../guide/examples/pos.md#pos-tile-sets) note already covers. Either way the fix is the same: send the subtype the resource actually builds, and verify by reading it back.
+
+Related: [gotcha 41](#41-a-write-under-a-read-only-scope-is-a-silent-200), [gotcha 46](#46-deprecated-does-not-tell-you-whether-a-member-still-works), [POS tile sets](../guide/examples/pos.md#pos-tile-sets).
 
 ---
 

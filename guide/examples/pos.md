@@ -156,7 +156,7 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/pos-profiles" \
   }'
 ```
 
-> **The `@type` on a tile is load-bearing.** `tiles` holds the abstract `POS tile`, so the discriminator is what selects which subtype is being written — a tile sent without one carries neither `function` nor `productNode`. (`"@type": "POS tile set"` on the set itself is harmless to include and worth keeping for symmetry.) Note also that `POS function` is the only spelling for a function: there is no `lock function` or similarly named subtype, and sending one is rejected with a 400 saying the type key is not defined in the current type schema. Reference an existing function by `identifiers` alone.
+> **The `@type` on a tile is load-bearing.** `tiles` holds the abstract `POS tile`, so the discriminator is what selects which subtype is being written — a tile sent without one carries neither `function` nor `productNode`. (`"@type": "POS tile set"` on the set itself is harmless to include and worth keeping for symmetry.) Note also that `POS function` is the only spelling for a function: there is no `lock function` or similarly named subtype, and sending one is rejected with a 400 saying the type key is not defined in the current type schema. Reference an existing function by `identifiers` alone. A type key that *is* defined but that the resource does not build fails less helpfully — see [gotcha 47](../../reference/common-gotchas.md#47-a-declared-type-key-is-not-always-one-you-can-write).
 
 ### Read the tile sets back
 
@@ -188,7 +188,7 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/pos-profiles" \
           "productNode": { "identifiers": { "com.example.sku": "COLA-33CL" } }
         },
         {
-          "@type": "tile set",
+          "@type": "POS tile set",
           "identifiers": { "tileId": "tile-hot-drinks" },
           "name": "Hot Drinks",
           "order": 2,
@@ -201,7 +201,41 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/pos-profiles" \
   }'
 ```
 
-`columns` is set and `rows` is not, so this set auto-flows: tiles fill four to a row in `order`. The second tile is a `tile set` — a tile that opens a nested grid rather than doing anything itself.
+`columns` is set and `rows` is not, so this set auto-flows: tiles fill four to a row in `order`. The second tile is a nested `POS tile set` — a tile that opens a grid of its own rather than doing anything itself.
+
+> **A nested set is `"@type": "POS tile set"`, the same spelling as the outer one.** The schema also declares a `tile set` type, described as the nested-tile spelling, and it looks like the one to reach for here. It is not: a tile sent as `"@type": "tile set"` is accepted without complaint and comes back as a bare `POS tile` with `rows`, `columns` and `tiles` gone — the sub-menu is silently not created. `name` and `order` survive, so the tile is there and simply does nothing when pressed. (A type key that does not exist at all, such as `nesting tile`, is a clean `400` saying it is not defined in the current type schema; this one is worse precisely because it *is* defined.) Read the tile back and check the `@type` you get is the `@type` you sent — see [gotcha 47](../../reference/common-gotchas.md#47-a-declared-type-key-is-not-always-one-you-can-write).
+
+`order` is not part of a nested set's default representation the way it is on a function or product tile, so reading one back does not show it. It is stored — ask for it with `~with(order)`:
+
+```bash
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/pos-profiles/posProfileId=kiosk/tileSets/tileId=drinks/tiles~with(order)"
+```
+
+### How the root tile sets are laid out
+
+The tile sets directly on the profile are the top-level panels a terminal shows. Three members on the **profile** — not on the tile set — decide how they are presented:
+
+| Member | Type | Meaning |
+|---|---|---|
+| `renderRootTilesetPanel` | boolean, default `false` | Render the root tile sets as one panel with pills, rather than as separate panels |
+| `tilesetCategoryPillsVisibility` | `Visible` / `Hidden` (default `Hidden`) | Whether the category pills are shown |
+| `nestedSiblingTilesetsVisibility` | `Visible` (default) / `Hidden` | Whether sibling panels stay visible while a nested set is open |
+
+```bash
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/pos-profiles/posProfileId=kiosk" \
+  -H "Content-Type: application/json" \
+  -d '{ "renderRootTilesetPanel": true, "tilesetCategoryPillsVisibility": "Visible" }'
+```
+
+None of the three is in a profile's default representation, so a plain `GET` does not show them — name them to read them back:
+
+```bash
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/pos-profiles/posProfileId=kiosk~just(renderRootTilesetPanel,tilesetCategoryPillsVisibility,nestedSiblingTilesetsVisibility)"
+```
+
+The two `Visibility` members read back as `null` until you set one, and `null` there means the default in the table above rather than "hidden". `renderRootTilesetPanel` is a plain boolean and reads back `false`. A value outside the pair is refused, but with a **`500`** carrying `Invalid value 'Nonsense' for enum 'Visibility'.` rather than the `400` a caller's mistake usually gets — the request is still yours to fix, not a platform fault to report.
+
+There is no separate panel resource: a panel *is* a root tile set, so `/v1/pos-profiles/{key}/panels` is a `404`.
 
 ---
 

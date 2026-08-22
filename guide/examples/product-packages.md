@@ -26,13 +26,13 @@ A product package holds **exactly one `(product, size)` pair**: ten Levis 501 to
 |----------|---------|
 | `packageClass` | References a `product package class` — the classification (Carton, Pallet, etc.). **Required on create.** |
 | `product` | The product, family or group the package contains. **Required on create.** |
-| `size` | How many units of `product` fit in one package. Not enforced — omit it and you get a package of **1**. |
-| `name` | Display name. Inherits the package class's name if omitted, so "Krt" rather than "Levis 501 Carton x10". |
+| `size` | How many units of `product` fit in one package. **Required on create.** |
+| `name` | Display name. Takes the package class's name unless set on its own — see [Naming a package](#naming-a-package-takes-a-second-request). |
 | `active` | Whether the package is available for use in new transactions. |
 | `identifiers` | External identifiers for lookup. |
 | `manifest` | **Deprecated** — a one-entry facade over `product` and `size`. See [The deprecated `manifest`](#the-deprecated-manifest). |
 
-> **The member is `size`, and it is not `quantity`.** `quantity` is what the entries of the deprecated `manifest` call it, and it is not a member of the package itself — so a payload putting `quantity` next to `product` is accepted, the value is dropped, and you get a package of one with nothing in the `200` to say so.
+> **The member is `size`, and it is not `quantity`.** `quantity` is what the entries of the deprecated `manifest` call it, and it is not a member of the package itself — so a payload putting `quantity` next to `product` has its value dropped like any unknown member, and the create then fails for having no size. You get a `400` naming the size rather than the member you actually mistyped, which is the one thing to recognise about that message.
 
 > **There is no such thing as a mixed package.** A package cannot hold two different products: "a pallet of 24 chips + 24 nuts" is not expressible. It used to be, as a multi-entry manifest, and a manifest carrying more than one entry is now rejected with a `400`. For a group of different products, use a [product set](#section-3-packages-vs-sets) instead.
 
@@ -137,16 +137,29 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/product-packages
     "identifiers": { "com.example.id": "6pack-cola" },
     "name": "6-Pack Cola",
     "packageClass": { "identifiers": { "com.example.id": "shrink-wrap" } },
-    "product": { "identifiers": { "sku": "COLA-33CL" } },
+    "product": { "identifiers": { "com.example.sku": "COLA-33CL" } },
     "size": "6"
   }'
 ```
 
-The explicit `name` earns its place: without one the package takes the package class's name, and this would be listed as "Shrink-wrap".
+The `name` in that payload does **not** stick, and neither does the one in the carton above — see below.
 
-### What a create refuses, and what it accepts too quietly
+### Naming a package takes a second request
 
-Two members are enforced, each with its own `400`:
+A package's `name` cannot be set in the same payload as its `packageClass`: the class is applied after the name and renames the package to the class's own name. Since `packageClass` is required on create, that means **a `name` sent on create is always lost** — the create succeeds, nothing in the response says the name was dropped, and the catalogue lists as "Carton" and "Shrink-wrap" rather than by what is in the box.
+
+```bash
+# The name in the create above did not stick — set it in a PATCH that names nothing else
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/product-packages/com.example.id=6pack-cola" \
+  -H "Content-Type: application/json" \
+  -d '{ "name": "6-Pack Cola" }'
+```
+
+A `PATCH` carrying `name` **and** `packageClass` loses the name the same way, so keep the two apart. It is worth doing: "Levis 501 Carton x10" is far more useful than "Carton" when browsing a list of packages, and every package of that class otherwise reads the same.
+
+### What a create refuses
+
+Three members are required on create — `packageClass`, `product` and `size` — and all three are enforced. Each has its own `400`, and the request is refused outright:
 
 ```
 # packageClass missing
@@ -154,9 +167,16 @@ Missing or invalid member 'packageClass' of the input object. Expected object of
 
 # neither product nor a legacy manifest
 A package must have a product (or a legacy manifest with exactly one entry).
+
+# a product, but no size and no legacy manifest quantity to stand in for one
+A package must have a size (or a legacy manifest entry with a quantity).
 ```
 
-**`size` is not enforced**, even though the schema marks it required on create alongside the other two — so a generated client will insist on it while the server will not. Omit it and the package is created as a package of **1** — a `200`, no diagnostic. The same happens to a payload that spells it `quantity`, which is the name the [deprecated manifest](#the-deprecated-manifest) entries use and is *not* a member of the package: unknown members are dropped in silence, so a "6-Pack" arrives holding one can. Read the pair back after creating a package:
+The first names the member and is the platform's ordinary coercion message; the other two name what the package needs. They are the same three members the schema marks required on create, so a client generated from the spec asks for exactly what the server insists on.
+
+**Watch `size` in particular, because the near misses are refused rather than quietly accepted.** `quantity` is what the [deprecated manifest](#the-deprecated-manifest) entries call it and is *not* a member of the package — send `"quantity": "6"` beside `product` and it is dropped like any unknown member, leaving the create with no size and answering the third `400` above. An explicit `"size": null` is refused the same way. `"size": "0"` is **not**: the check is on the member being given, not on the value being non-zero, so a package of zero is a legitimate thing to create.
+
+The requirement is on create only. A later `PATCH` that names `product` and not `size` leaves the stored size where it was. Read the pair back after creating a package:
 
 ```bash
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/product-packages/com.example.id=6pack-cola~just(product,size)"
@@ -210,7 +230,7 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/product-package
   -d '{ "size": "8" }'
 ```
 
-This turns the 6-pack into an 8-pack. Note what it does *not* touch: the `name`. A package called "6-Pack Cola" keeps saying six, so send `name` alongside `size` whenever the name carries the count.
+This turns the 6-pack into an 8-pack. Note what it does *not* touch: the `name`. A package called "6-Pack Cola" keeps saying six, so send `name` alongside `size` whenever the name carries the count — that pairing is fine, and it is only `packageClass` that a `name` cannot share a payload with.
 
 ### Retire a package
 
@@ -227,7 +247,7 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/product-package
 `manifest` predates `product` and `size` and is kept so integrations written against the older, multi-entry model keep working. It is a **one-entry facade** over that pair rather than storage of its own:
 
 - **Reading** it gives one entry whose `product` and `quantity` mirror the package's `product` and `size`. `manifest~count` is `1`, or `0` when the package has no product.
-- **Writing one entry** writes `product` and `size` — on create, as a member of a `PATCH` on the package, or against `.../manifest` directly, including the `add`, `replace` and `remove` envelopes.
+- **Writing one entry** writes whichever of `product` and `size` the entry names — on create, as a member of a `PATCH` on the package, or against `.../manifest` directly, including the `add`, `replace` and `remove` envelopes. On an existing package an entry carrying only `product` leaves the size alone; on a create it is the missing-size `400` above, since there is no stored size to keep.
 - **Writing more than one entry** is the `400` above, wherever you send it.
 - **Writing an empty array** (`PUT .../manifest` with `[]`) clears `product`, exactly as `DELETE .../product` does. `size` is left where it was.
 - **The leaf paths write through too:** `PATCH .../manifest/0/quantity` sets `size`, and `PATCH .../manifest/0/product` sets `product`.
@@ -237,11 +257,11 @@ These two requests are the same write:
 ```bash
 curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/product-packages/com.example.id=6pack-cola" \
   -H "Content-Type: application/json" \
-  -d '{ "manifest": [{ "product": { "identifiers": { "sku": "COLA-33CL" } }, "quantity": "8" }] }'
+  -d '{ "manifest": [{ "product": { "identifiers": { "com.example.sku": "COLA-33CL" } }, "quantity": "8" }] }'
 
 curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/product-packages/com.example.id=6pack-cola" \
   -H "Content-Type: application/json" \
-  -d '{ "product": { "identifiers": { "sku": "COLA-33CL" } }, "size": "8" }'
+  -d '{ "product": { "identifiers": { "com.example.sku": "COLA-33CL" } }, "size": "8" }'
 ```
 
 Prefer the second. Everything the manifest can express, `product` and `size` express directly — and only the manifest can be written in a shape the API refuses. It is worth knowing that a deprecated member is not always still functional — this one is, and [`POS profile.functions`](../../reference/common-gotchas.md#46-deprecated-does-not-tell-you-whether-a-member-still-works) is not.
@@ -370,7 +390,7 @@ When items are ordered, the trade order item can reference the package to track 
 ```json
 {
   "@type": "trade order item",
-  "product": { "identifiers": { "sku": "LEVIS-501-32-32" } },
+  "product": { "identifiers": { "com.example.sku": "LEVIS-501-32-32" } },
   "quantity": "30",
   "package": { "identifiers": { "com.example.id": "levis-501-carton" } }
 }
@@ -391,12 +411,12 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/trade-orders" \
     "currency": { "identifiers": { "currencyCode": "SEK" } },
     "items": [
       {
-        "product": { "identifiers": { "sku": "LEVIS-501-32-32" } },
+        "product": { "identifiers": { "com.example.sku": "LEVIS-501-32-32" } },
         "quantity": "30",
         "package": { "identifiers": { "com.example.id": "levis-501-carton" } }
       },
       {
-        "product": { "identifiers": { "sku": "LEVIS-501-34-34" } },
+        "product": { "identifiers": { "com.example.sku": "LEVIS-501-34-34" } },
         "quantity": "20",
         "package": { "identifiers": { "com.example.id": "levis-501-carton" } }
       }
@@ -640,6 +660,8 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/product-packages
   }'
 ```
 
+The `name` here is lost the same way it is on every create — set it with a follow-up `PATCH` naming only `name`, per [Naming a package](#naming-a-package-takes-a-second-request), or the package lists as "Case".
+
 ### Step 3: Create a supply relation
 
 Link the package to the supplier agreement:
@@ -671,12 +693,12 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/trade-orders" \
     "currency": { "identifiers": { "currencyCode": "SEK" } },
     "items": [
       {
-        "product": { "identifiers": { "sku": "TROP-MANGO-1L" } },
+        "product": { "identifiers": { "com.example.sku": "TROP-MANGO-1L" } },
         "quantity": "288",
         "package": { "identifiers": { "com.example.id": "tropical-juice-case" } }
       },
       {
-        "product": { "identifiers": { "sku": "TROP-PASSION-1L" } },
+        "product": { "identifiers": { "com.example.sku": "TROP-PASSION-1L" } },
         "quantity": "288",
         "package": { "identifiers": { "com.example.id": "tropical-juice-case" } }
       }
@@ -700,11 +722,11 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/trade-orders/com.
 
 - **A package's `product` can be a family, not just a SKU.** A "Carton of 10 Levis 501" can reference the product family, meaning any variant (size/colour) can be packed in it. Use product families for flexible packaging that accommodates multiple SKUs.
 
-- **`size` is not enforced on create, and the member is not called `quantity`.** A payload that omits `size`, or that spells it `quantity`, is a `200` that creates a package of one. Read `size` back — this is the one mistake on this page that costs you silently.
+- **The size member is called `size`, not `quantity`.** All three of `packageClass`, `product` and `size` are enforced on create, so a payload that omits the size — or that spells it `quantity`, the deprecated manifest's name for it — is refused with `A package must have a size (or a legacy manifest entry with a quantity).` The message names the size rather than the member you mistyped, so read it as "nothing in this payload gave me one".
 
 - **Quantities are always in base units.** When specifying `moq` in supply relations or `quantity` in trade order items, always use base units (individual items), not package counts. 100 units in a carton of 10 = 10 cartons. The system converts by dividing by the package's `size`.
 
-- **Package names are often inherited from class.** If you don't set `name` on a product package, it may inherit from the package class (e.g., "Krt"). Set an explicit name for clarity — "Levis 501 Carton x10" is far more useful than "Krt" when browsing a list of packages.
+- **A package's name has to be set on its own.** `name` sent alongside `packageClass` — which every create carries, since the class is required — is overwritten by the class's name, on an otherwise successful write and with nothing to say so. Set it in a follow-up `PATCH` that names only `name`, or the whole catalogue reads "Carton".
 
 - **Don't confuse `package discount rule effect` with product packages.** The former is about pricing bundles ("2 for 55 SEK"), the latter is about physical packaging ("carton of 10"). They are completely unrelated concepts that unfortunately share the word "package".
 

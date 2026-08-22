@@ -33,12 +33,20 @@ commerceos-api-reference/
 │   │   ├── discount-rules.md     # Discount and pricing rules
 │   │   ├── discount-coupons.md   # Coupon codes that activate discount rules
 │   │   ├── inventory.md          # Stock and inventory management
+│   │   ├── labels.md             # Labels on any entity
 │   │   ├── orders.md             # Order operations
 │   │   ├── organization.md       # Agents, stores, companies
-│   │   ├── pos.md                # Point-of-sale operations
+│   │   ├── pos.md                # Point-of-sale operations, profiles and tile sets
 │   │   ├── pricing.md            # Price management
+│   │   ├── product-instances-tracking.md  # Instance-level stock tracking
+│   │   ├── product-packages.md   # Packages, package classes and product sets
 │   │   ├── products.md           # Product CRUD examples
 │   │   ├── query-operators.md    # Operator usage examples
+│   │   ├── receipt-discounts-surcharges.md  # Discounts and surcharges on receipts
+│   │   ├── serial-number-tracking.md  # Serial numbers and IMEIs
+│   │   ├── stock-inventory-guide.md   # End-to-end stock walkthrough
+│   │   ├── surcharge-rules.md    # Surcharge rule configuration
+│   │   ├── units-of-measure.md   # Units, divisibility and conversion
 │   │   └── users.md              # User and permission examples
 │   ├── advanced-queries.md       # 300 advanced query examples
 │   ├── provisioning-users.md     # End-to-end user, credential and role setup
