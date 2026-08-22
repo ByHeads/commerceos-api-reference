@@ -367,6 +367,37 @@ Any write body may also wrap its payload in `@value` to separate the identifiers
 
 A `POST`, `PATCH` or `PUT` with an **array** body is committed in chunks of 200 items rather than as one transaction, so a failure part-way through leaves the earlier chunks written. Set `X-Transaction-Count: all` when a partial write would be worse than no write — see [Transaction chunking](../features/streaming.md#3-transaction-chunking).
 
+### What a `DELETE` Reports
+
+`DELETE` always answers `200` — there is no `404` for a key that does not exist, and none for a path the token's scopes do not reach ([gotcha 41](common-gotchas.md#41-a-write-under-a-read-only-scope-is-a-silent-200)). What it does report is a count, and there are three response shapes:
+
+| Response body | Meaning |
+|---|---|
+| `{"deletedCount": 1, "info": "Deleted 1 items"}` | a setter ran |
+| `{"deletedCount": 0, "info": "Nothing happened"}` | nothing was removed |
+| *no body at all* | nothing was removed |
+
+> **Changed 2026-08-22.** The count used to be `1` whenever a removal was *attempted* — so every request in the zero column above claimed a deletion it had not performed, and a `deletedCount: 1` was no evidence of anything. It counts the removals that reached a setter now. If you have code that reads a `1` as confirmation, it is finally telling the truth; if you concluded from a `1` that some request removed something, re-check it against the rows below.
+
+**A zero, or an absent body, is a reliable "nothing was removed".** That is what makes the response worth reading: a scope that does not cover the target, an element key matching nothing, and a resource that does not implement removal at all each report zero rather than claiming a deletion.
+
+```bash
+DELETE /v1/products/com.example.sku=SKU-1        # 0 — products are not deletable, so zero even with write:api
+DELETE /v1/products/com.example.sku=SKU-1/prices/{key}   # 0 from a token holding products:write but not prices:write
+DELETE /v1/prices/com.example.priceId=PRICE-1    # 1 — prices are
+```
+
+**A count of `1` is weaker: it means a setter ran, not that a value changed.** A resource is free to interpret a removal as something other than a purge, and one that declines the value still counts:
+
+```bash
+DELETE /v1/users/com.example.userId=U-1          # 1 — and the user is deactivated, not purged
+DELETE /v1/products/com.example.sku=SKU-1/instanceType   # 1 — and the value is unchanged
+```
+
+So read the count as *nothing happened* or *something ran*, and read the record back when the question is what this particular resource does with a removal. Which resources purge, which reinterpret and which ignore is documented per resource — see [Users → Deactivating a user](users.md#deactivating-a-user) and [Credentials → Removing a credential](credentials.md#removing-a-credential) for the two that sit on opposite sides of it.
+
+**`DELETE` addresses one target.** A collection path removes nothing at all — `DELETE /v1/labels`, `DELETE /v1/labels~where(...)` and `DELETE /v1/products/{key}/labels` are each a `0`, not a bulk delete. To clear an array member use `PUT []` or `PATCH {"replace": []}`, and to detach a subset use `PATCH {"remove": [...]}` — see [gotcha 22](common-gotchas.md#22-clearing-array-properties) and [Array Write Operations](resource-patterns.md#array-write-operations).
+
 ---
 
 ## Content Types

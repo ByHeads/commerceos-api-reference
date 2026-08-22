@@ -207,7 +207,7 @@ If the **same** element appears in both `add` and `remove`, it ends up **present
 | Clear the array entirely | `replace` with `[]` (or `PUT []`) |
 | Detach a single element you already have the key for | `DELETE /v1/{collection}/{key}/{member}/{itemKey}` |
 
-`DELETE` on a single element is unchanged and still supported; `remove` is the bulk/declarative form and the one that matches by arbitrary identifier.
+`DELETE` on a single element is unchanged and still supported; `remove` is the bulk/declarative form and the one that matches by arbitrary identifier. A `DELETE` reports what it removed — `{"deletedCount": 1, ...}` when the element was detached, `0` (or no body at all) when the key matched nothing or the token's scopes do not reach the member. `remove` reports nothing of the kind: it is idempotent by design and answers `200` whether or not the element was there. See [What a `DELETE` reports](overview.md#what-a-delete-reports).
 
 ---
 

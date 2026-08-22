@@ -479,13 +479,15 @@ PUT /v1/stores/{key}/stockRoots
 PATCH /v1/stores/{key}/stockRoots
 {"replace": []}
 
-# WRONG - DELETE on the collection path removes a single item, not all
-DELETE /v1/stores/{key}/stockRoots  # Not the same as clearing
+# WRONG - DELETE on the collection path removes nothing
+DELETE /v1/stores/{key}/stockRoots  # 200 {"deletedCount": 0, "info": "Nothing happened"}
 ```
 
 This works for all `indexedArray` properties: `stockRoots`, `assortmentRoots`, `assortmentOwners`, `categories`, `labels`, `prices`, `users`, `customerGroups`, etc.
 
-> **Note:** Individual items can be removed with `DELETE /v1/{collection}/{key}/{member}/{itemKey}`, and a specific subset with `PATCH {"remove": [...]}` — see gotcha 23 below and [Array Write Operations](resource-patterns.md#array-write-operations).
+**`DELETE` addresses one element, so a collection path has nothing to address.** It leaves the array exactly as it was and says so in the response — a product carrying two labels still carries two after `DELETE /v1/products/{key}/labels`. The zero is the tell; it is not a partial clear.
+
+> **Note:** Individual items can be removed with `DELETE /v1/{collection}/{key}/{member}/{itemKey}`, and a specific subset with `PATCH {"remove": [...]}` — see gotcha 23 below and [Array Write Operations](resource-patterns.md#array-write-operations). What the count in a `DELETE` response does and does not promise is in [What a `DELETE` reports](overview.md#what-a-delete-reports).
 
 ---
 
@@ -1103,7 +1105,7 @@ The endpoint is in the read scope's graph, so the request routes normally; it ju
 | cover it read-only, and the write is a `POST` whose identifiers name no existing record | `400`, reported as a lookup failure against your own identifiers |
 | do not cover it at all | `404` — in every path spelling, on every method but `DELETE` |
 
-> **Changed 2026-08-22.** A path the token does not reach used to answer something other than `404` in two spellings; both answer `404` now, like every other one. A *write* answered `400` for `PATCH /v1/products/com.example.sku=…`, where the trailing identifier segment was read as a comparison rather than as a lookup — only relevant if you branched on that `400`, and it was never a payload problem. A *read* ending in `~count` answered `200 1`, which made a count unusable as an answer about your own data. It is an ordinary count again, so `~where(...)~take(1)~count` can be read at face value and a gate built on `/v1/scopes~where(…)~count` is sound.
+> **Changed 2026-08-22.** A path the token does not reach used to answer something other than `404` in two spellings; both answer `404` now, like every other one. A *write* answered `400` for `PATCH /v1/products/com.example.sku=…`, where the trailing identifier segment was read as a comparison rather than as a lookup — only relevant if you branched on that `400`, and it was never a payload problem. A *read* ending in `~count` answered `200 1`, which made a count unusable as an answer about your own data. It is an ordinary count again, so `~where(...)~take(1)~count` can be read at face value and a gate built on `/v1/scopes~where(…)~count` is sound. Separately, a **`DELETE`** reported `deletedCount: 1` whenever a removal was attempted, whether or not anything could be removed — so the count claimed a deletion for every request in this entry. It counts the removals that reached a setter now, which is what makes the paragraph below a reliable check rather than a warning.
 
 **The surviving `400` is the expensive one**, because it is the status an integrator reads as "my payload is wrong" and never as "my token is wrong" — and this one goes further and blames a specific field. A `POST` for a product that does not exist yet, from a token holding `products:read`:
 
@@ -1117,15 +1119,24 @@ POST /v1/products   [{"identifiers": {"com.example.sku": "NEW-1"}, "name": "New"
 
 The identifiers are correct. A `POST` is an upsert, so it looks the record up first: the lookup runs against the read-only collection and finds nothing, and there is no writable collection behind it to create with — so the only failure it can report is the lookup. Send that same `POST` for a product that *does* exist and it is a plain `200` that changes nothing, the ordinary read-only-twin outcome. **If a write answers `failed indexing` and the identifiers look right, check the token's scopes before you start rewriting the payload.**
 
-**`DELETE` sits outside all of this, and its response says nothing at all.** It never answers `404` — not for a path the token cannot reach, not for a key that does not exist, not even for a collection no scope declares:
+**`DELETE` sits outside all of this, and it is the one method whose response answers the question.** It never answers `404` — not for a path the token cannot reach, not for a key that does not exist, not even for a collection no scope declares:
 
 ```bash
 DELETE /v1/no-such-collection/anything    → 200, empty body
 ```
 
-And where it does route, the body is not evidence either. Under a read-only twin a `DELETE` of a key that never existed answers `200 {"deletedCount": 1, "info": "Deleted 1 items"}` and removes nothing, and a delete that genuinely lands reports the identical body — so the two cannot be told apart from the response. **Read the record back**, exactly as after any other write.
+But where it does route, the body **is** evidence, and this is the one place a scope gap reports itself. `DELETE` counts the removals that reached a setter, so a target the token cannot write reports zero rather than claiming a deletion. The sharpest case is a token that reaches the parent but not the member hanging off it — nothing in the status distinguishes these three:
 
-So the status code cannot distinguish "written" from "silently dropped", and a scope problem never looks like a permission problem. **Read the value back after any write whose target might be read-only** — that round-trip, not the `200`, is the confirmation. It matters most for an exactly-once sync marker: a dedup that trusts the `200` re-sends the same records on every run, forever, with no error anywhere to show for it.
+```bash
+DELETE /v1/products/{sku}/prices/{key}
+# products:read                  → {"deletedCount": 0, "info": "Nothing happened"}   2 prices, still 2
+# products:write                 → {"deletedCount": 0, "info": "Nothing happened"}   2 prices, still 2
+# products:write + prices:write  → {"deletedCount": 1, "info": "Deleted 1 items"}    2 prices, now 1
+```
+
+`products:write` reaches the product and not the price, so the removal is a genuine no-op and the count says so. A response with **no body at all** means the same thing as a zero — nothing was removed. See [What a `DELETE` reports](overview.md#what-a-delete-reports) for the full contract, including why a count of `1` still means *a setter ran* rather than *a record is gone*.
+
+So the status code cannot distinguish "written" from "silently dropped", and a scope problem never looks like a permission problem. **Read the value back after any write whose target might be read-only** — that round-trip, not the `200`, is the confirmation. It matters most for an exactly-once sync marker: a dedup that trusts the `200` re-sends the same records on every run, forever, with no error anywhere to show for it. `DELETE` is the one method exempt from this, because its count already is the round-trip.
 
 **What no status can tell you, [`/v1/scopes`](overview.md#checking-what-a-key-can-do-v1scopes) can.** A read-only resource and its writable twin sit at the same path and answer a `GET` identically, so probing an endpoint cannot answer "may this key write products?". Asking directly can, in one request and without touching data:
 

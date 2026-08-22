@@ -755,7 +755,7 @@ DELETE /v1/products/com.example.sku=PROD-001/images/url=https%3A%2F%2Fcdn.exampl
 | Create product | POST | `/v1/products` | Returns created product |
 | Create or update | PUT | `/v1/products/{id}` | Upsert by identifier |
 | Update product | PATCH | `/v1/products/{id}` | Partial update |
-| Delete product | DELETE | `/v1/products/{id}` | **No-op** (use status change instead) |
+| Delete product | DELETE | `/v1/products/{id}` | **No-op**, and the response says so (`deletedCount: 0`) — use a status change instead |
 | Retire product | PATCH | `/v1/products/{id}` | Use `{"status": "Inactive"}` to retire |
 | Find by GTIN | GET | `/v1/products~where(gtin=...)~first` | Use ~where, not indexer |
 | Find by PLU | GET | `/v1/products~where(plu=...)~first` | Use ~where |
@@ -876,7 +876,7 @@ GET /v1/products/com.example.sku=PROD-001/categories/count
 
 ### Preconditions
 
-- `DELETE /v1/products/{id}` is a **no-op** (the product resource doesn't implement purge). To retire a product, use `PATCH` with `{"status": "Inactive"}` instead.
+- `DELETE /v1/products/{id}` is a **no-op** (the product resource doesn't implement purge). It answers `200 {"deletedCount": 0, "info": "Nothing happened"}` even from a token holding `write:api`, so the response confirms the no-op rather than leaving you to check — see [What a `DELETE` reports](../overview.md#what-a-delete-reports). To retire a product, use `PATCH` with `{"status": "Inactive"}` instead.
 - Status changes to `Inactive` preserve historical data and keep the product available for order history/reporting
 - VAT codes must exist before referencing
 

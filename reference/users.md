@@ -193,7 +193,7 @@ The API authorizes a request from the **scopes carried by the credential that ma
 
 - **Don't create a user without an agent.** The account has no name of its own; a user with an empty `agent` cannot be displayed sensibly, and authorization rejects a credential whose user has no holder.
 - **Don't read a user, edit the object, and PUT it back.** Credential secrets read back as a `********` placeholder, and writing that placeholder sets the secret *to those eight characters*. Patch only what you are changing — see [gotcha 33](common-gotchas.md#33-a-read-modify-write-on-credentials-overwrites-the-secret).
-- **Don't treat `DELETE` as a purge.** It deactivates. The user, its identifiers and its credentials all remain.
+- **Don't treat `DELETE` as a purge.** It deactivates. The user, its identifiers and its credentials all remain — and the response is `{"deletedCount": 1, "info": "Deleted 1 items"}` either way, because the count reports that a setter ran rather than that a record is gone ([What a `DELETE` reports](overview.md#what-a-delete-reports)).
 - **Don't assume the default representation is complete.** Roles, PIN and scan-token credentials, labels and config all need `~with(...)` or `~withAll`.
 - **Don't expect a user's roles to constrain an API key.** Attaching a narrow role to a user does not narrow what its API key can reach; the key's `scopes` array does that.
 
