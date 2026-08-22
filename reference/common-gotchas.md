@@ -1370,6 +1370,34 @@ GET /v1/pos-profiles/posProfileId=kiosk/tileSets/tileId=drinks/tiles
 
 **What makes it expensive is that the object is still there.** The tile has its identifier and its name, so it appears on the terminal and in every listing; it simply does nothing when pressed. Nothing is missing to count, and nothing failed to report.
 
+**A second key gets through for a different reason: it is not in the target's family at all, but it fits.** Assignability here is structural, so a *sibling* type that declares everything the target declares is accepted — and then stored as the target, with whatever it declared on top of that dropped:
+
+```bash
+# WRONG — `price rule effect` is a sibling of `surcharge rule effect`, not a subtype.
+# It happens to declare everything the target does, plus `amount`.
+POST /v1/surcharge-rule-effects
+[{"@type": "price rule effect", "identifiers": {"com.example.effectId": "E-1"}, "amount": "999"}]
+→ 200  {"@type": "surcharge rule effect", "items": [], "identifiers": {...}}   ← `amount` is gone
+
+# RIGHT — a real subtype, and the amount lands
+POST /v1/surcharge-rule-effects
+[{"@type": "fixed surcharge rule effect", "identifiers": {"com.example.effectId": "E-2"}, "amount": "25"}]
+→ 200  {"@type": "fixed surcharge rule effect", "items": [], "amount": "25", "identifiers": {...}}
+```
+
+Everything that does *not* fit is refused, and the message names what it was measured against:
+
+```
+"@type": "trade rule effect"   → 400  Invalid type annotation 'trade rule effect'.
+                                      Type is not assignable to parent relation return type 'surcharge rule effect'
+"@type": "product"             → 400  the same message, naming `product`
+"@type": "no such effect"      → 400  The provided type key 'no such effect' is not defined the current type schema
+```
+
+**Read that message rather than assuming which types are safe, because the thing being measured against is where you are writing, not what you are writing.** The same effect sent into a surcharge rule's own `effects` array is checked against `trade rule effect` instead — so there `"trade rule effect"` is accepted and quiet, where here it is a `400`.
+
+Omitting `@type` altogether lands in the same place as a type that merely fits — the object is built as the target type and the extra members go — so the two mistakes are indistinguishable from the response.
+
 The check is the one [gotcha 46](#46-deprecated-does-not-tell-you-whether-a-member-still-works) and [gotcha 41](#41-a-write-under-a-read-only-scope-is-a-silent-200) prescribe, with one addition: **read the object back and compare the `@type` you got against the `@type` you sent**, not just the members. A downgraded write keeps the members the parent declares, so a comparison that only checks the fields it can see will pass.
 
 Two related points:
@@ -1377,7 +1405,41 @@ Two related points:
 - **A generated client cannot warn you either.** The subtype is in the spec with its own members, because it is genuinely declared — what is absent is an implementation behind it, and that is not something the schema records.
 - **This is not the same as a missing `@type`.** Omitting the discriminator entirely leaves the object as the parent for the same reason, so the symptom matches, but the cause is the one the [POS tile sets](../guide/examples/pos.md#pos-tile-sets) note already covers. Either way the fix is the same: send the subtype the resource actually builds, and verify by reading it back.
 
-Related: [gotcha 41](#41-a-write-under-a-read-only-scope-is-a-silent-200), [gotcha 46](#46-deprecated-does-not-tell-you-whether-a-member-still-works), [POS tile sets](../guide/examples/pos.md#pos-tile-sets).
+Related: [gotcha 48](#48-a-member-write-can-move-a-record-to-another-collection) — the same downgrade caused by an ordinary member rather than by `@type`, [gotcha 41](#41-a-write-under-a-read-only-scope-is-a-silent-200), [gotcha 46](#46-deprecated-does-not-tell-you-whether-a-member-still-works), [POS tile sets](../guide/examples/pos.md#pos-tile-sets).
+
+---
+
+## 48. A Member Write Can Move a Record to Another Collection
+
+[Gotcha 47](#47-a-declared-type-key-is-not-always-one-you-can-write) is about the `@type` you send. This is the same symptom from the other direction: an ordinary member whose value *is* the record's type, so writing it converts the record — and the response does not say so.
+
+Incoterm delivery terms are where this shows up. `incotermCode` is not a label stored beside the term; it is what the term is.
+
+```bash
+# WRONG — created in the CFR collection, carrying a different code
+POST /v1/cfr-delivery-terms
+[{"identifiers": {"com.example.termId": "T-1"}, "incotermCode": "DDP"}]
+→ 200  {"@type": "cfr delivery term", ..., "incotermCode": "DDP"}
+
+GET /v1/cfr-delivery-terms/com.example.termId=T-1    → null
+GET /v1/ddp-delivery-terms/com.example.termId=T-1    → the term, as a `ddp delivery term`
+
+# RIGHT — the collection already fixes the code, so leave it out
+POST /v1/cfr-delivery-terms
+[{"identifiers": {"com.example.termId": "T-2"}}]
+→ 200  {"@type": "cfr delivery term", ..., "incotermCode": "CFR"}
+```
+
+**The response is rendered through the collection you addressed**, so it names the type you asked for whatever the record became — `cfr delivery term` above, for a record that is a `ddp delivery term`. A `PATCH` moves an existing term the same way and misreports it the same way.
+
+The check is gotcha 47's, with one addition: **read the record back through the collection you wrote to.** Comparing the `@type` in the response is not enough here, because the response has the `@type` you expect. An empty answer from the collection you just created the record in is the only signal there is.
+
+Two related points:
+
+- **This is not the same as a rejected value.** A code that is not three uppercase letters, or that is not one of the eleven, is a `500` rather than a `400` — loud, and still your request to fix. It is only a *valid* code for a *different* term that goes through quietly.
+- **Writing back the value a record already has is safe.** Setting `incotermCode` to the code the term already reads changes nothing, so echoing the member back in a read-modify-write does not move anything.
+
+Related: [gotcha 47](#47-a-declared-type-key-is-not-always-one-you-can-write), [gotcha 41](#41-a-write-under-a-read-only-scope-is-a-silent-200), [Incoterms](working-with/stock.md#incotermcode-is-the-type-not-a-label).
 
 ---
 

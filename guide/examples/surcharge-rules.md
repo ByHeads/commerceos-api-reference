@@ -20,9 +20,19 @@ A surcharge rule extends `trade rule` (the same base type as discount rules and 
 | `time` | Optional validity window with `start` and `end` dates (ISO format). Both bounds are optional; see [Update a surcharge rule](#update-a-surcharge-rule) for the merge and validation rules when changing one. |
 | `items` | A **named map** of item groups. Each key defines a group with `include`/`exclude` arrays and optional `atLeast`/`atMost` quantity constraints. |
 | `effects` | Array of effect objects. Each effect must include `@type` and which items it targets. |
-| `effects[].@type` | Effect type: `"fixed surcharge rule effect"` (flat amount) or `"percentage surcharge rule effect"` (percentage of item value). |
+| `effects[].@type` | Effect type: `"fixed surcharge rule effect"` (flat amount) or `"percentage surcharge rule effect"` (percentage of item value). Anything else costs you the effect's value — see the note below. |
 | `effects[].items` | **Must reference keys from the `items` map** (e.g., `["thing"]`). |
 | `reason` | A reference to a `surcharge reason` explaining the fee (shown on receipts). |
+
+> **Only those two `@type` values carry a value, and the others fail quietly.** `amount` is declared by `fixed surcharge rule effect` and `percentage` by `percentage surcharge rule effect` — the abstract types above them declare neither. So `"surcharge rule effect"`, `"trade rule effect"`, an omitted `@type`, and even `"price rule effect"` (the price side's effect, accepted here because it satisfies everything the effects array's element type declares) are all accepted, and store an effect with no value on it. The amount is dropped on the way in and nothing reports it. Read the rule's `effects` back and check the `@type` you got:
+>
+> ```bash
+> GET /v1/surcharge-rules/com.example.surchargeRuleId=pant-1kr/effects
+> # [{"@type": "fixed surcharge rule effect", "items": ["thing"], "amount": "0.892857"}]  <- kept
+> # [{"@type": "trade rule effect", "items": ["thing"]}]                                   <- the amount is gone
+> ```
+>
+> Only a key the schema does not define at all (`"no such effect"`) or one that fits nothing (`"product"`) is a clean `400`. See [gotcha 47](../../reference/common-gotchas.md#47-a-declared-type-key-is-not-always-one-you-can-write).
 
 **Key differences from discount rules:**
 - No `phase` — surcharge rules have no priority ordering. All matching rules are applied (additive).

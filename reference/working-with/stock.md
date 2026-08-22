@@ -1068,19 +1068,91 @@ PATCH /v1/shipment-orders/com.example.shipmentId=SHIP-001/actions
 
 ### Incoterms
 
-International Commercial Terms define when responsibility transfers. Delivery terms are managed as separate resources (`/v1/delivery-terms`, `/v1/incoterm-delivery-terms`) and are not directly wired into the `createShipment` action.
+International Commercial Terms define when responsibility transfers. Delivery terms are managed as separate resources and are not directly wired into the `createShipment` action.
 
 > **Note:** The trade order `createShipment` action takes a boolean only (`true`). It does not accept `deliveryTerms`, `source`, or `items` parameters. To use delivery terms, create them separately and reference them on the trade order or configure them at the company level.
 
-### Common Incoterms
+### The Eleven Codes, and a Collection for Each
 
-| Code | Name | Responsibility Transfer |
-|------|------|------------------------|
-| `EXW` | Ex Works | At seller's premises |
-| `FOB` | Free On Board | At port of shipment |
-| `CIF` | Cost, Insurance, Freight | At destination port |
-| `DAP` | Delivered at Place | At named destination |
-| `DDP` | Delivered Duty Paid | At destination, duties paid |
+Each Incoterm code has a collection of its own, alongside two broader ones. All thirteen are under `logistics:write`.
+
+| Code | Name | Responsibility transfer | Collection |
+|------|------|------------------------|------------|
+| `EXW` | Ex Works | At the seller's premises | `/v1/exw-delivery-terms` |
+| `FCA` | Free Carrier | At handover to the first carrier | `/v1/fca-delivery-terms` |
+| `FAS` | Free Alongside Ship | Alongside the vessel at the named port | `/v1/fas-delivery-terms` |
+| `FOB` | Free On Board | Once loaded onto the vessel | `/v1/fob-delivery-terms` |
+| `CFR` | Cost and Freight | Once loaded; the seller pays freight to the destination port | `/v1/cfr-delivery-terms` |
+| `CIF` | Cost, Insurance and Freight | Once loaded; the seller pays freight and insurance | `/v1/cif-delivery-terms` |
+| `CPT` | Carriage Paid To | At handover to the first carrier; the seller pays carriage | `/v1/cpt-delivery-terms` |
+| `CIP` | Carriage and Insurance Paid To | At handover to the first carrier; the seller pays carriage and insurance | `/v1/cip-delivery-terms` |
+| `DAP` | Delivered At Place | At the named destination, before unloading | `/v1/dap-delivery-terms` |
+| `DPU` | Delivered at Place Unloaded | At the named destination, after unloading | `/v1/dpu-delivery-terms` |
+| `DDP` | Delivered Duty Paid | At the buyer's premises, duties paid | `/v1/ddp-delivery-terms` |
+
+`/v1/incoterm-delivery-terms` holds all eleven kinds; `/v1/delivery-terms` holds those plus terms that carry no Incoterm code at all. A term created in a code-specific collection appears in both of the broader ones.
+
+### `incotermCode` Is the Type, Not a Label
+
+A term's code is not a string stored beside it — it is what the record **is**. Creating through a code-specific collection therefore needs no code at all:
+
+```bash
+# RIGHT - the collection already fixes the code
+POST /v1/cfr-delivery-terms
+[{"identifiers": {"com.example.termId": "CFR-ROTTERDAM"}}]
+
+# 200  {"@type": "cfr delivery term", ..., "incotermCode": "CFR"}
+```
+
+Sending a *different* code does not mislabel the record — it converts it, and the record leaves the collection you created it in:
+
+```bash
+# WRONG - posted to the CFR collection, carrying another code
+POST /v1/cfr-delivery-terms
+[{"identifiers": {"com.example.termId": "T-1"}, "incotermCode": "DDP"}]
+
+# 200  {"@type": "cfr delivery term", ..., "incotermCode": "DDP"}
+
+GET /v1/cfr-delivery-terms/com.example.termId=T-1
+# null                                            <- not there
+
+GET /v1/ddp-delivery-terms/com.example.termId=T-1
+# {"@type": "ddp delivery term", ..., "incotermCode": "DDP"}
+```
+
+**The response is written through the collection you addressed, so it reports the type you asked for rather than the one you got.** The only reading that tells you what happened is a `GET` back through that same collection, which answers `null`. A `PATCH` behaves the same way: setting `incotermCode` on an existing term moves it, and the `PATCH` response still names the old type.
+
+Setting the code a term already has is accepted and changes nothing, so a read-modify-write that echoes `incotermCode` back unchanged is safe.
+
+### Creating Through the Broader Collections
+
+On `/v1/incoterm-delivery-terms` the code is what selects the subtype, so **send one**. It is again the read-back rather than the response that shows the result:
+
+```bash
+POST /v1/incoterm-delivery-terms
+[{"identifiers": {"com.example.termId": "FOB-GBG"}, "incotermCode": "FOB"}]
+
+# 200  {"@type": "incoterm delivery term", ..., "incotermCode": "FOB"}
+
+GET /v1/incoterm-delivery-terms/com.example.termId=FOB-GBG
+# {"@type": "fob delivery term", ..., "incotermCode": "FOB"}
+```
+
+Omit the code there and you get a term that belongs to none of the eleven and reads its code as `INC` — a placeholder derived from the type's own name, not an Incoterm. It appears in `/v1/incoterm-delivery-terms` and in no code-specific collection, and `INC` cannot be set on any other term.
+
+`/v1/delivery-terms` has no `incotermCode` member, so a code sent there is dropped in silence and the term is created with none — the ordinary unrecognised-member behaviour ([gotcha 39](../common-gotchas.md#39-a-null-in-a-response-does-not-prove-the-field-exists)).
+
+### An Unusable Code Is a `500`
+
+A code that is not three uppercase letters, or that is not one of the eleven, fails — but as a server fault rather than as a rejected request. The request is still yours to fix:
+
+```
+"incotermCode": "NOTACODE"   500  details: Malformed Incoterm code: NOTACODE.
+"incotermCode": "cfr"        500  details: Malformed Incoterm code: cfr.       <- lowercase is malformed
+"incotermCode": "ABC"        500  details: Incoterm code not found: ABC.
+```
+
+Related: [gotcha 48](../common-gotchas.md#48-a-member-write-can-move-a-record-to-another-collection).
 
 ### Carrier References
 

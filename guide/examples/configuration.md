@@ -234,19 +234,28 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/return-reasons" 
 # List delivery terms
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/delivery-terms"
 
-# Create incoterm delivery term
+# Create a delivery term through the collection for its code.
+# The collection fixes the code, so there is no incotermCode to send.
 # NOTE: location setter requires a database key. First, get the place key:
 #   curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/places/address.cityName=Stockholm/identifiers/key"
 # Then use that key in the location field:
-curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/incoterm-delivery-terms" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/fob-delivery-terms" \
   -H "Content-Type: application/json" \
   -d '{
-    "@type": "incoterm delivery term",
     "identifiers": {"com.myapp.termId": "FOB-STOCKHOLM"},
-    "incotermCode": "FOB",
     "location": {
       "identifiers": {"key": "plc123456789012345678901234567890"}
     }
+  }'
+
+# The same term through the generic collection, where the code selects the type.
+# Read it back to see what it became: the response says "incoterm delivery term",
+# the stored record is a "fob delivery term".
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/incoterm-delivery-terms" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "identifiers": {"com.myapp.termId": "FOB-GOTHENBURG"},
+    "incotermCode": "FOB"
   }'
 
 # List payment terms
@@ -260,6 +269,8 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/payment-terms" \
     "name": "Net 30"
   }'
 ```
+
+> **`incotermCode` decides the term's type, so a mismatched code moves the record.** Posting to `/v1/cfr-delivery-terms` with `"incotermCode": "DDP"` answers `200` naming a `cfr delivery term` and stores a `ddp delivery term` — which is then absent from `/v1/cfr-delivery-terms` entirely. Omit the code when the collection already implies it, and read the term back through the collection you wrote to. See [Incoterms](../../reference/working-with/stock.md#incotermcode-is-the-type-not-a-label) and [gotcha 48](../../reference/common-gotchas.md#48-a-member-write-can-move-a-record-to-another-collection).
 
 ---
 

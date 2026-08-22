@@ -1296,7 +1296,7 @@ GET /shipment-orders/{id}/items
 
 ### Linking
 
-Shipment records can link back to shipment orders. Use `incotermCode` for delivery terms classification.
+Shipment records can link back to shipment orders. Delivery terms are classified by their Incoterm code — but that code *is* the term's type rather than a label on it, so it decides which collection the term lives in. See [Incoterms](working-with/stock.md#incotermcode-is-the-type-not-a-label).
 
 ---
 
