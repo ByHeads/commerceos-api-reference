@@ -887,30 +887,33 @@ Full rules: [Users → Members](users.md#members).
 
 ---
 
-## 35. A Bad `Accept` Parameter Value Empties the Response
+## 35. A Misspelled `Accept` Parameter Name Is Silent; a Bad Value Is Not
 
-An `Accept` parameter the format does not recognize is ignored. An **invalid value on one it does recognize** takes the whole response with it: the parameter set fails to apply, the serializer has nothing to write, and the request answers a success status with no data — `204 No Content` on a buffered request, with no error message anywhere.
+The two ways of getting an `Accept` parameter wrong fail in opposite directions, and only one of them tells you. A parameter **name** the format does not recognize is absorbed and ignored — no error, full body, and the setting you meant to apply simply is not applied. A bad **value** on a name it does recognize is a `400` naming the parameter.
 
 ```bash
-# WRONG - 204 No Content from a collection full of products
-Accept: application/json;skipNulls=1
-Accept: application/json;stream=truex
-Accept: application/sql;mode=upsert
+# SILENT - 200 with the whole collection, and nothing streaming
+Accept: application/x-ndjson;strem=true
+
+# LOUD - 400, and the `details` names the parameter and what it would have taken
+Accept: application/json;skipNulls=1      # ...'skipNulls=1', which takes boolean?
+Accept: application/json;stream=truex     # ...'stream=truex', which takes boolean?
+Accept: application/sql;mode=upsert       # ...'mode=upsert', which takes 'insert' or 'sync' or 'merge' or null
 
 # RIGHT
+Accept: application/x-ndjson;stream=true
 Accept: application/json;skipNulls=false
-Accept: application/json;stream=true
 Accept: application/sql;mode=merge
 ```
 
-Booleans must be spelled `true` or `false` — `1`, `0`, `yes` and `on` are all rejected. The SQL `mode` enum accepts only `insert`, `sync` and `merge`.
+Booleans must be spelled `true` or `false` — `1`, `0`, `yes` and `on` are all rejected. The two enums accept their named values plus the literal token `null`: `mode` takes `insert`, `sync`, `merge`, `null`, and `numberHandling` takes `string`, `number`, `null`.
 
-The failure is quiet in the worst way: the status says success, and an empty body from a filtered collection is indistinguishable from "nothing matched". **If a request starts coming back empty right after you touched the `Accept` header, suspect the parameter before the query.**
+**So a setting that appears to do nothing is a name problem, and there is no status code that will tell you.** A stream that never streams, a `skipNulls` that keeps skipping, a `delimiter` that stays a comma — check the spelling of the name before concluding the parameter is unsupported. Unknown names are ignored deliberately, so that `;charset=utf-8` and `;q=0.9` work on every collection format.
 
 Two related points:
 
-- **A misspelled parameter *name* is ignored, not rejected.** `;strem=true` returns a perfectly successful buffered response, so a stream that never streams is usually a typo in the name rather than a platform limitation. Unknown parameters are ignored deliberately — `;charset=utf-8` and `;q=0.9` are absorbed on every collection format so that standards-compliant headers work.
-- **The two failures look alike from outside.** Wrong name → full body, no parameter applied. Wrong value → empty body. Check the body before the header, then the header before the query.
+- **A parameter declared as nullable takes the literal `null`; a merely optional one does not.** `;mode=null` and `;numberHandling=null` mean "use the default". `;skipNulls=null` is a `400` — `boolean?` accepts the flag or nothing, never the token — and on a string-valued parameter the token is just text, so `;nullValue=null` sets the six characters as the placeholder rather than unsetting anything.
+- **Changed 2026-08-22 — the loud half used to be silent too.** A bad value previously answered a success status with an **empty body** (`204 No Content` when buffered) and no mention of the parameter. A `204` therefore has exactly one cause again: the collection was empty. If you carry a check for "an empty response right after I touched the `Accept` header", it can go.
 
 Full rules: [Accept parameter tolerance](overview.md#accept-parameter-tolerance).
 

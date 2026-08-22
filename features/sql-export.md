@@ -19,7 +19,7 @@ The CommerceOS API provides SQL-compatible output serialization for exporting da
 | Table Names | Specified in the `SqlStatement` objects themselves, not serializer parameters |
 | Streaming | Batched output with configurable `batchSize` (default 1000 statements) |
 | Array/Object Handling | **SQL:** Rejected (flatten before serialization); **CSV:** JSON-stringified automatically |
-| Mode Parameter | **Reserved** — `mode=insert|sync|merge` is parsed by the serializer but not passed to mapped types; serializer emits statements as-is |
+| Mode Parameter | **Reserved** — `mode=insert|sync|merge|null` is parsed by the serializer but not passed to mapped types; serializer emits statements as-is, so all four values produce identical output |
 | Operator | None — SQL output is via serializer only (no `~sqlexport` operator) |
 
 ### 1.2 Scope
@@ -72,7 +72,7 @@ Parameters are passed via the Accept header after a semicolon:
 |-----------|------|---------|-------------|
 | `batchSize` | int | 1000 | Statements per batch (a multi-row INSERT counts as one statement) |
 | `stream` | boolean | `false` | Serialize and send batches incrementally instead of assembling the whole body first — see [§ 8.1](#81-sql-statement-batching) |
-| `mode` | `insert` \| `sync` \| `merge` | `insert` | Accepted, but currently has no effect — see the note below |
+| `mode` | `insert` \| `sync` \| `merge` \| `null` | `insert` | Accepted, but currently has no effect — see the note below. `null` is a legal fourth spelling meaning "use the default" |
 
 **Example:**
 ```http
@@ -81,7 +81,21 @@ Accept: application/sql; batchSize=500
 
 > **Note:** The `mode` parameter is accepted by the serializer settings but currently unused — mapped types cannot read it. The SQL serializer emits statements exactly as provided, without interpreting or transforming them based on mode.
 
-> **A value outside the enum empties the response.** `mode` accepts `insert`, `sync` and `merge` and nothing else. `Accept: application/sql;mode=upsert` answers a success status with no body — the whole parameter set fails to apply, so the serializer has nothing to write, and there is no error message to go on. The same holds for a non-boolean `stream` (`;stream=truex`) or a non-numeric `batchSize`. Parameters the serializer does not recognize at all — `charset`, `q`, a misspelled name — are ignored harmlessly. See [Accept parameter tolerance](../reference/overview.md#accept-parameter-tolerance).
+> **A value outside the enum is a `400` that names the parameter.** `mode` accepts `insert`, `sync`, `merge` and the literal token `null` — nothing else:
+>
+> ```
+> Accept: application/sql;mode=upsert
+> → 400  Invalid content type parameter 'mode=upsert', which takes 'insert' or 'sync' or 'merge' or null
+>
+> Accept: application/sql;batchSize=abc
+> → 400  Invalid content type parameter 'batchSize=abc', which takes number?
+> ```
+>
+> The same holds for a non-boolean `stream` (`;stream=truex`). Parameters the serializer does not recognize at all — `charset`, `q`, a misspelled name — are ignored harmlessly, so a typo in the *name* is silent where a typo in the *value* is not. See [Accept parameter tolerance](../reference/overview.md#accept-parameter-tolerance).
+>
+> `null` is case-insensitive and tolerates surrounding spaces (`;mode=NULL`, `;mode= null `), but `;mode=nullx` and an empty `;mode=` are both rejected. Since `mode` has no effect on the output, all four accepted values produce byte-identical SQL — the token is worth knowing only so that a client emitting `null` for "unset" is not surprised by a `400`.
+
+> **Changed 2026-08-22 — an unusable value used to be silent.** `Accept: application/sql;mode=upsert` previously answered a success status with an empty body and no indication of the cause. It is the `400` above now. If you avoided the `mode` parameter because a typo cost you the whole export, that risk is gone.
 
 ---
 

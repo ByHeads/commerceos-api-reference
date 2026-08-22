@@ -68,17 +68,17 @@ Without the parameter the response is buffered, whatever the format: the body is
 
 ### Getting the Parameter Wrong Fails Two Different Ways
 
-A misspelled parameter **name** is ignored; a bad **value** on a name the format does recognize empties the response.
+A misspelled parameter **name** is ignored; a bad **value** on a name the format does recognize is a `400`.
 
 ```bash
-# Ignored — no such parameter, so the response is buffered. No error.
+# Ignored — no such parameter, so the response is buffered. No error, no warning.
 Accept: application/x-ndjson;strem=true
 
-# Empty body under a success status — `stream` is recognized, `truex` is not a boolean
+# 400  Invalid content type parameter 'stream=truex', which takes boolean?
 Accept: application/x-ndjson;stream=truex
 ```
 
-Neither one tells you it happened, and they look the same from the outside until you look at the body. If a request that should be streaming is arriving all at once, check the spelling of the name; if it is arriving as `204 No Content` from a collection you know is not empty, check the value. Full rules, including which parameters each format recognizes: [Accept parameter tolerance](../reference/overview.md#accept-parameter-tolerance).
+Only the value case reports itself, which makes the diagnosis one-sided: **a request that should be streaming and is arriving all at once has a typo in the parameter name**, because a bad value would have stopped the request instead of buffering it. `stream` takes `true` or `false` and nothing else — not `1`, not `yes`. Full rules, including which parameters each format recognizes: [Accept parameter tolerance](../reference/overview.md#accept-parameter-tolerance).
 
 ### The First Chunk Follows a Batch, Not an Item
 

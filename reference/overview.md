@@ -421,6 +421,9 @@ Accept: application/json; skipTypes=true
 # Serialize numbers as strings (for precision)
 Accept: application/json; numberHandling=string
 
+# Use the default (numbers stay JSON numbers) — the literal token null
+Accept: application/json; numberHandling=null
+
 # Serialize and send the array incrementally (faster first byte)
 Accept: application/json; stream=true
 
@@ -432,7 +435,7 @@ Accept: application/json; skipMembers=prices,images
 |-----------|------|---------|-------------|
 | `skipNulls` | boolean | `true` | Omit null fields from output |
 | `skipTypes` | boolean | `false` | Strip `@type` discriminators |
-| `numberHandling` | `"string"` or `"number"` | `"number"` | Serialize numbers as strings for precision |
+| `numberHandling` | `string`, `number` or `null` | `number` | `string` serializes numbers as strings for precision; `null` selects the default — see [The literal `null`](#the-literal-null-as-a-parameter-value) |
 | `stream` | boolean | `false` | Serialize and send the collection incrementally instead of building the whole body first — see [Streaming](../features/streaming.md) |
 | `skipMembers` | comma-separated | — | Member names to exclude from output |
 
@@ -450,17 +453,57 @@ Accept: text/csv;delimiter=|;charset=utf-8   # delimiter honored, charset ignore
 
 A misspelled parameter **name** falls into the same bucket: it is ignored, silently, so `;strem=true` is a perfectly successful buffered response and nothing reports the typo.
 
-> **An invalid *value* on a parameter the format does recognize empties the response.** The whole parameter set fails to apply, the serializer ends up with nothing to write, and the request answers a **success status with no data** — `204 No Content` on a buffered request. There is no error message.
+> **An invalid *value* on a parameter the format does recognize is a `400`, and the message names it.** Settings are parsed as one string, so a single value the declaration cannot accept fails the whole set — but the response says which parameter, and what it would have taken:
 >
-> ```bash
-> Accept: application/json;stream=truex    # not a boolean  → empty
-> Accept: application/json;skipNulls=1     # not a boolean  → empty (use true/false)
-> Accept: application/sql;mode=upsert      # not in the enum → empty
+> ```
+> Accept: application/json;stream=truex
+> → 400  Invalid content type parameter 'stream=truex', which takes boolean?
+>
+> Accept: application/json;skipNulls=1
+> → 400  Invalid content type parameter 'skipNulls=1', which takes boolean?
+>
+> Accept: application/sql;mode=upsert
+> → 400  Invalid content type parameter 'mode=upsert', which takes 'insert' or 'sync' or 'merge' or null
+>
+> Accept: application/sql;batchSize=abc
+> → 400  Invalid content type parameter 'batchSize=abc', which takes number?
 > ```
 >
-> The SQL `mode` enum is strict: `insert`, `sync` and `merge` are the only accepted values (see [SQL export](../features/sql-export.md#22-serializer-parameters)). Booleans must be spelled `true` or `false` — `1`, `yes` and `on` are all rejected.
+> The `details` names the **first** parameter it cannot accept, so a header with two bad values reports the leftmost and you fix them one at a time. The body is an ordinary error document with `@type` of `bad request`, framed to the `Accept` header like any other — see [Error response framing](#error-response-framing).
 >
-> The failure mode to recognize: a `204` (or an empty `200`) from a collection you know is not empty, right after you added or edited an `Accept` parameter. Drop the parameter and the data comes back.
+> Booleans must be spelled `true` or `false` — `1`, `0`, `yes` and `on` are all rejected. The two enums are strict about their own values but both also accept `null`; see [The literal `null` as a parameter value](#the-literal-null-as-a-parameter-value) below.
+
+> **Changed 2026-08-22 — this used to be silent.** An unusable value previously failed the whole projection with nothing to report it: the serializer was left with no settings, wrote nothing, and the request answered a **success status with an empty body** — `204 No Content` when buffered. If you carry a check for "an empty response right after I touched the `Accept` header", it can go: a bad value is now a `400` that names itself, and **a `204` has exactly one cause again — the collection was empty**.
+
+### The Literal `null` as a Parameter Value
+
+Two serializer parameters accept `null` alongside their named values. A serializer parameter is written in the `Accept` header, where every value is text, so `null` here is the six literal characters — and it means **use the default**:
+
+| Parameter | Formats | Accepted values |
+|---|---|---|
+| `mode` | `application/sql` | `insert`, `sync`, `merge`, `null` |
+| `numberHandling` | `application/json`, `application/x-ndjson` | `string`, `number`, `null` |
+
+The token is case-insensitive and tolerates surrounding spaces — `;mode=NULL` and `;mode= null ` both work — but nothing else near it does: `;mode=nullx` and an empty `;mode=` are both the `400` above.
+
+```bash
+Accept: application/json;numberHandling=null   # numbers stay JSON numbers, as by default
+Accept: application/sql;mode=null              # same statements as any other mode
+```
+
+> **This is not "header values are text, so anything parses".** Only a parameter whose declaration includes `null` takes the token. Every other parameter reads it as ordinary text and does whatever that means for its own type:
+>
+> ```
+> Accept: application/json;skipNulls=null
+> → 400  Invalid content type parameter 'skipNulls=null', which takes boolean?
+>
+> Accept: application/vnd.ms-sqlserver.csv;nullValue=null    # the string "null" — a usable NULL placeholder
+> Accept: application/json;skipMembers=null                  # a member list holding one name, "null"
+> ```
+>
+> An *optional* parameter is not a nullable one: `skipNulls`, `skipTypes` and `stream` are all `boolean?`, and a `boolean?` accepts the flag or nothing at all — never the token.
+
+Only `numberHandling` makes the choice observable. `null`, `number` and the bare content type all serialize `"id": 0`, against `"id": "0"` for `numberHandling=string`. `mode` is a hint the SQL serializer does not act on, so `insert`, `sync`, `merge` and `null` produce byte-identical output — see [SQL export](../features/sql-export.md#22-serializer-parameters).
 
 ### Error Response Framing
 
@@ -500,7 +543,7 @@ Every error body names what went wrong in its `@type` discriminator. **Branch on
 
 | `@type` | Typical status | Meaning | Type-specific members |
 |---------|----------------|---------|-----------------------|
-| `bad request` | 400 | The request was invalid and could not be processed | — |
+| `bad request` | 400 | The request was invalid and could not be processed — also the answer to a bad value on an `Accept` parameter, where `details` names the parameter | — |
 | `no request body` | 400 | A body was required and none was sent | — |
 | `invalid uri syntax` | 400 | The request URI could not be parsed | `uri`, `invalidSection` |
 | `failed indexing` | 400 | Identifiers in the request payload named no existing object of the expected type | `usedIndex`, `indexerOwner`, `indexType` |

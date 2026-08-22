@@ -123,7 +123,7 @@ Unknown 500 errors return a simpler body without `@type`:
 
 | Status | Meaning | Common Cause |
 |--------|---------|--------------|
-| 400 | Bad Request | Missing required field, invalid data format |
+| 400 | Bad Request | Missing required field, invalid data format, or a bad value on an `Accept` parameter |
 | 401 | Unauthorized | Missing or invalid authentication |
 | 404 | Not Found | Wrong endpoint path, resource doesn't exist, or your key's scopes do not reach it |
 | 409 | Conflict | Duplicate identifier, concurrent modification |
@@ -814,7 +814,7 @@ It costs the guarantees above: reads are batched across separate transactions, a
 
 Two envelope differences to plan for when switching a call to `stream=true`: an empty result is `200` with an empty body instead of `204 No Content` (JSON excepted — it returns `[]`), and a buffered `application/json` body ends with a newline the streamed one lacks (NDJSON, CSV and SQL are byte-identical either way). See [Streaming](../features/streaming.md).
 
-**Spelling the parameter matters, and the two ways of getting it wrong look different.** A misspelled parameter *name* is ignored — `;strem=true` is a successful buffered response with no warning. An invalid *value* on a name the format recognizes (`;stream=truex`, `;skipNulls=1`, `application/sql;mode=upsert`) empties the response: success status, no data, `204` when buffered. See [Accept parameter tolerance](../reference/overview.md#accept-parameter-tolerance).
+**Spelling the parameter matters, and the two ways of getting it wrong fail in opposite directions.** A misspelled parameter *name* is ignored — `;strem=true` is a successful buffered response with no warning, so a stream that never streams is a name typo. An invalid *value* on a name the format recognizes is a `400` whose `details` names it: `;stream=truex` → `Invalid content type parameter 'stream=truex', which takes boolean?`. Two parameters also accept the literal token `null` for "use the default" — `application/sql;mode=null` and `application/json;numberHandling=null` — while an ordinary optional parameter such as `skipNulls` rejects it. See [Accept parameter tolerance](../reference/overview.md#accept-parameter-tolerance).
 
 ### 7.4 Mapped Type Exports
 

@@ -338,6 +338,26 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/receipts~take(10)
   -H "Accept: application/vnd.ms-sqlserver.csv"
 ```
 
+**Serializer parameters, and what a bad one answers:**
+
+```bash
+# Batch size and streaming, both honored on the Accept header
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/receipts~take(10000)~map(com.myapp.receipt-sql-insert)" \
+  -H "Accept: application/sql;stream=true;batchSize=100"
+
+# The literal token null is a legal value for mode - "use the default"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/receipts~take(10)~map(com.myapp.receipt-sql-insert)" \
+  -H "Accept: application/sql;mode=null"
+
+# A value the parameter cannot take is a 400 naming it - not an empty body
+curl -sS -u ":banana" "https://example.app.heads.com/api/v1/receipts~take(10)~map(com.myapp.receipt-sql-insert)" \
+  -H "Accept: application/sql;mode=upsert"
+# {"@type":"bad request","error":"The request was invalid and could not be processed.",
+#  "details":"Invalid content type parameter 'mode=upsert', which takes 'insert' or 'sync' or 'merge' or null"}
+```
+
+A parameter *name* the serializer does not recognize is ignored instead — `;charset=utf-8` is fine, and so is `;batchSiz=100`, which quietly does nothing. See [Accept parameter tolerance](../../reference/overview.md#accept-parameter-tolerance).
+
 **Creating custom SQL-producing mapped types:**
 
 SQL mapped types use an array-body with `$prior` and `"$first"` to collect multiple items and emit statement objects. The `~map` operator always returns one result per source item; for aggregation into a single result, use an array body ending with `"$first"`.
