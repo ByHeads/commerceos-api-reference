@@ -594,7 +594,9 @@ That parses cleanly, as one column named `@type"name"gtin"unit`. Nothing in the 
 
 **Anything else needs no quoting, at any length** — `|`, `::`, `[+]`, even `a b`. Unquoted, **leading whitespace is kept and trailing whitespace is trimmed**, so `;delimiter= |` is a two-character delimiter (space, then pipe) while `;delimiter=| ` is just `|`. That asymmetry is also why an all-whitespace value ends up empty, and quoting is how you keep whitespace at either end.
 
-**The one value you will see written down needs the quotes.** Both CSV formats document `delimiter` in the generated spec as *"default is comma"* — accurate about the **setting**, and the one spelling of it a header cannot carry plainly, so writing the documented default out explicitly is the request in this section a reader is likeliest to make by accident. `;delimiter=","` sends it. There is nothing else in the spec to copy from: the settings types carry example objects of their own, but the spec is generated without them, so the description is all a reader sees.
+**The one value you will see written down needs the quotes.** Both CSV formats document `delimiter` in the generated spec as *"default is comma"* — accurate about the **setting**, and the one spelling of it a header cannot carry plainly, so writing the documented default out explicitly is the request in this section a reader is likeliest to make by accident. `;delimiter=","` sends it.
+
+**The examples beside that description are safer than the description.** The CSV and SQL serializer, deserializer and settings types each carry example objects of their own, and every one of them that sets a `delimiter` names `|` — a value that needs no quoting. Look for them on the type's own model page: nothing else in the spec references any of these types, so that page is the only place they appear.
 
 ### Accept Parameter Tolerance
 
