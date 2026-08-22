@@ -492,7 +492,7 @@ Accept: text/csv;stream=true
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `delimiter` | string | `,` | Separates fields. Three values have no spelling — see [Three delimiters you cannot ask for](#three-delimiters-you-cannot-ask-for) |
+| `delimiter` | string | `,` | Separates fields. Three values must be quoted — see [Three delimiters that must be quoted](#three-delimiters-that-must-be-quoted) |
 | `arrayDelimiter` | string | `[+]` | Joins the elements of an array member inside a single field |
 | `quoteChar` | string | `"` | Wraps a quoted field. An empty value disables quoting |
 | `stream` | boolean | `false` | Serialize and send the collection incrementally instead of building the whole body first — see [Streaming](../features/streaming.md) |
@@ -504,7 +504,7 @@ A record that renders as `{"@type": "product", "name": "Shirt, Blue", "gtin": ["
 product,"Shirt, Blue","7312345678901[+]7312345678902",
 ```
 
-**The same four parameters serve a CSV *upload*.** `Content-Type: text/csv;delimiter=|` is read by the same parser out of the same settings, so a request body is split on the delimiter, array delimiter and quote character you name — and the three unspellable delimiters below are unspellable there too.
+**The same four parameters serve a CSV *upload*.** `Content-Type: text/csv;delimiter=|` is read by the same parser out of the same settings, so a request body is split on the delimiter, array delimiter and quote character you name — and the three delimiters that need quoting below need it there too.
 
 **`arrayDelimiter` and `quoteChar` belong to `text/csv` alone.** The SQL Server CSV format has its own smaller set — `delimiter`, `nullValue` and `stream`, and no way to change the quoting or to join an array. Sent to `application/vnd.ms-sqlserver.csv`, `arrayDelimiter` and `quoteChar` are simply names it does not recognize, so they are absorbed and ignored with no error. See [SQL export → Serializer parameters](../features/sql-export.md#22-serializer-parameters).
 
@@ -551,11 +551,24 @@ product,Shirt, Blue,7312345678901[+]7312345678902,
 
 The header declares four columns and the data row now has five, because nothing protects the comma inside `Shirt, Blue`. Reach for this only when you know no value can contain the delimiter.
 
-#### Three Delimiters You Cannot Ask For
+#### Three Delimiters That Must Be Quoted
 
-**A comma, a semicolon and whitespace have no spelling in an `Accept` parameter** — which is unfortunate, since they are the three an integrator is most likely to want. A comma separates the media types in the header, a semicolon separates the parameters, and a value that is nothing but whitespace is trimmed away before it is read.
+**A comma, a semicolon and whitespace are separators in the header itself**, so written plainly they never reach the serializer — and they are the three an integrator is most likely to want. Wrap the value in double quotes and it arrives intact:
 
-**Two of the three fail quietly and one does not.** A comma or an all-whitespace value arrives as the **empty** delimiter at `200`. A semicolon written the way you would actually write it — `;delimiter=;`, with nothing after it — is a `400`, because it ends the assignment and leaves an empty parameter behind. Put another parameter after the semicolon and it goes quiet too.
+```bash
+Accept: text/csv;delimiter=";"        # semicolon-separated, the Excel default across much of Europe
+Accept: text/csv;delimiter=","        # the documented default, written out
+Accept: text/csv;delimiter="<a tab>"  # tab-separated
+Accept: text/csv;delimiter=" "        # a single space
+```
+
+That is the RFC 2045 quoted-string form, and it is not specific to `delimiter` or to `Accept`. It works on `Content-Type` for an upload, on `application/vnd.ms-sqlserver.csv` as well as `text/csv`, and on every parameter — `;arrayDelimiter=","` joins an array's elements on a comma, and `;nullValue=";"` is a semicolon. Inside the quotes a backslash escapes the next character, so a delimiter of `"` is `;delimiter="\""` and one of `\` is `;delimiter="\\"`.
+
+**Quoting is a spelling, not a cast.** A quoted value is coerced exactly as an unquoted one, so `;stream="true"` is the boolean `true` and `;batchSize="100"` is the number `100`, not the strings.
+
+**Quoting has to close to count.** An unbalanced or early-closing quote is ordinary text, as it has always been: `;delimiter="` is the one character `"`, `;delimiter=a"b` is the three characters `a"b`, and `;delimiter="a"b` is the four characters `"a"b`.
+
+**Write one of the three plainly and it is lost, in one of two ways.**
 
 | What you write | What you get |
 |---|---|
@@ -564,7 +577,6 @@ The header declares four columns and the data row now has five, because nothing 
 | `;delimiter=;` | **`400`** — `Invalid content type parameter '=', which takes string`. The message names a bare `=` rather than the parameter you wrote |
 | `;delimiter=;arrayDelimiter=/` | `200`, empty delimiter — with a parameter after the semicolon there is no empty one left to reject, and that parameter still applies |
 | `;delimiter=%3B` | `200`, and the delimiter is the three literal characters `%3B` — nothing percent-decodes a parameter value |
-| `;delimiter=";"` | **`400`** — `Invalid content type parameter '"=', which takes string`. The quote is read as part of the parameter *name*, so the standard quoted-string spelling for exactly this problem is rejected |
 
 **An empty delimiter does not produce a broken file — it produces a plausible one.** Every field is quoted (an empty string is contained in every value), the quotes run together, and a reader takes the whole line as a single column:
 
@@ -576,13 +588,13 @@ Accept: text/csv;delimiter=,
 
 That parses cleanly, as one column named `@type"name"gtin"unit`. Nothing in the status code or the body says the delimiter was dropped.
 
-**The two are lost at different stages, and that is why the comma takes the rest of the header with it.** A semicolon reaches the parameters and ends one assignment; a comma never reaches them at all, because the header is a comma-separated *list of media types* and is cut there first. So `;delimiter=;arrayDelimiter=/` loses the delimiter and keeps the array delimiter, while `;delimiter=,;arrayDelimiter=/` loses both — everything past the comma has become a second media type that matches nothing. The same is true of any parameter, not just the array delimiter: `;delimiter=,;quoteChar=~~` returns a body byte-identical to `;delimiter=,` on its own.
+**Unquoted, the two are lost at different stages, and that is why a comma takes the rest of the header with it.** A semicolon reaches the parameters and ends one assignment; a comma never reaches them at all, because the header is a comma-separated *list of media types* and is cut there first. So `;delimiter=;arrayDelimiter=/` loses the delimiter and keeps the array delimiter, while `;delimiter=,;arrayDelimiter=/` loses both — everything past the comma has become a second media type that matches nothing. The same is true of any parameter, not just the array delimiter: `;delimiter=,;quoteChar=~~` returns a body byte-identical to `;delimiter=,` on its own. Quoted, neither cut happens: `;delimiter=",";quoteChar=~~` keeps both, and `text/csv;delimiter=",", application/json` is still a two-entry list whose first entry matches.
 
-**`arrayDelimiter` has the same three holes**, and its failure is quieter still — `;arrayDelimiter=,` joins an array's elements with nothing at all, so `["7312345678901", "7312345678902"]` comes back as `"73123456789017312345678902"` and there is no boundary left to find. A value is also read only as far as its first comma, so `;arrayDelimiter=x,y` sets it to `x`.
+**`arrayDelimiter` has the same three holes and the same fix**, and unquoted its failure is quieter still — `;arrayDelimiter=,` joins an array's elements with nothing at all, so `["7312345678901", "7312345678902"]` comes back as `"73123456789017312345678902"` and there is no boundary left to find. A value is also read only as far as its first comma, so `;arrayDelimiter=x,y` sets it to `x`. Quote it and both go away: `;arrayDelimiter=","` joins on a comma and `;arrayDelimiter="x,y"` on the three characters you wrote.
 
-**Anything else works, at any length** — `|`, `::`, `[+]`, even `a b`. **Leading whitespace is kept and trailing whitespace is trimmed**, so `;delimiter= |` is a two-character delimiter (space, then pipe) while `;delimiter=| ` is just `|`. That asymmetry is also why an all-whitespace value ends up empty.
+**Anything else needs no quoting, at any length** — `|`, `::`, `[+]`, even `a b`. Unquoted, **leading whitespace is kept and trailing whitespace is trimmed**, so `;delimiter= |` is a two-character delimiter (space, then pipe) while `;delimiter=| ` is just `|`. That asymmetry is also why an all-whitespace value ends up empty, and quoting is how you keep whitespace at either end.
 
-**The one value you will see written down cannot be sent.** Both CSV formats document `delimiter` in the generated spec as *"default is comma"* — accurate about the **setting**, and the one spelling of it a header cannot carry, so writing the documented default out explicitly is the request in this section a reader is likeliest to make by accident. There is nothing else in the spec to copy from: the settings types carry example objects of their own, but the spec is generated without them, so the description is all a reader sees.
+**The one value you will see written down needs the quotes.** Both CSV formats document `delimiter` in the generated spec as *"default is comma"* — accurate about the **setting**, and the one spelling of it a header cannot carry plainly, so writing the documented default out explicitly is the request in this section a reader is likeliest to make by accident. `;delimiter=","` sends it. There is nothing else in the spec to copy from: the settings types carry example objects of their own, but the spec is generated without them, so the description is all a reader sees.
 
 ### Accept Parameter Tolerance
 
@@ -596,7 +608,7 @@ Accept: text/csv;delimiter=|;charset=utf-8   # delimiter honored, charset ignore
 
 A misspelled parameter **name** falls into the same bucket: it is ignored, silently, so `;strem=true` is a perfectly successful buffered response and nothing reports the typo.
 
-> **An invalid *value* on a parameter the format does recognize is a `400`, and the message names it.** Settings are parsed as one string, so a single value the declaration cannot accept fails the whole set — but the response says which parameter, and what it would have taken:
+> **An invalid *value* on a parameter the format does recognize is a `400`, and the message names it.** Settings are coerced as one set, so a single value the declaration cannot accept fails all of them — but the response says which parameter, and what it would have taken:
 >
 > ```
 > Accept: application/json;stream=truex
@@ -614,7 +626,7 @@ A misspelled parameter **name** falls into the same bucket: it is ignored, silen
 >
 > The `details` names the **first** parameter it cannot accept, so a header with two bad values reports the leftmost and you fix them one at a time. The body is an ordinary error document with `@type` of `bad request`, framed to the `Accept` header like any other — see [Error response framing](#error-response-framing).
 >
-> Booleans must be spelled `true` or `false` — `1`, `0`, `yes` and `on` are all rejected. The two enums are strict about their own values but both also accept `null`; see [The literal `null` as a parameter value](#the-literal-null-as-a-parameter-value) below.
+> Booleans must be spelled `true` or `false` — `1`, `0`, `yes` and `on` are all rejected. The two enums are strict about their own values but both also accept `null`; see [The literal `null` as a parameter value](#the-literal-null-as-a-parameter-value) below. Any value may be wrapped in double quotes without changing what it means — `;stream="true"` is still the boolean — which is how a value containing a `;` or a `,` is sent at all; see [Three delimiters that must be quoted](#three-delimiters-that-must-be-quoted).
 
 > **Changed 2026-08-22 — this used to be silent.** An unusable value previously failed the whole projection with nothing to report it: the serializer was left with no settings, wrote nothing, and the request answered a **success status with an empty body** — `204 No Content` when buffered. If you carry a check for "an empty response right after I touched the `Accept` header", it can go: a bad value is now a `400` that names itself, and **a `204` has exactly one cause again — the collection was empty**.
 
@@ -733,7 +745,7 @@ Three details worth knowing before you write the switch:
 **CSV (`text/csv`):**
 - Header row derived from first item's fields
 - A value containing the delimiter, the quote character or a newline is quoted; an array member is always quoted, whatever it holds — see [CSV serializer parameters](#csv-serializer-parameters)
-- `delimiter`, `arrayDelimiter` and `quoteChar` change the field separator, the separator *inside* an array field, and the quote character. A comma, a semicolon and whitespace cannot be spelled as a delimiter ([Gotcha 45](common-gotchas.md#45-three-csv-delimiters-have-no-spelling-in-an-accept-header))
+- `delimiter`, `arrayDelimiter` and `quoteChar` change the field separator, the separator *inside* an array field, and the quote character. A comma, a semicolon and whitespace are separators in the header itself, so a delimiter of one of them must be quoted — `;delimiter=";"` ([Gotcha 45](common-gotchas.md#45-three-csv-delimiters-must-be-quoted-in-an-accept-header))
 - Empty collections yield empty output (no header) — `204 No Content` buffered, `200` with an empty body when `;stream=true`
 - Add `;stream=true` to emit the header row and then each data row as the collection advances
 - Single item yields header + 1 data row

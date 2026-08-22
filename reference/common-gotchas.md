@@ -910,7 +910,7 @@ Accept: application/sql;mode=merge
 
 Booleans must be spelled `true` or `false` — `1`, `0`, `yes` and `on` are all rejected. The two enums accept their named values plus the literal token `null`: `mode` takes `insert`, `sync`, `merge`, `null`, and `numberHandling` takes `string`, `number`, `null`.
 
-**So a setting that appears to do nothing is a name problem, and there is no status code that will tell you.** A stream that never streams, a `skipNulls` that keeps skipping, a `delimiter` that stays a comma — check the spelling of the name before concluding the parameter is unsupported. (A `delimiter` that comes back as *nothing* is the opposite problem: the name landed and the value could not be written — see [gotcha 45](#45-three-csv-delimiters-have-no-spelling-in-an-accept-header).) Unknown names are ignored deliberately, so that `;charset=utf-8` and `;q=0.9` work on every collection format.
+**So a setting that appears to do nothing is a name problem, and there is no status code that will tell you.** A stream that never streams, a `skipNulls` that keeps skipping, a `delimiter` that stays a comma — check the spelling of the name before concluding the parameter is unsupported. (A `delimiter` that comes back as *nothing* is the opposite problem: the name landed and the value was a separator written without its quotes — see [gotcha 45](#45-three-csv-delimiters-must-be-quoted-in-an-accept-header).) Unknown names are ignored deliberately, so that `;charset=utf-8` and `;q=0.9` work on every collection format.
 
 Two related points:
 
@@ -1241,9 +1241,9 @@ Related: [Dynamic Properties](resource-patterns.md#re-registering-and-what-it-co
 
 ---
 
-## 45. Three CSV Delimiters Have No Spelling in an `Accept` Header
+## 45. Three CSV Delimiters Must Be Quoted in an `Accept` Header
 
-A comma, a semicolon and whitespace cannot be written as a `delimiter` — and they are the three an integrator is most likely to want. The comma separates the media types in the header, the semicolon separates the parameters, and an all-whitespace value is trimmed away before it is read.
+A comma, a semicolon and whitespace are separators in the header itself, so a `delimiter` of one of them written plainly never reaches the serializer — and they are the three an integrator is most likely to want. The comma separates the media types, the semicolon separates the parameters, and an all-whitespace value is trimmed away before it is read. Wrap the value in double quotes and it arrives intact.
 
 ```bash
 # WRONG - semicolon-separated CSV, the Excel default across most of Europe
@@ -1261,11 +1261,20 @@ Accept: text/csv;delimiter=<a literal tab>      # 200, and the fields run togeth
 # WRONG - percent-encoding does not help; nothing decodes a parameter value
 Accept: text/csv;delimiter=%3B                  # 200, and the delimiter is the literal text %3B
 
-# RIGHT - any other string, of any length
+# RIGHT - the same three, quoted
+Accept: text/csv;delimiter=";"                  # 200, semicolon-separated
+Accept: text/csv;delimiter=","                  # 200, comma-separated
+Accept: text/csv;delimiter="<a literal tab>"    # 200, tab-separated
+
+# RIGHT - any other string needs no quotes, at any length
 Accept: text/csv;delimiter=|
 ```
 
-**The semicolon is the one that can tell you, and only when nothing follows it.** `;delimiter=;` leaves an empty parameter behind the semicolon and is rejected; `;delimiter=;` with another parameter after it leaves nothing empty to reject, so it answers `200` with the delimiter gone. A comma or whitespace is quiet either way.
+**The quotes are the RFC 2045 quoted-string form**, and they are not specific to `delimiter`: every parameter takes them, on `Accept` and `Content-Type` alike, so `;arrayDelimiter=","` and `;nullValue=";"` work the same way. A backslash inside them escapes the next character, so a delimiter of `"` is `;delimiter="\""`.
+
+> **Changed 2026-08-22 — these three used to have no spelling at all.** The quoted form was itself rejected, so this entry previously said a semicolon, a comma and whitespace could not be sent and told you to pick some other separator. If you settled on a pipe or some other separator because of that, the reason is gone. Whatever you already send keeps working; there is nothing to change unless one of the three is what you wanted.
+
+**The semicolon is the one that can tell you when you forget, and only when nothing follows it.** `;delimiter=;` leaves an empty parameter behind the semicolon and is rejected; `;delimiter=;` with another parameter after it leaves nothing empty to reject, so it answers `200` with the delimiter gone. A comma or whitespace is quiet either way.
 
 **The failure is not a broken file, it is a plausible one.** With an empty delimiter every field is quoted, the quotes run together, and a CSV reader takes the whole line as a single column:
 
@@ -1276,18 +1285,18 @@ Accept: text/csv;delimiter=|
 
 That parses cleanly as one column named `@type"name"gtin"unit`. There is no error to catch and nothing in the body says the delimiter was dropped — **count the columns of the first row you load.**
 
-Neither of the two loud spellings names the parameter you wrote, so the message is no help in finding it. `;delimiter=;` reports the empty parameter behind the semicolon, and the standard quoted-string form — the RFC spelling for exactly this problem — is rejected because the quote is read as part of the parameter *name*:
+The one loud spelling does not name the parameter you wrote, so the message is no help in finding it — `;delimiter=;` reports the empty parameter behind the semicolon rather than the delimiter:
 
 ```
 Accept: text/csv;delimiter=;      → 400  Invalid content type parameter '=', which takes string
-Accept: text/csv;delimiter=";"    → 400  Invalid content type parameter '"=', which takes string
 ```
 
-Three related points:
+Four related points:
 
-- **A comma also swallows every parameter after it**, because the two are lost at different stages: a semicolon reaches the parameters and ends one assignment, while a comma never reaches them at all — the header is a comma-separated list of media types and is cut there first. So `;delimiter=;arrayDelimiter=/` loses the delimiter and keeps the array delimiter, and `;delimiter=,;quoteChar=~~` loses both.
-- **`arrayDelimiter` has the same three holes, and fails more quietly.** `;arrayDelimiter=,` joins an array's elements with nothing at all — `["7312345678901", "7312345678902"]` comes back as `"73123456789017312345678902"`, with no boundary left to recover.
-- **This is not the same thing as a misspelled parameter name.** A name the format does not recognize is ignored and the default applies, so `delimiter` silently stays a comma — see [gotcha 35](#35-a-misspelled-accept-parameter-name-is-silent-a-bad-value-is-not). Here the name is right and the *value* is the problem, and in the quiet cases the delimiter does not stay a comma: it becomes nothing at all. The two produce different bodies, so the column count tells you which one you hit.
+- **Unquoted, a comma also swallows every parameter after it**, because the two are lost at different stages: a semicolon reaches the parameters and ends one assignment, while a comma never reaches them at all — the header is a comma-separated list of media types and is cut there first. So `;delimiter=;arrayDelimiter=/` loses the delimiter and keeps the array delimiter, and `;delimiter=,;quoteChar=~~` loses both. Quoted, neither cut happens and `;delimiter=",";quoteChar=~~` keeps both.
+- **`arrayDelimiter` has the same three holes and the same fix**, and unquoted it fails more quietly. `;arrayDelimiter=,` joins an array's elements with nothing at all — `["7312345678901", "7312345678902"]` comes back as `"73123456789017312345678902"`, with no boundary left to recover. `;arrayDelimiter=","` joins them on a comma.
+- **Quoting has to close to count.** An unbalanced or early-closing quote is ordinary text, so `;delimiter="` is the one character `"`, and `;delimiter=a"b` is the three characters `a"b`. If a quoted delimiter appears not to have applied, check that the closing quote is there before suspecting anything else.
+- **This is not the same thing as a misspelled parameter name.** A name the format does not recognize is ignored and the default applies, so `delimiter` silently stays a comma — see [gotcha 35](#35-a-misspelled-accept-parameter-name-is-silent-a-bad-value-is-not). Here the name is right and the *value* is the problem, and in the quiet cases the delimiter does not stay a comma: it becomes nothing at all. The two produce different bodies, so the column count tells you which one you hit. Note that a space *before* the `=` makes it a name problem rather than a value one — `;delimiter = ";"` names a parameter called `delimiter ` and is ignored in silence.
 
 It applies to a CSV **upload** as well, since `Content-Type` is parsed the same way, and to `application/vnd.ms-sqlserver.csv`, which takes a `delimiter` of its own.
 
