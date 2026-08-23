@@ -343,6 +343,8 @@ Both approaches trigger the replace handler with an empty whitelist, removing al
 | `dynamic` | boolean | Whether this is a dynamic type |
 | `elementType` | string | For array types, the element type key |
 
+**`typeKey` describes a member, so it is not always a name you can send.** It carries the member's decorations along with the type — `strict string?` for a nullable string, `product node[]?` for a nullable array, `number (read-only)` — and several hundred of the distinct type keys in the document read that way. A `@type` in a request body has to name **one type exactly**, so a decorated key copied out of here is a `400` telling you which name to write instead; see [gotcha 47](common-gotchas.md#47-a-declared-type-key-is-not-always-one-you-can-write). The undecorated root is the part that is a type name.
+
 ---
 
 ### `x-cos-required`

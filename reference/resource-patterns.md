@@ -193,6 +193,8 @@ PATCH /v1/products/com.example.sku=WIDGET-001/labels
 
 The same check runs on `add`, `replace` and `remove` alike, and in the sub-path form as well as the envelope one. It is measured against **the array you are writing to**, so the type a collection narrows down to is the one it takes: a `store` for `/v1/stores`, not the `agent` that `/v1/agents` holds.
 
+A spelling that is not a bare type name is refused too, even when the name inside it is the right one: `{"@type": "label?"}` and `{"@type": "label or product"}` are both a `400` naming what to write instead. That check is not about the array — it is the same wherever an object is written — but it is easy to hit here, because the type keys the generated spec publishes for a member carry those decorations.
+
 One wrong type is not refused. A *sibling* that happens to declare everything the element declares is accepted, built as the element, and whatever it declared on top of that is dropped — a `200` with no signal. See [gotcha 47](common-gotchas.md#47-a-declared-type-key-is-not-always-one-you-can-write), which is also where the exact messages are.
 
 ### `remove` Is Idempotent

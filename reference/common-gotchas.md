@@ -1366,13 +1366,28 @@ Everything that does *not* fit is refused — including a key the schema does no
 "@type": "no such effect"      → 400  The provided type key 'no such effect' is not defined in the current type schema
 ```
 
-**That last message names the *root* of what you sent.** A trailing `?`, or a `X or Y` union, is read down to a single root before the schema is consulted, so it never reaches the message — `"@type": "no such effect?"` is reported as `'no such effect'`, which is worth knowing if you are matching the message against your payload and cannot find the string it names.
+**A `@type` names one type, not a type expression.** A decoration, or two names combined — a trailing `?`, an `[]`, a `(read-only)`, two names joined by `or` or by a comma, two joined by `and` — is refused whatever it wraps, and the message names what to write instead:
 
-The same reduction is why one of these that *does* name a real type is simply accepted as that type, quietly: both `"fixed surcharge rule effect?"` and `"fixed surcharge rule effect or percentage surcharge rule effect"` create a plain `fixed surcharge rule effect`. An `[]` is the one that is refused, and with the ordinary coercion `400` (`Invalid data format. A value could not be coerced to the expected target type.`) rather than either message above.
+```
+"@type": "fixed surcharge rule effect?"
+  → 400  Invalid type annotation 'fixed surcharge rule effect?'.
+         A type annotation names one type exactly; write 'fixed surcharge rule effect'.
+
+"@type": "fixed surcharge rule effect or percentage surcharge rule effect"
+  → 400  Invalid type annotation 'fixed surcharge rule effect or percentage surcharge rule effect'.
+         A type annotation names one type exactly;
+         write 'fixed surcharge rule effect' or 'percentage surcharge rule effect'.
+```
+
+Unlike assignability, this one is not positional: the spelling is checked the same way wherever the object is written, so a nested array element and an `add` payload are refused exactly as a collection `POST` is.
+
+**The route to a decorated spelling is the spec, not an example.** No example in the document carries one — but a *member's declared type* does, and that is what an integrator is reading when they go looking for a type name. `x-pillow-type.typeKey` gives `strict string?`, `agent?`, `product node[]?` and `number (read-only)`, and several hundred of the type keys in the document are decorated that way. They describe a member; they are not `@type` spellings. See [`x-pillow-type`](openapi-extensions.md#x-pillow-type).
+
+**A typo carrying a decoration is still reported as a typo.** The name is resolved before the spelling is checked, so `"@type": "no such effect?"` is reported as `'no such effect'` — the root, with the decoration stripped — and a combination reports its leftmost name (`"no such effect or another missing"` is also reported as `'no such effect'`). Worth knowing if you are matching the message against your payload and cannot find the string it names.
 
 **Read that message rather than assuming which types are safe, because the thing being measured against is where you are writing, not what you are writing.** The same effect sent into a surcharge rule's own `effects` array is checked against `trade rule effect` instead — so there `"trade rule effect"` is accepted and quiet, where here it is a `400`. An array write is measured the same way: `add`, `replace` and `remove` are checked against the element type of the array you are patching, so a `@type` one collection takes can be a `400` on another — see [The Element Type Is Implied](resource-patterns.md#the-element-type-is-implied).
 
-Omitting `@type` altogether lands in the same place as a type that merely fits — the object is built as the target type and the extra members go — so the two mistakes are indistinguishable from the response.
+Omitting `@type` altogether lands in the same place as a type that merely fits — the object is built as the target type and the extra members go — so the two mistakes are indistinguishable from the response. `"dynamic"` and `"void"` are two more spellings of it: both are accepted, neither narrows anything, and a write carrying either is identical to one carrying no `@type` at all. Those two and the sibling are what is left of the quiet cases.
 
 The check is the one [gotcha 46](#46-deprecated-does-not-tell-you-whether-a-member-still-works) and [gotcha 41](#41-a-write-under-a-read-only-scope-is-a-silent-200) prescribe, with one addition: **read the object back and compare the `@type` you got against the `@type` you sent**, not just the members. A downgraded write keeps every member the target declares, so a comparison that only checks the fields it can see will pass.
 
@@ -1380,6 +1395,8 @@ Two related points:
 
 - **A generated client cannot warn you either.** `price rule effect` is a real type with real members, so it is in the spec exactly like the ones that work. What the document does not record is which relations will accept it — assignability is worked out from the members rather than written down anywhere. It does name the right *element* type for `add`/`replace`/`remove`, which is a narrower promise than it looks: the type is correct, which types are assignable to it still is not written down.
 - **This is not the same as a missing `@type`.** Omitting the discriminator entirely leaves the object as the target type for the same reason, so the symptom matches, but the cause is the one the [POS tile sets](../guide/examples/pos.md#pos-tile-sets) note already covers. Either way the fix is the same: send the subtype the resource actually builds, and verify by reading it back.
+
+**Changed 2026-08-23.** A decorated `@type` used to be accepted rather than refused — a trailing `?` or a `X or Y` union was read down to a single name and the write went through as that name, and this entry said so in as many words. It is a `400` now, with the message above. Nothing that names one type exactly behaves differently, so a payload that was already correct is unaffected.
 
 Related: [gotcha 48](#48-a-member-write-can-move-a-record-to-another-collection) — the same downgrade caused by an ordinary member rather than by `@type`, [gotcha 41](#41-a-write-under-a-read-only-scope-is-a-silent-200), [gotcha 46](#46-deprecated-does-not-tell-you-whether-a-member-still-works), [POS tile sets](../guide/examples/pos.md#pos-tile-sets).
 
