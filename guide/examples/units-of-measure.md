@@ -20,7 +20,7 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/products" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "product",
-    "identifiers": { "sku": "DELI-SALAMI-001" },
+    "identifiers": { "com.example.sku": "DELI-SALAMI-001" },
     "name": "Artisan Salami",
     "unit": "Kilogram",
     "parentGroup": { "identifiers": { "com.example.id": "deli-meats" } },
@@ -31,7 +31,7 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/products" \
 ### Update the unit on an existing product
 
 ```bash
-curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/products/sku=DELI-SALAMI-001" \
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/products/com.example.sku=DELI-SALAMI-001" \
   -H "Content-Type: application/json" \
   -d '{ "unit": "Kilogram" }'
 ```
@@ -45,7 +45,7 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/products" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "product",
-    "identifiers": { "sku": "PHONE-X200" },
+    "identifiers": { "com.example.sku": "PHONE-X200" },
     "name": "Phone X200",
     "unit": "Piece",
     "parentGroup": { "identifiers": { "com.example.id": "smartphones" } },
@@ -161,6 +161,39 @@ All valid `unit` values, organized by system. Values are **case-sensitive Pascal
 
 > **Total: 48 unit values** across 10 systems. For typical retail, focus on Occurrence, Mass, Length, Area, Volume, and Time.
 
+### A wrong value is a `400` that names every unit there is
+
+You do not have to trust the table above: a value outside the vocabulary is refused with the whole vocabulary in the message, so one deliberately wrong request returns the current list.
+
+```bash
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/products/com.example.sku=DELI-SALAMI-001" \
+  -H "Content-Type: application/json" \
+  -d '{ "unit": "Kilos" }'
+```
+
+```
+400  details: Invalid value 'Kilos' for enum 'Unit'. Expected 'Acre', 'Hectare', 'SquareCentimeter',
+     'SquareKilometer', 'SquareMeter', 'SquareMillimeter', 'Joule', 'KilowattHour', 'Centimeter',
+     'Decimeter', 'Foot', 'Inch', 'Kilometer', 'Meter', 'Mile', 'Millimeter', 'Yard', 'Gram',
+     'Kilogram', 'MetricTon', 'Milligram', 'Ounce', 'Pound', 'Stone', 'Piece', 'Kilowatt',
+     'MechanicalHorsepower', 'MetricHorsepower', 'Watt', 'KilometerPerHour', 'Knot',
+     'MeterPerSecond', 'MilePerHour', 'Celsius', 'Fahrenheit', 'Kelvin', 'Day', 'Hour',
+     'Millisecond', 'Minute', 'Second', 'Week', 'CubicCentimeter', 'CubicMeter', 'FluidOunce',
+     'Gallon', 'Liter' or 'Milliliter'.
+```
+
+That is the same 48 values as the tables above. It reads as one run per system, in the same groupings — area, energy, length, mass, occurrence, power, speed, temperature, time, volume — with the systems and the values inside each in alphabetical order, so the list maps onto the tables above section by section. It is the same message on `unit` and on `priceComparisonUnit`, and the same on a product, a product family and a product group, so any of them will answer the question.
+
+**A case slip lands here too, which is what makes the refusal worth reading.** `"kilogram"` and `"kg"` are not near-misses that get corrected — they are refused exactly like `"Kilos"`, with the same list, and the list is where you find the spelling that works.
+
+**Two values are not refused, and both clear the member.** `null` and `""` are accepted at `200` and leave `unit` reading `null`, so a spreadsheet import with an empty cell silently unsets the unit rather than failing. A **non-string** — `123`, `true`, an array — is refused one step earlier, with a message that names neither the member nor the units:
+
+```
+400  error: Invalid data format. A value could not be coerced to the expected target type.
+```
+
+Note that string arrives under `error` rather than `details` — this refusal is a `failed coercion` and carries no `details` member at all. The member is still named, in the body: it carries a `failedCoercions` list whose `path` is `/unit`. See [Error Types](../../reference/overview.md#error-types).
+
 ---
 
 ## Section 3: Common Retail Scenarios
@@ -174,7 +207,7 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/products" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "product",
-    "identifiers": { "sku": "TSHIRT-BLK-M" },
+    "identifiers": { "com.example.sku": "TSHIRT-BLK-M" },
     "name": "Black T-Shirt (M)",
     "unit": "Piece",
     "parentGroup": { "identifiers": { "com.example.id": "tshirts" } },
@@ -191,7 +224,7 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/products" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "product",
-    "identifiers": { "sku": "CHEESE-BRIE-001" },
+    "identifiers": { "com.example.sku": "CHEESE-BRIE-001" },
     "name": "French Brie",
     "unit": "Kilogram",
     "parentGroup": { "identifiers": { "com.example.id": "deli-cheese" } },
@@ -204,7 +237,7 @@ When ordering 350g of brie, the trade order item quantity is `"0.350"`:
 ```json
 {
   "@type": "trade order item",
-  "product": { "identifiers": { "sku": "CHEESE-BRIE-001" } },
+  "product": { "identifiers": { "com.example.sku": "CHEESE-BRIE-001" } },
   "quantity": "0.350"
 }
 ```
@@ -218,7 +251,7 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/products" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "product",
-    "identifiers": { "sku": "CABLE-CAT6-BLU" },
+    "identifiers": { "com.example.sku": "CABLE-CAT6-BLU" },
     "name": "Cat6 Ethernet Cable (Blue)",
     "unit": "Meter",
     "parentGroup": { "identifiers": { "com.example.id": "network-cables" } },
@@ -235,7 +268,7 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/products" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "product",
-    "identifiers": { "sku": "TILE-MARBLE-30X30" },
+    "identifiers": { "com.example.sku": "TILE-MARBLE-30X30" },
     "name": "Marble Tile 30x30",
     "unit": "SquareMeter",
     "parentGroup": { "identifiers": { "com.example.id": "floor-tiles" } },
@@ -252,7 +285,7 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/products" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "product",
-    "identifiers": { "sku": "FOUNTAIN-COLA" },
+    "identifiers": { "com.example.sku": "FOUNTAIN-COLA" },
     "name": "Fountain Cola",
     "unit": "Liter",
     "parentGroup": { "identifiers": { "com.example.id": "fountain-drinks" } },
@@ -269,7 +302,7 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/products" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "product",
-    "identifiers": { "sku": "SVC-REPAIR-HOURLY" },
+    "identifiers": { "com.example.sku": "SVC-REPAIR-HOURLY" },
     "name": "Repair Service (Hourly)",
     "unit": "Hour",
     "parentGroup": { "identifiers": { "com.example.id": "services" } },
@@ -286,7 +319,7 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/products" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "product",
-    "identifiers": { "sku": "ELEC-KWH-SPOT" },
+    "identifiers": { "com.example.sku": "ELEC-KWH-SPOT" },
     "name": "Electricity (Spot Price)",
     "unit": "KilowattHour",
     "parentGroup": { "identifiers": { "com.example.id": "energy" } },
@@ -351,7 +384,7 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/products" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "product",
-    "identifiers": { "sku": "SALAMI-PRESLICED-150G" },
+    "identifiers": { "com.example.sku": "SALAMI-PRESLICED-150G" },
     "name": "Pre-Sliced Salami 150g",
     "unit": "Piece",
     "parentGroup": { "identifiers": { "com.example.id": "deli-meats" } },
@@ -402,7 +435,7 @@ A receipt item for 2 pieces of a product displays differently:
 
 - **Use `"Kilogram"` (etc.) for weighed/measured goods.** A deli counter selling sliced salami by weight uses `"Kilogram"`. The quantity on the order item will be a decimal like `"0.350"`.
 
-- **Values are case-sensitive PascalCase.** It's `"Kilogram"`, not `"kilogram"` or `"kg"`. The API expects the exact string value.
+- **Values are case-sensitive PascalCase.** It's `"Kilogram"`, not `"kilogram"` or `"kg"`. The API expects the exact string value — and refuses anything else with [the full list of the 48 it accepts](#a-wrong-value-is-a-400-that-names-every-unit-there-is), so a case slip is a `400` you can read the right spelling out of rather than a silent miss.
 
 - **Not all units make sense for retail.** Temperature, speed, and power units exist for completeness but are rarely used as sales units. Stick to Occurrence, Mass, Length, Area, Volume, and Time for typical retail.
 

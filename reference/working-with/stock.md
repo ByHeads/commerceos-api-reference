@@ -1153,11 +1153,13 @@ The eleven codes are a closed vocabulary, and a value outside it is refused rath
 
 **Malformed** covers anything that is not exactly three uppercase letters, so a case slip of a real code lands there rather than in the not-found branch — `cfr`, `Cfr` and `CFr` are all malformed. **Not found** covers a well-formed code naming no Incoterm.
 
-A non-string value never reaches the vocabulary at all. It is refused one step earlier, with the generic coercion message, which names neither the member nor the eleven codes:
+A non-string value never reaches the vocabulary at all. It is refused one step earlier, with the generic coercion *message*, which names neither the member nor the eleven codes:
 
 ```
-"incotermCode": 123          400  details: Invalid data format. A value could not be coerced to the expected target type.
+"incotermCode": 123          400  error: Invalid data format. A value could not be coerced to the expected target type.
 ```
+
+Note the label: the three refusals above carry their message in `details`, and this one carries it in `error` — it is a `failed coercion` and has no `details` member at all. The member is named in the body instead: it carries a `failedCoercions` list whose `path` is `/incotermCode` ([Error Types](../overview.md#error-types)).
 
 **A refused write leaves the term exactly as it was.** A `PATCH` carrying a bad code changes nothing, and a `POST` carrying one creates nothing — there is no half-written term to clean up.
 

@@ -270,15 +270,38 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/pos-profiles/posP
 
 The two `Visibility` members read back as `null` until you set one, and `null` there means the default in the table above rather than "hidden". `renderRootTilesetPanel` is a plain boolean and reads back `false`.
 
-A value a member does not accept is a `400`:
+### A Refused Value Names the Values It Would Have Accepted
+
+A value a member does not accept is a `400`, and the refusal is a vocabulary listing — so a member whose values you do not know can be discovered with one deliberately wrong request:
 
 ```
-"tilesetCategoryPillsVisibility": "Nonsense"   400  details: Invalid value 'Nonsense' for enum 'Visibility'.
-"renderRootTilesetPanel": "Nonsense"           400  details: Invalid data format. A value could not be
-                                                    coerced to the expected target type.
+"tilesetCategoryPillsVisibility": "Nonsense"
+400  details: Invalid value 'Nonsense' for enum 'Visibility'. Expected 'Hidden' or 'Visible'.
 ```
 
-Two different messages for one class of mistake, and which one you get depends on how the member is typed rather than on what you sent. A member the schema declares as a free string with its vocabulary written into the description — the two `Visibility` members here, and the profile's `mode` (`Invalid value 'Nonsense' for enum 'PosMode'.`) — is checked against the vocabulary and named after the *enum*, never after the values it would have accepted; read those off the table above. A member the schema declares as a fixed set of values, such as `product.status` or a device's `status`, never reaches that check: the platform's ordinary coercion refuses it first, with the second message.
+That matters more than it looks, because most of a profile's settings are members like this and their vocabularies are not tabulated anywhere in this reference. Send one wrong value and the refusal tells you the rest:
+
+| Member | Values it names |
+|---|---|
+| `tilesetCategoryPillsVisibility`, `nestedSiblingTilesetsVisibility`, `oskVisibility` | `Hidden`, `Visible` |
+| `mode` | `Manned`, `Self-checkout` |
+| `stockDisplay` | `Always`, `Low`, `Never`, `Out` |
+| `oskKeyboardLayout` | `Auto`, `English`, `Norwegian`, `Swedish` |
+| `cartPlacement` | `Left`, `Right` |
+| `searchGridMode` | `Inline`, `Overlay` |
+
+The values are comma-separated with `or` before the last, and the whole vocabulary is listed — for a wider member than any of these, see [a wrong unit naming all forty-eight units](./units-of-measure.md#a-wrong-value-is-a-400-that-names-every-unit-there-is).
+
+**A member whose type is fixed in the schema rather than checked against a vocabulary is refused one step earlier, and its message says nothing at all.** `renderRootTilesetPanel` is a plain boolean; `product.status` and a device's `status` are fixed sets of values. A bad value on any of them never reaches the vocabulary check:
+
+```
+"renderRootTilesetPanel": "Nonsense"
+400  error: Invalid data format. A value could not be coerced to the expected target type.
+```
+
+So one class of mistake has two refusals, and which one you get is decided by how the member is declared rather than by what you sent. **The two do not even put their message in the same place**, which is worth knowing before you write the error handler: the vocabulary refusal is a `bad request` carrying its message in `details`, while this one is a `failed coercion` with **no `details` member at all** — its message is the generic `error` string, and everything specific is in a `failedCoercions` list naming the member that failed and the value you sent — with one entry per alternative the member's type allows, so a fixed set of values contributes one entry per value. So the second tells you no less than the first; it says it in the body rather than the message. Branch on `@type`, not on either string. See [Error Types](../../reference/overview.md#error-types).
+
+Coercion runs first, so an object carrying both kinds of mistake reports only the coercion one — fix that and re-send to see the other.
 
 There is no separate panel resource: a panel *is* a root tile set, so `/v1/pos-profiles/{key}/panels` is a `404`.
 
