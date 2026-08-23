@@ -111,6 +111,41 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/pos-functions" \
   }'
 ```
 
+### The subtype vocabulary is per deployment
+
+A POS function's `@type` names a subtype the deployment installed — `lock function`, `pay function`, `open drawer function` and so on. The three named in the comment above are examples, not the vocabulary: the set is whatever functions the POS application registered, so read it off the deployment rather than hard-coding it. Two places to read it:
+
+- `GET /v1/pos-functions` — every function comes back carrying its own `@type`.
+- The deployment's OpenAPI document, where the `POS function` schema carries an `x-child-types` array naming every subtype, and each subtype has a component schema of its own, showing any extra members it carries.
+
+Every one of these names is lower case with its words separated by single spaces (`lock function`, `xref multi display function`), and the spelling is exact: `Lock Function` is a `400`. Copy the name from a response rather than reconstructing it.
+
+```bash
+# Names a subtype the deployment installed
+POST /v1/pos-functions   {"@type": "lock function", "identifiers": {...}, "name": "Lock"}   # 200
+
+# Names the base type
+POST /v1/pos-functions   {"@type": "POS function",  "identifiers": {...}, "name": "Lock"}   # 400
+
+# Names nothing
+POST /v1/pos-functions   {"identifiers": {...}, "name": "Lock"}                             # 200
+```
+
+Omitting `@type` is not an error — it creates a plain `POS function`, which reads back as `"@type": "POS function"`. Writing that same name explicitly is the one spelling that is refused, because only a subtype can be named here.
+
+> **The refusal is the best vocabulary listing there is.** Naming the base type answers a `400` whose `info` carries every subtype this deployment accepts:
+>
+> ```json
+> {"@type": "bad request",
+>  "error": "The request was invalid and could not be processed.",
+>  "details": "Unknown POS function type: 'POS function'",
+>  "info": {"availableTypes": ["lock function", "open drawer function", "..."]}}
+> ```
+>
+> A name the deployment does not carry at all fails earlier and differently — `The provided type key 'no such function' is not defined in the current type schema`, with no list — so the two mistakes are distinguishable from the response alone.
+
+You never have to name a subtype to *reference* an existing function: `{"identifiers": {"posFunctionId": "lock-pos"}}` resolves it wherever a function is expected, and the response names the subtype back to you even though the request did not. That is the portable spelling, since it does not depend on which functions a deployment installed.
+
 The `/v1/pos-functions` collection itself is entirely alive — this is where the functions live, and a tile references one of them by identifier. It is only the `functions` member *on a profile* that is dead.
 
 ---
@@ -156,7 +191,7 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/pos-profiles" \
   }'
 ```
 
-> **The `@type` on a tile is load-bearing.** `tiles` holds the abstract `POS tile`, so the discriminator is what selects which subtype is being written — a tile sent without one carries neither `function` nor `productNode`. (`"@type": "POS tile set"` on the set itself is harmless to include and worth keeping for symmetry.) Note also that `POS function` is the only spelling for a function: there is no `lock function` or similarly named subtype, and sending one is rejected with a 400 saying the type key is not defined in the current type schema. Reference an existing function by `identifiers` alone. A wrong-but-plausible `@type` has a quieter failure mode elsewhere in the API, where the object is built as the target type and the members you sent on top of it are dropped — see [gotcha 47](../../reference/common-gotchas.md#47-a-declared-type-key-is-not-always-one-you-can-write).
+> **The `@type` on a tile is load-bearing.** `tiles` holds the abstract `POS tile`, so the discriminator is what selects which subtype is being written — a tile sent without one carries neither `function` nor `productNode`. (`"@type": "POS tile set"` on the set itself is harmless to include and worth keeping for symmetry.) A tile's `function` needs no `@type` of its own: reference an existing function by `identifiers` alone and the response resolves it, subtype and all. Naming the subtype (`"@type": "lock function"`) works too — see [The subtype vocabulary is per deployment](#the-subtype-vocabulary-is-per-deployment) for which names a deployment accepts, and for the one that is refused. A wrong-but-plausible `@type` has a quieter failure mode elsewhere in the API, where the object is built as the target type and the members you sent on top of it are dropped — see [gotcha 47](../../reference/common-gotchas.md#47-a-declared-type-key-is-not-always-one-you-can-write).
 
 ### Read the tile sets back
 
