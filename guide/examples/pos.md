@@ -123,7 +123,7 @@ A profile's `tileSets` is what a terminal renders. A tile set is a grid holding 
 |---|---|---|
 | `function tile` | Invokes a POS function when pressed | `function` |
 | `product tile` | Adds a product, or opens a category | `productNode` |
-| `tile set` | Opens a nested tile set (a sub-menu) | `rows`, `columns`, `tiles` |
+| `POS tile set` | Opens a nested tile set (a sub-menu) | `rows`, `columns`, `tiles` |
 
 Every tile also takes `name`, `icon`, `imageUrl`, `color`, `hotkey`, `visibility` (`Visible` / `Hidden`), `requiredPermission` (only users holding that permission see the tile), and `inputMask` (a scanner pattern that triggers it). Placement is either explicit — `row` and `column`, both 1-indexed, with optional `rowSpan` / `columnSpan` — or automatic: leave the tile set's `rows` and `columns` unset and tiles flow in `order`.
 
@@ -156,7 +156,7 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/pos-profiles" \
   }'
 ```
 
-> **The `@type` on a tile is load-bearing.** `tiles` holds the abstract `POS tile`, so the discriminator is what selects which subtype is being written — a tile sent without one carries neither `function` nor `productNode`. (`"@type": "POS tile set"` on the set itself is harmless to include and worth keeping for symmetry.) Note also that `POS function` is the only spelling for a function: there is no `lock function` or similarly named subtype, and sending one is rejected with a 400 saying the type key is not defined in the current type schema. Reference an existing function by `identifiers` alone. A type key that *is* defined but that the resource does not build fails less helpfully — see [gotcha 47](../../reference/common-gotchas.md#47-a-declared-type-key-is-not-always-one-you-can-write).
+> **The `@type` on a tile is load-bearing.** `tiles` holds the abstract `POS tile`, so the discriminator is what selects which subtype is being written — a tile sent without one carries neither `function` nor `productNode`. (`"@type": "POS tile set"` on the set itself is harmless to include and worth keeping for symmetry.) Note also that `POS function` is the only spelling for a function: there is no `lock function` or similarly named subtype, and sending one is rejected with a 400 saying the type key is not defined in the current type schema. Reference an existing function by `identifiers` alone. A wrong-but-plausible `@type` has a quieter failure mode elsewhere in the API, where the object is built as the target type and the members you sent on top of it are dropped — see [gotcha 47](../../reference/common-gotchas.md#47-a-declared-type-key-is-not-always-one-you-can-write).
 
 ### Read the tile sets back
 
@@ -203,7 +203,7 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/pos-profiles" \
 
 `columns` is set and `rows` is not, so this set auto-flows: tiles fill four to a row in `order`. The second tile is a nested `POS tile set` — a tile that opens a grid of its own rather than doing anything itself.
 
-> **A nested set is `"@type": "POS tile set"`, the same spelling as the outer one.** The schema also declares a `tile set` type, described as the nested-tile spelling, and it looks like the one to reach for here. It is not: a tile sent as `"@type": "tile set"` is accepted without complaint and comes back as a bare `POS tile` with `rows`, `columns` and `tiles` gone — the sub-menu is silently not created. `name` and `order` survive, so the tile is there and simply does nothing when pressed. (A type key that does not exist at all, such as `nesting tile`, is a clean `400` saying it is not defined in the current type schema; this one is worse precisely because it *is* defined.) Read the tile back and check the `@type` you get is the `@type` you sent — see [gotcha 47](../../reference/common-gotchas.md#47-a-declared-type-key-is-not-always-one-you-can-write).
+> **A nested set is `"@type": "POS tile set"`, the same spelling as the outer one.** There is no separate type for a nested set: the tile-set type is itself a `POS tile`, which is exactly what lets it sit in another set's `tiles`. Anything else there — a shortened `"tile set"`, an invented `"nesting tile"` — is a `400` saying the type key is not defined in the current type schema.
 
 `order` is not part of a nested set's default representation the way it is on a function or product tile, so reading one back does not show it. It is stored — ask for it with `~with(order)`:
 
@@ -233,7 +233,17 @@ None of the three is in a profile's default representation, so a plain `GET` doe
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/pos-profiles/posProfileId=kiosk~just(renderRootTilesetPanel,tilesetCategoryPillsVisibility,nestedSiblingTilesetsVisibility)"
 ```
 
-The two `Visibility` members read back as `null` until you set one, and `null` there means the default in the table above rather than "hidden". `renderRootTilesetPanel` is a plain boolean and reads back `false`. A value outside the pair is refused, but with a **`500`** carrying `Invalid value 'Nonsense' for enum 'Visibility'.` rather than the `400` a caller's mistake usually gets — the request is still yours to fix, not a platform fault to report.
+The two `Visibility` members read back as `null` until you set one, and `null` there means the default in the table above rather than "hidden". `renderRootTilesetPanel` is a plain boolean and reads back `false`.
+
+A value a member does not accept is a `400`:
+
+```
+"tilesetCategoryPillsVisibility": "Nonsense"   400  details: Invalid value 'Nonsense' for enum 'Visibility'.
+"renderRootTilesetPanel": "Nonsense"           400  details: Invalid data format. A value could not be
+                                                    coerced to the expected target type.
+```
+
+Two different messages for one class of mistake, and which one you get depends on how the member is typed rather than on what you sent. A member the schema declares as a free string with its vocabulary written into the description — the two `Visibility` members here, and the profile's `mode` (`Invalid value 'Nonsense' for enum 'PosMode'.`) — is checked against the vocabulary and named after the *enum*, never after the values it would have accepted; read those off the table above. A member the schema declares as a fixed set of values, such as `product.status` or a device's `status`, never reaches that check: the platform's ordinary coercion refuses it first, with the second message.
 
 There is no separate panel resource: a panel *is* a root tile set, so `/v1/pos-profiles/{key}/panels` is a `404`.
 

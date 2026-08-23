@@ -1340,37 +1340,7 @@ Related: [gotcha 41](#41-a-write-under-a-read-only-scope-is-a-silent-200), [gotc
 
 ## 47. A Declared Type Key Is Not Always One You Can Write
 
-Sending an object into a polymorphic collection means choosing a subtype with `@type`. A key the schema does not define at all is a clean `400`:
-
-```
-POST /v1/pos-profiles   [{..., "tiles": [{"@type": "nesting tile", ...}]}]
-→ 400  The provided type key 'nesting tile' is not defined the current type schema
-```
-
-A key the schema **does** define, but that the resource never constructs, is not. The write is a `200`, the object is stored as the abstract parent, and every member that belonged to the subtype is dropped on the way in:
-
-```bash
-# WRONG — `tile set` is a declared subtype of `POS tile`, described as the nested spelling
-POST /v1/pos-profiles [{"identifiers": {"posProfileId": "kiosk"}, "tileSets": [{
-  "@type": "POS tile set", "identifiers": {"tileId": "drinks"}, "name": "Drinks", "columns": 4,
-  "tiles": [{"@type": "tile set", "identifiers": {"tileId": "hot"}, "name": "Hot Drinks",
-             "order": 2, "rows": 2, "columns": 3, "tiles": []}] }]}]
-→ 200
-
-GET /v1/pos-profiles/posProfileId=kiosk/tileSets/tileId=drinks/tiles
-→ [{"@type": "POS tile", "identifiers": {..., "tileId": "hot"}, "name": "Hot Drinks", "order": 2}]
-                ↑ not what you sent          rows, columns and tiles are gone
-
-# RIGHT — the spelling the resource implements, for a nested set as well as a root one
-  "tiles": [{"@type": "POS tile set", "identifiers": {"tileId": "hot"}, "name": "Hot Drinks",
-             "order": 2, "rows": 2, "columns": 3, "tiles": []}]
-→ the tile reads back as a `POS tile set`, grid intact (`order` is stored but non-essential
-  on that subtype, so it needs `~with(order)`)
-```
-
-**What makes it expensive is that the object is still there.** The tile has its identifier and its name, so it appears on the terminal and in every listing; it simply does nothing when pressed. Nothing is missing to count, and nothing failed to report.
-
-**A second key gets through for a different reason: it is not in the target's family at all, but it fits.** Assignability here is structural, so a *sibling* type that declares everything the target declares is accepted — and then stored as the target, with whatever it declared on top of that dropped:
+Sending an object into a polymorphic collection means choosing a subtype with `@type`. The check is **structural** rather than a membership test against the target's own family, so a *sibling* type that declares everything the target declares gets through — and the object is then built as the target, with whatever the sibling declared on top of that dropped:
 
 ```bash
 # WRONG — `price rule effect` is a sibling of `surcharge rule effect`, not a subtype.
@@ -1385,7 +1355,9 @@ POST /v1/surcharge-rule-effects
 → 200  {"@type": "fixed surcharge rule effect", "items": [], "amount": "25", "identifiers": {...}}
 ```
 
-Everything that does *not* fit is refused, and the message names what it was measured against:
+**What makes it expensive is that the object is still there.** The effect is created, carries the identifier you gave it, and lists like any other; it simply has no amount to apply. Nothing is missing to count, and nothing failed to report.
+
+Everything that does *not* fit is refused — including a key the schema does not define at all — and the message names what it was measured against:
 
 ```
 "@type": "trade rule effect"   → 400  Invalid type annotation 'trade rule effect'.
@@ -1398,12 +1370,12 @@ Everything that does *not* fit is refused, and the message names what it was mea
 
 Omitting `@type` altogether lands in the same place as a type that merely fits — the object is built as the target type and the extra members go — so the two mistakes are indistinguishable from the response.
 
-The check is the one [gotcha 46](#46-deprecated-does-not-tell-you-whether-a-member-still-works) and [gotcha 41](#41-a-write-under-a-read-only-scope-is-a-silent-200) prescribe, with one addition: **read the object back and compare the `@type` you got against the `@type` you sent**, not just the members. A downgraded write keeps the members the parent declares, so a comparison that only checks the fields it can see will pass.
+The check is the one [gotcha 46](#46-deprecated-does-not-tell-you-whether-a-member-still-works) and [gotcha 41](#41-a-write-under-a-read-only-scope-is-a-silent-200) prescribe, with one addition: **read the object back and compare the `@type` you got against the `@type` you sent**, not just the members. A downgraded write keeps every member the target declares, so a comparison that only checks the fields it can see will pass.
 
 Two related points:
 
-- **A generated client cannot warn you either.** The subtype is in the spec with its own members, because it is genuinely declared — what is absent is an implementation behind it, and that is not something the schema records.
-- **This is not the same as a missing `@type`.** Omitting the discriminator entirely leaves the object as the parent for the same reason, so the symptom matches, but the cause is the one the [POS tile sets](../guide/examples/pos.md#pos-tile-sets) note already covers. Either way the fix is the same: send the subtype the resource actually builds, and verify by reading it back.
+- **A generated client cannot warn you either.** `price rule effect` is a real type with real members, so it is in the spec exactly like the ones that work. What the document does not record is which relations will accept it — assignability is worked out from the members rather than written down anywhere.
+- **This is not the same as a missing `@type`.** Omitting the discriminator entirely leaves the object as the target type for the same reason, so the symptom matches, but the cause is the one the [POS tile sets](../guide/examples/pos.md#pos-tile-sets) note already covers. Either way the fix is the same: send the subtype the resource actually builds, and verify by reading it back.
 
 Related: [gotcha 48](#48-a-member-write-can-move-a-record-to-another-collection) — the same downgrade caused by an ordinary member rather than by `@type`, [gotcha 41](#41-a-write-under-a-read-only-scope-is-a-silent-200), [gotcha 46](#46-deprecated-does-not-tell-you-whether-a-member-still-works), [POS tile sets](../guide/examples/pos.md#pos-tile-sets).
 

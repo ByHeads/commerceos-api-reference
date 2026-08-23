@@ -27,7 +27,7 @@ A product package holds **exactly one `(product, size)` pair**: ten Levis 501 to
 | `packageClass` | References a `product package class` — the classification (Carton, Pallet, etc.). **Required on create.** |
 | `product` | The product, family or group the package contains. **Required on create.** |
 | `size` | How many units of `product` fit in one package. **Required on create.** |
-| `name` | Display name. Takes the package class's name unless set on its own — see [Naming a package](#naming-a-package-takes-a-second-request). |
+| `name` | Display name. Optional — a package that does not set one reads its class's name instead, see [A package class supplies a default name](#a-package-class-supplies-a-default-name). |
 | `active` | Whether the package is available for use in new transactions. |
 | `identifiers` | External identifiers for lookup. |
 | `manifest` | **Deprecated** — a one-entry facade over `product` and `size`. See [The deprecated `manifest`](#the-deprecated-manifest). |
@@ -142,20 +142,28 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/product-packages
   }'
 ```
 
-The `name` in that payload does **not** stick, and neither does the one in the carton above — see below.
+Both creates above set a `name`. That is optional, and what happens when you leave it out is worth knowing before you build a catalogue.
 
-### Naming a package takes a second request
+### A package class supplies a default name
 
-A package's `name` cannot be set in the same payload as its `packageClass`: the class is applied after the name and renames the package to the class's own name. Since `packageClass` is required on create, that means **a `name` sent on create is always lost** — the create succeeds, nothing in the response says the name was dropped, and the catalogue lists as "Carton" and "Shrink-wrap" rather than by what is in the box.
+A package that does not set a `name` of its own reads its class's name, so a catalogue built without names lists as "Carton" and "Shrink-wrap" rather than by what is in the box. Setting one in the create payload — alongside `packageClass`, which every create has to carry — is all it takes:
 
 ```bash
-# The name in the create above did not stick — set it in a PATCH that names nothing else
-curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/product-packages/com.example.id=6pack-cola" \
-  -H "Content-Type: application/json" \
-  -d '{ "name": "6-Pack Cola" }'
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/product-packages/com.example.id=6pack-cola~just(name)"
 ```
 
-A `PATCH` carrying `name` **and** `packageClass` loses the name the same way, so keep the two apart. It is worth doing: "Levis 501 Carton x10" is far more useful than "Carton" when browsing a list of packages, and every package of that class otherwise reads the same.
+```json
+{ "@type": "product package", "name": "6-Pack Cola" }
+```
+
+The class supplies a **default**, not an override, and the difference shows when a package is reclassified. `PATCH`ing a Carton package to the Pallet class:
+
+| The package | Reads afterwards |
+|---|---|
+| named `Levis 501 Carton x10` | `Levis 501 Carton x10` — a name of its own is left alone |
+| unnamed, so reading `Carton` | `Pallet` — it follows its class into the new one |
+
+So a name you gave survives everything, and a package that never had one keeps tracking whichever class it is in. Naming is worth doing: every package of a class otherwise reads identically in a listing, and "Levis 501 Carton x10" tells you far more than "Carton".
 
 ### What a create refuses
 
@@ -230,7 +238,7 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/product-package
   -d '{ "size": "8" }'
 ```
 
-This turns the 6-pack into an 8-pack. Note what it does *not* touch: the `name`. A package called "6-Pack Cola" keeps saying six, so send `name` alongside `size` whenever the name carries the count — that pairing is fine, and it is only `packageClass` that a `name` cannot share a payload with.
+This turns the 6-pack into an 8-pack. Note what it does *not* touch: the `name`. A package called "6-Pack Cola" keeps saying six, so send `name` alongside `size` whenever the name carries the count.
 
 ### Retire a package
 
@@ -660,7 +668,7 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/product-packages
   }'
 ```
 
-The `name` here is lost the same way it is on every create — set it with a follow-up `PATCH` naming only `name`, per [Naming a package](#naming-a-package-takes-a-second-request), or the package lists as "Case".
+The `name` sticks, as it does on any create. Leave it out and the package lists as "Case", after its class — see [A package class supplies a default name](#a-package-class-supplies-a-default-name).
 
 ### Step 3: Create a supply relation
 
@@ -726,7 +734,7 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/trade-orders/com.
 
 - **Quantities are always in base units.** When specifying `moq` in supply relations or `quantity` in trade order items, always use base units (individual items), not package counts. 100 units in a carton of 10 = 10 cartons. The system converts by dividing by the package's `size`.
 
-- **A package's name has to be set on its own.** `name` sent alongside `packageClass` — which every create carries, since the class is required — is overwritten by the class's name, on an otherwise successful write and with nothing to say so. Set it in a follow-up `PATCH` that names only `name`, or the whole catalogue reads "Carton".
+- **Name every package.** `name` is optional, and a package without one reads its class's name — so a catalogue loaded without names has every carton called "Carton". A name of your own also survives a later reclassification, where an unnamed package follows its new class.
 
 - **Don't confuse `package discount rule effect` with product packages.** The former is about pricing bundles ("2 for 55 SEK"), the latter is about physical packaging ("carton of 10"). They are completely unrelated concepts that unfortunately share the word "package".
 
