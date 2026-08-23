@@ -1142,15 +1142,43 @@ Omit the code there and you get a term that belongs to none of the eleven and re
 
 `/v1/delivery-terms` has no `incotermCode` member, so a code sent there is dropped in silence and the term is created with none — the ordinary unrecognised-member behaviour ([gotcha 39](../common-gotchas.md#39-a-null-in-a-response-does-not-prove-the-field-exists)).
 
-### An Unusable Code Is a `500`
+### An Unusable Code Is a `400`
 
-A code that is not three uppercase letters, or that is not one of the eleven, fails — but as a server fault rather than as a rejected request. The request is still yours to fix:
+The eleven codes are a closed vocabulary, and a value outside it is refused rather than stored. The `details` string says which way it failed:
 
 ```
-"incotermCode": "NOTACODE"   500  details: Malformed Incoterm code: NOTACODE.
-"incotermCode": "cfr"        500  details: Malformed Incoterm code: cfr.       <- lowercase is malformed
-"incotermCode": "ABC"        500  details: Incoterm code not found: ABC.
+"incotermCode": "NOTACODE"   400  details: Malformed Incoterm code: NOTACODE.
+"incotermCode": "Cfr"        400  details: Malformed Incoterm code: Cfr.
+"incotermCode": "ABC"        400  details: Incoterm code not found: ABC.
 ```
+
+**Malformed** covers anything that is not exactly three uppercase letters, so a case slip of a real code lands there rather than in the not-found branch — `cfr`, `Cfr` and `CFr` are all malformed. **Not found** covers a well-formed code naming no Incoterm.
+
+A non-string value never reaches the vocabulary at all. It is refused one step earlier, with the generic coercion message, which names neither the member nor the eleven codes:
+
+```
+"incotermCode": 123          400  details: Invalid data format. A value could not be coerced to the expected target type.
+```
+
+**A refused write leaves the term exactly as it was.** A `PATCH` carrying a bad code changes nothing, and a `POST` carrying one creates nothing — there is no half-written term to clean up.
+
+> **Changed 2026-08-23.** These were a `500` until this date — a caller mistake reported as a platform fault. The messages are unchanged; only the status moved. Nothing you send needs changing, but a client that retries on `5xx` was retrying a request that could never succeed, and one that treated the `500` as a bug to report was reporting a bug that was not there.
+
+### The Code Cannot Be Cleared
+
+Because the code *is* the term's type, a term without one is not expressible — so every ordinary way of clearing a member is refused, with a message of its own:
+
+```
+DELETE /v1/cfr-delivery-terms/com.example.termId=T-1/incotermCode
+PATCH  /v1/cfr-delivery-terms/com.example.termId=T-1   {"incotermCode": null}
+PATCH  /v1/cfr-delivery-terms/com.example.termId=T-1   {"incotermCode": ""}
+
+# 400  details: An Incoterm code is required; it cannot be cleared.
+```
+
+This is an exception to what a `DELETE` on a member ordinarily does, which is clear the value and report `{"deletedCount": 1, ...}` ([What a `DELETE` reports](../overview.md#what-a-delete-reports)). A term that has a code keeps one: there is no spelling that turns it back into a plain delivery term, and `DELETE` on the term itself answers `{"deletedCount": 0, "info": "Nothing happened"}` and leaves it in place. To move a term to a different Incoterm, set the new code — see [`incotermCode` Is the Type, Not a Label](#incotermcode-is-the-type-not-a-label).
+
+None of this applies on `/v1/delivery-terms`, whose type has no `incotermCode` member at all: a `null` there is dropped in silence and a `DELETE` of the leaf is the ordinary `200` with no body.
 
 Related: [gotcha 48](../common-gotchas.md#48-a-member-write-can-move-a-record-to-another-collection).
 

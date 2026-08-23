@@ -369,7 +369,7 @@ A `POST`, `PATCH` or `PUT` with an **array** body is committed in chunks of 200 
 
 ### What a `DELETE` Reports
 
-`DELETE` always answers `200` — there is no `404` for a key that does not exist, and none for a path the token's scopes do not reach ([gotcha 41](common-gotchas.md#41-a-write-under-a-read-only-scope-is-a-silent-200)). What it does report is a count, and there are three response shapes:
+`DELETE` answers `200` for anything that routes — there is no `404` for a key that does not exist, and none for a path the token's scopes do not reach ([gotcha 41](common-gotchas.md#41-a-write-under-a-read-only-scope-is-a-silent-200)). A member that cannot be cleared refuses it outright instead, with a `400` saying so ([Incoterms](working-with/stock.md#the-code-cannot-be-cleared)). Otherwise what it reports is a count, and there are three response shapes:
 
 | Response body | Meaning |
 |---|---|

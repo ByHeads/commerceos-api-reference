@@ -1412,7 +1412,7 @@ The check is gotcha 47's, with one addition: **read the record back through the 
 
 Two related points:
 
-- **This is not the same as a rejected value.** A code that is not three uppercase letters, or that is not one of the eleven, is a `500` rather than a `400` — loud, and still your request to fix. It is only a *valid* code for a *different* term that goes through quietly.
+- **This is not the same as a rejected value.** A code that is not three uppercase letters, or that is not one of the eleven, is a `400` naming the value — `Malformed Incoterm code: NOTACODE.` or `Incoterm code not found: ABC.` — and the term is left exactly as it was. It is only a *valid* code for a *different* term that goes through quietly.
 - **Writing back the value a record already has is safe.** Setting `incotermCode` to the code the term already reads changes nothing, so echoing the member back in a read-modify-write does not move anything.
 
 Related: [gotcha 47](#47-a-declared-type-key-is-not-always-one-you-can-write), [gotcha 41](#41-a-write-under-a-read-only-scope-is-a-silent-200), [Incoterms](working-with/stock.md#incotermcode-is-the-type-not-a-label).

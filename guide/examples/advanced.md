@@ -468,4 +468,4 @@ All identifiers and string values are properly escaped:
 4. **Agent References**: Use `{"identifiers": {...}}` to reference existing agents in relationships
 5. **Store Owner**: Stores use `owner` (not `parent`) to reference the owning company
 6. **Product Groups**: Assign products via `parentGroup` on the product, NOT via the group's `members`
-7. **DELETE Limitations**: A `DELETE` is always `200`, but the body reports what it removed — `{"deletedCount": 0, "info": "Nothing happened"}`, or no body at all, means nothing was. Check the count rather than the status ([What a `DELETE` reports](../../reference/overview.md#what-a-delete-reports))
+7. **DELETE Limitations**: A `DELETE` that routes is a `200` (a member that cannot be cleared refuses it with a `400` instead), but the body reports what it removed — `{"deletedCount": 0, "info": "Nothing happened"}`, or no body at all, means nothing was. Check the count rather than the status ([What a `DELETE` reports](../../reference/overview.md#what-a-delete-reports))
