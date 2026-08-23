@@ -1387,7 +1387,7 @@ Related: [gotcha 48](#48-a-member-write-can-move-a-record-to-another-collection)
 
 ## 48. A Member Write Can Move a Record to Another Collection
 
-[Gotcha 47](#47-a-declared-type-key-is-not-always-one-you-can-write) is about the `@type` you send. This is the same symptom from the other direction: an ordinary member whose value *is* the record's type, so writing it converts the record — and the response does not say so.
+[Gotcha 47](#47-a-declared-type-key-is-not-always-one-you-can-write) is about the `@type` you send. This is the same symptom from the other direction: an ordinary member whose value *is* the record's type, so writing it converts the record — and the record is then not in the collection you wrote to.
 
 Incoterm delivery terms are where this shows up. `incotermCode` is not a label stored beside the term; it is what the term is.
 
@@ -1395,7 +1395,7 @@ Incoterm delivery terms are where this shows up. `incotermCode` is not a label s
 # WRONG — created in the CFR collection, carrying a different code
 POST /v1/cfr-delivery-terms
 [{"identifiers": {"com.example.termId": "T-1"}, "incotermCode": "DDP"}]
-→ 200  {"@type": "cfr delivery term", ..., "incotermCode": "DDP"}
+→ 200  {"@type": "ddp delivery term", ..., "incotermCode": "DDP"}   ← not a cfr delivery term
 
 GET /v1/cfr-delivery-terms/com.example.termId=T-1    → null
 GET /v1/ddp-delivery-terms/com.example.termId=T-1    → the term, as a `ddp delivery term`
@@ -1406,14 +1406,16 @@ POST /v1/cfr-delivery-terms
 → 200  {"@type": "cfr delivery term", ..., "incotermCode": "CFR"}
 ```
 
-**The response is rendered through the collection you addressed**, so it names the type you asked for whatever the record became — `cfr delivery term` above, for a record that is a `ddp delivery term`. A `PATCH` moves an existing term the same way and misreports it the same way.
+**The response names the record you got, not the collection you addressed**, so the write's own answer says a conversion happened. A `PATCH` moves an existing term the same way and reports the new type the same way.
 
-The check is gotcha 47's, with one addition: **read the record back through the collection you wrote to.** Comparing the `@type` in the response is not enough here, because the response has the `@type` you expect. An empty answer from the collection you just created the record in is the only signal there is.
+The check is gotcha 47's, and here it is the response that carries it: **compare the `@type` you got against the one the collection implies.** A `@type` that is not the collection's own means the record has moved, and a `GET` back through that collection then answers `null`.
 
 Two related points:
 
-- **This is not the same as a rejected value.** A code that is not three uppercase letters, or that is not one of the eleven, is a `400` naming the value — `Malformed Incoterm code: NOTACODE.` or `Incoterm code not found: ABC.` — and the term is left exactly as it was. It is only a *valid* code for a *different* term that goes through quietly.
+- **This is not the same as a rejected value.** A code that is not three uppercase letters, or that is not one of the eleven, is a `400` naming the value — `Malformed Incoterm code: NOTACODE.` or `Incoterm code not found: ABC.` — and the term is left exactly as it was. It is only a *valid* code for a *different* term that is accepted, and converts the record.
 - **Writing back the value a record already has is safe.** Setting `incotermCode` to the code the term already reads changes nothing, so echoing the member back in a read-modify-write does not move anything.
+
+**Changed 2026-08-23.** The response used to name the collection you addressed rather than the record you got, so the write above answered `cfr delivery term` and the read-back was the only signal there was — this entry said so, in as many words. If you wrote a client that ignores the `@type` on a write because it could not be trusted, it can be trusted now.
 
 Related: [gotcha 47](#47-a-declared-type-key-is-not-always-one-you-can-write), [gotcha 41](#41-a-write-under-a-read-only-scope-is-a-silent-200), [Incoterms](working-with/stock.md#incotermcode-is-the-type-not-a-label).
 

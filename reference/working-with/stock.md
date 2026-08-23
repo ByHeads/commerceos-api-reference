@@ -1111,7 +1111,7 @@ Sending a *different* code does not mislabel the record — it converts it, and 
 POST /v1/cfr-delivery-terms
 [{"identifiers": {"com.example.termId": "T-1"}, "incotermCode": "DDP"}]
 
-# 200  {"@type": "cfr delivery term", ..., "incotermCode": "DDP"}
+# 200  {"@type": "ddp delivery term", ..., "incotermCode": "DDP"}   <- not a cfr delivery term
 
 GET /v1/cfr-delivery-terms/com.example.termId=T-1
 # null                                            <- not there
@@ -1120,25 +1120,24 @@ GET /v1/ddp-delivery-terms/com.example.termId=T-1
 # {"@type": "ddp delivery term", ..., "incotermCode": "DDP"}
 ```
 
-**The response is written through the collection you addressed, so it reports the type you asked for rather than the one you got.** The only reading that tells you what happened is a `GET` back through that same collection, which answers `null`. A `PATCH` behaves the same way: setting `incotermCode` on an existing term moves it, and the `PATCH` response still names the old type.
+**The response names the term you got rather than the collection you addressed**, so a conversion shows up in the write's own answer: a `@type` that is not the one the collection implies means the record has moved. The `GET` back through that collection, answering `null`, is the same fact from the other side and is worth doing once while you are getting the payload right. A `PATCH` behaves the same way — setting `incotermCode` on an existing term moves it, and the `PATCH` response names the type it became.
 
 Setting the code a term already has is accepted and changes nothing, so a read-modify-write that echoes `incotermCode` back unchanged is safe.
 
+> **Changed 2026-08-23.** Two things a response used to get wrong here are fixed. It named the collection you addressed rather than the term you got, so the write above answered `cfr delivery term` for a record that was a `ddp delivery term` — the read-back was the only signal there was, and this page said so. And a term created through `/v1/incoterm-delivery-terms` with no code read its code as `INC`, a placeholder taken from the type's own name rather than an Incoterm; it now reads nothing at all, and `INC` is refused on every route like any other code outside the eleven. Nothing you send needs changing, but a client that pinned either response shape, or that branches on `INC`, is reading something that is no longer there.
+
 ### Creating Through the Broader Collections
 
-On `/v1/incoterm-delivery-terms` the code is what selects the subtype, so **send one**. It is again the read-back rather than the response that shows the result:
+On `/v1/incoterm-delivery-terms` the code is what selects the subtype, so **send one**. The response names the subtype it selected, so there is nothing to confirm with a second request:
 
 ```bash
 POST /v1/incoterm-delivery-terms
 [{"identifiers": {"com.example.termId": "FOB-GBG"}, "incotermCode": "FOB"}]
 
-# 200  {"@type": "incoterm delivery term", ..., "incotermCode": "FOB"}
-
-GET /v1/incoterm-delivery-terms/com.example.termId=FOB-GBG
-# {"@type": "fob delivery term", ..., "incotermCode": "FOB"}
+# 200  {"@type": "fob delivery term", ..., "incotermCode": "FOB"}
 ```
 
-Omit the code there and you get a term that belongs to none of the eleven and reads its code as `INC` — a placeholder derived from the type's own name, not an Incoterm. It appears in `/v1/incoterm-delivery-terms` and in no code-specific collection, and `INC` cannot be set on any other term.
+Omit the code there and you get a term that belongs to none of the eleven: it stays an `incoterm delivery term`, and `incotermCode` reads `null` — the member is absent from the response rather than carrying a placeholder, so a body read from one term and posted as another does not carry a code it should not have. Such a term appears in `/v1/incoterm-delivery-terms` and `/v1/delivery-terms` and in no code-specific collection; setting a code later moves it into one.
 
 `/v1/delivery-terms` has no `incotermCode` member, so a code sent there is dropped in silence and the term is created with none — the ordinary unrecognised-member behaviour ([gotcha 39](../common-gotchas.md#39-a-null-in-a-response-does-not-prove-the-field-exists)).
 

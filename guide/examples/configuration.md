@@ -249,8 +249,8 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/fob-delivery-ter
   }'
 
 # The same term through the generic collection, where the code selects the type.
-# Read it back to see what it became: the response says "incoterm delivery term",
-# the stored record is a "fob delivery term".
+# The response names what it became - a "fob delivery term", not the collection
+# you posted to.
 curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/incoterm-delivery-terms" \
   -H "Content-Type: application/json" \
   -d '{
@@ -270,7 +270,7 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/payment-terms" \
   }'
 ```
 
-> **`incotermCode` decides the term's type, so a mismatched code moves the record.** Posting to `/v1/cfr-delivery-terms` with `"incotermCode": "DDP"` answers `200` naming a `cfr delivery term` and stores a `ddp delivery term` — which is then absent from `/v1/cfr-delivery-terms` entirely. Omit the code when the collection already implies it, and read the term back through the collection you wrote to. See [Incoterms](../../reference/working-with/stock.md#incotermcode-is-the-type-not-a-label) and [gotcha 48](../../reference/common-gotchas.md#48-a-member-write-can-move-a-record-to-another-collection).
+> **`incotermCode` decides the term's type, so a mismatched code moves the record.** Posting to `/v1/cfr-delivery-terms` with `"incotermCode": "DDP"` answers `200` naming a `ddp delivery term`, and that record is then absent from `/v1/cfr-delivery-terms` entirely. Omit the code when the collection already implies it, and check the `@type` you get back against the one the collection implies. See [Incoterms](../../reference/working-with/stock.md#incotermcode-is-the-type-not-a-label) and [gotcha 48](../../reference/common-gotchas.md#48-a-member-write-can-move-a-record-to-another-collection).
 
 ---
 
