@@ -1379,7 +1379,20 @@ Everything that does *not* fit is refused — including a key the schema does no
          write 'fixed surcharge rule effect' or 'percentage surcharge rule effect'.
 ```
 
-Unlike assignability, this one is not positional: the spelling is checked the same way wherever the object is written, so a nested array element and an `add` payload are refused exactly as a collection `POST` is.
+**And it has to be written as a string.** A JSON array, number, object or `true` in the `@type` slot is refused before any name is looked up — a value that is not a name cannot be resolved into one — and the message quotes back what was sent, naming the string to write when there is one to name:
+
+```
+"@type": ["product"]
+  → 400  Invalid type annotation ["product"]. A type annotation names one type,
+         written as a string. Write 'product'.
+
+"@type": []
+  → 400  Invalid type annotation []. A type annotation names one type, written as a string.
+```
+
+`null`, `""`, `0` and `false` are the exception, and they are not errors: each is read as no discriminator at all, so a body carrying one is built as the target type exactly as a body with no `@type` is.
+
+Unlike assignability, neither of these is positional: the spelling is checked the same way wherever the object is written, so a nested array element and an `add` payload are refused exactly as a collection `POST` is.
 
 **The route to a decorated spelling is the spec, not an example.** No example in the document carries one — but a *member's declared type* does, and that is what an integrator is reading when they go looking for a type name. `x-pillow-type.typeKey` gives `strict string?`, `agent?`, `product node[]?` and `number (read-only)`, and several hundred of the type keys in the document are decorated that way. They describe a member; they are not `@type` spellings. See [`x-pillow-type`](openapi-extensions.md#x-pillow-type).
 
@@ -1396,7 +1409,7 @@ Two related points:
 - **A generated client cannot warn you either.** `price rule effect` is a real type with real members, so it is in the spec exactly like the ones that work. What the document does not record is which relations will accept it — assignability is worked out from the members rather than written down anywhere. It does name the right *element* type for `add`/`replace`/`remove`, which is a narrower promise than it looks: the type is correct, which types are assignable to it still is not written down.
 - **This is not the same as a missing `@type`.** Omitting the discriminator entirely leaves the object as the target type for the same reason, so the symptom matches, but the cause is the one the [POS tile sets](../guide/examples/pos.md#pos-tile-sets) note already covers. Either way the fix is the same: send the subtype the resource actually builds, and verify by reading it back.
 
-**Changed 2026-08-23.** A decorated `@type` used to be accepted rather than refused — a trailing `?` or a `X or Y` union was read down to a single name and the write went through as that name, and this entry said so in as many words. It is a `400` now, with the message above. Nothing that names one type exactly behaves differently, so a payload that was already correct is unaffected.
+**Changed 2026-08-23.** A decorated `@type` used to be accepted rather than refused — a trailing `?` or a `X or Y` union was read down to a single name and the write went through as that name, and this entry said so in as many words. A one-element array was accepted as its element in the same way, so a client that wrapped the discriminator in an array could be working; and it worked only once that type had been looked up for some other reason, so the same payload could go through or not depending on what the process had already served. Both are a `400` now, with the messages above. Nothing that names one type exactly behaves differently, so a payload that was already correct is unaffected.
 
 Related: [gotcha 48](#48-a-member-write-can-move-a-record-to-another-collection) — the same downgrade caused by an ordinary member rather than by `@type`, [gotcha 41](#41-a-write-under-a-read-only-scope-is-a-silent-200), [gotcha 46](#46-deprecated-does-not-tell-you-whether-a-member-still-works), [POS tile sets](../guide/examples/pos.md#pos-tile-sets).
 

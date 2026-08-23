@@ -195,7 +195,7 @@ PATCH /v1/products/com.example.sku=WIDGET-001/labels
 
 The same check runs on `add`, `replace` and `remove` alike, and in the sub-path form as well as the envelope one. It is measured against **the array you are writing to**, so the type a collection narrows down to is the one it takes: a `store` for `/v1/stores`, not the `agent` that `/v1/agents` holds.
 
-A spelling that is not a bare type name is refused too, even when the name inside it is the right one: `{"@type": "label?"}` and `{"@type": "label or product"}` are both a `400` naming what to write instead. That check is not about the array — it is the same wherever an object is written — but it is easy to hit here, because the type keys the generated spec publishes for a member carry those decorations.
+A spelling that is not a bare type name is refused too, even when the name inside it is the right one: `{"@type": "label?"}` and `{"@type": "label or product"}` are both a `400` naming what to write instead, and so is a value that is not a string at all — `{"@type": ["label"]}` answers `Invalid type annotation ["label"]. A type annotation names one type, written as a string. Write 'label'.` That check is not about the array — it is the same wherever an object is written — but it is easy to hit here, because the type keys the generated spec publishes for a member carry those decorations, and because an element of an array is a natural place to wrap a value in one.
 
 One wrong type is not refused. A *sibling* that happens to declare everything the element declares is accepted, built as the element, and whatever it declared on top of that is dropped — a `200` with no signal. See [gotcha 47](common-gotchas.md#47-a-declared-type-key-is-not-always-one-you-can-write), which is also where the exact messages are.
 
@@ -267,7 +267,7 @@ To remove a record, address it directly with `DELETE /v1/{collection}/{key}` —
 | Clear the array entirely | `replace` with `[]` (or `PUT []`) |
 | Detach a single element you already have the key for | `DELETE /v1/{collection}/{key}/{member}/{itemKey}` |
 
-`DELETE` on a single element is unchanged and still supported; `remove` is the bulk/declarative form and the one that matches by arbitrary identifier. A `DELETE` reports what it removed — `{"deletedCount": 1, ...}` when the element was detached, `0` (or no body at all) when the key matched nothing or the token's scopes do not reach the member. `remove` reports nothing of the kind: it is idempotent by design and answers `200` whether or not the element was there. See [What a `DELETE` reports](overview.md#what-a-delete-reports).
+`DELETE` on a single element is unchanged and still supported; `remove` is the bulk/declarative form and the one that matches by arbitrary identifier. A `DELETE` reports what it removed — `{"deletedCount": 1, ...}` when the element was detached, `0` (or no body at all) when the key matched nothing, when the element was already detached by an earlier call, or when the token's scopes do not reach the member. `remove` reports nothing of the kind: it is idempotent by design and answers `200` whether or not the element was there. See [What a `DELETE` reports](overview.md#what-a-delete-reports).
 
 ---
 

@@ -379,13 +379,25 @@ A `POST`, `PATCH` or `PUT` with an **array** body is committed in chunks of 200 
 
 > **Changed 2026-08-22.** The count used to be `1` whenever a removal was *attempted* — so every request in the zero column above claimed a deletion it had not performed, and a `deletedCount: 1` was no evidence of anything. It counts the removals that reached a setter now. If you have code that reads a `1` as confirmation, it is finally telling the truth; if you concluded from a `1` that some request removed something, re-check it against the rows below.
 
-**A zero, or an absent body, is a reliable "nothing was removed".** That is what makes the response worth reading: a scope that does not cover the target, an element key matching nothing, and a resource that does not implement removal at all each report zero rather than claiming a deletion.
+> **Changed 2026-08-23.** A clear that had nothing to write still counted, so a second `DELETE` of the same member reported `1` exactly as the first one had. It reports `0` now. If you were reading the count to confirm a clear, a repeat no longer looks like a fresh removal — and a `0` where you expected a `1` is worth checking against the record before treating it as a failure.
+
+**A zero, or an absent body, is a reliable "nothing was removed".** That is what makes the response worth reading: a scope that does not cover the target, an element key matching nothing, a resource that does not implement removal at all, and a clear that turned out to have nothing to write each report zero rather than claiming a deletion.
 
 ```bash
 DELETE /v1/products/com.example.sku=SKU-1        # 0 — products are not deletable, so zero even with write:api
 DELETE /v1/products/com.example.sku=SKU-1/prices/{key}   # 0 from a token holding products:write but not prices:write
 DELETE /v1/prices/com.example.priceId=PRICE-1    # 1 — prices are
+DELETE /v1/products/com.example.sku=SKU-1/unit   # 0 — the member is empty, so there is nothing to write
 ```
+
+**A clear reports zero the second time, and that is the one thing the count cannot tell apart from a refusal.** The first call writes and counts; the second finds nothing to write and counts nothing:
+
+```bash
+DELETE /v1/products/com.example.sku=SKU-1/name   # 1 — the name is cleared
+DELETE /v1/products/com.example.sku=SKU-1/name   # 0 — the same request again
+```
+
+So a `0` on a request you expected to work means *either* it was refused *or* it had already been done, and only the record says which. Read the record back when that distinction matters. (Deleting a whole record twice is the same story with a different shape: the second call answers `200` with no body at all.)
 
 **A count of `1` is weaker: it means a setter ran, not that a value changed.** A resource is free to interpret a removal as something other than a purge, and one that declines the value still counts:
 
@@ -393,6 +405,8 @@ DELETE /v1/prices/com.example.priceId=PRICE-1    # 1 — prices are
 DELETE /v1/users/com.example.userId=U-1          # 1 — and the user is deactivated, not purged
 DELETE /v1/products/com.example.sku=SKU-1/instanceType   # 1 — and the value is unchanged
 ```
+
+Nor does it prove there was anything there in the first place, so do not read the repeat rule backwards: a setter that runs whatever the member holds counts every time, and both requests above report `1` however often they are repeated.
 
 So read the count as *nothing happened* or *something ran*, and read the record back when the question is what this particular resource does with a removal. Which resources purge, which reinterpret and which ignore is documented per resource — see [Users → Deactivating a user](users.md#deactivating-a-user) and [Credentials → Removing a credential](credentials.md#removing-a-credential) for the two that sit on opposite sides of it.
 

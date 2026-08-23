@@ -1167,7 +1167,7 @@ Note the label: the three refusals above carry their message in `details`, and t
 
 ### The Code Cannot Be Cleared
 
-Because the code *is* the term's type, a term without one is not expressible — so every ordinary way of clearing a member is refused, with a message of its own:
+Because the code *is* the term's type, a term that has one cannot lose it — so every ordinary way of clearing the member is refused, with a message of its own:
 
 ```
 DELETE /v1/cfr-delivery-terms/com.example.termId=T-1/incotermCode
@@ -1177,7 +1177,19 @@ PATCH  /v1/cfr-delivery-terms/com.example.termId=T-1   {"incotermCode": ""}
 # 400  details: An Incoterm code is required; it cannot be cleared.
 ```
 
-This is an exception to what a `DELETE` on a member ordinarily does, which is clear the value and report `{"deletedCount": 1, ...}` ([What a `DELETE` reports](../overview.md#what-a-delete-reports)). A term that has a code keeps one: there is no spelling that turns it back into a plain delivery term, and `DELETE` on the term itself answers `{"deletedCount": 0, "info": "Nothing happened"}` and leaves it in place. To move a term to a different Incoterm, set the new code — see [`incotermCode` Is the Type, Not a Label](#incotermcode-is-the-type-not-a-label).
+This is an exception to what a `DELETE` on a member ordinarily does, which is clear the value and report `{"deletedCount": 1, ...}` ([What a `DELETE` reports](../overview.md#what-a-delete-reports)). There is no spelling that turns one of the eleven back into a plain delivery term, and `DELETE` on the term itself answers `{"deletedCount": 0, "info": "Nothing happened"}` and leaves it in place. To move a term to a different Incoterm, set the new code — see [`incotermCode` Is the Type, Not a Label](#incotermcode-is-the-type-not-a-label).
+
+**A term that carries no code is the other half of the same rule, and it answers `200`.** A term created through `/v1/incoterm-delivery-terms` with no code has nothing to lose, so the refusal never arises — and because there is also nothing to write, the count says so:
+
+```
+DELETE /v1/incoterm-delivery-terms/com.example.termId=T-BARE/incotermCode
+# 200  {"deletedCount": 0, "info": "Nothing happened"}
+
+PATCH  /v1/incoterm-delivery-terms/com.example.termId=T-BARE   {"incotermCode": null}
+# 200  the term, unchanged and still carrying no code
+```
+
+Read the two together rather than the status alone: the `200` says the request was fine and the `0` says it did nothing, and neither on its own is the answer. The rule both routes keep is that a term cannot *lose* an Incoterm — and a term with none loses nothing.
 
 None of this applies on `/v1/delivery-terms`, whose type has no `incotermCode` member at all: a `null` there is dropped in silence and a `DELETE` of the leaf is the ordinary `200` with no body.
 
