@@ -1363,8 +1363,12 @@ Everything that does *not* fit is refused — including a key the schema does no
 "@type": "trade rule effect"   → 400  Invalid type annotation 'trade rule effect'.
                                       Type is not assignable to parent relation return type 'surcharge rule effect'
 "@type": "product"             → 400  the same message, naming `product`
-"@type": "no such effect"      → 400  The provided type key 'no such effect' is not defined the current type schema
+"@type": "no such effect"      → 400  The provided type key 'no such effect' is not defined in the current type schema
 ```
+
+**That last message names the *root* of what you sent.** A trailing `?`, or a `X or Y` union, is read down to a single root before the schema is consulted, so it never reaches the message — `"@type": "no such effect?"` is reported as `'no such effect'`, which is worth knowing if you are matching the message against your payload and cannot find the string it names.
+
+The same reduction is why one of these that *does* name a real type is simply accepted as that type, quietly: both `"fixed surcharge rule effect?"` and `"fixed surcharge rule effect or percentage surcharge rule effect"` create a plain `fixed surcharge rule effect`. An `[]` is the one that is refused, and with the ordinary coercion `400` (`Invalid data format. A value could not be coerced to the expected target type.`) rather than either message above.
 
 **Read that message rather than assuming which types are safe, because the thing being measured against is where you are writing, not what you are writing.** The same effect sent into a surcharge rule's own `effects` array is checked against `trade rule effect` instead — so there `"trade rule effect"` is accepted and quiet, where here it is a `400`.
 
