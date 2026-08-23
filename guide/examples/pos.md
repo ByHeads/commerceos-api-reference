@@ -84,20 +84,20 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/pos-functions/pos
 
 # Create a POS function
 # Note: POS functions have NO `description` field
-# Available fields: identifiers, name, iconKey, hotkey, order, color, visibleInPos, requiredPermissions
+# Available fields: identifiers, name, requiredPermissions
+#   - a function carries behaviour; its presentation lives on the tile that invokes it
 #
 # Subtype-specific fields (require @type):
 #   - "pay function" → paymentMethod
-#   - "manual discount function" → phase
+#   - "manual discount function" → phase, reason
 #   - "add product function" → product
+#   - "park function" / "get parked function" → cartVisibility
+#   - "manual return function" → returnReason
 curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/pos-functions" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"posFunctionId": "void-sale"},
-    "name": "Void Sale",
-    "iconKey": "cancel",
-    "order": 100,
-    "visibleInPos": true
+    "name": "Void Sale"
   }'
 
 # Create a pay function with payment method
@@ -111,9 +111,74 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/pos-functions" \
   }'
 ```
 
+### A function carries behaviour, not presentation
+
+A function read back carries three members and no more — `identifiers`, `name` and `requiredPermissions` — and `~withAll` adds nothing to that:
+
+```bash
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/pos-functions/posFunctionId=void-sale~withAll"
+```
+
+```json
+{"@type": "POS function",
+ "identifiers": {"@type": "POS function identifiers", "key": "e890a9af…", "posFunctionId": "void-sale"},
+ "name": "Void Sale",
+ "requiredPermissions": []}
+```
+
+**How the button looks is decided by the tile that invokes it, not by the function.** A function is the behaviour; a [function tile](#pos-tile-sets) is where it appears on the grid and what it looks like there. So every presentation member is a member of the tile:
+
+| On the tile | What it does |
+|---|---|
+| `icon` | The icon shown on the button |
+| `color` | The button colour |
+| `hotkey` | The keyboard shortcut that triggers it |
+| `order` | Position when the tile set auto-flows |
+| `visibility` | `Visible` or `Hidden` |
+
+Note `icon`, not `iconKey` — the tile has its own names. So the function above is given its appearance by the tile that references it:
+
+```bash
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/pos-profiles" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "identifiers": {"posProfileId": "till"},
+    "name": "Till",
+    "tileSets": [{
+      "@type": "POS tile set",
+      "identifiers": {"tileId": "actions"},
+      "name": "Actions",
+      "columns": 4,
+      "tiles": [{
+        "@type": "function tile",
+        "identifiers": {"tileId": "tile-void-sale"},
+        "name": "Void Sale",
+        "icon": "cancel",
+        "color": "red",
+        "hotkey": "F9",
+        "order": 100,
+        "visibility": "Visible",
+        "function": {"identifiers": {"posFunctionId": "void-sale"}}
+      }]
+    }]
+  }'
+```
+
+All five come back on the tile, and the nested `function` is resolved alongside them, so one read gives you both halves of the button.
+
+**A presentation member sent to the function is dropped in silence.** `iconKey`, `hotkey`, `order`, `color`, `visibility` and `visibleInPos` are not members of `POS function`, so a `POST` or `PATCH` naming them is a `200` that stores nothing — the ordinary [unrecognised-member](../../reference/common-gotchas.md#39-a-null-in-a-response-does-not-prove-the-field-exists) behaviour. Addressing one directly says so:
+
+```bash
+GET /v1/pos-functions/posFunctionId=void-sale/iconKey    # 404
+PUT /v1/pos-functions/posFunctionId=void-sale/order  7   # 404
+GET /v1/pos-functions/posFunctionId=void-sale/name       # 200  "Void Sale"
+```
+
+> **A `404` on a leaf means "no such member"; a `200 null` does not.** The four members a subtype narrows — `cartVisibility`, `reason`, `returnReason` and `paymentMethod` — are declared on every function and carried by one subtype each, so on a function that is not that subtype they answer `200 null` rather than `404`. Reading `null` there tells you this function does not carry the member; reading `404` tells you nothing does. (`DELETE` distinguishes neither — it never answers `404`, so it is not a probe; see [What a `DELETE` reports](../../reference/overview.md#what-a-delete-reports).)
+
 ### The subtype vocabulary is per deployment
 
-A POS function's `@type` names a subtype the deployment installed — `lock function`, `pay function`, `open drawer function` and so on. The three named in the comment above are examples, not the vocabulary: the set is whatever functions the POS application registered, so read it off the deployment rather than hard-coding it. Two places to read it:
+A POS function's `@type` names a subtype the deployment installed — `lock function`, `pay function`, `open drawer function` and so on. The ones named in the comment above are examples, and so are the extra members listed beside them — neither is a fixed list. The set is whatever functions the POS application registered, so read it off the deployment rather than hard-coding it. Two places to read it:
 
 - `GET /v1/pos-functions` — every function comes back carrying its own `@type`.
 - The deployment's OpenAPI document, where the `POS function` schema carries an `x-child-types` array naming every subtype, and each subtype has a component schema of its own, showing any extra members it carries.
@@ -160,7 +225,7 @@ A profile's `tileSets` is what a terminal renders. A tile set is a grid holding 
 | `product tile` | Adds a product, or opens a category | `productNode` |
 | `POS tile set` | Opens a nested tile set (a sub-menu) | `rows`, `columns`, `tiles` |
 
-Every tile also takes `name`, `icon`, `imageUrl`, `color`, `hotkey`, `visibility` (`Visible` / `Hidden`), `requiredPermission` (only users holding that permission see the tile), and `inputMask` (a scanner pattern that triggers it). Placement is either explicit — `row` and `column`, both 1-indexed, with optional `rowSpan` / `columnSpan` — or automatic: leave the tile set's `rows` and `columns` unset and tiles flow in `order`.
+Every tile also takes `name`, `icon`, `imageUrl`, `color`, `hotkey`, `visibility` (`Visible` / `Hidden`), `requiredPermission` (only users holding that permission see the tile), and `inputMask` (a scanner pattern that triggers it). On a `function tile` those are the whole appearance of the button — the function it invokes carries none of them; see [A function carries behaviour, not presentation](#a-function-carries-behaviour-not-presentation). Placement is either explicit — `row` and `column`, both 1-indexed, with optional `rowSpan` / `columnSpan` — or automatic: leave the tile set's `rows` and `columns` unset and tiles flow in `order`.
 
 ### Create a profile with a tile set
 
