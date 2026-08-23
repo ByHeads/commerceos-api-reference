@@ -139,7 +139,7 @@ Every writable array member — labels on any entity, `members` on a customer gr
 
 Read-only arrays stay read-only — these operations are only available where the array itself is writable.
 
-**These are members of an entity, not root collections.** The three operations are published on `/v1/products` and `/v1/stores` too, but a `PATCH` there does not behave the same way: measured, `replace` and `remove` change nothing, and `add` updates every element it matches while creating only the **last** new one in the list — all at `200`, with nothing in the response to say so. Create into a root collection with `POST`, and address one record with `DELETE /v1/{collection}/{key}` where the resource supports it.
+**These are members of an entity.** The same three operations are published on root collections such as `/v1/products` and `/v1/stores`, and only `add` is available there — see [On a Root Collection](#on-a-root-collection).
 
 ### Two Ways to Invoke
 
@@ -156,6 +156,8 @@ A single object is accepted where an array is expected:
 PATCH /v1/trade-orders/{key}/labels
 {"remove": {"identifiers": {"com.example.labelId": "sync-pending"}}}
 ```
+
+That shorthand is a member-array one. In the envelope form on a root collection it is a `400` — see [On a Root Collection](#on-a-root-collection).
 
 **Explicit sub-path** — `PATCH` the operation as a path segment, with the elements as the body:
 
@@ -215,7 +217,45 @@ PATCH /v1/trade-orders/1a29.../labels
 
 If the **same** element appears in both `add` and `remove`, it ends up **present** — `add` wins, deterministically, regardless of key order in the JSON.
 
+On a root collection this form is refused outright, since `remove` itself is: the request is a `400` and the `add` half does not land either.
+
 `replace` **cannot** be combined with either, since it sets the whole array. A body mixing `replace` with `add` or `remove` is rejected with **`400` Bad Request** and the array is left unchanged. Send `replace` on its own, or `add`/`remove` together.
+
+### On a Root Collection
+
+The same three operations are published on `/v1/products`, `/v1/stores` and every other root collection, and only one of them is available there.
+
+**`add` creates or updates, one record per element.** Each element in the list is handled on its own: one whose identifiers match an existing record updates it, one that matches nothing creates a new record.
+
+```bash
+PATCH /v1/products
+{"add": [{"identifiers": {"com.example.sku": "A"}, "name": "Alpha"},
+         {"identifiers": {"com.example.sku": "B"}, "name": "Bravo"},
+         {"identifiers": {"com.example.sku": "C"}, "name": "Charlie"}]}
+
+# 200 — three products, whichever of the three already existed
+```
+
+The sub-path form works the same way (`PATCH /v1/products/add` with the array as the body, and `PUT` there too). One difference from a member array: the single-object shorthand is only accepted on the sub-path. `{"add": {…one object…}}` on a root collection is a `400 Invalid data format. A value could not be coerced to the expected target type.` — wrap it in an array.
+
+**`replace` and `remove` are refused.** A root collection holds every instance of its type, so membership follows from the record existing rather than from a link that could be broken, and there is nothing to detach. Both are a `400` naming the collection you addressed, in the envelope form and the sub-path form alike:
+
+```bash
+PATCH /v1/products
+{"remove": [{"identifiers": {"com.example.sku": "A"}}]}
+
+# 400  Cannot remove an element from the 'products' collection. It holds every instance of its
+#      type, so an element cannot be detached from it, and neither 'remove' nor 'replace' (which
+#      removes whatever it omits) is available here. Use 'add' to create or update.
+```
+
+`{"replace": []}` gets the same answer — clearing a root collection would mean deleting every record in it. So does a combined body: `{"add": […], "remove": […]}` is refused as a whole and the `add` half does not land either.
+
+**`PUT` with an empty array is not a way round it.** `PUT /v1/products []` answers `200` and writes nothing — a `PUT` of an array on a root collection is element-wise, exactly like `POST`, so an empty body is zero elements rather than an instruction to empty the collection. The [Choosing an Operation](#choosing-an-operation) row that pairs `replace: []` with `PUT []` describes a member array; on a root collection one is a `400` and the other is a silent no-op, and neither clears anything.
+
+To remove a record, address it directly with `DELETE /v1/{collection}/{key}` — where the resource removes at all. The response says which happened: `{"deletedCount": 1, …}` when the record went, `{"deletedCount": 0, "info": "Nothing happened"}` when it did not (a product, for instance, is not deletable). See [What a `DELETE` reports](overview.md#what-a-delete-reports).
+
+> **Changed 2026-08-23.** `replace` and `remove` on a root collection used to answer `200` and do nothing, and `add` used to fold every new element in one request into a single record. Both are fixed: `add` now gives each element its own record, and the two unavailable operations say so instead of appearing to succeed. If a client sends `replace` or `remove` at a root collection it will start seeing the `400` above — the request never did anything, but it did report success.
 
 ### Choosing an Operation
 

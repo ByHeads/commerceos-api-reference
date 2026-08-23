@@ -194,7 +194,7 @@ PATCH /products/com.example.sku=WIDGET-001/labels
 {"replace": []}
 ```
 
-> **A root collection is not one of these arrays.** `x-array-members` is published on `/products` and `/stores` as well, but a `PATCH` there does not behave like a member array: measured, `replace` and `remove` change nothing, and `add` updates every element it matches but creates only the **last** new one in the list — all at `200`, with nothing in the response to say so. Create into a root collection with `POST`, and address one record with `DELETE /{collection}/{key}` where the resource supports it.
+`x-array-members` is published on root collections such as `/products` and `/stores` too, and there only `add` is available — it creates or updates one record per element, while `replace` and `remove` are a `400` naming the collection, since a root collection holds every instance of its type and has no membership to reduce. See [On a Root Collection](resource-patterns.md#on-a-root-collection).
 
 Each member is also addressable as an explicit sub-path — `PATCH /products/{key}/labels/remove` with the element array as the body is equivalent to the envelope form above. `remove` is idempotent (removing an absent element is a `200` no-op), and `replace` cannot be combined with `add`/`remove` in the same body (`400`). See [Array Write Operations](resource-patterns.md#array-write-operations) for the full semantics.
 
