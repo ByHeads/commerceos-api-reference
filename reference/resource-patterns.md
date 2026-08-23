@@ -139,6 +139,8 @@ Every writable array member — labels on any entity, `members` on a customer gr
 
 Read-only arrays stay read-only — these operations are only available where the array itself is writable.
 
+**These are members of an entity, not root collections.** The three operations are published on `/v1/products` and `/v1/stores` too, but a `PATCH` there does not behave the same way: measured, `replace` and `remove` change nothing, and `add` updates every element it matches while creating only the **last** new one in the list — all at `200`, with nothing in the response to say so. Create into a root collection with `POST`, and address one record with `DELETE /v1/{collection}/{key}` where the resource supports it.
+
 ### Two Ways to Invoke
 
 **Envelope** — `PATCH` the array itself with the operation as the body key:
@@ -176,6 +178,22 @@ PATCH /v1/trade-orders/1a29.../labels
 
 - **Object arrays** (labels, group members, prices, categories): identify the element by its identifiers, e.g. `{"category": {"identifiers": {"com.example.catId": "PHONES"}}}` for `categories`.
 - **Scalar `string[]` arrays** (e.g. a label's `applicableOnlyTo`): pass the string value itself, e.g. `{"remove": ["Product"]}`.
+
+### The Element Type Is Implied
+
+An element does not need an `@type` — the array already fixes what it holds, so the plain identifier form above is the safe one. Sending a `@type` that is not that element type, or a subtype of it, is a `400` naming what the array holds:
+
+```bash
+# WRONG — `labels` holds a label, whatever the entity it hangs off
+PATCH /v1/products/com.example.sku=WIDGET-001/labels
+{"add": [{"@type": "product", "identifiers": {"com.example.labelId": "vip"}}]}
+→ 400  Invalid type annotation 'product'.
+       Type is not assignable to parent relation return type 'label'
+```
+
+The same check runs on `add`, `replace` and `remove` alike, and in the sub-path form as well as the envelope one. It is measured against **the array you are writing to**, so the type a collection narrows down to is the one it takes: a `store` for `/v1/stores`, not the `agent` that `/v1/agents` holds.
+
+One wrong type is not refused. A *sibling* that happens to declare everything the element declares is accepted, built as the element, and whatever it declared on top of that is dropped — a `200` with no signal. See [gotcha 47](common-gotchas.md#47-a-declared-type-key-is-not-always-one-you-can-write), which is also where the exact messages are.
 
 ### `remove` Is Idempotent
 

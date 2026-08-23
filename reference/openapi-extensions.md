@@ -133,9 +133,24 @@ The CommerceOS API OpenAPI specification uses vendor extensions (`x-*` propertie
 | Member | Type | Description |
 |--------|------|-------------|
 | `count` | number (read-only) | Returns the number of elements in the collection |
-| `add` | array of element type | PATCH with this member to append elements |
-| `replace` | array of element type | PATCH with this member to replace all elements |
-| `remove` | array of element type | PATCH with this member to detach the listed elements, leaving the rest in place |
+| `add` | array of the collection's own element type | PATCH with this member to append elements |
+| `replace` | array of the collection's own element type | PATCH with this member to replace all elements |
+| `remove` | array of the collection's own element type | PATCH with this member to detach the listed elements, leaving the rest in place |
+
+**The three patch members are typed as what the collection holds.** They name the same type as `items` and as [`x-conceptOf`](#x-conceptof), and a collection that narrows what it holds publishes the narrowed type — `stores.add` takes a `store`, `surcharge rule effects.add` takes a `surcharge rule effect`. Each carries that type's own examples.
+
+That is also exactly what the API accepts, wherever these members appear. Sending anything other than the array's element type, or a subtype of it, is a `400` naming that element — an unrelated type and the one a collection narrows *from* alike, so `{"@type": "agent"}` into `stores.add` is refused just as `product` is here:
+
+```bash
+PATCH /products/{key}/labels
+{"add": [{"@type": "product", "identifiers": {"com.example.labelId": "vip"}}]}
+→ 400  Invalid type annotation 'product'.
+       Type is not assignable to parent relation return type 'label'
+```
+
+Omitting `@type` is the safe form — the element type is implied by where you are writing. One wrong type is *not* refused: a sibling that happens to declare everything the element declares is accepted, built as the element, and whatever it declared on top of that is dropped. See [gotcha 47](common-gotchas.md#47-a-declared-type-key-is-not-always-one-you-can-write).
+
+> **Regenerate a client built before 2026-08-23.** Until then a narrowed collection published these three members with the type it narrows from, so an older generated client types them too widely and carries an example to match. Sending the wider type is the loud `400` above; for the two rule-effect collections the example named a sibling, which is the quiet case.
 
 **Accessing Array Members:**
 
@@ -153,29 +168,35 @@ GET /trade-orders~with(itemCount:items/count)
 
 **PATCH Operations:**
 
+These write to a writable array **member** of an entity — a product's `labels`, a store's `stockRoots`, a customer group's `members`:
+
 ```bash
-# Add products to collection (append)
-PATCH /products
-{"add": [{"name": "New Product", "identifiers": {"com.example.sku": "NEW-001"}}]}
+# Attach labels, leaving the ones already there in place
+PATCH /products/com.example.sku=WIDGET-001/labels
+{"add": [{"identifiers": {"com.example.labelId": "vip"}},
+         {"identifiers": {"com.example.labelId": "new"}}]}
 
-# Replace entire collection
-PATCH /products
-{"replace": [{"name": "Only Product", "identifiers": {"com.example.sku": "ONLY-001"}}]}
+# Make the array exactly this set
+PATCH /products/com.example.sku=WIDGET-001/labels
+{"replace": [{"identifiers": {"com.example.labelId": "vip"}}]}
 
-# Remove specific elements, leaving the rest in place
-PATCH /products
-{"remove": [{"identifiers": {"com.example.sku": "NEW-001"}}]}
+# Detach one element, leaving the rest in place
+PATCH /products/com.example.sku=WIDGET-001/labels
+{"remove": [{"identifiers": {"com.example.labelId": "vip"}}]}
 
 # Add and remove in one transaction
-PATCH /products
-{"add": [{"identifiers": {"com.example.sku": "A"}}], "remove": [{"identifiers": {"com.example.sku": "B"}}]}
+PATCH /products/com.example.sku=WIDGET-001/labels
+{"add":    [{"identifiers": {"com.example.labelId": "new"}}],
+ "remove": [{"identifiers": {"com.example.labelId": "vip"}}]}
 
-# Clear all items from collection (replace with empty array)
-PATCH /products
+# Clear the array
+PATCH /products/com.example.sku=WIDGET-001/labels
 {"replace": []}
 ```
 
-Each member is also addressable as an explicit sub-path — `PATCH /products/remove` with the element array as the body is equivalent to the envelope form above. `remove` is idempotent (removing an absent element is a `200` no-op), and `replace` cannot be combined with `add`/`remove` in the same body (`400`). See [Array Write Operations](resource-patterns.md#array-write-operations) for the full semantics.
+> **A root collection is not one of these arrays.** `x-array-members` is published on `/products` and `/stores` as well, but a `PATCH` there does not behave like a member array: measured, `replace` and `remove` change nothing, and `add` updates every element it matches but creates only the **last** new one in the list — all at `200`, with nothing in the response to say so. Create into a root collection with `POST`, and address one record with `DELETE /{collection}/{key}` where the resource supports it.
+
+Each member is also addressable as an explicit sub-path — `PATCH /products/{key}/labels/remove` with the element array as the body is equivalent to the envelope form above. `remove` is idempotent (removing an absent element is a `200` no-op), and `replace` cannot be combined with `add`/`remove` in the same body (`400`). See [Array Write Operations](resource-patterns.md#array-write-operations) for the full semantics.
 
 **Clearing Collections:**
 
@@ -196,7 +217,7 @@ Both approaches trigger the replace handler with an empty whitelist, removing al
 **Notes:**
 - `x-array-members` is only present on array schemas where members exist
 - The member schemas follow standard OpenAPI schema conventions (`type`, `items`, `description`, `readOnly`, etc.)
-- Collection types (schemas with `conceptOf`) inherit array members plus any additional members defined on the collection type
+- Collection types (schemas with `conceptOf`) carry the members of the array they extend, plus any additional members defined on the collection type — with `add`, `replace` and `remove` typed to the collection's own element rather than the wider one
 - **Important:** `count` is accessed via field selectors (e.g., `~with(count)` or `?fields=count`), not as a standalone `/products/count` endpoint
 
 ---

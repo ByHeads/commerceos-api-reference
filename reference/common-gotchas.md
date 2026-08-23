@@ -1370,7 +1370,7 @@ Everything that does *not* fit is refused — including a key the schema does no
 
 The same reduction is why one of these that *does* name a real type is simply accepted as that type, quietly: both `"fixed surcharge rule effect?"` and `"fixed surcharge rule effect or percentage surcharge rule effect"` create a plain `fixed surcharge rule effect`. An `[]` is the one that is refused, and with the ordinary coercion `400` (`Invalid data format. A value could not be coerced to the expected target type.`) rather than either message above.
 
-**Read that message rather than assuming which types are safe, because the thing being measured against is where you are writing, not what you are writing.** The same effect sent into a surcharge rule's own `effects` array is checked against `trade rule effect` instead — so there `"trade rule effect"` is accepted and quiet, where here it is a `400`.
+**Read that message rather than assuming which types are safe, because the thing being measured against is where you are writing, not what you are writing.** The same effect sent into a surcharge rule's own `effects` array is checked against `trade rule effect` instead — so there `"trade rule effect"` is accepted and quiet, where here it is a `400`. An array write is measured the same way: `add`, `replace` and `remove` are checked against the element type of the array you are patching, so a `@type` one collection takes can be a `400` on another — see [The Element Type Is Implied](resource-patterns.md#the-element-type-is-implied).
 
 Omitting `@type` altogether lands in the same place as a type that merely fits — the object is built as the target type and the extra members go — so the two mistakes are indistinguishable from the response.
 
@@ -1378,7 +1378,7 @@ The check is the one [gotcha 46](#46-deprecated-does-not-tell-you-whether-a-memb
 
 Two related points:
 
-- **A generated client cannot warn you either.** `price rule effect` is a real type with real members, so it is in the spec exactly like the ones that work. What the document does not record is which relations will accept it — assignability is worked out from the members rather than written down anywhere.
+- **A generated client cannot warn you either.** `price rule effect` is a real type with real members, so it is in the spec exactly like the ones that work. What the document does not record is which relations will accept it — assignability is worked out from the members rather than written down anywhere. It does name the right *element* type for `add`/`replace`/`remove`, which is a narrower promise than it looks: the type is correct, which types are assignable to it still is not written down.
 - **This is not the same as a missing `@type`.** Omitting the discriminator entirely leaves the object as the target type for the same reason, so the symptom matches, but the cause is the one the [POS tile sets](../guide/examples/pos.md#pos-tile-sets) note already covers. Either way the fix is the same: send the subtype the resource actually builds, and verify by reading it back.
 
 Related: [gotcha 48](#48-a-member-write-can-move-a-record-to-another-collection) — the same downgrade caused by an ordinary member rather than by `@type`, [gotcha 41](#41-a-write-under-a-read-only-scope-is-a-silent-200), [gotcha 46](#46-deprecated-does-not-tell-you-whether-a-member-still-works), [POS tile sets](../guide/examples/pos.md#pos-tile-sets).
