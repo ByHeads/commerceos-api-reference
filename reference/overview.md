@@ -280,6 +280,10 @@ PUT /people
 
 The person is now reachable as both `com.myapp.userId=123` and `com.myapp.crmId=CRM-9981`; no other member changes. See [The `@value` Write Envelope](resource-patterns.md#the-value-write-envelope).
 
+**The identifier you are adding has to be unowned.** Every identifier in one `identifiers` object must refer to the same object, so a `com.myapp.crmId` that already belongs to a *different* person is refused with a `400` `failed indexing` and nothing is written — see [Error types](#error-types) and [gotcha 49](common-gotchas.md#49-identifiers-that-name-two-different-objects-are-refused).
+
+> **Availability:** v26.1.11 and later. Earlier v26.1.x builds answered `200` here and created a third person carrying both identifiers.
+
 ---
 
 ## Common Identifiers and Dynamic Properties
@@ -367,6 +371,25 @@ Any write body may also wrap its payload in `@value` to separate the identifiers
 
 A `POST`, `PATCH` or `PUT` with an **array** body is committed in chunks of 200 items rather than as one transaction, so a failure part-way through leaves the earlier chunks written. Set `X-Transaction-Count: all` when a partial write would be worse than no write — see [Transaction chunking](../features/streaming.md#3-transaction-chunking).
 
+### A Write That Reaches Nothing Writable Answers `204`
+
+> **Availability:** ships in the release after v26.1.11. Not in v26.1.10 or v26.1.11.
+
+A write can be addressed correctly, parsed, accepted — and still reach nothing that can be written. The answer then is **`204 No Content`, with no body at all**, and that is how a client tells a dropped write from an applied one without a read-back: an applied write echoes the new value with `200`.
+
+Same route, adjacent leaf, same request shape:
+
+```bash
+PATCH /v1/products/properties/dynamic/com.example.probe/description    "Edited"   # 200  "Edited"
+PATCH /v1/products/properties/dynamic/com.example.probe/propertyType   "number"   # 204  no body
+```
+
+The first leaf is writable and says so by handing the value back; the second is read-only for every caller, a full-scope key included, and re-reading the registry after that call still shows `"propertyType": "string"`. A declared member answers the same way — `PATCH /v1/products/properties/declared/name/type` with `"number"` is a `204`.
+
+**A `204` is not a `404` and not a `400`.** A resource that does not exist is a `404`; a payload the target cannot take is a `400`. A `204` means neither of those happened: the address resolved, the body was accepted, and nothing moved.
+
+The entity-level cousin of this is [gotcha 41](common-gotchas.md#41-a-write-under-a-read-only-scope-is-a-silent-200), where a write the token's scopes do not reach answers `200` and persists nothing. Different status, same lesson — when it matters that a write landed, read the value back.
+
 ### What a `DELETE` Reports
 
 `DELETE` answers `200` for anything that routes — there is no `404` for a key that does not exist, and none for a path the token's scopes do not reach ([gotcha 41](common-gotchas.md#41-a-write-under-a-read-only-scope-is-a-silent-200)). A member that cannot be cleared refuses it outright instead, with a `400` saying so ([Incoterms](working-with/stock.md#the-code-cannot-be-cleared)). Otherwise what it reports is a count, and there are three response shapes:
@@ -422,9 +445,9 @@ So read the count as *nothing happened* or *something ran*, and read the record 
 |---------------|-----------|----------|
 | `application/json` | `json` | Default, buffered response |
 | `application/x-ndjson` | `ndjson` | Streaming, line-delimited |
-| `text/csv` | - | Tabular export |
-| `text/plain` | - | A single text value, unquoted (see below) |
-| `text/html` | - | A single text value in a minimal HTML document (see below) |
+| `text/csv` | `csv` | Tabular export |
+| `text/plain` | `txt` | A single text value, unquoted (see below) |
+| `text/html` | `html` | A single text value in a minimal HTML document (see below) |
 | `application/sql` | `sql` | SQL INSERT/UPDATE/DELETE statements (requires mapped type output) |
 | `application/vnd.ms-sqlserver.csv` | - | SQL Server CSV format for bulk import (requires mapped type output) |
 
@@ -437,9 +460,40 @@ curl -u ":MySecretKey" -H "Accept: text/plain" example.app.heads.com/api/v1/prod
 
 **Default behavior:** If no Accept header is provided or `*/*` is used, `application/json` is returned.
 
-**Shorthand values:** The Accept header supports shorthand values like `Accept: json` or `Accept: ndjson`.
+**Shorthand values:** The Accept header supports shorthand values like `Accept: json` or `Accept: ndjson`. Every shorthand in the table above is also the format's path suffix — see [Format by path suffix](#format-by-path-suffix).
+
+> **Availability:** the `csv`, `txt` and `html` shorthands ship in the release after v26.1.11. Not in v26.1.10 or v26.1.11, where `json`, `ndjson` and `sql` are the only three.
 
 **Content-Type defaults for input:** When sending data via POST/PUT/PATCH, if no Content-Type header is provided, `application/json` is assumed.
+
+### Format by Path Suffix
+
+> **Availability:** ships in the release after v26.1.11. Not in v26.1.10 or v26.1.11.
+
+A declared extension on the **last path segment** selects the format, ahead of whatever the `Accept` header asks for:
+
+```bash
+GET /v1/products.csv?limit=10
+GET /v1/products.ndjson~take(5)
+GET /v1/products/gtin=1.json
+GET /v1/products/gtin=1/name.txt
+```
+
+The extensions are `.json`, `.ndjson`, `.csv`, `.sql`, `.txt` and `.html` — the same set as the shorthands in the table above.
+
+**The suffix belongs to the segment, so it goes before the operators and the query.** `/v1/products~take(1).csv` is a `404`: the suffix landed on the operator chain rather than on a member, and nothing there answers to it.
+
+**The `Accept` entry naming the same type supplies the parameters.** `/v1/products.csv` with `Accept: text/csv;delimiter=|` is pipe-delimited. Parameters sitting on some *other* type's entry are ignored, because that entry is not the one that won: `Accept: application/json;stream=true` with `.csv` is a buffered CSV, not a streamed one. Put the parameters on the entry for the format the suffix selects.
+
+**Every extension doubles as a short name** in `Accept` and `Content-Type`: `csv`, `html` and `txt` join `json`, `ndjson` and `sql`, which already worked.
+
+**`text/plain` and `text/html` now take parameters like every other format.** `;stream=true` streams, and `;stream=1` is the same `400` any other format answers with — see [Accept parameter tolerance](#accept-parameter-tolerance). Earlier builds ignored a parameter on these two silently, so a header that looked accepted did nothing.
+
+**An unrecognised suffix stays part of the name.** `/v1/products.xml` is a `404 not found` — nothing is stripped, and the request is read as asking for a resource with a dot in its name. `?format=` remains reserved and answers `404` as before.
+
+**Cursor pagination follows the suffix.** `/v1/products.json?orderby=name&limit=2` carries `X-Has-More` and `X-Cursor-Next`; a non-JSON suffix carries neither, exactly as a non-JSON `Accept` does — see [Pagination](pagination.md).
+
+**One gap to know about:** an error answering a request that asked for NDJSON *by suffix* is framed as indented JSON rather than as a single line — see [Error response framing](#error-response-framing).
 
 ### Request Content-Type Defaults
 
@@ -704,6 +758,10 @@ This is framing, not a new error type: no new `@type`, no new members. A client 
 
 **Errors are never rendered as CSV or SQL rows.** A failed `text/csv` or `application/sql` export answers with the indented JSON error body, so check the status code before handing a response to a CSV or SQL parser — see [Gotcha 36](common-gotchas.md#36-an-error-response-is-json-whatever-format-you-asked-for).
 
+**A `.ndjson` path suffix does not reach the framing.** The table above reads the `Accept` header, and only that: a request that asked for NDJSON by [path suffix](#format-by-path-suffix) — `/v1/products.ndjson~take(5)` — gets its *data* as NDJSON but its *errors* as indented JSON, where the same failure under `Accept: application/x-ndjson` is a single line. Send the header as well as the suffix when line-framed errors are what your reader depends on.
+
+> **Availability:** ships in the release after v26.1.11. Not in v26.1.10 or v26.1.11.
+
 **Every error response carries a `Content-Type`.** There is no need to sniff the body to find out what an error response contains.
 
 **`Error-Info` is unaffected by framing.** Every error response also carries the same document as compact, single-line JSON in the `Error-Info` response header, identically on every content type.
@@ -719,7 +777,7 @@ Every error body names what went wrong in its `@type` discriminator. **Branch on
 | `bad request` | 400 | The request was invalid and could not be processed — also the answer to a bad value on an `Accept` parameter, where `details` names the parameter, and to a value outside a member's vocabulary, where `details` names every value that member does accept | — |
 | `no request body` | 400 | A body was required and none was sent | — |
 | `invalid uri syntax` | 400 | The request URI could not be parsed | `uri`, `invalidSection` |
-| `failed indexing` | 400 | Identifiers in the request payload named no existing object of the expected type | `usedIndex`, `indexerOwner`, `indexType` |
+| `failed indexing` | 400 | Identifiers in the request named no existing object of the expected type — or named two different ones | `usedIndex`, `indexerOwner`, `indexType` |
 | `invalid index` | 400 | The index value is not valid for the indexer — e.g. a bare number where identifiers were expected | `usedIndex`, `indexerOwner`, `indexType` |
 | `failed coercion` | 400 | A value could not be coerced to the type the target expects | `targetType`, `failedCoercions` |
 | `unauthorized` | 401 | Missing or unusable credentials | — |
@@ -736,10 +794,49 @@ Every error body names what went wrong in its `@type` discriminator. **Branch on
 Three details worth knowing before you write the switch:
 
 - **`failed indexing` is a write-side failure, and it echoes your input back.** It means a nested reference in your payload — `{"product": {"identifiers": {"com.example.sku": "NOPE"}}}` — named no object that exists. The identifiers you sent come back in `usedIndex`, and `suggestion` names the type that was being looked for, so you can tell a typo from a genuinely absent record without a second request. One other thing raises it, and the payload is blameless there: a `POST` that has to *create* a record while the token only reaches the read-only twin of the collection reports the same error about its own identifiers — see [gotcha 41](common-gotchas.md#41-a-write-under-a-read-only-scope-is-a-silent-200).
+
+    **It has a second cause: identifiers that name two *different* objects.** Every identifier inside one `identifiers` object — and every identifier inside one path segment, as in `GET /v1/people/com.example.a=1;com.example.b=2` — has to refer to the same object. One identifier that resolves alongside others no object owns yet resolves to that object and *assigns* the new identifiers to it; that is how an identifier is added to a record you can only find by another one. Identifiers that resolve to two different objects are refused instead, and nothing is written — an array body is refused whole, not element by element. `identifiers.key` takes part like any other identifier, so the key of one record sent together with an identifier owned by another is refused too.
+
+    ```json
+    {
+      "@type": "failed indexing",
+      "error": "The used identifiers belong to more than one existing 'person'. Writing them would introduce a duplicate.",
+      "usedIndex": { "com.example.customerNo": "12345", "com.example.memberId": "M-9" },
+      "indexerOwner": "people",
+      "indexType": "'COS database key or common identifiers'",
+      "suggestion": "Check 'usedIndex' above. Every identifier must refer to the same instance of 'person'. In this case, some other 'person' already uses one of them."
+    }
+    ```
+
+    This reaches top-level collections, nested references (`owner`, `customerAgent`, `product` on an order item) and path lookups alike. A single-object `POST` of an identifier that is already taken still answers `409 conflict`, as before. Some nested references are resolved by the parent resource rather than by the collection, and those answer the parent's ordinary `400 bad request` with `details` reading `Could not establish an identity of type agent from the data included in the "customerAgent" member of the input object: the index refers to more than one object`. To find out which objects the identifiers actually point at, ask for each one on its own: `GET /v1/people~where(identifiers/com.example.memberId=M-9)~just(identifiers)`.
+
+    > **Availability:** v26.1.11 and later. Every earlier v26.1.x build answered `200` and created a *third* object carrying both identifiers, so both identifiers then had two owners and a lookup by either returned the new record — which is where "we found duplicates after upserting with two ids" comes from. Repair it by stripping the duplicated identifier off the extra record: `PATCH /v1/people/<key> { "identifiers": { "com.example.memberId": null } }`. See [gotcha 49](common-gotchas.md#49-identifiers-that-name-two-different-objects-are-refused).
 - **`forbidden` is in the schema and never on the wire.** Nothing in the API raises it, so no response carries it — it is declared, which is why a generated client has the type and a schema browser lists it. A token that is short a scope does not get refused: the resources its scopes do not cover are simply absent from the graph it can see, so a read or a write against one is a `404` whatever the path spelling, and a write that landed on a read-only twin is a `200` that persists nothing. **Confirm a write by reading the value back, not by its status** — see [gotcha 41](common-gotchas.md#41-a-write-under-a-read-only-scope-is-a-silent-200), and ask [`/v1/scopes`](#checking-what-a-key-can-do-v1scopes) what the key actually holds. If a `403` does reach your client it came from something in front of the API — a gateway, proxy or load balancer — and it will not carry an error body in the shape above.
-- **`failedCoercions` is a list, not a message.** This is the one type that carries **no `details` member at all** — its `error` string says only that *something* could not be converted, and everything specific is in the list. (Its sibling refusal for a value outside a named vocabulary is a `bad request`, which does the opposite: the specifics are in `details`.) Each entry describes one value that could not be converted — `success`, `targetType`, `inputValue`, `path` (where in your payload it sat) and `message` — so it is the fastest way to find which member was wrong, and reading it is the whole point of the type. Two things to know before you rely on the shape:
+- **`failedCoercions` is a list, not a message.** This is the one type that carries **no `details` member at all** — its `error` string says only that *something* could not be converted, and everything specific is in the list. (Its sibling refusal for a value outside a named vocabulary is a `bad request`, which does the opposite: the specifics are in `details`.) Each entry describes one value that could not be converted — `success`, `targetType`, `inputValue`, `inputType`, `path` (where in the body it sat) and `message` — so it is the fastest way to find which member was wrong, and reading it is the whole point of the type. Three things to know before you rely on the shape:
     - **A member typed as a fixed set of values contributes one entry per value it would have accepted**, each naming that value in `targetType`. Sending `"status": "Nonsense"` to a product returns three entries at `path` `/status`, for `'Active'`, `'Inactive'` and `'Pending'` — so the list doubles as the vocabulary you missed. That is where to look when the message itself names nothing: a *free-string* member checked against a named vocabulary is a `bad request` whose `details` spells the values out, while a fixed-set member is refused here first and says it in the body instead.
-    - **On a bulk write the list does not say which element failed.** `path` names the member but carries a leading segment that is not a location in your payload, and it is identical whichever element of the array was bad — only the first bad element is reported at all. `inputValue` is the handle you get. On a single-object write `path` is reliable (`/status`, `/unit`) and every failing member is listed.
+    - **`path` is a location in the body.** `/member` addresses a member of the body's root object, `:index` addresses an element of an array body, and the two compose left to right:
+
+      | Request | `failedCoercions[].path` |
+      |---|---|
+      | `PATCH /v1/products/{sku}` `{"status": "Nonsense"}` | `/status` |
+      | `POST /v1/prices` `{"amount": "not-a-number"}` | `:0/amount` |
+      | `POST /v1/prices` `[{…}, {"amount": "not-a-number"}]` | `:1/amount` |
+      | `POST /v1/products` `[{…}, {"prices": [{"amount": "not-a-number"}]}]` | `:1/prices:0/amount` |
+
+      Row two is the one to read carefully. A **lone object** sent to a collection is wrapped into a one-element list before anything is validated, so it reads `:0/amount` and not `/amount`. Only a `PATCH` or `PUT` against an already-addressed resource — row one — produces the bare `/member` form. A reader who takes "`:index` for an element of an array" literally will expect `/amount` for row two and go looking in the wrong place.
+
+      **Coercion stops at the first failure, and that is deliberate.** `[bad, ok, bad]` reports `:0/status`; `[ok, bad, bad]` reports `:1/status`. Fix the one it names and re-send — the index that comes back next time is how you tell you made progress. So the list enumerates every bad *member* of the first bad element, not every bad element.
+
+      > **Availability:** ships in the release after v26.1.11. Not in v26.1.10 or v26.1.11. Earlier builds spelled `path` from a sibling identifier's name, so `identifiers/status` appeared even in a body carrying no identifiers, and gave array elements no prefix at all — which made every element of a bulk write report the same path.
+    - **`inputType` names the kind of the value where `inputValue` only shows it.** It is the JSON type of what arrived — `string`, `number`, `boolean`, `null`, `array`, `object` — or, for a value the server produced itself that a JSON body could never have carried, `date-time` or `decimal`. `inputValue` is serialized, so a date and the ISO text of that same date look identical in it; `inputType` is what tells the two apart:
+
+      ```json
+      {"success":false,"path":"/gdprForgotten","targetType":"boolean","inputValue":"2026-09-05T19:02:54.186Z","inputType":"date-time","message":"The input value was not a valid boolean"}
+      ```
+
+      Related, and the reason a `date-time` shows up here at all: a server-produced date written into a `string` member is stored as its ISO 8601 text rather than refused. Only a date, and only into string members — a JSON body cannot carry a date, so nothing a client sends behaves differently.
+
+      > **Availability:** ships in the release after v26.1.11. Not in v26.1.10 or v26.1.11.
 
 **Treat an unrecognized `@type` as a plain error rather than as a parse failure.** New types can be added, so the forward-compatible default branch reports `error` — the one member every type is guaranteed to have — along with `details` when it is present. Three values will never turn up as an HTTP error body: `mid-stream error`, which appears only *inside* a committed `200` (see [Streaming → Error handling](../features/streaming.md#4-error-handling)); `error` itself, which is the base every type above inherits from rather than something the API emits on its own; and `forbidden`, which nothing raises.
 
@@ -782,10 +879,6 @@ Three details worth knowing before you write the switch:
 - Add `;stream=true` to send statements incrementally. A chunk is a whole `batchSize` group, so lower `batchSize` for an earlier first byte (see [Streaming](../features/streaming.md))
 - SQL Server CSV escapes special characters for BULK INSERT compatibility
 - A failed request answers with a JSON error body, never SQL statements or CSV rows ([Error response framing](#error-response-framing))
-
-### Known Limitations
-
-- **File extension content negotiation not supported:** URLs like `/products.json` or `/products.csv` do not work. The extension is treated as part of the resource identifier. Use the Accept header instead.
 
 ### Request Content Types
 

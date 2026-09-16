@@ -182,6 +182,8 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/stock-places/co
 
 ## Stock Entries (set target stock)
 
+> **Availability:** v26.1.11 and later. Earlier builds read the current level from the `place` alone, regardless of the submission's `stock`.
+
 Stock entries are the **target-based** counterpart to stock adjustments. Submit a desired physical quantity at one or more `(product, place)` pairs, and the server reads the current level, computes the delta, and writes a stock-adjustment record under the hood. Use this when you have a known *target* inventory (e.g. a reconciled count or an upstream source-of-truth) rather than a known *movement*. See the [Stock Entries reference](../../reference/stock-entries.md) for the full field list and error matrix.
 
 ```bash
@@ -276,6 +278,7 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustments
 > **Heads up:**
 >
 > - All entries in a submission must resolve to the same owner. Mixing places across owners fails atomically with `"All entries in a stock entry submission must be owned by the same owner. ..."`.
+> - **`physicalQuantity` is measured against the quantity that is both at the entry's `place` *and* in the submission's `stock`.** With one stock per place that is the place's level and nothing changes. With several logical stocks at one place, the place's total is the sum over the stocks living there and each stock is addressed by its own submission — two submissions targeting the same place with different `stock` values do **not** correct each other. Units held on open customer orders **count as present**: they have left `availableQuantity` but are still on the shelf, so a store holding 7 with 2 committed on an open order reads 7 and an echo of 7 writes nothing. Units on a committed supplier order do not count. And an omitted `stock` **silently targets the owner's default stock** — no error — so name `stock` explicitly as soon as an owner has more than one. See [What `physicalQuantity` is measured against](../../reference/stock-entries.md#what-physicalquantity-is-measured-against).
 > - Two entries that resolve to the same `(product, place)` pair are **not deduped** — each computes its delta against the pre-submission current physical and lands as a separate adjustment item, so the final level is the sum of every delta applied (not "last entry wins"). Dedupe client-side.
 > - On the product-scoped endpoint (`/v1/products/<key>/stockEntries`), body `product` values that disagree with the URL are silently dropped — there is no 400 and no diagnostic. Validate URL/body parity client-side if you need to catch misrouted clients.
 > - There is **no direction concept here**. A per-entry `direction` is ignored, and the submission's `reason` is recorded for audit without steering the movement — a `Decrease` reason used to raise a level from 4 to 8 simply increases to 8. `physicalQuantity` may also be **negative**: it's a signed absolute level, so `-5` drives the level to −5 (not "decrease by 5") and a later `5` recovers it. Direction only applies to the delta-based `/v1/stock-adjustments`.
@@ -517,6 +520,10 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-counts/afte
 ## Stock Transfers — Time-relative queries
 
 Stock transfers (movements between logical stocks — see the [Stock & Inventory Guide](./stock-inventory-guide.md#part-5-stock-transfers--moving-stock-between-logical-stocks) for the full lifecycle) support `/before/` and `/after/`.
+
+> **Availability:** v26.1.11 and later. Earlier builds accepted store-to-store transfers and same-stock transfers with a `200`.
+>
+> **Heads up — two rules on create.** `POST /v1/stock-transfers` now rejects a transfer whose `receiver` is a different agent from `sender` (`400`, `"details": "Stock transfers between different agents are not supported."`) and a transfer whose `senderStock` and `receiverStock` resolve to the same stock (`400`, `"details": "A stock transfer must be between two different stocks."`). The second also rules out the old shortcut of omitting both stocks, since both then default to the agent's default stock — every create needs at least one of `senderStock` / `receiverStock` set to a non-default stock. See [5.1 Creating a Stock Transfer](./stock-inventory-guide.md#51-creating-a-stock-transfer).
 
 ```bash
 # Default mode: transfers created at or after the given ISO timestamp

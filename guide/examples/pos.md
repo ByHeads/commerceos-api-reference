@@ -1,6 +1,6 @@
 # Point of Sale (POS) Examples
 
-Curl examples for POS terminals, profiles, tile sets, functions, receipts, devices, printers, and payment terminals.
+Curl examples for POS terminals, profiles, tile sets, functions, slips, receipts, devices, printers, and payment terminals.
 
 **Base URL:** `https://example.app.heads.com/api/v1`
 **API Key:** `banana` (passed via Basic Auth with empty username: `-u ":banana"`)
@@ -369,6 +369,59 @@ So one class of mistake has two refusals, and which one you get is decided by ho
 Coercion runs first, so an object carrying both kinds of mistake reports only the coercion one — fix that and re-send to see the other.
 
 There is no separate panel resource: a panel *is* a root tile set, so `/v1/pos-profiles/{key}/panels` is a `404`.
+
+---
+
+## POS Slips
+
+A **POS slip** is the till's record of what it did against orders — the paper-trail side of a terminal session, one document per slip. Its `actions[]` summarises each action the till took: `type` (what it did, e.g. `Cancel`), `productName` (the product as named at the time) and `quantity`.
+
+```bash
+# List slips
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/pos-slips~take(50)"
+
+# The flat action summary on one slip
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/pos-slips/{key}~just(actions~just(type,productName,quantity))"
+```
+
+### Which order line an action moved (`tradeOrderItemEffects`)
+
+> **Availability:** ships in the release after v26.1.11. Not in v26.1.10 or v26.1.11.
+
+Each entry in `actions[]` carries `tradeOrderItemEffects` — an array of effects, each naming an `affectedItem` (a trade order item) together with `affectedQuantity` and `affectedAmount`. It is the member that says *which line* an action moved, and by how much.
+
+```bash
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/pos-slips/{key}~just(actions~just(type,productName,quantity,tradeOrderItemEffects~just(affectedQuantity,affectedItem~just(identifiers))))"
+```
+
+```json
+{
+  "actions": [
+    {
+      "type": "Cancel",
+      "productName": "Oak Table Lamp",
+      "quantity": "1",
+      "tradeOrderItemEffects": [
+        {
+          "affectedQuantity": "1",
+          "affectedItem": {
+            "identifiers": {
+              "key": "c88fed13c2edd02d",
+              "com.example.lineItemId": "2000165:64b243af"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+**Why it matters.** Two lines of the same product produce two `Cancel` actions with identical `productName` and identical `quantity`. Nothing else in `actions[]` tells them apart, and matching on the name is fragile anyway: rename the product between order creation and cancellation and the name in the slip no longer matches the name in your catalogue. `tradeOrderItemEffects` is the member to key a line-addressed export on.
+
+**It is a shortcut, not new information.** The same effects have always been reachable one level down, through the order's trade records: `tradeRecords/*items/*actions/*tradeOrderItemEffects/*affectedItem`. That path still works and returns the same data. The member on `actions[]` is the flat route to it — worth knowing if you read only `actions[]` and concluded the platform could not answer the question at all. See [Trade Records → Items, actions and effects](../../reference/trade-records.md#items-actions-and-effects).
+
+> **Scope caveat.** `affectedItem` resolves through the trade order items collection. A token that does not reach that collection reads **every** `affectedItem` as absent rather than failing — the response is a `200` with the effects present and their `affectedItem` missing, which looks like "this action moved no line" rather than like a permission problem. Check the token's scopes before concluding the data is not there. See [gotcha 41](../../reference/common-gotchas.md#41-a-write-under-a-read-only-scope-is-a-silent-200) for the same shape on the write side.
 
 ---
 

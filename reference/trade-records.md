@@ -115,6 +115,8 @@ An action's `type` is one of eight values, matching the order lifecycle:
 
 `tradeOrderItemEffects` is the join back to the order: each effect names the `affectedItem` and how much of it the action moved (`affectedQuantity`, `affectedAmount`).
 
+> The same effects hang off a POS slip's own `actions[]`, which is the flat route to them when you are starting from the slip rather than from the record — `tradeRecords/*items/*actions/*tradeOrderItemEffects/*affectedItem` and `actions/*tradeOrderItemEffects/*affectedItem` answer with the same data. See [POS Slips](../guide/examples/pos.md#pos-slips).
+
 ```
 # Every action across a record's items, flattened, and only the deliveries
 GET /v1/trade-records~first~with(items/*actions~flat~where(type=Fulfill)~count)

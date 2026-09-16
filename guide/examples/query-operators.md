@@ -30,7 +30,7 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/products~count"
 # ~distinct - Unique values in a collection of scalars (NO parentheses!)
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/people/{key}/languages~distinct"
 
-# There is no way to project a member of a collection into a stream of scalars first:
+# A plain member step does not project a member of a collection into a stream of scalars:
 # products/status and products~map(status) are both a 404. Use ~distinctBy for objects.
 
 # ~distinctBy(field) - Unique objects by field
@@ -110,7 +110,30 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/products~either(s
 
 # Combine ~either with ~where for (A OR B) AND C
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/products~either(status=Inactive,name=~Apple)~where(name=~Pro)"
+
+# A predicate with no field name compares the piped value ("=Martin" is "$this=Martin").
+# /people/*givenName reads the member from every person, so the filter sees plain strings
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/people/*givenName~where(=Martin)"
+
+# Contains, the same way
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/people/*givenName~where(=~Mar)"
+
+# Either spelling, each condition tested on its own
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/people/*givenName~either(=Jean,=Martin)"
+
+# How many of them are "Jean"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/people/*givenName~count(=Jean)"
 ```
+
+> **Availability:** the no-field-name predicate ships in the release after v26.1.11. Not in v26.1.10 or v26.1.11 —
+> those builds answered `400 Invalid predicate syntax: missing or invalid field name`, and the long form
+> `~where($this=Martin)` was the only spelling. It still works.
+>
+> Use it once the pipeline has narrowed to scalars and there is no member left to name; on a collection of objects,
+> keep naming the member (`/v1/people~where(givenName=Martin)`). Every comparison operator takes the form — `=`,
+> `!=`, `>`, `<`, `>=`, `<=`, `=~`, `!~` — wherever predicates are accepted. Two edges: `~where(=)` means "equals the
+> empty string" (a `400` before), and a bare `!` is still a `400` because negation needs a path (`~where(!done)`).
+> See [Predicates](../../reference/operators.md#a-predicate-may-open-with-its-operator).
 
 ---
 
@@ -189,6 +212,9 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/products/com.exam
 Empty parentheses on these are a mistake, but not always one you will see: `~first()`, `~last()`, `~count()` and
 `~flat()` are a `404`, while `~distinct()` and `~typeless()` answer `200 null` over a collection and leave you
 hunting for an error that never arrives.
+
+`~first` and `~count` do take one thing between parentheses — a *predicate*, filtering before the reduce
+(`~count(=Jean)`). It is only the empty pair that is the mistake.
 
 For an operator that *takes* an argument the rule is different: parentheses are not what matters, the argument is. A
 bare `~where` and a `~where()` are the same request, and only four operators refuse to run without an argument —

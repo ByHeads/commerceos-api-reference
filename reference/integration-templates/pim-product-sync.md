@@ -193,6 +193,7 @@ Two properties worth planning the migration around:
 
 - **It adds; it never removes.** The legacy identifier stays. Old integrations keep resolving throughout the cutover, which is what makes this safe to run ahead of switching consumers over.
 - **Only the identifier is written.** Members absent from the payload keep their stored values, so a re-keying pass cannot accidentally revert names, prices, or status.
+- **The new identifier must be free.** From v26.1.11 on, a new identifier that some *other* product already owns is refused with `400 failed indexing`, and the whole batch is rejected rather than merged into a third record. Earlier builds created that third record silently. See [gotcha 49](../common-gotchas.md#49-identifiers-that-name-two-different-objects-are-refused).
 
 See [Resource Patterns → The `@value` Write Envelope](../resource-patterns.md#the-value-write-envelope) for the full semantics.
 

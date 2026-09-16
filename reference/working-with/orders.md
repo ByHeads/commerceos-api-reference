@@ -148,6 +148,15 @@ GET /v1/trade-orders/com.example.orderId=ORD-001~with(status,items~with(statusDe
 
 The order-level `status` is the union, so it cannot tell you *how much* of the order is where. `statusDetails` on each line can — see below.
 
+**Filtering on `status` is a trap.** Because `status` is an array, a predicate against it is an *any-element* test: it matches when **at least one** of the order's statuses equals the value. The partially cancelled order above therefore matches `status=Cancelled` even though only one of its two lines was cancelled:
+
+```bash
+# Also returns orders with a single cancelled line among many live ones
+GET /v1/trade-orders~where(status=Cancelled)
+```
+
+There is no order-level member meaning "wholly cancelled" — the order-level `status` cannot express it, because it is a set with no counts. To answer that question, read the lines: fetch `items~with(statusDetails)` and keep only the orders where every line sits wholly in `Cancelled`. The same caveat applies to every value: `~where(status=Fulfilled)` matches part-fulfilled orders, and `~where(status=Committed)` matches orders that are mostly shipped.
+
 ### Per-Line Status Breakdown (`statusDetails`)
 
 A single line can itself be split across phases: order three, approve all three, deliver two, and that one line is now part `Fulfilled` and part `Committed`. `statusDetails` is one row per phase, each row carrying the quantity in that phase:
@@ -199,6 +208,26 @@ Both members are read-only. To see what produced each move — which action, whe
 | `reservedUntil` | datetime | Stock reservation expiry (optional) |
 | `labels` | Label[] | Assigned labels (add/remove semantics) |
 
+**Purchasing members.** A trade order used as a purchase order carries a further set of optional members. All are non-essential — fetch them with `~with(...)` — and all are settable on create and via `PATCH`.
+
+> **Availability:** ships in the release after v26.1.11. Not in v26.1.10 or v26.1.11.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `supplierConfirmed` | boolean | The supplier has confirmed the order |
+| `receiverNotes` | string | Notes for whoever receives the goods |
+| `requestedArrivalTime` | datetime | When the goods are wanted |
+| `suppliersReference` | string | The supplier's own reference for the order |
+| `customersReference` | string | The customer's own reference for the order |
+| `suppliersInternalNotes` | string | The supplier's private notes |
+| `suppliersExternalNotes` | string | The supplier's shared notes |
+| `customersInternalNotes` | string | The customer's private notes |
+| `customersExternalNotes` | string | The customer's shared notes |
+| `underdeliveryPolicy` | `"LeaveOpen"` \| `"Cancel"` | What approving a short delivery does with the remainder. Defaults from the trade relationship |
+| `overdeliveryPolicy` | `"Accept"` \| `"Warn"` \| `"Reject"` | What approving a surplus delivery does with it. Defaults from the trade relationship |
+
+An unknown value for either policy is rejected. What the policies actually do at receipt time is in [Working with Purchasing](purchasing.md#delivery-actions).
+
 ### Order Fields (Read-Only - Set via Actions)
 
 | Field | Type | Description |
@@ -217,6 +246,13 @@ Both members are read-only. To see what produced each move — which action, whe
 | `payments` | Payment[] | Associated payments |
 | `shipments` | Shipment[] | Associated shipments |
 | `records` | TradeRecord[] | Non-essential — the ledger's log of what was actually done to this order. Use `~with(records)`; see [Trade Records](../trade-records.md) |
+| `deliveryDiscrepancy` | string[] | Non-essential — the summarised difference between what was ordered and what arrived, with the same values as a delivery's `discrepancy` (`ZeroDelivery`, `Underdelivery`, `Overdelivery`, `None`). See [Working with Purchasing](purchasing.md#status-and-discrepancy-values) |
+| `deliveries` | Delivery[] | Non-essential — the goods receipts raised against this order. See [Working with Purchasing](purchasing.md#deliveries) |
+| `returns` | Return[] | Non-essential — the supplier returns raised against this order. See [Working with Purchasing](purchasing.md#returns) |
+
+> **Availability:** ships in the release after v26.1.11. Not in v26.1.10 or v26.1.11.
+>
+> Applies to `deliveryDiscrepancy`, `deliveries` and `returns` only; the rest of this table is long-standing.
 
 ### Order Item Fields
 
@@ -305,6 +341,8 @@ POST /v1/trade-orders
   ]
 }
 ```
+
+**Receiving and returning.** Once a purchase order is approved, what arrives against it is booked as a **delivery** and what goes back to the supplier as a **return** — both documents in their own right, with their own numbers, their own line counts and their own approval step. See [Working with Purchasing](purchasing.md). The purchasing members a purchase order can carry (references, notes, and the under/overdelivery policies that decide what a short or surplus receipt does to the order) are in [Order Fields (Optional)](#order-fields-optional).
 
 ### Order with Multiple Sellers
 
@@ -866,14 +904,19 @@ PATCH /v1/trade-orders/{identifier}/actions
 | Action | Payload | Effect |
 |--------|---------|--------|
 | `tryApprove` | `true` | Commits the order (reserves stock) |
+| `tryFulfill` | `true` | Fulfills all eligible items (committing `New`, `Reserved` and `Unreserved` items first as needed) and performs a physical move from each item's source to its destination place for physical product instances |
 | `tryCancel` | `true` | Cancels the order (releases reservations) |
 | `commitReturn` | Return commit object | Commits a return for one or more items (Fulfilled/New → ReturnCommitted) |
 | `fulfillReturn` | Return ref object | Fulfills a previously-committed return (ReturnCommitted → ReturnFulfilled; restocks if `restock=true` at commit) |
 | `cancelReturn` | Return ref object | Cancels a previously-committed return (ReturnCommitted → Fulfilled) |
 | `createPayment` | Payment object | Records a payment against the order |
-| `createShipment` | `true` | Creates a shipment order unless a `New` shipment already exists |
+| `createWalletPayment` | Wallet payment object | Creates a payment using a wallet (gift card, store credit, voucher) |
 | `changeDeliveryAddress` | Address object | Updates delivery address |
 | `changeInvoiceAddress` | Address object | Updates invoice address |
+
+That table is the whole set — there are no other trade order actions.
+
+> **Note:** `createShipment` is **not** a trade order action and never was. The OpenAPI document's example for the trade order `actions` member still shows `{ "createShipment": true }`; sending it is ignored, and no shipment order is created. Shipment orders are raised by the platform out of fulfilment — see [Shipments](#shipments).
 
 ### Approve Order (tryApprove)
 
@@ -958,16 +1001,17 @@ This makes `createPayment` safe to retry after a network blip or partial-success
 
 > **Note:** This contract covers `createPayment` only. The sibling `createWalletPayment` action has its own semantics and is not covered here.
 
-### Create Shipment
-
-Creates a shipment order for the order.
+### Fulfill Order (tryFulfill)
 
 ```bash
 PATCH /v1/trade-orders/com.example.orderId=ORD-001/actions
-{"createShipment": true}
+{"tryFulfill": true}
 ```
 
-> **Note:** If a shipment with status `New` already exists for the order, no new shipment is created (idempotent behavior). The current implementation does not filter out items already on shipments—it simply prevents creating multiple `New` shipments.
+**Effects:**
+- Fulfills every eligible item on the order, committing `New`, `Reserved` and `Unreserved` items first as needed
+- For physical product instances, performs a physical move from each item's source place to its destination place
+- Lines that are not eligible are left where they are, so a partly fulfilled order keeps both statuses (see [Status Behavior](#status-behavior))
 
 ### Change Addresses
 
@@ -1145,29 +1189,13 @@ GET /v1/trade-orders/com.example.orderId=ORD-001~with(payments,totalAmount,balan
 GET /v1/trade-orders/com.example.orderId=ORD-001/shipments
 ```
 
-### Shipment Order Creation
+### Where Shipment Orders Come From
 
-Shipment orders can be created directly via `POST /v1/shipment-orders` or via the trade order `createShipment` action.
+**Shipment orders are not created over the API.** The platform raises them out of fulfilment; an integration reads them and releases them.
 
-```bash
-# Direct creation
-POST /v1/shipment-orders
-{
-  "identifiers": {"com.example.shipmentOrderId": "SO-001"},
-  "shipper": {"identifiers": {"com.example.companyId": "OUR-COMPANY"}},
-  "recipient": {"identifiers": {"com.example.customerId": "CUST-001"}},
-  "items": [
-    {
-      "product": {"identifiers": {"com.example.sku": "PROD-001"}},
-      "quantity": "5"
-    }
-  ]
-}
+`POST /v1/shipment-orders` does not create a usable shipment: the collection has no `create`, so a body carrying `shipper`, `recipient`, `items` and the rest is **dropped** and all you get back is an identifier shell with none of the fields you sent. There is no trade order action that creates one either — `createShipment` is not an action (see [Available Actions](#available-actions)).
 
-# Via trade order action
-PATCH /v1/trade-orders/com.example.orderId=ORD-001/actions
-{"createShipment": true}
-```
+What you can do with a shipment order is read it and release it.
 
 ### Releasing Shipments
 
@@ -1178,7 +1206,7 @@ PATCH /v1/shipment-orders/com.example.shipmentId=SHIP-001/actions
 {"release": true}
 ```
 
-> **Note:** The `release` action is the only action available on shipment orders. Shipment creation and configuration are managed through trade order actions.
+> **Note:** `release` is the only action available on shipment orders, and it is the only write a shipment order takes. Creation and configuration happen inside the platform's fulfilment flow, not over the API.
 
 See the [Stock guide](stock.md) for detailed shipment management.
 
@@ -1319,6 +1347,8 @@ DELETE /v1/trade-orders/com.example.orderId=ORD-001/labels/com.example.labelId=u
 ## Returns and Refunds
 
 Returns are driven by three actions on the trade-order item lifecycle (`commitReturn`, `fulfillReturn`, `cancelReturn`). Money movement is handled separately as a negative `createPayment` — see [Refund Processing](#refund-processing) below.
+
+> **Customer returns, not supplier returns.** These three actions are the tool for a record-level, POS-style **customer** return: no return document, no return number, and restocking into a single stock root. Sending goods back to a **supplier** is a document of its own — `/v1/returns`, with a reason per line, its own numbering and a commit/fulfill cycle that moves stock between the two parties. See [Working with Purchasing → Returns](purchasing.md#returns).
 
 ### Return Flow
 
@@ -1519,10 +1549,10 @@ PATCH /v1/trade-orders/com.example.orderId=ORD-001/actions
 |-----------|--------|----------|----------|
 | List shipments | GET | `/v1/shipment-orders~take(50)` | Browse shipments |
 | Get shipment | GET | `/v1/shipment-orders/{id}` | Fetch single shipment |
-| Create shipment | POST | `/v1/shipment-orders` | Direct shipment creation |
+| Get items | GET | `/v1/shipment-orders/{id}/items` | Line items |
 | Release shipment | PATCH | `/v1/shipment-orders/{id}/actions` | Release shipment (`{"release": true}`) |
 
-> **Note:** Shipment orders can be created directly via POST or via the `createShipment` action on trade orders.
+> **Note:** There is no create operation. `POST /v1/shipment-orders` returns an identifier shell with the body dropped, and `createShipment` is not a trade order action. Shipment orders are raised by the platform out of fulfilment — see [Where Shipment Orders Come From](#where-shipment-orders-come-from).
 
 ---
 
@@ -1797,13 +1827,17 @@ GET /v1/trade-orders/com.example.orderId=ORD-001~with(status,items.unitAmountInc
    }
    ```
 
-3. **Create shipments:**
+3. **Fulfill the order:**
    ```bash
-   # Create shipment via trade order action
    PATCH /v1/trade-orders/com.example.orderId=ORD-001/actions
-   {"createShipment": true}
+   {"tryFulfill": true}
+   ```
 
-   # Release shipment when ready
+4. **Release the shipment the platform raised:**
+   ```bash
+   # Shipment orders are created by the platform out of fulfilment, not over the API
+   GET /v1/trade-orders/com.example.orderId=ORD-001/shipments
+
    PATCH /v1/shipment-orders/{shipmentId}/actions
    {"release": true}
    ```
@@ -1814,7 +1848,7 @@ GET /v1/trade-orders/com.example.orderId=ORD-001~with(status,items.unitAmountInc
 
 **Goal:** Handle refunds and complex scenarios.
 
-> **Note:** Returns do not have an API action yet. The return statuses exist, but initiating returns must be handled through other system workflows.
+> **Note:** Customer returns are driven by the `commitReturn`, `fulfillReturn` and `cancelReturn` actions — see [Returns and Refunds](#returns-and-refunds). Supplier returns are documents on `/v1/returns` — see [Working with Purchasing](purchasing.md#returns).
 
 1. **Issue refunds:**
    ```bash
@@ -2072,19 +2106,21 @@ PATCH /v1/trade-orders/com.example.orderId=ORD-MOBILE-2024-001/actions
 }
 ```
 
-### Step 7: Create Shipment
+### Step 7: Fulfill and Ship
 
 ```bash
-# Create shipment via trade order action
+# Fulfill the order
 PATCH /v1/trade-orders/com.example.orderId=ORD-MOBILE-2024-001/actions
-{"createShipment": true}
+{"tryFulfill": true}
 
-# Then release the shipment when ready
+# Find the shipment order the platform raised, then release it when ready
+GET /v1/trade-orders/com.example.orderId=ORD-MOBILE-2024-001/shipments
+
 PATCH /v1/shipment-orders/com.example.shipmentId=SHIP-MOBILE-2024-001/actions
 {"release": true}
 ```
 
-> **Note:** Shipment orders are read-only resources. Use the `createShipment` action on the trade order to create a shipment, then use the `release` action on the shipment order when ready to ship.
+> **Note:** Shipment orders are effectively read-only over the API: the only write they take is `release`. They are raised by the platform out of fulfilment, not created by a request — see [Where Shipment Orders Come From](#where-shipment-orders-come-from).
 
 ### Step 8: Verify Final State
 
@@ -2225,6 +2261,7 @@ Once created, order items cannot be modified. This ensures:
 - [Prices](prices.md) - Pricing for order items
 - [VAT](vat.md) - Tax calculation on orders
 - [Customers](customers.md) - Customer/supplier agent management
+- [Purchasing](purchasing.md) - Receiving a purchase order with deliveries, and sending goods back to a supplier with returns
 - [Stock](stock.md) - Inventory and shipment management
 - [Receipts](../receipts.md) - Completed transaction records
 - [Trade Records](../trade-records.md) - What the ledger actually did to an order, action by action

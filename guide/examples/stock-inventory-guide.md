@@ -863,7 +863,13 @@ Each stock count record item shows the actual posted change:
 
 ## Part 5: Stock Transfers — Moving Stock Between Logical Stocks
 
-A `stock transfer` represents the movement of inventory between two **logical stocks**. Currently, the fully supported scenario is transferring between stocks **within the same store** (e.g., moving items from default stock to consignment stock).
+> **Availability:** v26.1.11 and later. Earlier builds accepted store-to-store transfers and same-stock transfers with a `200`.
+
+The API describes a `stock transfer` as:
+
+> A logical instruction to move stock between two different logical stocks of the same agent, optionally backed by a shipment for physical movement. Transfers between agents are not supported yet
+
+So a transfer stays **within one agent** and moves between **two different logical stocks** of that agent — default stock to consignment stock, sales stock to display stock, a warehouse's main stock to its returns stock. Both rules are enforced when the transfer is created; see [Two rules on create](#two-rules-on-create) below and [5.4 Inter-Store Transfers](#54-inter-store-transfers) for moving goods between agents.
 
 Like stock counts, stock transfers do **not** directly post stock changes. Instead, they generate **stock transfer records** when actions are performed.
 
@@ -871,7 +877,17 @@ Like stock counts, stock transfers do **not** directly post stock changes. Inste
 
 ### 5.1 Creating a Stock Transfer
 
-Example: Moving 10 units from the default stock to the consignment stock within the Stockholm store.
+Example: moving 10 units from the Stockholm store's default stock into its consignment stock.
+
+Start by finding the agent's stocks, so you can name a non-default one:
+
+```bash
+# All logical stocks (requires the stock:write scope)
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stocks"
+
+# Or just the ones belonging to this agent
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stores/com.example.storeId=stockholm/stocks"
+```
 
 ```bash
 curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-transfers" \
@@ -892,7 +908,81 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-transfers"
   }'
 ```
 
-The transfer starts with status `"New"`. If `senderStock` or `receiverStock` are omitted, the default stock for the respective agent is used.
+Response (abbreviated) — the transfer starts with status `"New"` and echoes both stocks:
+
+```json
+{
+  "@type": "stock transfer",
+  "identifiers": { "com.example.id": "transfer-001", "key": "<key>" },
+  "id": "1000000",
+  "sender": { "@type": "store", "identifiers": { "com.example.storeId": "stockholm" }, "name": "Stockholm" },
+  "receiver": { "@type": "store", "identifiers": { "com.example.storeId": "stockholm" }, "name": "Stockholm" },
+  "senderStock": { "@type": "stock", "identifiers": { "com.example.id": "default-stock" }, "name": "Default Stock" },
+  "receiverStock": { "@type": "stock", "identifiers": { "com.example.id": "consignment-stock" }, "name": "Consignment Stock" },
+  "status": ["New"]
+}
+```
+
+#### Two rules on create
+
+**Rule 1 — `receiver` must be the same agent as `sender`.** Transfers between different agents (store → store, warehouse → store, …) are not supported yet:
+
+```bash
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-transfers" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "sender": { "identifiers": { "com.example.storeId": "stockholm" } },
+    "receiver": { "identifiers": { "com.example.storeId": "gothenburg" } },
+    "items": [
+      { "product": { "identifiers": { "com.example.sku": "TSHIRT-RED-M" } }, "quantity": 1 }
+    ]
+  }'
+```
+
+```json
+{
+  "@type": "bad request",
+  "error": "The request was invalid and could not be processed.",
+  "details": "Stock transfers between different agents are not supported."
+}
+```
+
+`receiver` is still required on create; it just has to name the same agent as `sender`.
+
+**Rule 2 — `senderStock` and `receiverStock` must differ.** A stock-to-itself transfer would be a no-op that still produced records for integrations, so it is refused:
+
+```bash
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-transfers" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "sender": { "identifiers": { "com.example.storeId": "stockholm" } },
+    "receiver": { "identifiers": { "com.example.storeId": "stockholm" } },
+    "items": [
+      { "product": { "identifiers": { "com.example.sku": "TSHIRT-RED-M" } }, "quantity": 1 }
+    ]
+  }'
+```
+
+```json
+{
+  "@type": "bad request",
+  "error": "The request was invalid and could not be processed.",
+  "details": "A stock transfer must be between two different stocks."
+}
+```
+
+> **This bites the old shortcut of omitting both stocks.** `senderStock` and `receiverStock` still default to the agent's default stock when omitted — which, on a same-agent transfer, is the *same* stock on both sides. So **every create needs at least one of `senderStock` / `receiverStock` set to a non-default stock of the agent.** List the agent's stocks with `GET /v1/stocks` or `GET /v1/stores/{id}/stocks` and name one explicitly. The same `400` comes back when both stocks are given explicitly and resolve to the same stock.
+
+The four field descriptions the API publishes:
+
+| Field | Published description |
+|-------|-----------------------|
+| `stock transfer` | "A logical instruction to move stock between two different logical stocks of the same agent, optionally backed by a shipment for physical movement. Transfers between agents are not supported yet" |
+| `receiver` | "The agent receiving the stock. Must be the same agent as the sender, since transfers between agents are not supported yet" |
+| `senderStock` | "The sender's logical stock to transfer from, or their default stock if not provided. Must differ from receiverStock" |
+| `receiverStock` | "The receiver's logical stock to transfer to, or their default stock if not provided. Must differ from senderStock" |
+
+> **References need the `identifiers` wrapper.** Write `"sender": { "identifiers": { "com.example.storeId": "stockholm" } }`, never a bare `"sender": { "key": "…" }`. A bare `{ "key": … }` object is not a reference — it resolves to a new placeholder agent instead of the existing one, and the transfer is then refused as a cross-agent transfer even though you named the same store twice.
 
 You can also add items to an existing transfer after creation:
 
@@ -946,12 +1036,35 @@ After fulfillment, check the transfer status:
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-transfers/com.example.id=transfer-001~just(identifiers,status)"
 ```
 
+```json
+{ "identifiers": { "com.example.id": "transfer-001", "key": "<key>" }, "status": ["Fulfilled"] }
+```
+
 Each item also has its own status array:
 
 ```bash
 # Check individual item statuses
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-transfers/com.example.id=transfer-001~with(items)"
 ```
+
+```json
+{
+  "@type": "stock transfer",
+  "status": ["Fulfilled"],
+  "items": [
+    { "quantity": "10", "status": ["Fulfilled"] }
+  ]
+}
+```
+
+One record is written under the transfer's `/records` collection:
+
+```bash
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-transfers/com.example.id=transfer-001/records~count"
+# 1
+```
+
+> **Edge — a transfer that is already in a now-invalid state.** A transfer created on an earlier build (or through another write path) that crosses agents or names the same stock twice is still readable, and `tryCancel` still works on it. But `tryCommit` and `tryFulfill` fail with a `500` whose `details` carries the same message as the create-time refusal — `"Stock transfers between different agents are not supported."` or `"A stock transfer must be between two different stocks."`. Cancel such a transfer and re-create it within one agent between two different stocks.
 
 ### 5.3 Stock Transfer Records — The Source of Truth
 
@@ -1000,13 +1113,31 @@ Action types:
 
 ### 5.4 Inter-Store Transfers
 
-Transfers between **different stores** are **not fully supported** yet. Within-store transfers (between different logical stocks at the same store) are the currently supported scenario.
+> **Availability:** v26.1.11 and later. Earlier builds accepted a store-to-store transfer and answered `200`.
 
-If you need to move physical stock between stores today, the recommended workaround is:
+**Transfers between different agents are not supported.** A `POST /v1/stock-transfers` whose `receiver` names a different agent from `sender` — store to store, warehouse to store, store to warehouse — is refused:
+
+```json
+{
+  "@type": "bad request",
+  "error": "The request was invalid and could not be processed.",
+  "details": "Stock transfers between different agents are not supported."
+}
+```
+
+A transfer moves **logical** stock inside one agent. Rewrite any store-to-store transfer as a same-agent transfer between two of that agent's stocks (sales stock → display stock, a warehouse's main stock → its returns stock) — see [5.1 Creating a Stock Transfer](#51-creating-a-stock-transfer).
+
+> **Note:** Transfers between agents are not supported yet. To move goods from one agent to another, use a **stock adjustment on each side** — a decrease at the sending agent and an increase at the receiving one. For goods moving to or from a supplier, use [deliveries and returns](../../reference/working-with/purchasing.md) instead, which book the movement against the purchase order.
+
+To move physical stock between two of your own stores today:
 
 1. Create a **decrease adjustment** at the sending store (reason: "Transfer Out")
 2. Create an **increase adjustment** at the receiving store (reason: "Transfer In")
 3. Use matching identifiers or notes to link them for audit purposes
+
+Both items can go on a single stock adjustment when the two places share an owner, which makes the movement atomic; across owners, post one adjustment per owner.
+
+> **Do not follow a cross-agent movement with a stock-entry echo of the receiving store's new balance.** A logical transfer puts nothing at the receiving agent's place, so the echo writes the full quantity in a second time. See [What `physicalQuantity` is measured against](../../reference/stock-entries.md#what-physicalquantity-is-measured-against).
 
 ---
 
@@ -1272,16 +1403,19 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-count-obse
 
 ### 6.5 Tracking in Stock Transfers
 
-Stock transfer items support an `instances` field for tracked products:
+> **Availability:** v26.1.11 and later. Earlier builds accepted store-to-store transfers and same-stock transfers with a `200`.
+
+Stock transfer items support an `instances` field for tracked products. The create rules from [5.1](#51-creating-a-stock-transfer) apply here too: one agent on both sides, and two different stocks — so name at least one non-default stock.
 
 ```bash
-# Transfer a specific iPhone (by IMEI) to consignment stock
+# Transfer a specific iPhone (by IMEI) from the default stock to the display stock
 curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-transfers" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "transfer-phone-001" },
     "sender": { "identifiers": { "com.example.storeId": "stockholm" } },
     "receiver": { "identifiers": { "com.example.storeId": "stockholm" } },
+    "senderStock": { "identifiers": { "com.example.id": "default-stock" } },
     "receiverStock": { "identifiers": { "com.example.id": "display-stock" } },
     "items": [
       {
@@ -1680,14 +1814,18 @@ Inherits from `stock transaction` (has `timestamp`, `owner`).
 
 ### Stock Transfer
 
+> **Availability:** v26.1.11 and later — for the `receiver`, `senderStock` and `receiverStock` rules below. Earlier builds accepted a different agent as `receiver`, and the same stock on both sides, with a `200`.
+
+"A logical instruction to move stock between two different logical stocks of the same agent, optionally backed by a shipment for physical movement. Transfers between agents are not supported yet"
+
 | Field | Type | Required on Create | Read-Only | Description |
 |-------|------|--------------------|-----------|-------------|
 | `identifiers` | common identifiers | Yes | No | External identifiers |
 | `id` | string | — | Yes | System-generated ID |
 | `sender` | agent reference | Yes | No | Sending agent |
-| `receiver` | agent reference | Yes | No | Receiving agent |
-| `senderStock` | stock reference | No | No | Source stock (defaults to sender's default) |
-| `receiverStock` | stock reference | No | No | Destination stock (defaults to receiver's default) |
+| `receiver` | agent reference | Yes | No | "The agent receiving the stock. Must be the same agent as the sender, since transfers between agents are not supported yet" — otherwise `400`, `"Stock transfers between different agents are not supported."` |
+| `senderStock` | stock reference | No | No | "The sender's logical stock to transfer from, or their default stock if not provided. Must differ from receiverStock" — otherwise `400`, `"A stock transfer must be between two different stocks."` |
+| `receiverStock` | stock reference | No | No | "The receiver's logical stock to transfer to, or their default stock if not provided. Must differ from senderStock" — otherwise `400`, `"A stock transfer must be between two different stocks."` |
 | `status` | string[] | — | Yes | Current statuses |
 | `items` | stock transfer item[] | Yes | No | Items being transferred |
 | `records` | stock transfer record[] | — | No | Generated records |
@@ -1804,7 +1942,9 @@ Inherits from `stock transaction` (has `timestamp`, `owner`).
 
 - **Multi-stock-place in a single store is not fully supported.** Create exactly one stock place per store for now and designate it as the sole `stockRoot`.
 
-- **Inter-store stock transfers are not fully supported.** Within-store transfers (between logical stocks at the same agent) work. For inter-store movement, use paired adjustments (decrease at source, increase at destination).
+- **A stock transfer must stay within one agent and move between two *different* stocks** (v26.1.11 and later; earlier builds answered `200`). A different agent as `receiver` is a `400` with `"Stock transfers between different agents are not supported."`; the same stock on both sides is a `400` with `"A stock transfer must be between two different stocks."` Since both stocks default to the agent's default stock, **omitting both is now the second error** — always name at least one non-default stock. For movement between agents, use paired adjustments (decrease at source, increase at destination), or [deliveries and returns](../../reference/working-with/purchasing.md) for supplier goods. See [5.4 Inter-Store Transfers](#54-inter-store-transfers).
+
+- **A bare `{ "key": "…" }` object is not a reference.** Anywhere you point at an existing item — `sender`, `receiver`, `senderStock`, `product`, `parent` — the reference must be `{ "identifiers": { "key": "…" } }` (or an external id inside `identifiers`). A bare `{ "key": … }` silently resolves to a *new* placeholder object instead of failing, which on a stock transfer surfaces as the puzzling "between different agents" `400` for what looks like the same store on both sides.
 
 - **`expectedQuantity` on stock count items is a snapshot.** It's captured at the time of the first observation, not updated live. Subsequent stock movements won't change it.
 
@@ -1829,7 +1969,7 @@ Inherits from `stock transaction` (has `timestamp`, `owner`).
 | `/v1/stock-count-observations` | GET, POST | Count observations by staff |
 | `/v1/stock-count-records` | GET | Immutable count audit trail (read-only) |
 | `/v1/stock-counts/{id}/records` | GET | Records for a specific count |
-| `/v1/stock-transfers` | GET, POST, PATCH | Stock movements between logical stocks |
+| `/v1/stock-transfers` | GET, POST, PATCH | Stock movements between two different logical stocks of the same agent |
 | `/v1/stock-transfer-items` | GET, POST, PATCH | Individual transfer items |
 | `/v1/stock-transfer-records` | GET | Immutable transfer audit trail (read-only) |
 | `/v1/stock-transfers/{id}/records` | GET | Records for a specific transfer |

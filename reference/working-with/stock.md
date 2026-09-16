@@ -255,7 +255,7 @@ Company Stock Roots
 
 ### Shipment Order Fields
 
-Shipment orders can be created directly via `POST /v1/shipment-orders` or via the trade order `createShipment` action. The following fields are exposed:
+Shipment orders are created by the platform as part of fulfilment. Over the API they are **read and released** — see [Shipment Orders](#shipment-orders). The following fields are exposed:
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -900,39 +900,30 @@ Stock roots determine where an agent's inventory is managed:
 
 ## Shipment Orders
 
-Shipment orders track physical delivery of products. They can be created directly via `POST /v1/shipment-orders` or via the trade order `createShipment` action, and `status` is an array with values `New`, `Released`, `Transiting`, `Acquired` (plus partial summaries).
+Shipment orders track physical delivery of products. They are **created by the platform** as part of fulfilment; over the API they are read and released. `status` is an array with values `New`, `Released`, `Transiting`, `Acquired` (plus partial summaries).
 
-### Creating Shipments
+### Where Shipment Orders Come From
 
-Shipment orders can be created directly via `POST /v1/shipment-orders` or via the trade order `createShipment` action:
+Shipment orders are not something an integration creates:
 
-**Direct creation:**
+- **There is no `createShipment` action on a trade order.** The action does not exist. An OpenAPI example that shows `{"createShipment": true}` on `/v1/trade-orders/{id}/actions` is stale and is ignored by the server.
+- **`POST /v1/shipment-orders` does not build a shipment from your body.** Posting explicit fields (`sender`, `receiver`, `source`, `items`, …) creates an identifier shell only — the body is dropped, and the resulting resource carries none of the values you sent.
 
-```bash
-# Create a shipment order directly
-POST /v1/shipment-orders
-{
-  "identifiers": {"com.example.shipmentId": "SHIP-001"},
-  "shipper": {"identifiers": {"com.example.companyId": "OUR-COMPANY"}},
-  "recipient": {"identifiers": {"com.example.customerId": "CUST-001"}},
-  "items": [
-    {
-      "product": {"identifiers": {"com.example.sku": "PHONE-001"}},
-      "quantity": 1
-    }
-  ]
-}
-```
-
-**Via trade order action:**
+The shipment order appears when the platform fulfils the order. Your integration's job is to **find it, read it, and release it**:
 
 ```bash
-# Create a shipment from a trade order
-PATCH /v1/trade-orders/com.example.orderId=ORD-001/actions
-{"createShipment": true}
+# Find the shipments belonging to an order
+GET /v1/shipment-orders~where(orders.identifiers.com.example.orderId=ORD-001)
+
+# Read it
+GET /v1/shipment-orders/com.example.shipmentId=SHIP-001
+
+# Release it when the goods leave
+PATCH /v1/shipment-orders/com.example.shipmentId=SHIP-001/actions
+{"release": true}
 ```
 
-> **Important:** The trade order `createShipment` action takes a **boolean** only (`true`). It does not accept `source`, `items`, or `deliveryTerms` parameters — these fields are determined automatically from the trade order.
+See [Shipment Actions](#shipment-actions) for the release action and [Shipment Lifecycle](#shipment-lifecycle) for the status flow.
 
 ### Querying Shipments
 
@@ -1050,16 +1041,16 @@ Shipment orders support only the `release` action. Shipment progression beyond r
 ```bash
 # Release shipment
 PATCH /v1/shipment-orders/com.example.shipmentId=SHIP-001/actions
-{"release": {}}
+{"release": true}
 ```
 
-> **Note:** Only `actions.release` is available on the shipment order resource. Actions like `ship`, `deliver`, and `cancel` are not supported. Shipment cancellation is not implemented in the current API.
+> **Note:** Only `actions.release` is available on the shipment order resource. Actions like `ship`, `deliver`, and `cancel` are not supported. Shipment cancellation is not implemented in the current API. Release is also the only write a shipment order takes — the shipment itself is created by the platform's fulfilment flow.
 
 ### Stock Impact
 
 | Action | Stock Effect |
 |--------|--------------|
-| Create shipment | No change (if order already reserved) |
+| Shipment appears (order already reserved) | No change |
 | Release shipment | Physical quantity decreases |
 
 ---
@@ -1068,9 +1059,9 @@ PATCH /v1/shipment-orders/com.example.shipmentId=SHIP-001/actions
 
 ### Incoterms
 
-International Commercial Terms define when responsibility transfers. Delivery terms are managed as separate resources and are not directly wired into the `createShipment` action.
+International Commercial Terms define when responsibility transfers. Delivery terms are managed as separate resources and are not wired into shipment creation at all.
 
-> **Note:** The trade order `createShipment` action takes a boolean only (`true`). It does not accept `deliveryTerms`, `source`, or `items` parameters. To use delivery terms, create them separately and reference them on the trade order or configure them at the company level.
+> **Note:** There is no way to pass `deliveryTerms`, `source` or `items` into the creation of a shipment order — shipment orders are created by the platform from fulfilment, and `POST /v1/shipment-orders` with explicit fields creates an identifier shell whose body is dropped. To use delivery terms, create them separately and reference them on the trade order or configure them at the company level.
 
 ### The Eleven Codes, and a Collection for Each
 
@@ -1248,12 +1239,12 @@ Shipment orders reference a carrier as an `agent` (typically a company). There i
 |-----------|--------|----------|----------|
 | List shipments | GET | `/v1/shipment-orders~take(50)` | Browse shipments |
 | Get shipment | GET | `/v1/shipment-orders/{id}` | Single shipment |
-| Create shipment (direct) | POST | `/v1/shipment-orders` | New shipment with explicit fields |
-| Create shipment (via order) | PATCH | `/v1/trade-orders/{id}/actions` + `{"createShipment": true}` | New shipment from trade order |
-| Release shipment | PATCH | `/v1/shipment-orders/{id}/actions` | Release for fulfillment |
+| Release shipment | PATCH | `/v1/shipment-orders/{id}/actions` + `{"release": true}` | Release for fulfillment |
 | Get items | GET | `/v1/shipment-orders/{id}/items` | Line items |
 | Get records | GET | `/v1/shipment-orders/{id}/records` | Event log |
 | Find shipments | POST | `/v1/shipment-orders/@find` | Incremental sync (modifiedTag only) |
+
+> **There is no create row.** Shipment orders are created by the platform from fulfilment — see [Where Shipment Orders Come From](#where-shipment-orders-come-from).
 
 ---
 
@@ -1533,32 +1524,23 @@ POST /v1/shipment-orders/@find
 
 ### Phase 5: Shipment Integration
 
-**Goal:** Connect orders to shipments.
+**Goal:** Pick up the shipments the platform produces and release them.
 
-1. **Create shipment from trade order:**
+1. **Find the shipment for an order** (the platform creates it during fulfilment — your integration does not):
    ```bash
-   # createShipment takes a boolean only
-   PATCH /v1/trade-orders/com.example.orderId=ORD-001/actions
-   {"createShipment": true}
+   GET /v1/shipment-orders~where(orders.identifiers.com.example.orderId=ORD-001)
    ```
 
-2. **Or create shipment directly:**
+2. **Or sync incrementally:**
    ```bash
-   POST /v1/shipment-orders
-   {
-     "identifiers": {"com.example.shipmentId": "SHIP-ORD-001"},
-     "shipper": {"identifiers": {"com.example.companyId": "OUR-COMPANY"}},
-     "recipient": {"identifiers": {"com.example.customerId": "CUST-001"}},
-     "items": [
-       {"product": {"identifiers": {"com.example.sku": "PHONE-001"}}, "quantity": 1}
-     ]
-   }
+   POST /v1/shipment-orders/@find
+   {"modifiedTag": "<tag from the previous call>"}
    ```
 
 3. **Release shipment:**
    ```bash
    PATCH /v1/shipment-orders/com.example.shipmentId=SHIP-ORD-001/actions
-   {"release": {}}
+   {"release": true}
    ```
 
 **Checkpoint:** End-to-end order fulfillment operational. Further tracking and delivery confirmation is handled by external integrations.
@@ -1668,22 +1650,21 @@ WH-STORAGE:
   IPHONE-15-PRO: physical=50, available=49, reserved=1
 ```
 
-### Step 5: Create Shipment
+### Step 5: Pick Up the Shipment
 
-Shipments are created via the trade order's `createShipment` action (boolean only):
+The platform creates the shipment order as part of fulfilment. Find it from the order:
 
 ```bash
-PATCH /v1/trade-orders/com.example.orderId=ORD-CUST-2024-001/actions
-{"createShipment": true}
+GET /v1/shipment-orders~where(orders.identifiers.com.example.orderId=ORD-CUST-2024-001)
 ```
 
-> **Note:** The `createShipment` action takes only a boolean. Source, items, and delivery terms are determined automatically from the trade order.
+> **Note:** There is nothing to post here. Source, items and delivery terms are determined by the platform from the trade order, and `POST /v1/shipment-orders` with explicit fields would create an identifier shell with the body dropped.
 
 ### Step 6: Release Shipment
 
 ```bash
 PATCH /v1/shipment-orders/com.example.shipmentId=SHIP-2024-001/actions
-{"release": {}}
+{"release": true}
 ```
 
 **Stock after release:**
@@ -1838,7 +1819,7 @@ POST /v1/stock-adjustments  # Second request (may fail)
 |----------|---------------|
 | 1 | Create trade order |
 | 2 | Approve order (reserves stock) |
-| 3 | Create shipment via `{"createShipment": true}` action or `POST /v1/shipment-orders` |
+| 3 | Fulfil the order (`{"tryFulfill": true}`); the platform raises the shipment order from fulfilment — it is not created over the API |
 | 4 | Release shipment (decrements stock) |
 | 5 | (External: fulfillment/tracking via integrations) |
 

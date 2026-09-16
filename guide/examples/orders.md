@@ -72,7 +72,11 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/trade-orders" \
       }
     ]
   }'
+```
 
+> **Receiving a purchase order.** What arrives against a purchase order is booked as a delivery on `/v1/deliveries`, and what goes back to the supplier as a return on `/v1/returns` — both documents with their own numbers and their own approval step. A purchase order can also carry references, notes and under/overdelivery policies. See [Working with Purchasing](../../reference/working-with/purchasing.md).
+
+```bash
 # Order actions - approve order (use tryApprove, not confirm)
 curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-2024-001/actions" \
   -H "Content-Type: application/json" \
@@ -83,10 +87,10 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/trade-orders/co
   -H "Content-Type: application/json" \
   -d '{"tryCancel": true}'
 
-# Order actions - create shipment
+# Order actions - fulfill the order (commits eligible items first, then moves the goods)
 curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-2024-001/actions" \
   -H "Content-Type: application/json" \
-  -d '{"createShipment": true}'
+  -d '{"tryFulfill": true}'
 
 # Order actions - create payment (requires currency and methodId from /v1/payment-methods)
 curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-2024-001/actions" \
@@ -229,7 +233,7 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/trade-relations
 
 ## Shipment Orders
 
-> **Note:** Shipment orders can be created directly via `POST /v1/shipment-orders` or via the trade order `createShipment` action.
+> **Note:** Shipment orders are **not created over the API**. The platform raises them out of fulfilment. `POST /v1/shipment-orders` creates only an identifier shell — the body is dropped — and there is no trade order action that creates one either (`createShipment` is not an action). Read them and `release` them.
 
 ```bash
 # List all shipment orders
@@ -247,17 +251,8 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/shipment-orders/c
 # Get shipment records
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/shipment-orders/com.myapp.shipmentId=SHIP-001/records"
 
-# Create a shipment order directly
-curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/shipment-orders" \
-  -H "Content-Type: application/json" \
-  -d '[{
-    "identifiers": {"com.myapp.shipmentOrderId": "SHIP-002"},
-    "shipper": {"identifiers": {"com.heads.seedID": "ourcompany"}},
-    "recipient": {"identifiers": {"com.myapp.customerId": "CUST-001"}},
-    "items": [
-      {"product": {"identifiers": {"com.myapp.sku": "SKU-001"}}, "quantity": 5}
-    ]
-  }]'
+# Find the shipment orders raised for a trade order
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-2024-001/shipments"
 
 # Shipment finder (only modifiedTag filter is supported)
 curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/shipment-orders/@find" \
@@ -796,7 +791,9 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/trade-orders" \
 - **Manual unit amounts**: Set `unitAmountExclVat` to override computed pricing; value must be non-negative and uses decimal strings (e.g., `"129.00"`)
 - **Item mutations**: While the API may accept POST/PATCH/DELETE to `/items`, the intended pattern is to set all items at creation. `unitAmountExclVat` can be PATCHed on editable items.
 - **Action names**: Use `tryApprove`/`tryCancel`, not `confirm`/`cancel`
-- **Shipments/Payments**: Can be created directly via `POST /v1/shipment-orders` and `POST /v1/payment-orders`, or via trade order actions (`createShipment`, `createPayment`)
+- **Payments**: Can be created directly via `POST /v1/payment-orders`, or via the trade order actions `createPayment` / `createWalletPayment`
+- **Shipments**: Cannot be created over the API. `POST /v1/shipment-orders` returns an identifier shell with the body dropped, and `createShipment` is not a trade order action — the OpenAPI document's action example still shows it, but it is ignored. The platform raises shipment orders out of fulfilment; `release` is the only write they take
+- **Purchasing**: Receiving against a purchase order and returning to a supplier are separate documents — see [Working with Purchasing](../../reference/working-with/purchasing.md)
 - **createPayment requires currency**: The `createPayment` action requires a `currency` field; omitting it throws "Currency not found."
 - **Payment methods**: Use `methodId` from `/v1/payment-methods` (e.g., `methodId: "com.heads.cash"`, `methodId: "com.heads.card"`)
 - **Click-and-collect**: Use `POST /v1/trade-orders` with `reservedUntil` for in-store pickup orders. The system reserves stock, creates a picking order, and schedules automatic release.

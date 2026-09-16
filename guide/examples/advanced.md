@@ -429,7 +429,7 @@ SQL mapped types use an array-body with `$prior` and `"$first"` to collect multi
 
 Key patterns:
 - `["...", "$first"]`: Array body ending with `"$first"` collects all items into a single result
-- `@value`: Creates literal string values (e.g., `@dbo.HeadsReceipt`)
+- A leading `@`: makes the rest a literal string rather than a selector (e.g. `@dbo.HeadsReceipt` is the text `dbo.HeadsReceipt`). This is the mapping language's string literal, not the `@value` write directive — see [Resource Patterns → Write Envelopes](../../reference/resource-patterns.md#write-envelopes-if-resolvevalue-and-value)
 - `$prior~map(...)`: References the parent collection and maps each item
 - `$prior~just(field)/*field`: Collects all values of a field into an array
 

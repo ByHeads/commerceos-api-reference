@@ -199,6 +199,28 @@ A spelling that is not a bare type name is refused too, even when the name insid
 
 One wrong type is not refused. A *sibling* that happens to declare everything the element declares is accepted, built as the element, and whatever it declared on top of that is dropped — a `200` with no signal. See [gotcha 47](common-gotchas.md#47-a-declared-type-key-is-not-always-one-you-can-write), which is also where the exact messages are.
 
+**Naming the exact element type is accepted, and does nothing.** `{"@type": "stock"}` on a store's `stocks`, or `{"@type": "label"}` on `labels`, is the type the array already holds, so the annotation is redundant rather than wrong. **Narrowing to a subtype works and is the one case where the annotation carries information**: where the array's element type has subtypes, the annotation picks which one to create — `{"effects": [{"@type": "fixed surcharge rule effect", "amount": "5"}]}` on a surcharge rule creates a `fixed surcharge rule effect`. An element type with no subtypes, such as `stock`, can only ever be annotated with its exact name.
+
+> **Availability:** ships in the release after v26.1.11. Not in v26.1.10 or v26.1.11. On v26.1.10 and v26.1.11 the exact-type annotation on a nested element **adds the element twice**, which on a store's `stocks` surfaces as a `500`:
+>
+> ```bash
+> PUT /v1/stores/com.example.storeId=T1
+> {"@type": "store", "identifiers": {"com.example.storeId": "T1"}, "name": "Store T1",
+>  "stocks": [{"@type": "stock", "identifiers": {"com.example.warehouseCode": "T1-EXPO"}, "name": "EXPO"}]}
+>
+> # v26.1.10 / v26.1.11, on a store that already owns a stock
+> → 500 {"@type": "internal error", "error": "Internal server error.",
+>        "details": "Owner is already set and cannot be changed."}
+> #   GET /v1/stores/com.example.storeId=T1/stocks~count → 1   (unchanged)
+>
+> # The same element without `@type`
+> → 200      …/stocks~count → 2
+> ```
+>
+> From the release after v26.1.11 the annotated `PUT` is a `200`, the count is `2`, and repeating it leaves it at `2`.
+
+Since every `GET` response carries `@type` on nested elements, any read-modify-write that echoes a response back hits this. **On v26.1.x builds, strip `@type` from nested elements before writing.** See [gotcha 51](common-gotchas.md#51-echoing-type-on-a-nested-element-double-adds-it-on-v261x-builds).
+
 ### `remove` Is Idempotent
 
 Removing an element that is not currently in the array — wrong identifier, or already removed — is a **silent no-op**: `200`, no error, nothing changed. Retries and double-sends are safe. This holds for every array type.
@@ -348,6 +370,141 @@ PATCH /v1/labels/com.example.labelId=vip
 ```
 
 Here the envelope buys nothing on its own — it is equivalent to sending `{"title": "VIP customer"}`. It is worth knowing about because it means one payload shape travels unchanged between a bulk collection write and a single-entity patch, which is convenient for a client, a mapped type, or a sync webhook that emits the same body either way.
+
+---
+
+## Write Envelopes: `@if`, `@resolveValue` and `@value`
+
+> **Availability:** ships in the release after v26.1.11. Not in v26.1.10 or v26.1.11.
+
+The `@value` envelope above is one member of a small family. A **write envelope** is a JSON object placed where a value is expected in a `POST`/`PUT`/`PATCH` body, carrying one or more *directive keys* — keys starting with `@`, other than the `@type` and `@self` annotations. It works on a member at any depth, on a collection element (the `{"identifiers": …, …}` object of a bulk body), and on the body of a direct member `PATCH`.
+
+Three directives, evaluated in this order:
+
+| Key | Argument | Meaning |
+|---|---|---|
+| `@if` | selector string | write only when the selector is truthy; otherwise the write is *skipped* |
+| `@resolveValue` | selector string | write the selector's value (replaces `@value`) |
+| `@value` | any JSON | the value to write |
+
+### Selectors
+
+Selectors are written in the same language as [mapped types](mapped-types.md). What a write envelope needs from it:
+
+| Written | Means |
+|---|---|
+| `$this` | the target's current value — `null` when it does not exist yet or was never set |
+| `$value` | the incoming `@value`; unbound when there is no `@value`, so `$value ?? 'x'` works |
+| `$prior` | the parent, so `$prior/familyName` reads a sibling |
+| `title` | a relative path, navigating from the current value |
+| `'…'` | a string literal |
+| `? :` | the conditional |
+| `??` | null-coalesce |
+| `!` | leading, negates |
+| `+` | concatenates |
+| `~op` | applies an operator — `$this~count`, `$value~toUpper` |
+
+**`@this` is not a keyword.** A leading `@` makes a string literal, so `@this` is the text `this` and is always truthy. Write `$this`.
+
+**Truthiness.** `null`, an unresolvable selector, `false`, `0` and `""` are falsy. *Everything else is truthy, including `[]` and `{}`* — test an array for emptiness with `!$this~count`. A stored **decimal zero is truthy**: on a decimal member (a price, a balance) holding `0`, `{"@if": "!$this", "@value": "1"}` is skipped, so set-if-unset does not overwrite a stored zero, and `{"@if": "$this"}` proceeds. JSON numbers keep the ordinary rule, where `0` is falsy.
+
+### Examples
+
+```bash
+POST /v1/people        {"givenName":{"@if":"!$this","@value":"john"}}
+  → 201 {"identifiers":{"key":"88af…"},"fullName":"john","givenName":"john"}   (set because unset)
+
+PATCH /v1/people/key=88af…  {"givenName":{"@if":"!$this","@value":"jane"}}
+  → 200 {…,"givenName":"john"}          (already set → skipped, current value echoed)
+
+PATCH /v1/people/key=88af…  {"givenName":{"@resolveValue":"$this ? 'carl' : 'john'"}}
+  → 200 {…,"givenName":"carl"}          ("john" had it been unset)
+
+PATCH /v1/people/key=88af…/givenName  {"@if":"!$this","@value":"x"}
+  → 200 "carl"                          (direct member PATCH; skipped, so the current value comes back)
+
+PATCH /v1/people/key=88af…  {"givenName":{"@value":"john","@resolveValue":"$value~toUpper"}}
+  → 200 {…,"givenName":"JOHN"}          (@resolveValue transforms the incoming @value)
+
+POST /v1/people        {"givenName":{"@value":"John"}}
+  → 201
+
+PUT  /v1/labels  [{"identifiers":{"com.example.labelId":"a"},"@if":"!$this","@value":{"title":"New"}}]
+  → 200 [{"identifiers":{"key":"39a1…","com.example.labelId":"a"},"title":"New"}]   (absent → created)
+  → 200 [{…the same element, title still "New"…}]                                   (present → skipped, the existing element echoed)
+
+PUT  /v1/labels  [{"identifiers":{"com.example.labelId":"zz"},"@if":"$this","@value":{"title":"Renamed"}}]
+  → 200 [null]                          (absent → nothing created)
+
+PATCH /v1/products/com.example.sku=SKU-1
+      {"labels":{"@if":"!$this~count","@value":{"add":[{"identifiers":{"com.example.labelId":"a"}}]}}}
+  → 200                                 (the label is added only when the product had no labels)
+```
+
+A server-produced date resolved into a `string` member is stored as its ISO 8601 text:
+
+```bash
+PUT /v1/people/{key}   {"givenName": {"@resolveValue": "api/v1/now"}}
+→ 200 {…, "givenName": "2026-09-05T19:02:54.151Z", …}
+```
+
+Into a member that cannot hold it, it is an ordinary `failed coercion`, whose entry names the value's own kind rather than the JSON type it printed as:
+
+```bash
+PUT /v1/people/{key}   {"gdprForgotten": {"@resolveValue": "api/v1/now"}}
+→ 400 failedCoercions[0] carries {"inputValue": "2026-09-05T19:02:54.186Z", "inputType": "date-time"}
+```
+
+### Statuses
+
+**A skip never changes the status.** On the wire it is a write of the current value that changed nothing:
+
+| Request | Answer |
+|---|---|
+| `PATCH /…/<entity>` | `200` with the entity echo; skipped members show their current value |
+| `POST /…/<collection>`, single object | `201`; skipped members are simply absent |
+| `PATCH /…/<entity>/<member>` | `200` with the current value — never `204` |
+| bulk `PUT`/`POST`, per element | the existing element at that array position, or `null` when nothing matched |
+
+A **single** `POST` object whose identifiers match an existing element is `409` before `@if` is looked at — use `PUT` for create-if-absent.
+
+A skipped write's payload is **not** validated: `{"@if": "false", "@value": {"title": 123}}` is a `200`. A proceeding one is, and the `failed coercion` names the property (`…/title`), never `@value`.
+
+### Refusals
+
+- **An unknown directive key is a `400`**, typed `unknown directive`. The comparison is case-sensitive, so a capitalised `@If` is not the directive:
+
+  ```bash
+  POST /v1/people   {"givenName": "x", "familyName": "y", "@If": "!$this"}
+  → 400 {"@type": "unknown directive",
+         "error": "Unknown directive key '@If' in a write envelope. Registered directive keys are '@if', '@resolveValue', '@value'.",
+         "keys": ["@If"],
+         "registeredKeys": ["@if", "@resolveValue", "@value"],
+         "suggestion": "…"}
+  ```
+
+  Branch on `keys` and `registeredKeys` rather than on the message. `@ref` is an unknown key like any other — there is no document-local reference directive.
+
+- **A non-string argument** to `@if` or `@resolveValue` → `'@if' expects a selector string, got number.`
+- **A `@resolveValue` selector that does not resolve** → `'@resolveValue' selector '$prior/nosuch' does not resolve.` A selector resolving to the literal `null` is not an error: it writes `null`, which unsets the member.
+- **Members beside a non-object `@value`** → `Member 'title' at '…' cannot be merged into a string '@value'.` A top-level `key` beside a scalar `@value` on a collection element is refused the same way: `Member 'key' … cannot be merged into a null '@value'`.
+- **A directive inside `identifiers`** → `'@if' is not allowed inside the identifying member 'identifiers': identification must be unconditional.`
+
+**An envelope that reduces to `{}` is written as `{}`.** `{"givenName": {"@if": "!$this"}}` with the condition true carries nothing to write, and the empty object goes to the member: on a scalar member that is an ordinary `failed coercion` naming the member, and on an entity — `PATCH /v1/people/<key> {"@if": "true"}` — it is a `200` that changes nothing.
+
+> **Earlier builds.** An unknown directive key used to answer `201` with the key silently dropped, which turned a typo in `@if` into an unconditional write. `@ref` was among the keys accepted and dropped that way.
+
+### Not envelope positions
+
+- **Index objects.** A directive inside `identifiers` is the refusal above; identification is never conditional.
+- **Dynamic targets.** In a `kv` document or a `dynamic` member the object is *data*, not an envelope: `PUT /v1/kv/com.example.x/doc {"@value": 1, "@if": "anything"}` stores and reads back exactly `{"@value": 1, "@if": "anything"}`.
+
+### Worth stating
+
+- The `{"identifiers": {…}, "@value": {…}}` element envelope keeps every semantic described above: the outer key wins over the same key inside `@value`, identifiers *inside* `@value` are written rather than matched on, and `"@value": null` nulls the identified element.
+- **Members of one object are written in the type's declared order**, and `$prior/<member>` sees an earlier member's write from the same request. On `person`, `givenName` is declared before `familyName`, so `{"givenName": "John", "familyName": {"@if": "$prior/givenName", "@value": "Doe"}}` sets both — while conditioning `givenName` on `$prior/familyName` skips it.
+- **Directives inside `add`/`replace`/`remove` lists are unspecified.** The supported form is an envelope *around* the list operation, as in the `labels` example above.
+- **Mapped types cannot produce directive keys.** A mapped output key loses a leading `@`, so a mapping cannot emit a directive into a write body.
 
 ---
 
@@ -766,6 +923,15 @@ GET /product-categories/com.test.catId=ELEC/members
 GET /companies/com.test.id=CORP/customerRelations
 ```
 
+**Indexing into a member array.** An element of a member array is addressed exactly the way it is in the collection that holds the same records — `/v1/stores/<key>/stocks/<namespace.key>=<value>` resolves the identifier and answers with the stock the store owns:
+
+```bash
+GET /v1/stores/com.example.storeId=T1/stocks/com.example.warehouseCode=T1-EXPO
+→ the stock, as the record
+```
+
+A value that names **no** stock, or one owned by a different agent, is not a `404` — it is `200 null`, the same answer a member array gives for an element that is merely possible rather than present. `~count` on that path answers `1` whether or not anything is there, so it cannot be used as an existence check; read the value itself. See [gotcha 39](common-gotchas.md#39-a-null-in-a-response-does-not-prove-the-field-exists). This holds on every build.
+
 ### Nested Relation Navigation
 
 Navigate through relations to reach deeply nested data:
@@ -897,11 +1063,17 @@ For serialized products (devices, SIM cards), use `instances` instead of `quanti
 | Action | Effect |
 |--------|--------|
 | `tryApprove` | Sets order status to `Committed` if currently `New` or `Reserved` |
+| `tryFulfill` | Fulfills all eligible items (commits new/reserved/unreserved items first as needed) and performs a physical move from each item's source to its destination place for physical product instances. |
 | `tryCancel` | Cancels the order if currently `Committed` |
 | `changeInvoiceAddress` | Updates the invoice address (only on `New`/`Reserved` orders) |
 | `changeDeliveryAddress` | Updates the delivery address (only on `New`/`Reserved` orders) |
-| `createShipment` | Creates a shipment for order items |
 | `createPayment` | Creates a payment record (see constraints below) |
+| `createWalletPayment` | Creates a wallet payment on the order |
+| `commitReturn` | Commits a record-level customer return |
+| `fulfillReturn` | Fulfills a committed return |
+| `cancelReturn` | Cancels a return |
+
+There is no `createShipment` action; the list above is the complete set. See [Working with Orders → Available Actions](working-with/orders.md#available-actions) for the full contract on each.
 
 #### createPayment Constraints
 
@@ -1078,7 +1250,7 @@ Several resources bound their period of validity with a **start/end pair**. The 
 
 | Resource | Endpoint | Window members |
 |----------|----------|----------------|
-| Trade rule (discount, price, surcharge) | `/v1/discount-rules`, `/v1/price-rules`, `/v1/surcharge-rules` | `time.start` / `time.end` |
+| Trade rule (discount, surcharge) | `/v1/discount-rules`, `/v1/surcharge-rules` | `time.start` / `time.end` |
 | Price | `/v1/prices`, `/v1/products/{key}/prices` | `from` / `to` |
 | Trade restriction | `/v1/trade-restrictions` | `from` / `until` |
 | Project reference | `/v1/trade-relationships/{key}/projectReferences` | `validFrom` / `validTo` |
@@ -1156,7 +1328,7 @@ Trade rules define discounting and pricing logic.
 
 ### Validity Window (`time`)
 
-Discount rules, price rules, and surcharge rules — `/v1/discount-rules`, `/v1/price-rules`, `/v1/surcharge-rules` — all share the same optional `time` member: the period during which the rule is eligible to fire.
+Discount rules and surcharge rules — `/v1/discount-rules`, `/v1/surcharge-rules` — share the same optional `time` member: the period during which the rule is eligible to fire.
 
 ```bash
 POST /v1/discount-rules

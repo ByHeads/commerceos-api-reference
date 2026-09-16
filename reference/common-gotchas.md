@@ -1077,7 +1077,7 @@ Three related points:
 - **A path segment fails loudly instead.** The same key in a URL does not route — `PUT /v1/kv/com.test` is a `404` where the identical key in a body is a silent `200`.
 - **One resource is strict.** `sync-webhooks` rejects a bad `secrets` or `variables` key with a `400` naming it, and persists nothing from that request. Do not generalise from it — `identifiers` on every resource, that resource included, takes the lenient path.
 
-Related: [gotcha 39](#39-a-null-in-a-response-does-not-prove-the-field-exists) (a `null` is not proof a field exists), [External Identifiers](overview.md#external-identifiers).
+Related: [gotcha 39](#39-a-null-in-a-response-does-not-prove-the-field-exists) (a `null` is not proof a field exists), [gotcha 49](#49-identifiers-that-name-two-different-objects-are-refused) (a well-formed key that another record already owns is refused with `failed indexing` rather than dropped), [External Identifiers](overview.md#external-identifiers).
 
 ---
 
@@ -1117,7 +1117,7 @@ POST /v1/products   [{"identifiers": {"com.example.sku": "NEW-1"}, "name": "New"
        "indexerOwner": "products", "indexType": "…", "suggestion": "…"}
 ```
 
-The identifiers are correct. A `POST` is an upsert, so it looks the record up first: the lookup runs against the read-only collection and finds nothing, and there is no writable collection behind it to create with — so the only failure it can report is the lookup. Send that same `POST` for a product that *does* exist and it is a plain `200` that changes nothing, the ordinary read-only-twin outcome. **If a write answers `failed indexing` and the identifiers look right, check the token's scopes before you start rewriting the payload.**
+The identifiers are correct. A `POST` is an upsert, so it looks the record up first: the lookup runs against the read-only collection and finds nothing, and there is no writable collection behind it to create with — so the only failure it can report is the lookup. Send that same `POST` for a product that *does* exist and it is a plain `200` that changes nothing, the ordinary read-only-twin outcome. **If a write answers `failed indexing` and the identifiers look right, check the token's scopes before you start rewriting the payload.** Read the message first, though: the same error type saying the identifiers *belong to more than one existing* record is [gotcha 49](#49-identifiers-that-name-two-different-objects-are-refused) and has nothing to do with scopes.
 
 **`DELETE` sits outside all of this, and it is the one method whose response answers the question.** It never answers `404` — not for a path the token cannot reach, not for a key that does not exist, not even for a collection no scope declares:
 
@@ -1448,6 +1448,113 @@ Two related points:
 **Changed 2026-08-23.** The response used to name the collection you addressed rather than the record you got, so the write above answered `cfr delivery term` and the read-back was the only signal there was — this entry said so, in as many words. If you wrote a client that ignores the `@type` on a write because it could not be trusted, it can be trusted now.
 
 Related: [gotcha 47](#47-a-declared-type-key-is-not-always-one-you-can-write), [gotcha 41](#41-a-write-under-a-read-only-scope-is-a-silent-200), [Incoterms](working-with/stock.md#incotermcode-is-the-type-not-a-label).
+
+---
+
+## 49. Identifiers That Name Two Different Objects Are Refused
+
+> **Availability:** v26.1.11 and later.
+
+Every identifier in one `identifiers` object has to refer to the **same** object. Send two that are already owned by two different records and the request is refused with `400 failed indexing` — no new type of error, the one a reference that resolves to nothing has always produced — and **nothing is written**. In an array body the whole batch is rejected, not just the offending element.
+
+```bash
+# Two people already exist: X carries com.example.customerNo=12345, Y carries com.example.memberId=M-9
+PUT /v1/people
+[{"identifiers": {"com.example.customerNo": "12345", "com.example.memberId": "M-9"}}]
+
+→ 400 {
+  "@type": "failed indexing",
+  "error": "The used identifiers belong to more than one existing 'person'. Writing them would introduce a duplicate.",
+  "usedIndex": { "com.example.customerNo": "12345", "com.example.memberId": "M-9" },
+  "indexerOwner": "people",
+  "indexType": "'COS database key or common identifiers'",
+  "suggestion": "Check 'usedIndex' above. Every identifier must refer to the same instance of 'person'. In this case, some other 'person' already uses one of them."
+}
+```
+
+`usedIndex` echoes the identifiers exactly as sent; the type name is in the message rather than in a field of its own. For comparison, identifiers that resolve to *nothing* keep their old wording — `Found no matching 'person' using this index. Check identifiers.` — so the two cases are told apart by the message, not by the status or the `@type`.
+
+**Where it applies.** Top-level collections (`POST`, `PUT` and `PATCH` with array bodies), nested references (`owner`, `customerAgent`, `product` on an order item, …) and path lookups on a `;`-separated segment, `GET /v1/people/com.example.a=1;com.example.b=2`. `identifiers.key` takes part like any other identifier: the key of X together with an identifier owned by Y is refused. A **single-object `POST`** whose identifier is already taken keeps answering `409 conflict`, as it always did.
+
+**Some nested references are resolved by the parent resource** instead of by the collection, and those answer the parent's usual `400 bad request` with the reason in `details`:
+
+```
+Could not establish an identity of type agent from the data included in the "customerAgent" member
+of the input object: the index refers to more than one object
+```
+
+**Why this matters more than a new refusal usually does.** Every v26.1.x release before this one answered `200` to that request and created a **third** object carrying both identifiers. Both identifiers then had two owners, and a lookup by either returned a merged result. If an integration has ever "found duplicates after upserting with two ids", this is what it hit. Data created that way is repaired by taking the duplicated identifier off the extra object:
+
+```bash
+PATCH /v1/people/<key>   {"identifiers": {"com.example.memberId": null}}
+```
+
+To find out which objects a pair of identifiers actually refers to, ask about each one on its own:
+
+```bash
+GET /v1/people~where(identifiers/com.example.memberId=M-9)~just(identifiers)
+```
+
+**The legitimate case is unaffected.** One identifier that resolves, alongside one no object owns yet, still resolves to that object and *assigns* the new identifier to it — a `200`, the same `identifiers.key` as before, one identifier richer. That is how an external ID is adopted, and it is the point of the [identifier-rewrite form of the `@value` envelope](resource-patterns.md#rewriting-identifiers). What is refused is only the case where the second identifier already belongs to somebody else.
+
+Related: [gotcha 40](#40-a-malformed-identifier-key-is-dropped-and-every-retry-then-creates-another-record), [gotcha 41](#41-a-write-under-a-read-only-scope-is-a-silent-200), [External Identifiers](overview.md#external-identifiers).
+
+---
+
+## 50. A Typo in a Directive Key Is a `400`, Not a Silent Unconditional Write
+
+> **Availability:** ships in the release after v26.1.11. Not in v26.1.10 or v26.1.11.
+
+A [write envelope](resource-patterns.md#write-envelopes-if-resolvevalue-and-value) makes a write conditional. Its keys are matched **case-sensitively** against exactly three names, and anything else that starts with `@` — other than the `@type` and `@self` annotations — is refused:
+
+```bash
+# WRONG - capital I. The write is not conditional on anything; it is refused.
+POST /v1/people   {"givenName": "x", "familyName": "y", "@If": "!$this"}
+
+→ 400 {"@type": "unknown directive",
+       "error": "Unknown directive key '@If' in a write envelope. Registered directive keys are '@if', '@resolveValue', '@value'.",
+       "keys": ["@If"],
+       "registeredKeys": ["@if", "@resolveValue", "@value"],
+       "suggestion": "…"}
+```
+
+Earlier builds answered `201` and dropped the unrecognised key, which is the dangerous outcome: a set-if-unset turns into an unconditional overwrite and the status says `created`. `@ref` is an unknown key like any other — there is no document-local reference directive.
+
+Two more ways to write a condition that is not one:
+
+- **`@this` is not a keyword.** A leading `@` makes a string literal, so `"@if": "@this"` tests the text `this`, which is always truthy, and the write always proceeds. Write `$this`.
+- **A stored decimal zero is truthy.** `{"@if": "!$this", "@value": "1"}` on a price or balance holding `0` is **skipped** — set-if-unset does not overwrite a stored zero. So are `[]` and `{}`; only `null`, an unresolvable selector, `false`, `0` and `""` are falsy, and a JSON `0` in the body follows the ordinary rule. Test an array for emptiness with `!$this~count`.
+
+Full rules: [Resource Patterns → Write Envelopes](resource-patterns.md#write-envelopes-if-resolvevalue-and-value).
+
+---
+
+## 51. Echoing `@type` on a Nested Element Double-Adds It on v26.1.x Builds
+
+> **Availability:** fixed in the release after v26.1.11. The fault below is in v26.1.10 and v26.1.11.
+
+Every `GET` response carries `@type` on its nested elements, so a read-modify-write that sends a response back unchanged writes a redundant type annotation. On v26.1.x that annotation makes the element be added **twice**, which on a store's `stocks` surfaces as a `500`:
+
+```bash
+# WRONG on v26.1.x - the store already owns one stock
+PUT /v1/stores/com.example.storeId=T1
+{"@type": "store", "identifiers": {"com.example.storeId": "T1"}, "name": "Store T1",
+ "stocks": [{"@type": "stock", "identifiers": {"com.example.warehouseCode": "T1-EXPO"}, "name": "EXPO"}]}
+
+→ 500 {"@type": "internal error", "error": "Internal server error.",
+       "details": "Owner is already set and cannot be changed."}
+#   …/stocks~count is still 1 — nothing was added
+
+# RIGHT - drop @type from the nested element
+"stocks": [{"identifiers": {"com.example.warehouseCode": "T1-EXPO"}, "name": "EXPO"}]
+→ 200      …/stocks~count → 2
+```
+
+The `@type` on the **root** object is fine; it is the nested element that has to lose it. **Strip `@type` from nested elements on every v26.1.x build**, which also costs nothing on later ones, where the annotated `PUT` is a `200` and repeating it is idempotent.
+
+A *narrowing* annotation — one that names a subtype of what the array holds, such as `{"@type": "fixed surcharge rule effect"}` on a surcharge rule's `effects` — is a different thing and works on every build. It is only the redundant exact-type spelling that is affected, and `stock` has no subtypes, so on `stocks` that is the only annotation there is.
+
+Related: [gotcha 47](#47-a-declared-type-key-is-not-always-one-you-can-write), [Resource Patterns → The Element Type Is Implied](resource-patterns.md#the-element-type-is-implied).
 
 ---
 

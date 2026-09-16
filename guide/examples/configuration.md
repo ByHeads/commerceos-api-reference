@@ -1,6 +1,6 @@
 # Configuration & Reference Data Examples
 
-Curl examples for countries, languages, templates, mapped types, dynamic properties, payment methods, discount/return reasons, delivery/payment terms, sales channels, customer groups, sync webhooks, shortened links, config API, and EPI integrations.
+Curl examples for countries, languages, templates, mapped types, dynamic properties, payment methods, discount/return reasons, delivery/payment terms, sales channels, customer groups, sync webhooks, shortened links, the key-value store, config API, and EPI integrations.
 
 **Base URL:** `https://example.app.heads.com/api/v1`
 **API Key:** `banana` (passed via Basic Auth with empty username: `-u ":banana"`)
@@ -433,6 +433,74 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/shortened-links"
     "expirationRedirect": "https://shop.example.com/expired"
   }'
 ```
+
+---
+
+## Key-Value Store (`/v1/kv`)
+
+> **Availability:** v26.1.11 and later.
+
+A place to keep integration state the schema has no home for — a sync cursor, a feature flag, a small settings document. Entries live under a [namespaced key](../../reference/primitives.md#namespaced-key) and are addressed as `/v1/kv/{namespaced-key}/{entry}`. Each entry is a JSON document whose sub-paths can be read, written and deleted individually. Reaching any of it needs the `kv` scope.
+
+```bash
+# Store a document
+curl -X PUT -u ":banana" "https://example.app.heads.com/api/v1/kv/com.example.settings/config" \
+  -H "Content-Type: application/json" \
+  -d '{"a": "123", "b": 1}'
+
+# Read the whole entry back
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/kv/com.example.settings/config"
+# → {"a": "123", "b": 1}
+
+# Write one field. 200 "dsa", and the entry now reads {"a": "dsa", "b": 1}
+curl -X PUT -u ":banana" "https://example.app.heads.com/api/v1/kv/com.example.settings/config/a" \
+  -H "Content-Type: application/json" \
+  -d '"dsa"'
+
+# A field that is not there yet is created by writing it
+curl -X PUT -u ":banana" "https://example.app.heads.com/api/v1/kv/com.example.settings/config/f" \
+  -H "Content-Type: application/json" \
+  -d '"new"'
+
+# Any depth, as long as the intermediates are there. Create the branch once...
+curl -X PUT -u ":banana" "https://example.app.heads.com/api/v1/kv/com.example.settings/config/x" \
+  -H "Content-Type: application/json" \
+  -d '{"y": {"z": 1, "keep": true}}'
+
+# ...then one leaf at a time. Siblings and ancestors are left alone
+curl -X PUT -u ":banana" "https://example.app.heads.com/api/v1/kv/com.example.settings/config/x/y/z" \
+  -H "Content-Type: application/json" \
+  -d '2'
+
+# PATCH on a sub-path does the same thing as PUT
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/kv/com.example.settings/config/x/y/z" \
+  -H "Content-Type: application/json" \
+  -d '3'
+
+# Remove a key - DELETE, or PUT with a body of null
+curl -X DELETE -u ":banana" "https://example.app.heads.com/api/v1/kv/com.example.settings/config/a"
+
+# An array body is stored whole, and the operators read it like a collection
+curl -X PUT -u ":banana" "https://example.app.heads.com/api/v1/kv/com.example.settings/config/list" \
+  -H "Content-Type: application/json" \
+  -d '[3, 4, 5]'
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/kv/com.example.settings/config/list~count"   # → 3
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/kv/com.example.settings/config/list?limit=1"
+
+# A sub-path holding nothing answers like a missing entry
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/kv/com.example.settings/config/missing"
+# → 200  null
+```
+
+**A write replaces what is at the path — nothing merges.** This is the rule to hold on to, and it is unchanged. `PATCH /v1/kv/com.example.settings/config` with `{"f": 1}` replaces the whole document with `{"f": 1}`; `PUT .../config/a` with `{"b": 2}` replaces `a` entirely. To update one field, write that field's own leaf.
+
+**Array elements are not addressable for writes.** `.../config/list/0` is a `404`; replace the whole array instead. `POST` to an array-valued key is not an append either — it replaces the array with the posted value wrapped in an array — so use `PUT`.
+
+**An intermediate has to exist, and has to be an object.** Writing `.../config/a/b` when `a` is a string, or `.../config/x/y` when `x` does not exist, is a `404`. Create the object first.
+
+**The key itself must be a well-formed namespaced key.** `PUT /v1/kv/com.test` is a `404` — a path segment outside the shape does not route at all, unlike the same key in a request body ([namespaced key](../../reference/primitives.md#namespaced-key)).
+
+> **Earlier builds handled sub-paths differently.** Before v26.1.11 an entry was written and read only as a whole: writing a sub-path answered `204` and stored nothing, writing a field that did not exist yet was a `404`, `DELETE` on a sub-path answered `200 "Deleted 1 items"` while deleting nothing, and reading a missing sub-path was a `404`. An array body anywhere under `/v1/kv` stored only its last element while echoing the whole array back — that fix reaches every dynamically typed non-collection target, a mapped type's `body` included, so a note elsewhere telling you to "send one value, not an array" for such a member no longer applies.
 
 ---
 

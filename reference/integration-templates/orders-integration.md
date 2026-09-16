@@ -94,10 +94,11 @@ Trade order status is a read-only string array that reflects the current state o
 │ Committed │ ──────────────►│ Cancelled │
 └─────┬─────┘                └───────────┘
       │
-      │ createShipment (via actions)
+      │ tryFulfill
       ▼
 ┌───────────────────────────────────────────┐
 │  Shipment Order                            │
+│  (raised by the platform out of fulfilment)│
 │  (separate resource with its own status)   │
 │  - status: New → Released → Transiting →   │
 │            Acquired (+ Partially* variants)│
@@ -105,15 +106,15 @@ Trade order status is a read-only string array that reflects the current state o
 └───────────────────────────────────────────┘
 ```
 
-**Note:** Stock reservation is controlled via the `reservedUntil` field on orders or items. Setting `reservedUntil` reserves stock until the specified time **and** moves the order/item status to `Reserved`. Fulfillment happens via shipment orders, which are separate resources.
+**Note:** Stock reservation is controlled via the `reservedUntil` field on orders or items. Setting `reservedUntil` reserves stock until the specified time **and** moves the order/item status to `Reserved`. Fulfillment happens via shipment orders, which are separate resources — **created by the platform, not by a request of yours**. See [Shipment Orders](#shipment-orders).
 
 ### Status Reference
 
 | Status | Description | Actions Available |
 |--------|-------------|-------------------|
-| `New` | Just created, awaiting approval | `tryApprove`, `createPayment`, `changeDeliveryAddress`, `changeInvoiceAddress` |
-| `Reserved` | Stock reserved (via `reservedUntil`) | `tryApprove`, `createPayment`, `changeDeliveryAddress`, `changeInvoiceAddress` |
-| `Committed` | Approved, ready for fulfillment | `createShipment`, `createPayment`, `tryCancel` |
+| `New` | Just created, awaiting approval | `tryApprove`, `tryFulfill`, `createPayment`, `createWalletPayment`, `changeDeliveryAddress`, `changeInvoiceAddress` |
+| `Reserved` | Stock reserved (via `reservedUntil`) | `tryApprove`, `tryFulfill`, `createPayment`, `createWalletPayment`, `changeDeliveryAddress`, `changeInvoiceAddress` |
+| `Committed` | Approved, ready for fulfillment | `tryFulfill`, `createPayment`, `createWalletPayment`, `tryCancel` |
 | `Cancelled` | Order cancelled | (terminal state) |
 
 > **Note:** `tryCancel` only works on `Committed` orders. Address changes are only allowed on `New` or `Reserved` orders.
@@ -126,11 +127,19 @@ Each item has `statusDetails`, one row per phase the line is split across, each 
 | Action | Description |
 |--------|-------------|
 | `tryApprove` | Approve the order (New → Committed) |
+| `tryFulfill` | Fulfills all eligible items (committing `New`, `Reserved` and `Unreserved` items first as needed) and performs a physical move from each item's source to its destination place for physical product instances |
 | `tryCancel` | Cancel the order |
-| `createShipment` | Create a shipment for eligible items |
 | `createPayment` | Record a payment against the order |
+| `createWalletPayment` | Create a payment using a wallet (gift card, store credit, voucher) |
+| `commitReturn` | Commit a customer return for one or more items |
+| `fulfillReturn` | Fulfill a previously-committed return |
+| `cancelReturn` | Cancel a previously-committed return |
 | `changeInvoiceAddress` | Update invoice address |
 | `changeDeliveryAddress` | Update delivery address |
+
+That is the whole set.
+
+> **Note:** `createShipment` is **not** a trade order action and never was. The OpenAPI document's example for the trade order `actions` member still shows `{ "createShipment": true }`; sending it is ignored and no shipment order is created.
 
 ### Required Fields for Order Creation
 
@@ -569,50 +578,33 @@ PATCH /v1/trade-orders/com.acme.order-id=WEB-2024-123456/actions
 
 **Note:** Stock reservation is controlled via `reservedUntil`. Setting `reservedUntil` reserves stock **and** moves status to `Reserved`. You can approve directly from either `New` or `Reserved` status.
 
-### Create Shipment via Order Action
+### Fulfill the Order
 
 ```bash
 PATCH /v1/trade-orders/com.acme.order-id=WEB-2024-123456/actions
 {
-  "createShipment": true
+  "tryFulfill": true
 }
 ```
+
+`tryFulfill` fulfills every eligible item — committing `New`, `Reserved` and `Unreserved` items first as needed — and, for physical product instances, performs a physical move from each item's source place to its destination place.
 
 ### Shipment Orders
 
-Shipment orders can be created directly via `POST /v1/shipment-orders` **or** via the trade order `createShipment` action.
+**Shipment orders are not created over the API.** The platform raises them out of fulfilment; your integration reads them and releases them.
 
-**Option 1: Direct creation**
+`POST /v1/shipment-orders` does not create a usable shipment: the collection has no `create` operation, so a body carrying `shipper`, `recipient`, `items` and the rest is **dropped**, and what comes back is an identifier shell with none of the fields you sent. There is no trade order action that creates one either.
 
-```bash
-POST /v1/shipment-orders
-{
-  "identifiers": {"com.acme.shipmentOrderId": "SO-001"},
-  "shipper": {"identifiers": {"com.acme.company-id": "ACME-RETAIL"}},
-  "recipient": {"identifiers": {"com.acme.customer-id": "CUST-001"}},
-  "items": [
-    {
-      "product": {"identifiers": {"com.acme.sku": "WIDGET-001"}},
-      "quantity": 2
-    }
-  ]
-}
-```
-
-**Option 2: Via trade order action (recommended for order-linked shipments)**
-
-```bash
-# Create shipment for all eligible items
-PATCH /v1/trade-orders/com.acme.order-id=WEB-2024-123456/actions
-{
-  "createShipment": true
-}
-```
-
-When created via trade order action, the shipment order is populated with:
+A shipment order the platform raised is populated with:
 - `sender` and `receiver` from the trade order
 - `source` and `destination` from the order's addresses
 - `carrier` configured at the store/order level
+
+Find them from the order side:
+
+```bash
+GET /v1/trade-orders/com.acme.order-id=WEB-2024-123456/shipments
+```
 
 ### Query Shipment Details
 
@@ -1041,7 +1033,7 @@ For high-traffic events (flash sales, Black Friday):
 - [ ] **Create order** — Basic order creation works
 - [ ] **Add payment** — Payment recording works
 - [ ] **Approve order** — Status transitions correctly
-- [ ] **Create shipment** — Shipment creation works
+- [ ] **Fulfil order** — `tryFulfill` fulfils eligible items and the platform raises a shipment order
 - [ ] **Cancel order** — Cancellation works
 
 ### Go-Live
@@ -1164,13 +1156,13 @@ PATCH /v1/trade-orders/com.acme.order-id=PAYMENT-FLOW-001/actions
 ### Complete Fulfillment Flow
 
 ```bash
-# Step 1: Create shipment via order action
+# Step 1: Fulfill the order — the platform raises the shipment order
 PATCH /v1/trade-orders/com.acme.order-id=PAYMENT-FLOW-001/actions
 {
-  "createShipment": true
+  "tryFulfill": true
 }
 
-# Step 2: Get the created shipment key
+# Step 2: Get the shipment key
 GET /v1/trade-orders/com.acme.order-id=PAYMENT-FLOW-001/shipments~just(identifiers)
 
 # Step 3: Release shipment (mark as shipped)
@@ -1180,7 +1172,7 @@ PATCH /v1/shipment-orders/{shipment-key}/actions
 }
 ```
 
-> **Note:** Shipment orders can be created directly via POST or via the trade order `createShipment` action. Use the `release` action on the shipment to mark it as shipped.
+> **Note:** Shipment orders are raised by the platform out of fulfilment — neither `POST /v1/shipment-orders` nor any trade order action creates one. `release` is the only write a shipment order takes, and it is what marks the shipment as shipped.
 
 ### Verification Queries
 
@@ -1236,6 +1228,7 @@ PATCH /v1/trade-orders/com.acme.order-id=REFUND-ORDER/actions
 ## Related Documentation
 
 - [Working with Orders](../working-with/orders.md) — Detailed order field reference
+- [Working with Purchasing](../working-with/purchasing.md) — Receiving a purchase order with deliveries, and returning to a supplier
 - [Working with Products](../working-with/products.md) — Product setup for orders
 - [Working with Prices](../working-with/prices.md) — Pricing configuration
 - [Working with Stock](../working-with/stock.md) — Inventory management

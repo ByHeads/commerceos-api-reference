@@ -120,6 +120,10 @@ In practice that means a record updated mid-export can appear with its new value
 > still honored — the response holds at most `limit` items starting after that token — but there is no next cursor to
 > continue from, so a page walk must use buffered JSON.
 > See [Cursor pagination](../reference/pagination.md#cursor-pagination).
+>
+> The rule follows the format, not how it was asked for: on a build that selects the format by path suffix (the
+> release after v26.1.11) `/v1/products.json?orderby=name&limit=2` carries the headers and `.csv`, `.ndjson` or any
+> other non-JSON suffix does not — see [Format by path suffix](../reference/overview.md#format-by-path-suffix).
 
 ### Two Response Differences When You Switch to `stream=true`
 

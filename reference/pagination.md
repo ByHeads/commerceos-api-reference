@@ -253,6 +253,12 @@ Compound sorting is not a workaround: **there is no compound sort.** `~orderBy` 
 is read as a single member name that no type declares, and `?orderby=status,name` fails with `details` of
 `Invalid sort key 'status,name': field not found`.
 
+> **Availability:** the up-front refusal ships in the release after v26.1.11. Not in v26.1.10 or v26.1.11, where a
+> first page under `?limit=2&orderby=status,name` could answer `200` carrying an `X-Cursor-Next` — and the request
+> replaying that token was the one refused, with `Cursor pagination with compound sort not yet supported`. The first
+> request now fails on the sort key itself, and a page whose sort key the cursor layer cannot carry mints no token
+> rather than an unusable one. Composite cursors remain unsupported.
+
 **Two layers refuse it, and they do not refuse it the same way.** The operator form is rejected by the ordinary
 unknown-key rule, which carries the ordinary exception: with no items to sort the check
 [short-circuits](operators-catalog.md#orderbyselectordesc) and any key is accepted. The cursor layer has no such
@@ -271,15 +277,18 @@ is the natural way to test without touching real data, gets that `200` and concl
 a first page you could walk from either — it comes back `X-Has-More: false` with no `Link` and no `X-Cursor-Next`, so
 there is no first page whose `Link` could point at a request that then fails.
 
-**Sort values may contain anything — including `&`, `,` and `?`.** The token carries the last sort value into the next
-request, and it is escaped so that a value like `Black & Decker` or `Shirt, Blue` cannot rewrite the query it is sent
-with. Nothing about the sort field's *content* constrains a walk; only its uniqueness and its presence do.
+**Sort values may contain anything — including `,`, `&`, `?`, `~`, `(` and `)`.** The token carries the last sort
+value into the next request, and it is replayed as a value rather than re-read as query syntax, so a name like
+`Black & Decker`, `Shirt, Blue` or `Gift Card (Variable Amount)` cannot rewrite the request it is sent with — the rest
+of the query (`limit`, a filter such as `status=Active`) survives a `?` in the resumed-from value. Nothing about the
+sort field's *content* constrains a walk; only its uniqueness and its presence do.
 
-This was fixed recently, so it is worth naming: before the fix, such a value rewrote the request it was spliced into,
-and the next page came back empty with `X-Has-More: false` — a walk stopped mid-collection and reported success.
-Product names carrying a comma or an ampersand are routine, so anyone paginating on `name` was exposed to it. If you
-built a walk that avoids punctuation in the sort field, or sorts on a surrogate column to dodge it, that workaround
-still works and is simply no longer necessary.
+> **Availability:** ships in the release after v26.1.11. Not in v26.1.10 or v26.1.11. In those builds a walk sorted
+> on such a field stopped at the first value holding one of these characters and reported `X-Has-More: false` — a
+> partial read claiming to be a complete one. Product names carrying a comma, an ampersand or parentheses are routine,
+> so any walk sorted on `name` was exposed to it. If you built a walk that avoids punctuation in the sort field, or
+> sorts on a surrogate column to dodge it, that workaround still works and is no longer necessary once you are on a
+> build that has this.
 
 **The pagination headers require a buffered JSON response.** `Link`, `X-Cursor-Next` and `X-Has-More` are emitted only
 for `application/json` without `;stream=true`. A streamed body starts before the headers could be computed, and the
@@ -289,7 +298,10 @@ post-processing can annotate — so neither gets them, streamed or not. This is 
 An `after` token *is* still honored in every format — the response holds at most `limit` items starting after the
 token — but with no next-cursor header there is nothing to continue from. **Walk the pages with buffered JSON**, then
 re-request a page in the export format if you need the rows as NDJSON or CSV. See
-[`features/streaming.md`](../features/streaming.md).
+[`features/streaming.md`](../features/streaming.md). On a build that selects the format by path suffix (the release
+after v26.1.11 — see [Format by path suffix](overview.md#format-by-path-suffix)) the same rule follows the suffix:
+`/v1/products.json?limit=2&orderby=name` carries the headers, and `.csv`, `.ndjson` or any other non-JSON suffix does
+not.
 
 **`fields` may omit the sort field.** The API fetches the `orderby` selector internally to compute the next cursor and
 removes it again before responding, so a projection that excludes it still paginates correctly and the response
@@ -301,7 +313,14 @@ GET /v1/products?limit=50&orderby=name&fields=status
 ```
 
 Naming the sort field yourself (`fields=name,status`) changes nothing — it is already there, so nothing is added and
-nothing is stripped.
+nothing is stripped. Nor does naming it in a *second* `fields` parameter: `fields=status&fields=name` is one
+projection of both members, and `name` comes back on every item.
+
+> **Availability:** the repeated-`fields` case ships in the release after v26.1.11. Not in v26.1.10 or v26.1.11,
+> where a sort field named only in a later `fields` occurrence was mistaken for the API's own addition and stripped
+> from the response — `?limit=1&orderby=name&fields=status&fields=name` came back with `status` alone. When no
+> occurrence names the sort field, the response is exactly the projection you asked for on every build; nothing
+> extra leaks in.
 
 **A nested sort selector is no different.** Walking on `orderby=identifiers/key` places no constraint on how narrow a
 `fields=` list may be — the sort value is fetched under a name of its own and removed again, so the projection never
@@ -437,6 +456,59 @@ carries `"organizationNumber": null`. The member's presence is the point; its va
 - **The token is opaque.** Do not parse, edit or construct it; always use the value from the response headers.
 - **Cursors are stateless.** They encode a position, not a server-side session, and stay valid indefinitely as long as
   the sort field still exists.
+
+### Repeated query parameters
+
+> **Availability:** ships in the release after v26.1.11. Not in v26.1.10 or v26.1.11 — those builds answered `200`
+> to a repeated `orderby`, `limit`, `offset` or `after`, and resolved the two occurrences differently in different
+> layers, so `?orderby=name&orderby=status` paged by one field while sorting by the other, producing pages that
+> repeat and skip items with nothing in the response to say so.
+
+**`orderby`, `limit`, `offset`, `after` and `format` may each be given once.** Each of them names one thing, so a
+request carrying any of them twice is refused with a `400` whose `details` name the parameter and the count:
+
+```bash
+GET /v1/products?limit=2&orderby=name&orderby=status
+# 400  {"@type":"bad request","error":"The request was invalid and could not be processed.",
+#       "details":"Repeated query parameter 'orderby': it may be given at most once, but the request carries it 2 times"}
+
+GET /v1/products?limit=2&orderby=name&limit=3
+# 400  ... "details":"Repeated query parameter 'limit': it may be given at most once, but the request carries it 2 times"
+```
+
+The same sentence, with the name substituted, for `offset`, `after` and `format` (a single `format=` was already a
+`404` for every value — [it is reserved](operators.md#query-parameter-equivalents) — and a repeat is refused before it
+gets that far). The refusal does not depend on the response format, and it does not depend on the values agreeing:
+`?limit=2&limit=2` is a `400` too. It fires whether or not the request is a cursor request — the rule is about reading
+the query, not about the pagination headers.
+
+**Repeated `fields` and repeated filters are fine, and still repeat.** The rule is "these five", not "do not repeat
+anything". `fields` aggregates into one projection ([and keeps every member you named](#requirements-and-notes));
+every other repeated name becomes a `~where` predicate of its own, and the predicates are ANDed
+([query parameter equivalents](operators.md#query-parameter-equivalents)):
+
+```bash
+# Both predicates apply — nothing is both Active and Inactive
+GET /v1/products?status=Active&status=Inactive&limit=2&orderby=name&fields=name
+# 200  []
+
+# The same filter twice walks normally
+GET /v1/products?limit=2&orderby=name&status=Active&status=Active&fields=name
+# 200  X-Has-More: true   X-Cursor-Next: …
+```
+
+A parameter carrying no `=` is not an occurrence of the reserved name. `?limit&limit=2` is a filter on a member called
+`limit` — which no product has, so nothing matches — plus a page size of 2, and answers `200 []`.
+
+**A malformed percent-escape is a `400` on every request.** `?limit=2&orderby=name&fields=%ZZ` answers `400` with
+`details` of `Malformed query string: '%ZZ' is not a percent-escape`, byte for byte the same on a cursor request as on
+a request carrying no pagination parameters at all.
+
+**What has not changed.** `X-Has-More: false` is a complete walk only on a sort field that is unique and always
+present; `X-Has-More: true` with no `X-Cursor-Next` means the walk cannot continue on this sort field, not that it is
+done ([the stalled-walk state](#walking-a-collection)); and a descending sort over a sometimes-empty field drops the
+items holding no value and still reports completion
+([gotcha 26](common-gotchas.md#26-cursor-pagination-stops-early-on-a-non-unique-sort-field)).
 
 ## Resuming from the last sort key (without a cursor token)
 

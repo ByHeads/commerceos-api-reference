@@ -665,16 +665,26 @@ Here's what **NOT** to do:
 
 ### 4.5 Stock Transfers with Instances
 
-When transferring serial-tracked products between logical stocks, specify which instances to transfer:
+> **Availability:** v26.1.11 and later — for the two create rules below. Earlier builds accepted store-to-store transfers and same-stock transfers with a `200`.
+
+When transferring serial-tracked products between logical stocks, specify which instances to transfer.
+
+A transfer moves stock **between two different logical stocks of the same agent**, and both rules are checked on create:
+
+- `receiver` must be the same agent as `sender`. A different agent is a `400` with `"details": "Stock transfers between different agents are not supported."`
+- `senderStock` and `receiverStock` must resolve to different stocks. The same stock on both sides is a `400` with `"details": "A stock transfer must be between two different stocks."` Both default to the agent's default stock when omitted, so **omitting both now fails** — name at least one non-default stock. List an agent's stocks with `GET /v1/stocks` or `GET /v1/stores/{id}/stocks`.
+
+To move tracked units to a different agent, post a stock adjustment on each side; for supplier goods use [deliveries and returns](../../reference/working-with/purchasing.md). See the [Stock & Inventory Guide — 5.4 Inter-Store Transfers](./stock-inventory-guide.md#54-inter-store-transfers).
 
 ```bash
-# Transfer a specific iPhone to display stock
+# Transfer a specific iPhone from the default stock to the display stock
 curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-transfers" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "transfer-phone-display" },
     "sender": { "identifiers": { "com.example.storeId": "stockholm" } },
     "receiver": { "identifiers": { "com.example.storeId": "stockholm" } },
+    "senderStock": { "identifiers": { "com.example.id": "default-stock" } },
     "receiverStock": { "identifiers": { "com.example.id": "display-stock" } },
     "items": [
       {
@@ -704,6 +714,7 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-transfers"
     "identifiers": { "com.example.id": "transfer-phone-display-2" },
     "sender": { "identifiers": { "com.example.storeId": "stockholm" } },
     "receiver": { "identifiers": { "com.example.storeId": "stockholm" } },
+    "senderStock": { "identifiers": { "com.example.id": "default-stock" } },
     "receiverStock": { "identifiers": { "com.example.id": "display-stock" } },
     "items": [
       {
