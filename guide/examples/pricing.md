@@ -57,6 +57,21 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/prices" \
     "currency": {"identifiers": {"currencyCode": "SEK"}}
   }'
 
+# Create price for a customer group (serves every member of the group)
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/prices" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "identifiers": {"com.myapp.priceId": "PRICE-004", "com.myapp.priceList": "B2B-2026"},
+    "products": [{"identifiers": {"com.myapp.sku": "SKU-001"}}],
+    "sellers": [{"identifiers": {"com.heads.seedID": "ourcompany"}}],
+    "buyers": [{"identifiers": {"com.myapp.groupId": "wholesale-customers"}}],
+    "amount": 150.00,
+    "currency": {"identifiers": {"currencyCode": "SEK"}}
+  }'
+
+# List every price on a tagged price list
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/prices~where(identifiers/com.myapp.priceList=B2B-2026)~with(products,buyers)~take(100)"
+
 # Update price
 curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/prices/com.myapp.priceId=PRICE-001" \
   -H "Content-Type: application/json" \
@@ -155,4 +170,4 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/vat-codes" \
 - **Currencies**: `identifiers.currencyCode` plus common identifiers (e.g. `identifiers.key` and namespaced IDs) are supported — `name`, `symbol`, `decimalDigits` fields do NOT exist
 - **Denominations**: Use `/v1/currency-denominations~where(currency/identifiers/currencyCode=X)` to filter by currency
 - **VAT Codes**: Identified by `percentage` — no separate `vatCodeId`, `name`, or `country` fields
-- **Buyer restrictions**: The `buyers` array accepts individual agent identifiers. For group-based pricing, use [customer groups](../../reference/working-with/customers.md#customer-groups) with [discount rules](./discount-rules.md#customer-groups-and-buyer-conditions) to apply discounts to all members of a group
+- **Buyer restrictions**: The `buyers` array accepts individual agents and [customer groups](../../reference/working-with/customers.md#customer-groups) alike; a group reference serves every member. The lowest eligible amount wins, so a group price only takes effect when it is lower than the general price — see [Working with Prices → Customer Groups as Buyers](../../reference/working-with/prices.md#customer-groups-as-buyers-price-lists). For percentage or bundle deals scoped to a group, use [discount rules](./discount-rules.md#customer-groups-and-buyer-conditions) instead

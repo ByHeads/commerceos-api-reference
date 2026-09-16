@@ -609,6 +609,10 @@ The `discountAmount` on a receipt item is the **total** discount across all appl
 }
 ```
 
+### Package and bundle discounts are split per line
+
+A rule that prices several units together — "any 3 for 499", a 3-for-2 — is recorded as a **separate discount row on each matched line**, split in proportion to each line's value so that the rows sum to the package discount. There is no receipt-level "bundle" entry to look for; each line's `discounts[]` entry carries its own `amount` / `amountInclVat` / `amountExclVat` and the same `rule`. A return refunds the returned line's recorded share, pro-rated by quantity — the pricing rules are not re-run. See [Discount Rules → Example 19](./discount-rules.md#example-19-package-price-any-3-t-shirts-for-499) and [What Happens on a Return](./discount-rules.md#what-happens-on-a-return).
+
 ### Surcharges don't have `manual` or `notes`
 
 Unlike discounts, surcharges are always automatic — they're applied by surcharge rules. There is no manual surcharge mechanism, so surcharge entries have no `manual` or `notes` fields.

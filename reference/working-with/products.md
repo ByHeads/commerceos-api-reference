@@ -139,6 +139,7 @@ GET /v1/products~where(status=Pending)~orderBy(createdAt:desc)~take(100)
 | `instanceType` | string | Variant type (e.g., "MobileDevice", "Apparel") |
 | `instanceProperties` | object | Pre-defined variant values (e.g., size, color) |
 | `defaultVatCode` | reference | VAT rate for this product |
+| `maxDiscountPercentage` | decimal | Cap on automatic discounts for this node, inherited by the nodes under it (v26.1.10 and later) — see [Maximum Discount Percentage](#maximum-discount-percentage-maxdiscountpercentage) |
 | `parentGroup` | reference | Parent product group |
 | `assortmentContexts` | array | Per-owner settings |
 | `prices` | array | Associated price definitions |
@@ -183,6 +184,7 @@ All product nodes share common members:
 - `assortmentContexts`, `assortmentOwners`
 - `createdBy`, `createdAt`
 - `notesForPicking`
+- `maxDiscountPercentage` (see [Maximum Discount Percentage](#maximum-discount-percentage-maxdiscountpercentage))
 
 ---
 
@@ -600,6 +602,35 @@ PATCH /v1/product-groups/com.example.groupId=SUMMER-2024-APPAREL
   "defaultVatCode": {"identifiers": {"percentage": "25"}}
 }
 ```
+
+### Maximum Discount Percentage (`maxDiscountPercentage`)
+
+> **Availability:** v26.1.10 and later.
+
+`maxDiscountPercentage` (decimal, optional) is a member of every product node: "The maximum discount percentage allowed on this product node. When set, discounts exceeding this percentage are capped."
+
+- **It is inherited down the hierarchy.** A value on a product group or family applies to every product under it that does not set one of its own, so one PATCH on a group caps a whole range.
+- **It caps automatic discounts** — what [discount rules](../../guide/examples/discount-rules.md) do. A rule that would take the product deeper than the cap is clamped to it, unless the rule sets `ignoresProductMaxDiscount: true` (v26.1.11 and later).
+- **Manual discounts entered at the till are exempt** at recalculation; the cap is enforced where the discount is entered.
+
+```bash
+# Cap automatic discounts on one product at 30%
+PATCH /v1/products/com.example.sku=PROD-001
+{
+  "maxDiscountPercentage": "30"
+}
+
+# Cap a whole group — every product under it without a cap of its own inherits 20%
+PATCH /v1/product-groups/com.example.groupId=SUMMER-2024-APPAREL
+{
+  "maxDiscountPercentage": "20"
+}
+
+# Read it back
+GET /v1/products/com.example.sku=PROD-001~with(maxDiscountPercentage)
+```
+
+See [Discount Rules → Discount Caps and Vouchers](../../guide/examples/discount-rules.md#discount-caps-and-vouchers) for how the cap combines with a rule's `minimumResultingPrice` and `ignoresProductMaxDiscount`.
 
 ---
 
@@ -1148,6 +1179,7 @@ GET /v1/trade-orders/com.example.orderId=ORD-2024-001~with(items)
 5. **VAT inheritance:**
    - If product has no `defaultVatCode`, it inherits from `parentGroup`
    - Ensure either product or group has a VAT code set
+   - `maxDiscountPercentage` is inherited the same way — see [Maximum Discount Percentage](#maximum-discount-percentage-maxdiscountpercentage)
 
 6. **Instance type is on product, not order:**
    - Set `instanceType: "MobileDevice"` when creating the product

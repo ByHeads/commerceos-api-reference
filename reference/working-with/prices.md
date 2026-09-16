@@ -84,7 +84,7 @@ Prices  ↔  Products (prices apply to one or more products)
 | Field | Type | Description |
 |-------|------|-------------|
 | `sellers` | array | Agents eligible to sell at this price. **Empty array = all sellers** (no restriction). |
-| `buyers` | array | Agents eligible to buy at this price. **Empty array = all buyers** (no restriction). |
+| `buyers` | array | Agents eligible to buy at this price — individual customers or [customer groups](#customer-groups-as-buyers-price-lists). **Empty array = all buyers** (no restriction). |
 | `from` | datetime | Valid from date/time (inclusive) |
 | `to` | datetime | Valid until date/time (exclusive — the instant the price stops applying) |
 | `open` | boolean | If true, amount is entered at sale time |
@@ -338,6 +338,32 @@ POST /v1/prices
 }
 ```
 
+### Customer Groups as Buyers (Price Lists)
+
+A [customer group](customers.md#customer-groups) reference in `buyers` works exactly like a single customer and serves **every member** of the group — transitively, so members of a group nested inside it qualify too. Membership is managed on the customer's trade relationship's `groups` member (see [Customers → Customer Groups](customers.md#customer-groups)).
+
+```bash
+# B2B price list: one price per product, all with the same group as buyer
+POST /v1/prices
+{
+  "identifiers": {"com.example.priceId": "PROD-001-B2B", "com.example.priceList": "B2B-2026"},
+  "products": [{"identifiers": {"com.example.sku": "PROD-001"}}],
+  "sellers": [{"identifiers": {"com.example.companyId": "OUR-COMPANY"}}],
+  "buyers": [{"identifiers": {"com.example.groupId": "wholesale-customers"}}],
+  "amount": "150.00",
+  "currency": {"identifiers": {"currencyCode": "SEK"}}
+}
+```
+
+**There is no price-list object.** A "price list" is simply the set of prices that share a buyer. If you need to address the list as a whole — to audit it, or to replace it at a season change — tag its prices through an identifier namespace of your own, as `com.example.priceList` above, and select them with `~where(...)`:
+
+```bash
+# Every price on the B2B-2026 list
+GET /v1/prices~where(identifiers/com.example.priceList=B2B-2026)~with(products,buyers)~take(100)
+```
+
+**Which price wins.** Selection picks the **lowest eligible amount** (see [Price Selection Logic](#price-selection-logic)), so a group price takes effect only when it is *lower* than the general price; a group price above the general price simply loses to it. `/v1/prices` has no buyer exclusion, so "group X pays more than everyone else" cannot be expressed through prices today.
+
 ---
 
 ## Validity Periods
@@ -546,6 +572,7 @@ When multiple prices exist for a product, CommerceOS filters to the eligible pri
 
 - The **lowest net amount** among the eligible prices wins. If two prices share the same amount, the first encountered match is used—avoid equal amounts when you need deterministic overrides.
 - Empty `sellers`/`buyers` arrays are global, so a cheaper global price can override a more specific seller/buyer price.
+- The same holds for a [customer-group price](#customer-groups-as-buyers-price-lists): it wins only when it is lower than the general price. There is no buyer exclusion on a price, so a group cannot be made to pay *more* than the general price through `/v1/prices`.
 
 ### Example Scenario
 

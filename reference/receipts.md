@@ -387,6 +387,8 @@ It is the per-unit counterpart of `totalAmount`, exactly as `unitAmountInclVat` 
 
 **Reach for it when you are pricing part of a line.** Crediting or charging some — but not all — of the units on a discounted line is the case it exists for: a per-unit return credit, a partial refund, a partially-picked click-and-collect line. Multiply this field by the number of units involved rather than dividing a line total or scaling a pre-discount unit price by hand.
 
+This is also what a return refunds: the line's recorded share, pro-rated by the returned quantity. Pricing rules are not re-run on a return, so a bundle or package discount recorded on the line at sale time is neither re-evaluated nor clawed back — see [Discount Rules → What Happens on a Return](../guide/examples/discount-rules.md#what-happens-on-a-return).
+
 Because the value comes from dividing a recorded incl-VAT total, `unitAmountAfterDiscountInclVat × quantity` reconstructs `totalAmount` exactly. Deriving a net incl-VAT unit price yourself — by scaling a rounded excl-VAT unit price by the VAT rate — does not; rounding at the unit level puts the reconstructed line total a cent or two off the recorded one.
 
 **Worked example.** A line of two units at a 5999.20 list price (excl. VAT, 25% VAT), discounted by 1998.40 excl. VAT:
@@ -846,4 +848,5 @@ curl -H "Accept: text/csv;stream=true" \
 - [Operators Reference](operators.md) - Query operators and pagination patterns
 - [Operators Catalog](operators-catalog.md) - Complete operator reference
 - [Resource Patterns](resource-patterns.md) - POS and receipt resource patterns
+- [POS Slips](../guide/examples/pos.md#pos-slips) - The till's record of what it did against orders, and the order line each action moved
 - [Common Gotchas](common-gotchas.md) - Avoid common mistakes

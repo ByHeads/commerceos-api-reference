@@ -578,11 +578,11 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/discount-rules" 
 | Effect type | What `amount` means | Example |
 |-------------|---------------------|---------|
 | `percentage discount rule effect` | Percentage off | "20% off accessories" |
-| `fixed reduction discount rule effect` | Fixed amount off per item | "50 SEK off" |
+| `fixed reduction discount rule effect` | Fixed amount off — per item (`PerUnit`) or once per match, spread over the matched lines in proportion to value (`PerApplication`) | "50 SEK off each" / "250 SEK off the cart" |
 | `fixed price discount rule effect` | Fixed price per item | "Each item for 199 SEK" |
 | `package discount rule effect` | **Total bundle price** | "2 items for 55 SEK" |
 
-The `package discount rule effect` is the only effect type where `amount` represents a **total** for the group, not a per-item value.
+The `package discount rule effect` is the only effect type where `amount` represents a **total** for the group, not a per-item value. The discount-rules page has the full semantics of the two price-setting effects — [fixed price per unit](./discount-rules.md#example-18-fixed-price-per-unit-each-item-for-799) and [package price](./discount-rules.md#example-19-package-price-any-3-t-shirts-for-499), including how a package price is split over the matched lines, [what happens on a return](./discount-rules.md#what-happens-on-a-return) and [how many times a rule can fire](./discount-rules.md#how-many-times-can-a-rule-fire).
 
 ---
 

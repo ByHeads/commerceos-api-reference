@@ -509,7 +509,7 @@ When a customer enters a code at checkout, the engine can fail to apply the disc
 | **Code does not match any coupon** | "Invalid coupon code" (or equivalent) | Typo in the code; or the code's coupon was deleted; or the customer is at a sibling store and the coupon is store-issued elsewhere. |
 | **Coupon is exhausted** (`redemptions >= maxRedemptions`) | "Coupon fully redeemed" | The cap has been hit — increase `maxRedemptions` or issue a new coupon. |
 | **Coupon already used on this draft order** | "Coupon already used on this order" | The same coupon is already attached to the cart. This check is enforced by the checkout client (the POS terminal) before the coupon is applied a second time, not by the coupon resource itself. |
-| **Rule's other conditions do not match** | No discount appears (no error) | The cart's currency/seller/items/`worthAtLeast`/`atLeast` conditions on the rule are unmet. The coupon resolved fine, but the rule's other gates failed. |
+| **Rule's other conditions do not match** | No discount appears (no error) | The cart's currency/seller/items/`worthAtLeast`/`atLeast` conditions on the rule are unmet. The coupon resolved fine, but the rule's other gates failed. Remember that `worthAtLeast` is compared in the rule's `includesTax` base — net for `false`, gross including VAT and surcharges for `true` (see [Discount Rules → Example 10](./discount-rules.md#example-10-cart-value-threshold-spend-x-get-discount-on-y)). |
 
 > The "already used" guard is a **checkout-client concern**, not a server-side rejection. Either way, a coupon's `redemptions` counter increments at most once per finalised order regardless of how many times it might be re-applied during cart edits.
 

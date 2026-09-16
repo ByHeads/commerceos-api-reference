@@ -19,15 +19,17 @@ A discount rule defines **when** and **how** discounts apply. Key properties:
 | `currency` | Restrict to specific currencies (e.g., `{"currencyCode": "SEK"}`). |
 | `time` | Optional validity window with `start` and `end` dates (ISO format). Both bounds are optional; see [Updating a Rule's Validity Window](#updating-a-rules-validity-window) for the merge and validation rules when changing one. |
 | `phase` | Determines evaluation order. Rules in lower-priority phases apply first; higher-priority phases can stack on top. Include `identifiers`, `name`, and `priority`. |
-| `items` | A **named map** of item groups. Each key (e.g., `"phone"`, `"plan"`) defines a group with `include`/`exclude` arrays, optional `atLeast`/`atMost` quantity constraints, and optional `worthAtLeast`/`worthAtMost` value thresholds. Set `includeAll: true` to match all products without listing specific groups (see [Using `includeAll` for Cart-Wide Rules](#using-includeall-for-cart-wide-rules)). |
+| `items` | A **named map** of item groups. Each key (e.g., `"phone"`, `"plan"`) defines a group with `include`/`exclude` arrays, optional `atLeast`/`atMost` quantity constraints, and optional `worthAtLeast`/`worthAtMost` value thresholds. The value thresholds are compared in the rule's own base: with `includesTax: false` against the net value, with `includesTax: true` against the gross value including VAT and surcharges (see [Example 10](#example-10-cart-value-threshold-spend-x-get-discount-on-y)). Set `includeAll: true` to match all products without listing specific groups (see [Using `includeAll` for Cart-Wide Rules](#using-includeall-for-cart-wide-rules)). |
 | `where.equals` | Links item groups by matching property paths (e.g., ensuring a phone's IMEI matches a plan's phoneImei for bundle discounts). |
 | `effects` | Array of effect objects. Each effect must include `@type`, which items it targets, and how it applies. |
-| `effects[].@type` | Effect type: `"percentage discount rule effect"`, `"fixed reduction discount rule effect"`, `"fixed price discount rule effect"`, or `"package discount rule effect"`. |
+| `effects[].@type` | Effect type: `"percentage discount rule effect"`, `"fixed reduction discount rule effect"` ([Example 15](#example-15-fixed-reduction-distributed-across-cart-items)), `"fixed price discount rule effect"` ([Example 18](#example-18-fixed-price-per-unit-each-item-for-799)), or `"package discount rule effect"` ([Example 19](#example-19-package-price-any-3-t-shirts-for-499)). |
 | `effects[].items` | **Must reference keys from the `items` map** (e.g., `["phone"]` or `["item1", "item2"]`). |
-| `effects[].multiplicity` | `"PerUnit"` (applies to each qualifying unit) or `"PerApplication"` (applies once per rule match). |
+| `effects[].multiplicity` | `"PerUnit"` (applies to each qualifying unit) or `"PerApplication"` (applies once per rule match). Two effect types constrain it: a **fixed price** effect supports `PerUnit` only (`PerApplication` is accepted on write but fails at price recalculation — see [Example 18](#example-18-fixed-price-per-unit-each-item-for-799)); a **package** effect is always one application over the whole match, whatever is stored (see [Example 19](#example-19-package-price-any-3-t-shirts-for-499)). |
 | `effects[].targeting` | `"All"` (affects all matching items), `"LowestValue"` (targets the cheapest item), or `"HighestValue"` (targets the most expensive item). |
-| `effects[].minimumResultingPrice` | Floor price after discount (prevents negative prices). |
+| `effects[].minimumResultingPrice` | Floor price after discount (prevents negative prices). The lowest per-unit value the effect may leave, in the rule's own base. Works alongside the per-product cap `maxDiscountPercentage` — see [Discount Caps and Vouchers](#discount-caps-and-vouchers) and [Products → Maximum Discount Percentage](../../reference/working-with/products.md#maximum-discount-percentage-maxdiscountpercentage). |
 | `includesTax` | Whether the discount applies to tax-inclusive prices (`true`) or pre-tax prices (`false`). |
+| `status` | `Active`, `Inactive` or `Pending`. The status decides whether or not the rule fires at price-evaluation time. |
+| `ignoresProductMaxDiscount` | Boolean. If true, this rule is exempt from the product max discount cap (the rule's own minimum resulting price still applies). v26.1.11 and later — see [Discount Caps and Vouchers](#discount-caps-and-vouchers). |
 | `coupon` | Optional precondition. When set, the rule fires only if the cart presents a code that resolves to one of the coupons in `coupon.include` (and not in `coupon.exclude`). Without this field, the rule is automatic — it fires whenever its other conditions match. See [Example 17: Coupon-Bound Rule](#example-17-coupon-bound-rule-activated-only-by-a-code) and [Discount Coupons](./discount-coupons.md) for full coupon mechanics. |
 | `reason` | A reference to explain why the discount was applied (shown on receipts). |
 
@@ -82,7 +84,7 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/discount-rules/
 
 **What fails:** a single-bound patch that inverts the window against the stored counterpart — e.g. setting `start` to September while the stored `end` is still May — is rejected with `400` and `The end date, if specified, must be greater than the start date.`, and the rule is left unchanged. Send both bounds together instead.
 
-The same `time` semantics apply to [surcharge rules](./surcharge-rules.md#update-a-surcharge-rule) and price rules. See [Resource Patterns → Validity Window (`time`)](../../reference/resource-patterns.md#validity-window-time).
+The same `time` semantics apply to [surcharge rules](./surcharge-rules.md#update-a-surcharge-rule). See [Resource Patterns → Validity Window (`time`)](../../reference/resource-patterns.md#validity-window-time).
 
 ---
 
@@ -449,14 +451,17 @@ When the total cart value reaches a monetary threshold, apply a discount on spec
 
 > **Warning:** The qualifier group's `include` must be **non-empty**. An empty `include` targets no products and the rule will never match. Use a top-level product group to match all products, or use `includeAll: true` instead (see [Using `includeAll` for Cart-Wide Rules](#using-includeall-for-cart-wide-rules)).
 
-The `worthAtLeast` field is a **value-based** threshold (decimal), unlike `atLeast`/`atMost` which are quantity-based. It checks the total value of matched items accumulated up to the current phase.
+The `worthAtLeast` field is a **value-based** threshold (decimal), unlike `atLeast`/`atMost` which are quantity-based. It checks the total value of matched items accumulated up to the current phase, and that value is measured in the rule's own base — it follows the rule's `includesTax`:
+
+- `includesTax: false` — the threshold is compared against the **net** value: list price minus discounts from earlier pre-tax phases, with no VAT and no surcharges.
+- `includesTax: true` — the threshold is compared against the **gross** value: VAT, surcharges such as deposits, every discount from earlier phases, and discounts already applied by other rules of the same phase in the combination being evaluated.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `worthAtLeast` | `decimal?` | Minimum total value (up to this phase) of matched products |
-| `worthAtMost` | `decimal?` | Maximum total value (up to this phase) of matched products |
+| `worthAtLeast` | `decimal?` | Minimum total value (up to this phase, in the rule's `includesTax` base) of matched products |
+| `worthAtMost` | `decimal?` | Maximum total value (up to this phase, in the rule's `includesTax` base) of matched products |
 
-> **Note:** `worthAtLeast` evaluates the sum of effects applied to matched items by preceding phases. This means the threshold is based on the accumulated price after earlier discount phases have been applied, not the original list price.
+> **Note:** `worthAtLeast` evaluates the accumulated value of the matched items after earlier phases, and after any rule of the same phase that already applied. This means the threshold is based on the accumulated price after earlier discount phases have been applied, not the original list price. `worthAtMost` is the mirror image.
 
 ```bash
 # When purchasing for at least 10,000 SEK, get 10% off all accessories
@@ -494,7 +499,7 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/discount-rules" 
 
 ### How It Works
 
-1. The `allTheThings` group matches **all products** (via a top-level product group in `include`). The `worthAtLeast: 10000` threshold requires their total value to be at least 10,000 SEK.
+1. The `allTheThings` group matches **all products** (via a top-level product group in `include`). The `worthAtLeast: 10000` threshold requires their total value to be at least 10,000 SEK — VAT-inclusive, since this rule has `includesTax: true`; a rule with `includesTax: false` would compare the net value instead.
 2. The `accessory` group matches products from the accessories category with at least 1 item.
 3. **Both groups must match** for the rule to fire — the cart must contain 10,000+ SEK worth of products AND at least one accessory.
 4. The effect targets only the `accessory` group (10% off), leaving qualifier items at full price.
@@ -944,6 +949,149 @@ The `coupon` precondition stacks on top of every other condition (`seller`, `buy
 
 ---
 
+## Example 18: Fixed Price per Unit (Each Item for 799)
+
+The `fixed price discount rule effect` brings every matched unit **down to** a set unit price. Here a campaign sells Levis 501 at 799 SEK each until the end of the year:
+
+```bash
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/discount-rules" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "identifiers": {"com.example.id": "levis-501-799"},
+    "name": "Levis 501 for 799",
+    "status": "Active",
+    "includesTax": true,
+    "seller": {"include": [{"identifiers": {"com.example.id": "ourcompany"}}]},
+    "currency": {"include": [{"identifiers": {"currencyCode": "SEK"}}]},
+    "phase": {"identifiers": {"com.example.id": "promotions"}, "name": "Promotions", "priority": 300},
+    "time": {"start": "2026-09-15T00:00:00Z", "end": "2026-12-31T23:59:59Z"},
+    "items": {
+      "jeans": {"include": [{"identifiers": {"com.example.id": "levis-501"}}], "atLeast": 1}
+    },
+    "effects": [{
+      "@type": "fixed price discount rule effect",
+      "items": ["jeans"],
+      "amount": "799",
+      "multiplicity": "PerUnit",
+      "targeting": "All"
+    }],
+    "reason": {"identifiers": {"com.example.id": "campaign-price"}, "name": "Campaign price"}
+  }'
+```
+
+Read the rule back with `~with(effects)`. The effect echoes as sent — decimals come back as strings, and `minimumResultingPrice` is absent unless you set it:
+
+```bash
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/discount-rules/com.example.id=levis-501-799~with(effects)"
+```
+
+```json
+"effects": [{
+  "@type": "fixed price discount rule effect",
+  "items": ["jeans"],
+  "amount": "799",
+  "multiplicity": "PerUnit",
+  "targeting": "All"
+}]
+```
+
+### How It Works
+
+1. **`amount` is the unit price the matched units are brought down to.** The discount per unit is the unit's current value minus `amount`. A unit that already costs `amount` or less gets no discount — the effect never raises a price.
+2. **The base follows `includesTax`.** "Current value" is the unit's value after the earlier phases: the list price, earlier discounts, discountable surcharges and, for a rule with `includesTax: true`, VAT. So `amount` is a VAT-inclusive price when `includesTax` is `true` and a net price when it is `false` — the same base as the rest of the rule.
+3. **`multiplicity` must be `"PerUnit"`.** See the warning below.
+4. **`targeting`** — `"All"` prices every matched unit at `amount`; `"LowestValue"` / `"HighestValue"` price only the single cheapest / dearest matched unit.
+5. **Floors still apply.** The effect's own `minimumResultingPrice` and the product's `maxDiscountPercentage` cap are enforced after the fixed price: a fixed price below the floor is raised to the floor. See [Discount Caps and Vouchers](#discount-caps-and-vouchers).
+6. **Every matched unit gets the price.** Three matched units are three units at 799 — "each item for 799". For "three for 499 in total" use the package effect in [Example 19](#example-19-package-price-any-3-t-shirts-for-499); the [comparison table](./product-packages.md#comparison-with-other-discount-effect-types) on the packages page lines the four effect types up side by side.
+
+> **Warning: `PerApplication` is unsupported on a fixed price effect.** The API accepts `"multiplicity": "PerApplication"` on this effect type without complaint, but price recalculation then fails with a `500` the moment a matching product is in a cart. Always send `"PerUnit"`.
+
+The effect type also has a collection of its own, `GET /v1/fixed-price-rule-effects`. Note that the route name has no `discount` in it, unlike `/v1/package-discount-rule-effects` and `/v1/fixed-reduction-discount-rule-effects`. All three sit in the `discounts.system:write` scope together with `/v1/discount-rules`.
+
+---
+
+## Example 19: Package Price (Any 3 T-shirts for 499)
+
+The `package discount rule effect` sets a **total** price for everything one application of the rule matched. Here any three T-shirts go for 499 SEK:
+
+```bash
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/discount-rules" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "identifiers": {"com.example.id": "tshirts-3-for-499"},
+    "name": "Any 3 T-shirts for 499",
+    "status": "Active",
+    "includesTax": true,
+    "currency": {"include": [{"identifiers": {"currencyCode": "SEK"}}]},
+    "phase": {"identifiers": {"com.example.id": "promotions"}, "name": "Promotions", "priority": 300},
+    "items": {
+      "bundle": {
+        "include": [{"identifiers": {"com.example.id": "t-shirts"}}],
+        "exclude": [],
+        "atLeast": 3,
+        "atMost": 3
+      }
+    },
+    "effects": [{
+      "@type": "package discount rule effect",
+      "items": ["bundle"],
+      "amount": "499",
+      "multiplicity": "PerApplication",
+      "targeting": "All"
+    }],
+    "reason": {"identifiers": {"com.example.id": "bundle"}, "name": "3 for 499"}
+  }'
+```
+
+An effect can also name two groups, `"items": ["mainItem", "bundledItem"]`, in which case `amount` is the total for one set of *both* groups together. The packages page carries two production examples of that shape — [Barebells 2 for 55 and the coupon-redeemed Loyalty Glass at 0](./product-packages.md#section-6-package-discount-rule-effects).
+
+### How It Works
+
+1. **`amount` is the total for one application** — the price of everything the effect's `items` groups matched. The discount booked is the regular total of those units minus `amount`; if the regular total is already at or below `amount`, nothing is booked.
+2. **The package size is not on the effect.** It comes from the item group's `atLeast` / `atMost`: `atLeast: 3, atMost: 3` means exactly three units per application. **Omit `atMost` and one application swallows every matched unit** — "everything in the cart for 499" — because a group without an upper bound matches all eligible units at once.
+3. **The rule repeats per package.** Six T-shirts are two applications (2 × 499); seven are two packages plus one at the regular price. See [How Many Times Can a Rule Fire?](#how-many-times-can-a-rule-fire).
+4. **`multiplicity` and `targeting` are stored, not consulted.** They are saved as sent and read back, but a package effect is always one application over the whole match. Send `"PerApplication"` and `"All"` so the stored record says what actually happens.
+5. **`includesTax: true`** makes `amount` the consumer price including VAT; `false` makes it a net price.
+6. **The package price is split over the lines in proportion to value.** Each matched line gets its own discount row, proportional to the line's value, rounded to minor units so that the rows sum exactly to the package discount. Equal-priced units get equal shares. `minimumResultingPrice` and a product's `maxDiscountPercentage` can clamp a share.
+7. **Where you see the split.** On receipts, each line's `items[].discounts[]` entry carries `amount`, `amountInclVat`, `amountExclVat` and `rule` ("The discount rule that caused the discount to be applied, if it was applied automatically by the system"), and the line's `unitAmountAfterDiscountInclVat` is what was actually paid per unit — see [Receipt Discounts & Surcharges](./receipt-discounts-surcharges.md#expanding-discount-breakdown--per-rule-detail) and [Receipts → The net unit price](../../reference/receipts.md#the-net-unit-price-unitamountafterdiscountinclvat). On trade order items only the aggregate `discountAmountInclVat` (read-only) is exposed.
+
+**Worked numbers** for a VAT-inclusive rule, three units at 200, 200 and 300 — regular total 700, package price 499, discount 201:
+
+| Unit | Regular price | Share of the 201 discount | Paid |
+|---|---|---|---|
+| T-shirt A | 200.00 | 57.43 | 142.57 |
+| T-shirt B | 200.00 | 57.43 | 142.57 |
+| T-shirt C | 300.00 | 86.14 | 213.86 |
+| **Total** | **700.00** | **201.00** | **499.00** |
+
+The exact shares are 57.4286, 57.4286 and 86.1429; rounding gives the cent that makes the rows sum to 201.00 to the largest remainder.
+
+### What Happens on a Return
+
+The split above is made **at sale time** and recorded on the receipt. A return does not re-run the pricing rules and does not claw anything back:
+
+- A return refunds the returned line's **recorded** net price, pro-rated by the returned quantity. Returning T-shirt C from the sale above refunds 213.86; A and B stay at 142.57 each. The customer keeps the deal on what they kept.
+- The same goes for other bundle shapes: on a 3-for-2 ([Example 6](#example-6-bundle-deal-3-for-2)) the free unit refunds 0 and a paid unit refunds its full price — the free one stays free.
+- The platform does not re-price the remainder or reclaim the package discount. If a business wants that, it is a manual adjustment on the return.
+- A partial return of a line with several units splits that line's discount rows proportionally. A one-cent discount split across units can round to nothing on one side.
+
+The per-unit figure to credit is the line's `unitAmountAfterDiscountInclVat` — see [Receipts → The net unit price](../../reference/receipts.md#the-net-unit-price-unitamountafterdiscountinclvat).
+
+---
+
+## How Many Times Can a Rule Fire?
+
+As many times as its item groups can be matched from units that its phase has not yet used. There is no "maximum applications" setting on a rule; what decides the count is `atMost`.
+
+1. **With `atMost`, the rule fires once per package of units and repeats** while enough unused units remain. A 3-for-2 (`atLeast: 3, atMost: 3`, cheapest unit free) on seven units fires twice: two free units, one unit at full price.
+2. **Without `atMost`, one application takes every eligible unit**, so the rule fires once. For a `PerUnit` / `All` percentage that is indistinguishable from repeating; for a `LowestValue` effect it is the difference between one free unit in total and one free unit per package.
+3. **Within one phase a unit is consumed by at most one application** of one rule. When two rules in the same phase compete for the same units, the possible combinations are evaluated and the one with the lowest total is kept — the best outcome for the customer (see the note on [Example 5](#example-5-quantity-tier-discounts-volume-breaks)).
+4. **Across phases everything is visible again.** The next phase sees all units at their value after the earlier phase; that is how discounts stack.
+5. **All groups in a rule's `items` map must match** for one application, and `where.equals` is checked per application.
+6. **Coupon-bound rules.** A presented coupon is matched like a unit: a non-`stackable` coupon is consumed by the first application that uses it, while `stackable: true` leaves it available for further applications and rules. See [Discount Coupons → Stackable](./discount-coupons.md#stackable).
+
+---
+
 ## Customer Groups and Buyer Conditions
 
 The `buyer` condition on a discount rule scopes the discount to specific customer groups. When a customer group is included in `buyer.include`, the discount applies only to orders where the buyer is a member of that group.
@@ -1104,13 +1252,44 @@ A bound you omit keeps its stored value; a bound sent as `null` is cleared. A **
 
 ---
 
-## Planned Features (Not Yet Supported)
+## Discount Caps and Vouchers
 
-The following discount capabilities are planned for future releases:
+Discounts can be capped at three levels: per product, per rule and per effect. There is **no cap on the total discount amount** per rule or per order, and no such cap is announced.
 
-| Feature | Status | Notes |
-|---------|--------|-------|
-| Maximum discount caps | Planned | Per-rule or per-order caps on total discount amount |
-| Discount vouchers | Planned | One-time voucher codes redeemable as discount rules |
+| Level | Member | Where it lives | What it does |
+|---|---|---|---|
+| Per product | `maxDiscountPercentage` | Product nodes | Caps the automatic discount on the product, as a percentage |
+| Per rule | `ignoresProductMaxDiscount` | Discount rule | Exempts the rule from the product cap |
+| Per effect | `minimumResultingPrice` | Discount rule effect | Floors the per-unit value the effect may leave |
 
-For the latest status on these features, contact your CommerceOS representative.
+### Per-Product Cap: `maxDiscountPercentage`
+
+> **Availability:** v26.1.10 and later.
+
+`maxDiscountPercentage` (decimal, optional) is set on a product node: "The maximum discount percentage allowed on this product node. When set, discounts exceeding this percentage are capped." It is inherited down the product hierarchy — a value on a product group or family applies to every product under it that does not set one of its own.
+
+The cap applies to **automatic** discounts, i.e. to what discount rules do. Manual discounts entered at the till are not capped at recalculation — the cap is enforced where the discount is entered. A fixed price or package share that would take a product below its cap is raised to the cap, exactly as `minimumResultingPrice` raises it to the floor.
+
+See [Products → Maximum Discount Percentage](../../reference/working-with/products.md#maximum-discount-percentage-maxdiscountpercentage) for setting it on a product or a group.
+
+### Per-Rule Exemption: `ignoresProductMaxDiscount`
+
+> **Availability:** v26.1.11 and later.
+
+`ignoresProductMaxDiscount` (boolean) on a discount rule: "If true, this rule is exempt from the product max discount cap (the rule's own minimum resulting price still applies)". Use it for a rule that must be allowed to go deeper than the product cap — a clearance rule, say — without lifting the cap for every other rule.
+
+```bash
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/discount-rules/com.example.id=stockholm-clearance" \
+  -H "Content-Type: application/json" \
+  -d '{"ignoresProductMaxDiscount": true}'
+```
+
+### Per-Effect Floor: `minimumResultingPrice`
+
+`minimumResultingPrice` (decimal, optional) on an effect is the lowest per-unit value the effect may leave, in the rule's own base (`includesTax`). It is not affected by `ignoresProductMaxDiscount`. See [Example 9](#example-9-staff-discount-with-floor-price) and the [Discount Rule Anatomy](#discount-rule-anatomy) table.
+
+### Vouchers
+
+**Code-triggered vouchers exist today.** A coupon created via `/v1/discount-coupons` and listed in a rule's `coupon.include` makes that rule fire only when the code is presented; `maxRedemptions`, `stackable`, `status` and `pattern` control how it may be used. See [Example 17](#example-17-coupon-bound-rule-activated-only-by-a-code) and [Discount Coupons](./discount-coupons.md).
+
+**Vouchers worth a fixed amount** — bonus checks and gift vouchers that reduce the total by their own value, with one voucher taking off its own amount — are in development and will be documented when they ship.

@@ -385,6 +385,29 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/product-groups/
 
 > **Note:** Products use the nearest ancestor VAT rule for calculations, but `defaultVatCode` in API responses only shows direct assignments; set it on the product if you need it to appear on the product payload.
 
+### Maximum Discount Percentage
+
+> **Availability:** v26.1.10 and later.
+
+`maxDiscountPercentage` (decimal, optional) caps the automatic discount on a product node: "The maximum discount percentage allowed on this product node. When set, discounts exceeding this percentage are capped." It is inherited like the VAT code — a value on a group or family applies to every product under it — and it caps what [discount rules](./discount-rules.md#discount-caps-and-vouchers) do; manual discounts at the till are exempt at recalculation.
+
+```bash
+# Cap automatic discounts on a whole group at 20%
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/product-groups/com.myapp.groupId=apparel" \
+  -H "Content-Type: application/json" \
+  -d '{"maxDiscountPercentage": "20"}'
+
+# Tighter cap on one product (a value of its own wins over the inherited one)
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/products/com.myapp.sku=SKU-001" \
+  -H "Content-Type: application/json" \
+  -d '{"maxDiscountPercentage": "10"}'
+
+# Read it back
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/products/com.myapp.sku=SKU-001~with(maxDiscountPercentage)"
+```
+
+See [Working with Products → Maximum Discount Percentage](../../reference/working-with/products.md#maximum-discount-percentage-maxdiscountpercentage).
+
 ### Querying the Hierarchy
 
 ```bash
@@ -551,6 +574,7 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/products/com.myap
 - **Product Groups**: Assign products via `parentGroup` on the product, NOT via the group's `members`
 - **Product Families**: Use `parentGroup` to attach variants to a family
 - **Category Hierarchy**: Categories have NO `parent` setter — add child categories via parent's `childCategories` collection
+- **Inherited members**: `defaultVatCode` and `maxDiscountPercentage` set on a group or family apply to the products under it
 
 ### Variant Dimensions
 - **`variantDimensions` is a STRING**, not an array: `"Apparel::size, Apparel::color"`
