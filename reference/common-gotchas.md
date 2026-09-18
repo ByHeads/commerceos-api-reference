@@ -1558,6 +1558,102 @@ Related: [gotcha 47](#47-a-declared-type-key-is-not-always-one-you-can-write), [
 
 ---
 
+## 52. Two Open Deliveries on One Order Line Share the Same Units
+
+> **Availability:** ships in the release after v26.1.11. Not in v26.1.10 or v26.1.11.
+
+Every `New` delivery created from an order expects the order's *currently open* quantity. Create two before approving either and both expect the same units — and the first approval settles them for both:
+
+```bash
+# PO-1: 10 WIDGET ordered and approved
+POST /v1/deliveries  [{"identifiers": {"com.example.deliveryId": "GR-1"}, "order": {…PO-1…}}]   # expects 10
+POST /v1/deliveries  [{"identifiers": {"com.example.deliveryId": "GR-2"}, "order": {…PO-1…}}]   # expects the SAME 10
+
+PATCH /v1/delivery-items/{GR-1 line}  {"quantity": "6"}
+PATCH /v1/delivery-items/{GR-2 line}  {"quantity": "4"}
+
+PATCH /v1/deliveries/com.example.deliveryId=GR-1/actions  {"approve": true}
+→ 200   stock 6.  GR-2 now reads status ["Delivered"], quantity "4" — without having been approved
+
+PATCH /v1/deliveries/com.example.deliveryId=GR-2/actions  {"approve": true}
+→ 200   nothing happens. Stock still 6; the order reads ["Committed", "Fulfilled"], 6 Fulfilled + 4 Committed
+```
+
+The 4 units counted on `GR-2` never reach stock, and its document says `Delivered`. With both counted at 10 the effect is the same: stock 10, not 20, both `Delivered`.
+
+**Keep at most one `New` delivery per order line.** Approve a delivery before creating the next one from the same order; the next one then expects only what is still open. A delivery created without an identifier of your own is the usual way to end up with two — a retried `POST` without identifiers is a second document, not an update. If a second one exists by mistake, empty it while it is `New` by removing its lines; a delivery cannot be deleted (`DELETE` is a `200` with `deletedCount: 0`).
+
+Related: [Working with Purchasing → Safe Receiving](working-with/purchasing.md#safe-receiving), [gotcha 53](#53-approve-on-an-uncounted-delivery-posts-nothing-and-spends-the-document).
+
+---
+
+## 53. `approve` on an Uncounted Delivery Posts Nothing and Spends the Document
+
+> **Availability:** ships in the release after v26.1.11. Not in v26.1.10 or v26.1.11.
+
+A delivery created from an order starts with every line at `quantity "0"`. `approve` does not check that anything was counted — it posts what is there, and what is there is nothing:
+
+```bash
+POST /v1/deliveries  [{"identifiers": {"com.example.deliveryId": "GR-1"}, "order": {…PO-1…}}]
+PATCH /v1/deliveries/com.example.deliveryId=GR-1/actions  {"approve": true}
+→ 200   delivery ["Delivered"] / discrepancy ["ZeroDelivery"]; order still ["Committed"]; stock unchanged
+```
+
+The same happens when `"actions": {"approve": true}` rides in a create body that has `order` / `orderItems` and no counted lines. Either way the document is spent: its lines can no longer be edited (`409`), it cannot be deleted, and a fresh delivery has to be created for the goods. A line left at `0` on an otherwise counted delivery is posted as a `ZeroDelivery` for that line and the order keeps it `Committed`.
+
+The expensive variant is an order with `underdeliveryPolicy: "Cancel"`: an uncounted approval **cancels every unit it expected**. That is the mechanism for closing the remainder of a partly received order on purpose; by accident it cancels the order's open lines.
+
+**Count first. `approve` is final for the document, whatever the counts are.** An integration that already knows the counts sends them in the create body with `sender`, `receiver`, `currency` and `orderItem` lines — see [A Receipt in One Request](working-with/purchasing.md#a-receipt-in-one-request).
+
+Related: [Working with Purchasing → Safe Receiving](working-with/purchasing.md#safe-receiving), [gotcha 52](#52-two-open-deliveries-on-one-order-line-share-the-same-units).
+
+---
+
+## 54. `tryCancel` on a Partly Received Order Is a Silent `200`
+
+`tryCancel` acts only on an order whose one status is `Committed`. Once anything has been received against it, the order reads `["Committed", "Fulfilled"]` and the action answers `200` and changes nothing:
+
+```bash
+# PO-1: 10 ordered, 8 received. status ["Committed", "Fulfilled"]
+PATCH /v1/trade-orders/com.example.orderId=PO-1/actions  {"tryCancel": true}
+→ 200
+GET /v1/trade-orders/com.example.orderId=PO-1~just(status)
+→ ["Committed", "Fulfilled"]     # 2 units still Committed
+```
+
+The same `200`-and-nothing answers a `New` order. `DELETE /v1/trade-orders/{id}` is a `200` with `deletedCount: 0` on any order; orders are not deletable.
+
+**Close the remainder with the underdelivery policy instead:** set `underdeliveryPolicy: "Cancel"` on the order, create a delivery from it (it expects only the 2 still open), and approve it uncounted. The order then reads `["Cancelled", "Fulfilled"]` — 8 fulfilled, 2 cancelled — and a further delivery from it is refused with `"The order has no committed items to deliver."`
+
+> **Availability:** the silent `200` is long-standing. `underdeliveryPolicy` and deliveries ship in the release after v26.1.11.
+
+Related: [Working with Purchasing → Cancelling, and Closing the Rest of a Partly Received Order](working-with/purchasing.md#cancelling-and-closing-the-rest-of-a-partly-received-order), [Orders → Cancel Order](working-with/orders.md#cancel-order-trycancel).
+
+---
+
+## 55. `status=` on a Trade Order Compares the Whole Array, Use `=~` for Still Open
+
+A trade order's `status` is an array, and `=` in a `~where` compares the whole value. So `status=Committed` matches only an order whose single status is `Committed` — and a partly received purchase order, which reads `["Committed", "Fulfilled"]`, is not among them:
+
+```bash
+# WRONG for "orders still expecting goods" - misses every partly received order
+GET /v1/trade-orders~where(status=Committed)
+
+# RIGHT - =~ is "includes": at least one of the order's statuses is Committed
+GET /v1/trade-orders~where(status=~Committed)
+
+# The open purchase orders for one store, with what an integrator needs to see
+GET /v1/trade-orders~where(customer/identifiers/com.example.storeId=DOWNTOWN,status=~Committed)~just(identifiers,supplier,requestedArrivalTime,status,deliveryDiscrepancy)
+```
+
+Measured on four orders for one supplier and store — `["Committed"]`, `["Committed", "Fulfilled"]`, `["Fulfilled"]`, `["New"]`: `status=Committed` returns the first only; `status=~Committed` returns the first two. Neither form says how much of an order is where; for that read `items~with(statusDetails)`.
+
+A delivery's `status` is also an array, but a delivery has one status at a time, so `~where(status=Delivered)` is enough there.
+
+Related: [Orders → Status Behavior](working-with/orders.md#status-behavior), [Working with Purchasing → Finding Purchase Orders](working-with/purchasing.md#finding-purchase-orders--long-standing-except-deliverydiscrepancy), [Operators → `~where`](operators-catalog.md#wherepredicates).
+
+---
+
 ## API Response Behaviors
 
 ### Empty Collection Results

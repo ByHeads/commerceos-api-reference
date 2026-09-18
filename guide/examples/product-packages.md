@@ -289,7 +289,7 @@ Prefer the second. Everything the manifest can express, `product` and `size` exp
 | Additional field | `packageClass` (required) | none |
 | Purpose | Supply chain packaging units | Bundled products for sale |
 | Examples | "Carton of 10", "6-pack", "Pallet of 48" | "Dinner Set (table + 4 chairs)", "Combo Meal" |
-| Typical use | Referenced in supply relations and trade order items | Used in bundle discount rules |
+| Typical use | Referenced in supply relations; read back on trade order and delivery lines | Used in bundle discount rules |
 
 **The multi-entry manifest lives on the set**, and only there. A package's `manifest` is a [deprecated one-entry facade](#the-deprecated-manifest) over `product` and `size`; a set's is the real thing, and nothing about it is deprecated. So "1 table + 4 chairs" is a product set, not a package.
 
@@ -326,7 +326,7 @@ Note the absence of `packageClass` — product sets don't have one because they 
 - **Product package**: You're modeling how one product is physically shipped or stored. A carton, a pallet, a shrink-wrapped 6-pack.
 - **Product set**: You're modeling several items that go together as a conceptual unit. A combo meal, a furniture set, a gift box — or a mixed pallet, which a package cannot express.
 
-Packages participate in the supply chain (supply relations, trade order items); sets participate in commercial rules (bundle discounts).
+Packages participate in the supply chain (supply relations); sets participate in commercial rules (bundle discounts).
 
 ---
 
@@ -391,22 +391,11 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/supply-relations?
 
 ## Section 5: Packages on Trade Order Items
 
-When items are ordered, the trade order item can reference the package to track how items are physically packaged and shipped.
+A trade order item and a delivery item each declare a `package` member, but **it is read-only**: a line sent with `"package": { "identifiers": {…} }` naming an existing product package is accepted (`200`) and reads `"package": null` afterwards, and so does the delivery line created from it. Order in base units and leave `package` out.
 
-### Trade order item with package reference
+### Creating a purchase order for packaged goods
 
-```json
-{
-  "@type": "trade order item",
-  "product": { "identifiers": { "com.example.sku": "LEVIS-501-32-32" } },
-  "quantity": "30",
-  "package": { "identifiers": { "com.example.id": "levis-501-carton" } }
-}
-```
-
-This means 30 units ordered as 3 cartons of 10.
-
-### Creating an order with packaged items
+30 units of one variant and 20 of another, both shipped in cartons of 10 — the quantities are the unit counts, and the carton is known from the supply relation:
 
 ```bash
 curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/trade-orders" \
@@ -414,32 +403,29 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/trade-orders" \
   -d '{
     "identifiers": { "com.example.orderId": "PO-2026-001" },
     "supplier": { "identifiers": { "com.example.id": "supplier-acme" } },
-    "customer": { "identifiers": { "com.example.id": "ourcompany" } },
+    "customer": { "identifiers": { "com.example.storeId": "downtown" } },
     "sellers": [{ "identifiers": { "com.example.id": "supplier-acme" } }],
     "currency": { "identifiers": { "currencyCode": "SEK" } },
     "items": [
       {
         "product": { "identifiers": { "com.example.sku": "LEVIS-501-32-32" } },
-        "quantity": "30",
-        "package": { "identifiers": { "com.example.id": "levis-501-carton" } }
+        "quantity": "30"
       },
       {
         "product": { "identifiers": { "com.example.sku": "LEVIS-501-34-34" } },
-        "quantity": "20",
-        "package": { "identifiers": { "com.example.id": "levis-501-carton" } }
+        "quantity": "20"
       }
     ]
   }'
 ```
 
-> **Note:** Trade orders are created via `POST /api/v1/trade-orders`. The `relationship` field is **read-only** — it is derived automatically from the supplier/customer pairing. You must specify `supplier`, `customer`, `sellers` (stock source), and `currency` explicitly.
+> **Note:** Trade orders are created via `POST /api/v1/trade-orders`. The `relationship` field is **read-only** — it is derived automatically from the supplier/customer pairing. You must specify `supplier`, `customer`, `sellers` (stock source), and `currency` explicitly. The store that receives the goods is the `customer` — see [Working with Purchasing → Purchase Orders](../../reference/working-with/purchasing.md#purchase-orders).
 
 **Key points:**
 
-- The `package` field is **optional** — items can be ordered without specifying packaging.
-- Quantity is always in **base units** (individual items), not in packages.
-- The package reference allows the system to validate that the quantity is compatible with the package size.
-- Multiple items in the same order can reference the same package class but will each have their own package reference.
+- Quantity is always in **base units** (individual items), not in packages. 30 units in a carton of 10 is 3 cartons; the conversion is the package's `size`.
+- `package` on an order line or a delivery line is **read-only**. Sending it does not fail and does not store anything.
+- The packaging a supplier uses for a product is recorded on the [supply relation](#section-4-supply-relations--linking-packages-to-trade-terms), not on the order.
 
 ---
 
@@ -690,25 +676,25 @@ This means: minimum order 576 units (= 48 cases of 12), traded in case packaging
 
 ### Step 4: Place a supplier order
 
+Quantities are base units; the case is known from the supply relation, and `package` on an order line is read-only (sending it stores nothing). The receiving store is the `customer`:
+
 ```bash
 curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/trade-orders" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.orderId": "PO-2026-JUICE-001" },
     "supplier": { "identifiers": { "com.example.id": "supplier-tropicana" } },
-    "customer": { "identifiers": { "com.example.id": "ourcompany" } },
+    "customer": { "identifiers": { "com.example.storeId": "downtown" } },
     "sellers": [{ "identifiers": { "com.example.id": "supplier-tropicana" } }],
     "currency": { "identifiers": { "currencyCode": "SEK" } },
     "items": [
       {
         "product": { "identifiers": { "com.example.sku": "TROP-MANGO-1L" } },
-        "quantity": "288",
-        "package": { "identifiers": { "com.example.id": "tropical-juice-case" } }
+        "quantity": "288"
       },
       {
         "product": { "identifiers": { "com.example.sku": "TROP-PASSION-1L" } },
-        "quantity": "288",
-        "package": { "identifiers": { "com.example.id": "tropical-juice-case" } }
+        "quantity": "288"
       }
     ]
   }'
@@ -742,4 +728,4 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/trade-orders/com.
 
 - **A package holds one product.** There is no mixed package and no multi-entry manifest — `product` and `size` are single-valued, and the unit-to-package conversion is exactly `size`. For a group of different products, reach for a [product set](#section-3-packages-vs-sets).
 
-- **One package, many orders.** A product package is a reusable definition. Define "Tropical Juice Case x12" once and reference it from multiple supply relations and trade orders. Don't create duplicate packages for each order.
+- **One package, many supply relations.** A product package is a reusable definition. Define "Tropical Juice Case x12" once and reference it from every supply relation that trades in it. Don't create duplicate packages for each supplier.

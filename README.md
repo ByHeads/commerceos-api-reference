@@ -85,7 +85,7 @@ commerceos-api-reference/
 │   │   ├── customers.md          # Working with customers
 │   │   ├── orders.md             # Working with trade orders
 │   │   ├── prices.md             # Working with prices
-│   │   ├── purchasing.md         # Deliveries and supplier returns on purchase orders
+│   │   ├── purchasing.md         # Purchase orders, deliveries and supplier returns
 │   │   ├── stock.md              # Working with stock/inventory
 │   │   └── vat.md                # Working with VAT
 │   └── integration-templates/    # Comprehensive integration guides

@@ -203,11 +203,13 @@ POST /v1/users/com.example.userId=U-1/apikeyCredentials
 
 | Kind | Values |
 |---|---|
-| Read | `org:read`, `geo:read`, `suppliers:read`, `customers:read`, `supply-chains:read`, `users:read`, `products:read`, `prices:read`, `prices.sales:read`, `surcharges:read`, `pos:read`, `retail:read`, `logistics:read`, `trade-records:read`, `payment-means:read`, `labels:read`, `stock:read`, `media:read`, `wallet:read` |
-| Write | `geo:write`, `supply-chains:write`, `products:write`, `prices:write`, `discounts.system:write`, `discounts.manual:write`, `surcharges:write`, `pos:write`, `retail:write`, `receipts:write`, `pos-slips:write`, `logistics:write`, `payment-records:write`, `shipment-records:write`, `trade-records:write`, `orders.sales:write`, `orders.payments:write`, `labels:write`, `stock:write`, `periods:write`, `media:write`, `wallet:write`, `links:write` |
+| Read | `org:read`, `geo:read`, `suppliers:read`, `customers:read`, `supply-chains:read`, `users:read`, `products:read`, `prices:read`, `prices.sales:read`, `surcharges:read`, `pos:read`, `retail:read`, `logistics:read`, `trade-records:read`, `payment-means:read`, `labels:read`, `stock:read`, `media:read`, `wallet:read`, `deliveries:read`, `returns:read` |
+| Write | `geo:write`, `supply-chains:write`, `products:write`, `prices:write`, `discounts.system:write`, `discounts.manual:write`, `surcharges:write`, `pos:write`, `retail:write`, `receipts:write`, `pos-slips:write`, `logistics:write`, `payment-records:write`, `shipment-records:write`, `trade-records:write`, `orders.sales:write`, `orders.payments:write`, `labels:write`, `stock:write`, `periods:write`, `media:write`, `wallet:write`, `links:write`, `deliveries:write`, `returns:write` |
 | Other | `me`, `advanced`, `config`, `integrations`, `admin` |
 
-Note there is no `orders:read`: order data is read through `trade-records:read` and `logistics:read`, while `orders.sales:write` and `orders.payments:write` cover the write side.
+Note there is no `orders:read`: order data is read through `trade-records:read` and `logistics:read`, while `orders.sales:write` and `orders.payments:write` cover the write side. `deliveries:*` and `returns:*` ship in the release after v26.1.11 (not in v26.1.10 or v26.1.11) and are not part of `logistics:*` or `read:api`.
+
+**The scope set for a receiving integration** — one that books supplier deliveries against purchase orders — is `deliveries:write`, `orders.sales:write`, `suppliers:read`, `products:read` and `geo:read`. Add `stock:read` to verify stock, `returns:write` for supplier returns, and `config` to set up the numbering serials. Two consequences of the missing `orders:read`: `orders` on a delivery reads `[]` without `orders.sales:write`, even for a key that only reads, and a create from an order fails to find it; the other way round, `deliveries` on an order reads `[]` without `deliveries:read`. See [Working with Purchasing → Scopes](working-with/purchasing.md#scopes).
 
 A few `:write` scopes include their own read side rather than sitting beside it, so you do not need both halves. `trade-records:write` is one — it opens the same reads as `trade-records:read` plus a narrow writable surface on each record. See [Trade Records → Scopes](trade-records.md#scopes).
 

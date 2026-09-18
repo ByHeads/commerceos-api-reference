@@ -1,6 +1,6 @@
 # Configuration & Reference Data Examples
 
-Curl examples for countries, languages, templates, mapped types, dynamic properties, payment methods, discount/return reasons, delivery/payment terms, sales channels, customer groups, sync webhooks, shortened links, the key-value store, config API, and EPI integrations.
+Curl examples for countries, languages, templates, mapped types, dynamic properties, payment methods, discount/return reasons, delivery/payment terms, sales channels, customer groups, sync webhooks, shortened links, the key-value store, config API, order numbering serials, and EPI integrations.
 
 **Base URL:** `https://example.app.heads.com/api/v1`
 **API Key:** `banana` (passed via Basic Auth with empty username: `-u ":banana"`)
@@ -552,6 +552,49 @@ curl -X PUT -u ":banana" "https://example.app.heads.com/api/v1/config/webshop" \
 ```
 
 The four sync-webhook timings on `/v1/config/api` are **tenant-wide** — they apply to every webhook and have no per-webhook override. See [System Configuration](../../reference/sync-webhooks.md#system-configuration-v1configapi) for what each one controls and when a change takes effect.
+
+---
+
+## Order Numbering Serials (`/v1/config/root-order`)
+
+The numbers the platform stamps on purchasing documents come from serials named on `/v1/config/root-order`. A serial is a prefix, a next ordinal and a padded length; the order configuration says which serial numbers what. Writing either needs the `config` scope, and a number is issued only when the party it belongs to sits under the root organization node.
+
+| Serial on `/v1/config/root-order` | Numbers | Lands in |
+|---|---|---|
+| `incomingTradeOrderSerial` | purchase orders | `trade order.identifiers.customersId` |
+| `outgoingTradeOrderSerial` | sales orders | `trade order.identifiers.suppliersId` |
+| `supplierDeliverySerial` | goods receipts | `delivery.identifiers.receiversId` |
+| `customerDeliverySerial` | outbound deliveries | `delivery.identifiers.sendersId` |
+| `supplierReturnSerial` | supplier returns | `return.identifiers.returnersId` |
+
+> **Availability:** the two trade order serials are long-standing. The delivery and return serials ship in the release after v26.1.11. Not in v26.1.10 or v26.1.11.
+
+```bash
+# Create a serial: PO-00001, PO-00002, ...
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/serials" \
+  -H "Content-Type: application/json" \
+  -d '[{"identifiers": {"com.myapp.serialId": "PO-SERIAL"}, "prefix": "PO-", "nextOrdinal": 1, "length": 5}]'
+
+# Point the order configuration at it - the next purchase order reads identifiers.customersId "PO-00001"
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/config/root-order" \
+  -H "Content-Type: application/json" \
+  -d '{"incomingTradeOrderSerial": {"identifiers": {"com.myapp.serialId": "PO-SERIAL"}}}'
+
+# Goods-receipt and supplier-return numbers the same way
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/config/root-order" \
+  -H "Content-Type: application/json" \
+  -d '{"supplierDeliverySerial": {"identifiers": {"com.myapp.serialId": "GR-SERIAL"}},
+       "supplierReturnSerial": {"identifiers": {"com.myapp.serialId": "RET-SERIAL"}}}'
+
+# Read the configuration back
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/config/root-order"
+
+# The issued numbers are indexes
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/trade-orders/customersId=PO-00001"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/deliveries/receiversId=GR-00001"
+```
+
+The issued order numbers are read-only — a `PATCH` on `identifiers.customersId` or `suppliersId` is a `200` that changes nothing. The delivery and return numbers are writable, so a document created outside the numbered node can be given one by hand. See [Working with Purchasing → Your Purchase Order Number](../../reference/working-with/purchasing.md#your-purchase-order-number-identifierscustomersid--long-standing).
 
 ---
 

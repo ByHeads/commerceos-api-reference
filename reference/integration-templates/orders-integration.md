@@ -412,7 +412,7 @@ Content-Type: application/json
 
 ### B2B Order (Purchase Order)
 
-For purchase orders where you're the customer:
+For purchase orders where you are the buyer. **The store that receives the goods is the `customer`** — a company as customer completes the flow but puts nothing into any store's stock. `unitAmountExclVat` is your purchase price, and each line carries an identifier of your own so the receipt can name it:
 
 ```bash
 PUT /v1/trade-orders/com.acme.order-id=PO-2024-001
@@ -421,17 +421,44 @@ Content-Type: application/json
 {
   "identifiers": {"com.acme.order-id": "PO-2024-001"},
   "supplier": {"identifiers": {"com.acme.supplier-id": "SUPPLIER-XYZ"}},
-  "customer": {"identifiers": {"com.acme.company-id": "ACME-RETAIL"}},
+  "customer": {"identifiers": {"com.acme.store-id": "STORE-NORTH"}},
   "sellers": [{"identifiers": {"com.acme.supplier-id": "SUPPLIER-XYZ"}}],
   "currency": {"identifiers": {"currencyCode": "SEK"}},
+  "requestedArrivalTime": "2026-10-01T08:00:00.000Z",
   "items": [
     {
+      "identifiers": {"com.acme.order-line": "PO-2024-001-1"},
       "product": {"identifiers": {"com.acme.sku": "RAW-MATERIAL-001"}},
-      "quantity": 1000
+      "quantity": "1000",
+      "unitAmountExclVat": "12.50"
     }
   ]
 }
 ```
+
+Approve it with `tryApprove` as for any order; approving a purchase order moves no stock. Price and quantity are settable only while the order is `New`.
+
+**Receiving.** When the goods arrive, book the receipt as a delivery. An integration that already knows the counted quantities (a WMS, a checked despatch advice) does it in one request — the bare delivery shape with lines naming the order lines, and `approve` in the same body:
+
+```bash
+POST /v1/deliveries
+Content-Type: application/json
+
+[{
+  "identifiers": {"com.acme.receipt-id": "GR-2024-001", "sendersId": "DN-88213"},
+  "sender": {"identifiers": {"com.acme.supplier-id": "SUPPLIER-XYZ"}},
+  "receiver": {"identifiers": {"com.acme.store-id": "STORE-NORTH"}},
+  "currency": {"identifiers": {"currencyCode": "SEK"}},
+  "items": [
+    {"orderItem": {"identifiers": {"com.acme.order-line": "PO-2024-001-1"}}, "quantity": "980"}
+  ],
+  "actions": {"approve": true}
+}]
+```
+
+The 980 units land in the store's stock; the order reads `["Committed", "Fulfilled"]` with `deliveryDiscrepancy: ["Underdelivery"]` and 20 still `Committed` for a later delivery. Always send your own identifier on the delivery — a retry without one creates a second document expecting the same goods. See [Working with Purchasing → A Receipt in One Request](../working-with/purchasing.md#a-receipt-in-one-request) and [Safe Receiving](../working-with/purchasing.md#safe-receiving).
+
+> **Availability:** deliveries and the purchasing members (`requestedArrivalTime` above) ship in the release after v26.1.11. Not in v26.1.10 or v26.1.11. The purchase-order shape itself is long-standing.
 
 ---
 

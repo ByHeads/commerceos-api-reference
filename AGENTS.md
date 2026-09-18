@@ -73,7 +73,7 @@ commerceos-api-reference/
 │   │   ├── customers.md          # Customer management
 │   │   ├── orders.md             # Order lifecycle and operations
 │   │   ├── prices.md             # Price configuration
-│   │   ├── purchasing.md         # Deliveries and supplier returns on purchase orders
+│   │   ├── purchasing.md         # Purchase orders, deliveries and supplier returns
 │   │   ├── products.md           # Product catalog management
 │   │   ├── stock.md              # Stock and inventory
 │   │   └── vat.md                # VAT and tax handling

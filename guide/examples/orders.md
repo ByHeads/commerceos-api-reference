@@ -56,25 +56,56 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/trade-orders" \
     ]
   }'
 
-# Create purchase order (with sellers)
+# Create purchase order - the RECEIVING STORE is the customer (a company as customer
+# completes the flow but puts nothing into any store's stock), the supplier is supplier and
+# sole seller, unitAmountExclVat is your purchase price, and each line gets your own identifier
 curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/trade-orders" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.orderId": "PO-2024-001"},
     "supplier": {"identifiers": {"com.myapp.supplierId": "SUPP-001"}},
-    "customer": {"identifiers": {"com.heads.seedID": "ourcompany"}},
+    "customer": {"identifiers": {"com.heads.seedID": "store1"}},
     "sellers": [{"identifiers": {"com.myapp.supplierId": "SUPP-001"}}],
     "currency": {"identifiers": {"currencyCode": "SEK"}},
+    "requestedArrivalTime": "2026-10-01T08:00:00.000Z",
+    "customersReference": "Autumn campaign",
     "items": [
       {
+        "identifiers": {"com.myapp.itemId": "PO-2024-001-1"},
         "product": {"identifiers": {"com.myapp.sku": "SKU-001"}},
-        "quantity": 100
+        "quantity": "100",
+        "unitAmountExclVat": "40.00"
       }
     ]
   }'
+
+# Your purchase order number, issued from incomingTradeOrderSerial on /v1/config/root-order,
+# lands in identifiers.customersId (read-only) and is an index
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/trade-orders/customersId=PO-00001"
+
+# Purchase orders still expecting goods for one store: =~ (includes), not = - a partly
+# received order reads ["Committed","Fulfilled"] and = would miss it
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/trade-orders~where(customer/identifiers/com.heads.seedID=store1,status=~Committed)~just(identifiers,supplier,requestedArrivalTime,status,deliveryDiscrepancy)"
+
+# Book a receipt in one request: bare delivery shape, lines naming the order lines with the
+# counted quantity, and approve in the same body. sender, receiver and currency are required.
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/deliveries" \
+  -H "Content-Type: application/json" \
+  -d '[{
+    "identifiers": {"com.myapp.deliveryId": "GR-2024-001", "sendersId": "DN-1"},
+    "sender": {"identifiers": {"com.myapp.supplierId": "SUPP-001"}},
+    "receiver": {"identifiers": {"com.heads.seedID": "store1"}},
+    "currency": {"identifiers": {"currencyCode": "SEK"}},
+    "items": [
+      {"orderItem": {"identifiers": {"com.myapp.itemId": "PO-2024-001-1"}}, "quantity": "80"}
+    ],
+    "actions": {"approve": true}
+  }]'
 ```
 
-> **Receiving a purchase order.** What arrives against a purchase order is booked as a delivery on `/v1/deliveries`, and what goes back to the supplier as a return on `/v1/returns` — both documents with their own numbers and their own approval step. A purchase order can also carry references, notes and under/overdelivery policies. See [Working with Purchasing](../../reference/working-with/purchasing.md).
+> **Receiving a purchase order.** What arrives against a purchase order is booked as a delivery on `/v1/deliveries`, and what goes back to the supplier as a return on `/v1/returns` — both documents with their own numbers and their own approval step. A purchase order can also carry references, notes and under/overdelivery policies. The one-request receipt above is for an integration that already knows the counted quantities; the step-by-step recipe, the "one open delivery per order line" warning and the rest are in [Working with Purchasing](../../reference/working-with/purchasing.md).
+>
+> **Availability:** deliveries, the one-request receipt and the purchasing members ship in the release after v26.1.11. The purchase-order shape, `unitAmountExclVat`, `customersId` and the `status=~` filter are long-standing.
 
 ```bash
 # Order actions - approve order (use tryApprove, not confirm)
@@ -82,7 +113,8 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/trade-orders/co
   -H "Content-Type: application/json" \
   -d '{"tryApprove": true}'
 
-# Order actions - cancel order (use tryCancel, not cancel)
+# Order actions - cancel order (use tryCancel, not cancel). Only a wholly Committed order is
+# cancelled; on a partly fulfilled one this is a 200 that changes nothing
 curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-2024-001/actions" \
   -H "Content-Type: application/json" \
   -d '{"tryCancel": true}'

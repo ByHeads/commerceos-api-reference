@@ -50,7 +50,7 @@ Trade orders represent sales or purchase transactions between agents. Orders tra
 | Type | Supplier | Customer | Use Case |
 |------|----------|----------|----------|
 | Sales Order | Your company | External customer | B2C/B2B sales |
-| Purchase Order | External supplier | Your company | Procurement |
+| Purchase Order | External supplier | Your receiving store | Procurement — see [Working with Purchasing](purchasing.md#purchase-orders) |
 | Internal Transfer | Your company | Your company | Inter-store transfers |
 
 ---
@@ -148,14 +148,17 @@ GET /v1/trade-orders/com.example.orderId=ORD-001~with(status,items~with(statusDe
 
 The order-level `status` is the union, so it cannot tell you *how much* of the order is where. `statusDetails` on each line can — see below.
 
-**Filtering on `status` is a trap.** Because `status` is an array, a predicate against it is an *any-element* test: it matches when **at least one** of the order's statuses equals the value. The partially cancelled order above therefore matches `status=Cancelled` even though only one of its two lines was cancelled:
+**Filtering on `status` needs the right operator.** Because `status` is an array, `=` compares the **whole** value: `status=Committed` matches only an order whose single status is `Committed`, and the partly fulfilled order above matches neither `status=Committed` nor `status=Fulfilled`. `=~` (includes) matches when the value is **one of** the order's statuses, and that is the filter for "still has open lines":
 
 ```bash
-# Also returns orders with a single cancelled line among many live ones
-GET /v1/trade-orders~where(status=Cancelled)
+# Only orders that are wholly Committed — a partly received order is not among them
+GET /v1/trade-orders~where(status=Committed)
+
+# Every order with at least one Committed line — the "still expecting goods" list
+GET /v1/trade-orders~where(status=~Committed)
 ```
 
-There is no order-level member meaning "wholly cancelled" — the order-level `status` cannot express it, because it is a set with no counts. To answer that question, read the lines: fetch `items~with(statusDetails)` and keep only the orders where every line sits wholly in `Cancelled`. The same caveat applies to every value: `~where(status=Fulfilled)` matches part-fulfilled orders, and `~where(status=Committed)` matches orders that are mostly shipped.
+Neither form says *how much* of the order is where — the order-level `status` is a set with no counts. To answer that, read the lines: fetch `items~with(statusDetails)` and use the per-line breakdown below. See [gotcha 55](../common-gotchas.md#55-status-on-a-trade-order-compares-the-whole-array-use--for-still-open).
 
 ### Per-Line Status Breakdown (`statusDetails`)
 
@@ -201,6 +204,8 @@ Both members are read-only. To see what produced each move — which action, whe
 | `currency` | CurrencyRef | Yes | Transaction currency |
 | `items` | OrderItem[] | Yes | Line items (non-empty array) |
 
+**Two numbers the platform puts into `identifiers`.** Besides your own namespaced identifiers, an order can carry `identifiers.customersId` — the customer's number for the order — and `identifiers.suppliersId` — the supplier's. Each is issued on creation when the party is one of your own agents under the root organization node and `/v1/config/root-order` names a serial for it: `incomingTradeOrderSerial` for `customersId` (your purchase order number), `outgoingTradeOrderSerial` for `suppliersId` (your sales order number). Both are indexes — `GET /v1/trade-orders/customersId=PO-00001` — and both are **read-only**: a `PATCH` on either is a `200` that changes nothing. The top-level `customersId` / `suppliersId` members (non-essential) carry the same number with its `owner`. See [Working with Purchasing → Your Purchase Order Number](purchasing.md#your-purchase-order-number-identifierscustomersid--long-standing).
+
 ### Order Fields (Optional)
 
 | Field | Type | Description |
@@ -223,10 +228,10 @@ Both members are read-only. To see what produced each move — which action, whe
 | `suppliersExternalNotes` | string | The supplier's shared notes |
 | `customersInternalNotes` | string | The customer's private notes |
 | `customersExternalNotes` | string | The customer's shared notes |
-| `underdeliveryPolicy` | `"LeaveOpen"` \| `"Cancel"` | What approving a short delivery does with the remainder. Defaults from the trade relationship |
-| `overdeliveryPolicy` | `"Accept"` \| `"Warn"` \| `"Reject"` | What approving a surplus delivery does with it. Defaults from the trade relationship |
+| `underdeliveryPolicy` | `"LeaveOpen"` \| `"Cancel"` | What approving a short delivery does with the remainder. Reads `"LeaveOpen"` when never set |
+| `overdeliveryPolicy` | `"Accept"` \| `"Warn"` \| `"Reject"` | What approving a surplus delivery does with it. Reads `"Accept"` when never set |
 
-An unknown value for either policy is rejected. What the policies actually do at receipt time is in [Working with Purchasing](purchasing.md#delivery-actions).
+An unknown value for either policy is a coercion `400`. The trade relationship carries defaults for the two policies in the back office, but they are not exposed on `/v1/trade-relationships` — through the API the order is the only place a policy is set. What the policies actually do at receipt time is in [Working with Purchasing](purchasing.md#delivery-actions).
 
 ### Order Fields (Read-Only - Set via Actions)
 
@@ -323,24 +328,28 @@ Which agents the relationship ends up naming is not always the two you sent. Whe
 
 ### Purchase Order
 
-In a purchase order, your company is the customer:
+In a purchase order the supplier is `supplier` and sole seller, and **the store that receives the goods is the `customer`** — one purchase order per receiving store. With a company as customer the order still completes, but no store's stock rises. Put your purchase price on each line as `unitAmountExclVat`, and give each line an identifier of your own so a delivery can name it:
 
 ```bash
 POST /v1/trade-orders
 {
   "identifiers": {"com.example.orderId": "PO-001"},
   "supplier": {"identifiers": {"com.example.supplierId": "SUPPLIER-001"}},
-  "customer": {"identifiers": {"com.example.companyId": "OUR-COMPANY"}},
+  "customer": {"identifiers": {"com.example.storeId": "STORE-001"}},
   "sellers": [{"identifiers": {"com.example.supplierId": "SUPPLIER-001"}}],
   "currency": {"identifiers": {"currencyCode": "SEK"}},
   "items": [
     {
+      "identifiers": {"com.example.itemId": "PO-001-1"},
       "product": {"identifiers": {"com.example.sku": "PROD-001"}},
-      "quantity": 100
+      "quantity": "100",
+      "unitAmountExclVat": "40.00"
     }
   ]
 }
 ```
+
+Price and quantity are settable while the order is `New`; after `tryApprove` a `PATCH` on either is a silent `200`. Everything specific to buying — the purchase order number in `identifiers.customersId`, the lifecycle, finding open orders, closing a partly received one — is in [Working with Purchasing → Purchase Orders](purchasing.md#purchase-orders).
 
 **Receiving and returning.** Once a purchase order is approved, what arrives against it is booked as a **delivery** and what goes back to the supplier as a **return** — both documents in their own right, with their own numbers, their own line counts and their own approval step. See [Working with Purchasing](purchasing.md). The purchasing members a purchase order can carry (references, notes, and the under/overdelivery policies that decide what a short or surplus receipt does to the order) are in [Order Fields (Optional)](#order-fields-optional).
 
@@ -777,7 +786,7 @@ PATCH /v1/trade-order-items/key=abc12345678901234567890123456
 | Constraint | Description |
 |------------|-------------|
 | **Non-negative** | Value must be ≥ 0; negative amounts are rejected |
-| **Editable items only** | Can only be set on items with `New` status |
+| **Editable items only** | Can only be set on items with `New` status; on a `Committed` line the `PATCH` is a silent `200` that changes nothing |
 | **Bypasses price rules** | Item no longer participates in price rules; discounts still apply unless `discountable=false` |
 | **Decimal string format** | Use string values (e.g., `"129.00"`, not `129`) |
 
@@ -952,6 +961,9 @@ PATCH /v1/trade-orders/com.example.orderId=ORD-001/actions
 - Order must have status `Committed` (only committed orders can be cancelled via this action)
 - Orders in `New` or `Reserved` status cannot be cancelled with this action
 - Orders in `Fulfilled` status cannot be cancelled (use return flow instead)
+- A **partly fulfilled** order (`["Committed", "Fulfilled"]`) is not cancelled either: the action answers `200` and changes nothing. To close the open remainder of a partly received purchase order, set `underdeliveryPolicy: "Cancel"` and approve a short delivery — see [Working with Purchasing → Cancelling, and Closing the Rest of a Partly Received Order](purchasing.md#cancelling-and-closing-the-rest-of-a-partly-received-order)
+
+In every "cannot" case above the response is still `200` — read `status` back. `DELETE /v1/trade-orders/{id}` answers `200` with `deletedCount: 0`; orders are not deletable.
 
 ### Create Payment
 
@@ -1012,6 +1024,7 @@ PATCH /v1/trade-orders/com.example.orderId=ORD-001/actions
 - Fulfills every eligible item on the order, committing `New`, `Reserved` and `Unreserved` items first as needed
 - For physical product instances, performs a physical move from each item's source place to its destination place
 - Lines that are not eligible are left where they are, so a partly fulfilled order keeps both statuses (see [Status Behavior](#status-behavior))
+- On a **purchase order** it receives everything ordered into the customer store's stock with no delivery document — the shortcut for goods that arrived exactly as ordered. See [Working with Purchasing](purchasing.md#receive-everything-without-a-document-tryfulfill--long-standing)
 
 ### Change Addresses
 
@@ -1577,8 +1590,11 @@ GET /v1/trade-orders/com.example.orderId=ORD-001~withAll
 ### Filtering
 
 ```bash
-# Filter by status
+# Filter by status — = matches only orders whose single status is Committed
 GET /v1/trade-orders~where(status=Committed)~take(50)
+
+# Orders with at least one Committed line (still open) — =~ is "includes"
+GET /v1/trade-orders~where(status=~Committed)~take(50)
 
 # Filter by customer
 GET /v1/trade-orders~where(customer.identifiers.com.example.customerId=CUST-001)~take(50)
