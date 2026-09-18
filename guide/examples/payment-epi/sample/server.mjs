@@ -97,7 +97,7 @@ export function startPiggyServer({ port = 0, now = () => new Date(), waitMs = 30
             const response = await fetch(url, { method: "PUT", headers, body: JSON.stringify(state), signal: AbortSignal.timeout(2000) });
             log(`kv ${paymentKey} ${response.status}`);
         } catch (error) {
-            log(`kv ${paymentKey} not written (${error.message}); CommerceOS is not reachable at ${cosBaseUrl}`);
+            log(`kv ${paymentKey} not written: ${error.message} from ${tokenUrl}`);
         }
     }
 
