@@ -911,7 +911,7 @@ A shipment order comes from the trade order's `createShipment` action, and from 
 
 > **Availability: v26.1.12 and earlier.** Approve the order, send `{"createShipment": true}`, then `release` the shipment order it created. `tryFulfill` is the alternative that fulfils the order without a shipment order.
 >
-> **Availability: the release that carries deliveries and returns.** `createShipment` is removed and sending it is dropped: `200`, no shipment order. Outbound goods are booked as a delivery on `/v1/deliveries`.
+> **Availability: v26.2.1 and later.** `createShipment` is removed and sending it is dropped: `200`, no shipment order. Outbound goods are booked as a delivery on `/v1/deliveries`.
 
 ```bash
 # v26.1.12 and earlier: one shipment order from the approved order's shippable lines.
@@ -1672,7 +1672,7 @@ PATCH /v1/trade-orders/com.example.orderId=ORD-CUST-2024-001/actions
 GET /v1/shipment-orders~where(orders/com.example.orderId=ORD-CUST-2024-001)
 ```
 
-> **Note:** Source, items and delivery terms come from the trade order; `POST /v1/shipment-orders` with explicit fields would create an identifier shell with the body dropped. The release that carries deliveries and returns has no `createShipment`: fulfil with `tryFulfill` instead, which debits the seller's stock at fulfilment and creates no shipment order — see [Where Shipment Orders Come From](#where-shipment-orders-come-from).
+> **Note:** Source, items and delivery terms come from the trade order; `POST /v1/shipment-orders` with explicit fields would create an identifier shell with the body dropped. v26.2.1 and later has no `createShipment`: fulfil with `tryFulfill` instead, which debits the seller's stock at fulfilment and creates no shipment order — see [Where Shipment Orders Come From](#where-shipment-orders-come-from).
 
 ### Step 6: Release Shipment
 
@@ -1833,7 +1833,7 @@ POST /v1/stock-adjustments  # Second request (may fail)
 |----------|---------------|
 | 1 | Create trade order |
 | 2 | Approve order (reserves stock) |
-| 3 | Create the shipment order (`{"createShipment": true}`) — v26.1.12 and earlier; the release that carries deliveries and returns has no `createShipment` |
+| 3 | Create the shipment order (`{"createShipment": true}`) — v26.1.12 and earlier; v26.2.1 and later has no `createShipment` |
 | 4 | Release shipment (decrements stock) |
 | 5 | (External: fulfillment/tracking via integrations) |
 

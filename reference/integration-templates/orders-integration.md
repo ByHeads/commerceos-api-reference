@@ -107,7 +107,7 @@ Trade order status is a read-only string array that reflects the current state o
                                           └───────────────────────────────────────────┘
 ```
 
-**Note:** Stock reservation is controlled via the `reservedUntil` field on orders or items. Setting `reservedUntil` reserves stock until the specified time **and** moves the order/item status to `Reserved`. `tryFulfill` fulfils the order directly and creates no shipment order. A shipment order is a separate resource, created from the approved order by `createShipment` on v26.1.12 and earlier and not at all on the release that carries deliveries and returns. See [Shipment Orders](#shipment-orders).
+**Note:** Stock reservation is controlled via the `reservedUntil` field on orders or items. Setting `reservedUntil` reserves stock until the specified time **and** moves the order/item status to `Reserved`. `tryFulfill` fulfils the order directly and creates no shipment order. A shipment order is a separate resource, created from the approved order by `createShipment` on v26.1.12 and earlier and not at all on v26.2.1 and later. See [Shipment Orders](#shipment-orders).
 
 ### Status Reference
 
@@ -138,11 +138,11 @@ Each item has `statusDetails`, one row per phase the line is split across, each 
 | `changeInvoiceAddress` | Update invoice address |
 | `changeDeliveryAddress` | Update delivery address |
 
-That is the whole set on the release that carries deliveries and returns. Earlier releases have one more, `createShipment`:
+That is the whole set on v26.2.1 and later. Earlier releases have one more, `createShipment`:
 
 > **Availability: v26.1.12 and earlier.** Approve the order, send `{"createShipment": true}`, then `release` the shipment order it created. `tryFulfill` is the alternative that fulfils the order without a shipment order.
 >
-> **Availability: the release that carries deliveries and returns.** `createShipment` is removed and sending it is dropped: `200`, no shipment order. Outbound goods are booked as a delivery on `/v1/deliveries`.
+> **Availability: v26.2.1 and later.** `createShipment` is removed and sending it is dropped: `200`, no shipment order. Outbound goods are booked as a delivery on `/v1/deliveries`.
 
 ### Required Fields for Order Creation
 
@@ -461,7 +461,7 @@ Content-Type: application/json
 
 The 980 units land in the store's stock; the order reads `["Committed", "Fulfilled"]` with `deliveryDiscrepancy: ["Underdelivery"]` and 20 still `Committed` for a later delivery. Always send your own identifier on the delivery — a retry without one creates a second document expecting the same goods. See [Working with Purchasing → A Receipt in One Request](../working-with/purchasing.md#a-receipt-in-one-request) and [Safe Receiving](../working-with/purchasing.md#safe-receiving).
 
-> **Availability:** deliveries and the purchasing members (`requestedArrivalTime` above) ship in the release after v26.1.11. Not in v26.1.10 or v26.1.11. The purchase-order shape itself is long-standing.
+> **Availability:** deliveries and the purchasing members (`requestedArrivalTime` above) ship in v26.2.1 and later. Not in v26.1.x. The purchase-order shape itself is long-standing.
 
 ---
 
@@ -625,7 +625,7 @@ A shipment order comes from the trade order's `createShipment` action, on the re
 
 > **Availability: v26.1.12 and earlier.** Approve the order, send `{"createShipment": true}`, then `release` the shipment order it created. `tryFulfill` is the alternative that fulfils the order without a shipment order.
 >
-> **Availability: the release that carries deliveries and returns.** `createShipment` is removed and sending it is dropped: `200`, no shipment order. Outbound goods are booked as a delivery on `/v1/deliveries`.
+> **Availability: v26.2.1 and later.** `createShipment` is removed and sending it is dropped: `200`, no shipment order. Outbound goods are booked as a delivery on `/v1/deliveries`.
 
 A shipment order created by `createShipment` is populated with:
 - `sender` and `receiver` from the trade order
@@ -1214,7 +1214,7 @@ PATCH /v1/shipment-orders/{shipment-key}/actions
 }
 ```
 
-> **Note:** `release` is the only write a shipment order takes, and it is what marks the shipment as shipped. `POST /v1/shipment-orders` creates only an identifier shell. The release that carries deliveries and returns has no `createShipment` — sending it is dropped — and books outbound goods as a delivery on `/v1/deliveries`.
+> **Note:** `release` is the only write a shipment order takes, and it is what marks the shipment as shipped. `POST /v1/shipment-orders` creates only an identifier shell. v26.2.1 and later has no `createShipment` — sending it is dropped — and books outbound goods as a delivery on `/v1/deliveries`.
 
 ### Verification Queries
 

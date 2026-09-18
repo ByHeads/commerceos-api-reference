@@ -1560,7 +1560,7 @@ Related: [gotcha 47](#47-a-declared-type-key-is-not-always-one-you-can-write), [
 
 ## 52. Two Open Deliveries on One Order Line Share the Same Units
 
-> **Availability:** ships in the release after v26.1.11. Not in v26.1.10 or v26.1.11.
+> **Availability:** v26.2.1 and later. Not in v26.1.x.
 
 Every `New` delivery created from an order expects the order's *currently open* quantity. Create two before approving either and both expect the same units — and the first approval settles them for both:
 
@@ -1589,7 +1589,7 @@ Related: [Working with Purchasing → Safe Receiving](working-with/purchasing.md
 
 ## 53. `approve` on an Uncounted Delivery Posts Nothing and Spends the Document
 
-> **Availability:** ships in the release after v26.1.11. Not in v26.1.10 or v26.1.11.
+> **Availability:** v26.2.1 and later. Not in v26.1.x.
 
 A delivery created from an order starts with every line at `quantity "0"`. `approve` does not check that anything was counted — it posts what is there, and what is there is nothing:
 
@@ -1625,7 +1625,7 @@ The same `200`-and-nothing answers a `New` order. `DELETE /v1/trade-orders/{id}`
 
 **Close the remainder with the underdelivery policy instead:** set `underdeliveryPolicy: "Cancel"` on the order, create a delivery from it (it expects only the 2 still open), and approve it uncounted. The order then reads `["Cancelled", "Fulfilled"]` — 8 fulfilled, 2 cancelled — and a further delivery from it is refused with `"The order has no committed items to deliver."`
 
-> **Availability:** the silent `200` is long-standing. `underdeliveryPolicy` and deliveries ship in the release after v26.1.11.
+> **Availability:** the silent `200` is long-standing. `underdeliveryPolicy` and deliveries ship in v26.2.1 and later, not in v26.1.x.
 
 Related: [Working with Purchasing → Cancelling, and Closing the Rest of a Partly Received Order](working-with/purchasing.md#cancelling-and-closing-the-rest-of-a-partly-received-order), [Orders → Cancel Order](working-with/orders.md#cancel-order-trycancel).
 

@@ -1,6 +1,6 @@
 # Working with Purchasing: Purchase Orders, Deliveries and Returns
 
-> **Availability:** ships in the release after v26.1.11. Not in v26.1.10 or v26.1.11.
+> **Availability:** v26.2.1 and later. Not in v26.1.x.
 >
 > Sections marked **long-standing** are in every current release and need no such caveat.
 

@@ -567,7 +567,7 @@ The numbers the platform stamps on purchasing documents come from serials named 
 | `customerDeliverySerial` | outbound deliveries | `delivery.identifiers.sendersId` |
 | `supplierReturnSerial` | supplier returns | `return.identifiers.returnersId` |
 
-> **Availability:** the two trade order serials are long-standing. The delivery and return serials ship in the release after v26.1.11. Not in v26.1.10 or v26.1.11.
+> **Availability:** the two trade order serials are long-standing. The delivery and return serials ship in v26.2.1 and later. Not in v26.1.x.
 
 ```bash
 # Create a serial: PO-00001, PO-00002, ...

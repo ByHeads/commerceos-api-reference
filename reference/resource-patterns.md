@@ -1073,7 +1073,7 @@ For serialized products (devices, SIM cards), use `instances` instead of `quanti
 | `fulfillReturn` | Fulfills a committed return |
 | `cancelReturn` | Cancels a return |
 
-On v26.1.12 and earlier there is one more, `createShipment`, which creates a shipment order from the approved order's shippable lines; it is removed on the release that carries deliveries and returns, where a body that sends it is dropped. See [Working with Orders → Available Actions](working-with/orders.md#available-actions) for the full contract on each.
+On v26.1.12 and earlier there is one more, `createShipment`, which creates a shipment order from the approved order's shippable lines; it is removed on v26.2.1 and later, where a body that sends it is dropped. See [Working with Orders → Available Actions](working-with/orders.md#available-actions) for the full contract on each.
 
 #### createPayment Constraints
 

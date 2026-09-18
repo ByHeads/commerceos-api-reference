@@ -215,7 +215,7 @@ Both members are read-only. To see what produced each move — which action, whe
 
 **Purchasing members.** A trade order used as a purchase order carries a further set of optional members. All are non-essential — fetch them with `~with(...)` — and all are settable on create and via `PATCH`.
 
-> **Availability:** ships in the release after v26.1.11. Not in v26.1.10 or v26.1.11.
+> **Availability:** v26.2.1 and later. Not in v26.1.x.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -255,7 +255,7 @@ An unknown value for either policy is a coercion `400`. The trade relationship c
 | `deliveries` | Delivery[] | Non-essential — the goods receipts raised against this order. See [Working with Purchasing](purchasing.md#deliveries) |
 | `returns` | Return[] | Non-essential — the supplier returns raised against this order. See [Working with Purchasing](purchasing.md#returns) |
 
-> **Availability:** ships in the release after v26.1.11. Not in v26.1.10 or v26.1.11.
+> **Availability:** v26.2.1 and later. Not in v26.1.x.
 >
 > Applies to `deliveryDiscrepancy`, `deliveries` and `returns` only; the rest of this table is long-standing.
 
@@ -923,13 +923,13 @@ PATCH /v1/trade-orders/{identifier}/actions
 | `changeDeliveryAddress` | Address object | Updates delivery address |
 | `changeInvoiceAddress` | Address object | Updates invoice address |
 
-That table is the whole set on the release that carries deliveries and returns. Earlier releases have one more:
+That table is the whole set on v26.2.1 and later. Earlier releases have one more:
 
 > **`createShipment`** — whether it is a trade order action depends on the release.
 >
 > **Availability: v26.1.12 and earlier.** Approve the order, send `{"createShipment": true}`, then `release` the shipment order it created. `tryFulfill` is the alternative that fulfils the order without a shipment order.
 >
-> **Availability: the release that carries deliveries and returns.** `createShipment` is removed and sending it is dropped: `200`, no shipment order. Outbound goods are booked as a delivery on `/v1/deliveries`.
+> **Availability: v26.2.1 and later.** `createShipment` is removed and sending it is dropped: `200`, no shipment order. Outbound goods are booked as a delivery on `/v1/deliveries`.
 >
 > On the releases that have it, it creates one shipment order from the order's shippable lines — the `Committed`, physical ones — unless the order already has a shipment order in status `New`, in which case it does nothing. See [Where Shipment Orders Come From](#where-shipment-orders-come-from).
 
@@ -1214,7 +1214,7 @@ A shipment order comes from the trade order's `createShipment` action, on the re
 
 > **Availability: v26.1.12 and earlier.** Approve the order, send `{"createShipment": true}`, then `release` the shipment order it created. `tryFulfill` is the alternative that fulfils the order without a shipment order.
 >
-> **Availability: the release that carries deliveries and returns.** `createShipment` is removed and sending it is dropped: `200`, no shipment order. Outbound goods are booked as a delivery on `/v1/deliveries`.
+> **Availability: v26.2.1 and later.** `createShipment` is removed and sending it is dropped: `200`, no shipment order. Outbound goods are booked as a delivery on `/v1/deliveries`.
 
 ```bash
 # v26.1.12 and earlier: create the shipment order from the approved order's shippable lines
@@ -1581,7 +1581,7 @@ PATCH /v1/trade-orders/com.example.orderId=ORD-001/actions
 | Get items | GET | `/v1/shipment-orders/{id}/items` | Line items |
 | Release shipment | PATCH | `/v1/shipment-orders/{id}/actions` | Release shipment (`{"release": true}`) |
 
-> **Note:** There is no create operation on this collection: `POST /v1/shipment-orders` returns an identifier shell with the body dropped. A shipment order is created from an approved trade order by `{"createShipment": true}` on v26.1.12 and earlier; the release that carries deliveries and returns has no `createShipment`, and `tryFulfill` never creates one on any release — see [Where Shipment Orders Come From](#where-shipment-orders-come-from).
+> **Note:** There is no create operation on this collection: `POST /v1/shipment-orders` returns an identifier shell with the body dropped. A shipment order is created from an approved trade order by `{"createShipment": true}` on v26.1.12 and earlier; v26.2.1 and later has no `createShipment`, and `tryFulfill` never creates one on any release — see [Where Shipment Orders Come From](#where-shipment-orders-come-from).
 
 ---
 
@@ -2138,7 +2138,7 @@ PATCH /v1/trade-orders/com.example.orderId=ORD-MOBILE-2024-001/actions
 {"tryFulfill": true}
 ```
 
-> **Note:** To ship through a shipment order instead, on v26.1.12 and earlier send `{"createShipment": true}` to the approved order and `release` the shipment order it creates — `release` is the only write a shipment order takes. The release that carries deliveries and returns has no `createShipment` — see [Where Shipment Orders Come From](#where-shipment-orders-come-from).
+> **Note:** To ship through a shipment order instead, on v26.1.12 and earlier send `{"createShipment": true}` to the approved order and `release` the shipment order it creates — `release` is the only write a shipment order takes. v26.2.1 and later has no `createShipment` — see [Where Shipment Orders Come From](#where-shipment-orders-come-from).
 
 ### Step 8: Verify Final State
 

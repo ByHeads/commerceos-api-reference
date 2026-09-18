@@ -110,7 +110,7 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/deliveries" \
 
 > **Receiving a purchase order.** What arrives against a purchase order is booked as a delivery on `/v1/deliveries`, and what goes back to the supplier as a return on `/v1/returns` — both documents with their own numbers and their own approval step. A purchase order can also carry references, notes and under/overdelivery policies. The one-request receipt above is for an integration that already knows the counted quantities; the step-by-step recipe, the "one open delivery per order line" warning and the rest are in [Working with Purchasing](../../reference/working-with/purchasing.md).
 >
-> **Availability:** deliveries, the one-request receipt and the purchasing members ship in the release after v26.1.11. The purchase-order shape, `unitAmountExclVat`, `customersId` and the `status=~` filter are long-standing.
+> **Availability:** deliveries, the one-request receipt and the purchasing members ship in v26.2.1 and later, not in v26.1.x. The purchase-order shape, `unitAmountExclVat`, `customersId` and the `status=~` filter are long-standing.
 
 ```bash
 # Order actions - approve order (use tryApprove, not confirm)
@@ -270,7 +270,7 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/trade-relations
 
 ## Shipment Orders
 
-> **Note:** `POST /v1/shipment-orders` creates only an identifier shell — the body is dropped. A shipment order is created from an approved trade order by the `createShipment` action on v26.1.12 and earlier; the release that carries deliveries and returns has no `createShipment` (sending it is dropped) and books outbound goods as a delivery on `/v1/deliveries`. `tryFulfill` never creates one. Read them and `release` them.
+> **Note:** `POST /v1/shipment-orders` creates only an identifier shell — the body is dropped. A shipment order is created from an approved trade order by the `createShipment` action on v26.1.12 and earlier; v26.2.1 and later has no `createShipment` (sending it is dropped) and books outbound goods as a delivery on `/v1/deliveries`. `tryFulfill` never creates one. Read them and `release` them.
 
 ```bash
 # v26.1.12 and earlier: create the shipment order from an approved order. A second send changes
@@ -835,7 +835,7 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/trade-orders" \
 - **Item mutations**: While the API may accept POST/PATCH/DELETE to `/items`, the intended pattern is to set all items at creation. `unitAmountExclVat` can be PATCHed on editable items.
 - **Action names**: Use `tryApprove`/`tryCancel`, not `confirm`/`cancel`
 - **Payments**: Can be created directly via `POST /v1/payment-orders`, or via the trade order actions `createPayment` / `createWalletPayment`
-- **Shipments**: `POST /v1/shipment-orders` returns an identifier shell with the body dropped. On v26.1.12 and earlier the trade order action `{"createShipment": true}` creates one from the approved order; the release that carries deliveries and returns has no `createShipment`. `tryFulfill` never creates one. `release` is the only write a shipment order takes
+- **Shipments**: `POST /v1/shipment-orders` returns an identifier shell with the body dropped. On v26.1.12 and earlier the trade order action `{"createShipment": true}` creates one from the approved order; v26.2.1 and later has no `createShipment`. `tryFulfill` never creates one. `release` is the only write a shipment order takes
 - **Purchasing**: Receiving against a purchase order and returning to a supplier are separate documents — see [Working with Purchasing](../../reference/working-with/purchasing.md)
 - **createPayment requires currency**: The `createPayment` action requires a `currency` field; omitting it throws "Currency not found."
 - **Payment methods**: Use `methodId` from `/v1/payment-methods` (e.g., `methodId: "com.heads.cash"`, `methodId: "com.heads.card"`)
