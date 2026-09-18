@@ -30,6 +30,8 @@ commerceos-api-reference/
 │   ├── examples/                 # Domain-specific example files
 │   │   ├── advanced.md           # Advanced query patterns
 │   │   ├── configuration.md      # System configuration examples
+│   │   ├── payment-epi.md        # Build a payment EPI: tutorial
+│   │   ├── payment-epi/          # Contract reference, conformance fixtures, the Piggy Bank sample
 │   │   ├── discount-rules.md     # Discount and pricing rules
 │   │   ├── discount-coupons.md   # Coupon codes that activate discount rules
 │   │   ├── inventory.md          # Stock and inventory management
