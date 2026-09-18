@@ -275,7 +275,7 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/batches"
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/batches/com.example.id=batch-milk-2026-03"
 
 # Find batches for a product
-curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/batches~where(product.identifiers.com.example.sku==MILK-WHOLE-1L)"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/batches~where(product/identifiers/com.example.sku=MILK-WHOLE-1L)"
 ```
 
 ### 2.5 Combining Serial Number and Batch Tracking
@@ -1129,7 +1129,7 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustment
 
 ```bash
 # Find all adjustments for the recalled product
-curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustments~with(items~with(productInstances))~where(items.product.identifiers.com.example.sku==YOGURT-VANILLA-200G)"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustments~with(items~with(productInstances))~where(items/product/identifiers/com.example.sku=YOGURT-VANILLA-200G)"
 ```
 
 Inspect the `productInstances` on each item to identify which stock places received the recalled batch.

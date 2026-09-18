@@ -668,7 +668,7 @@ POST /v1/trade-orders
 
 ```bash
 # Find order containing a specific IMEI
-GET /v1/trade-orders~where(items.instances.imei=123456789012345)~first
+GET /v1/trade-orders~where(items/instances/imei=123456789012345)~first
 
 # Get instances for an order item (by item identifier)
 GET /v1/trade-orders/com.example.orderId=ORD-001/items/{itemId}/instances
@@ -1210,7 +1210,7 @@ GET /v1/trade-orders/com.example.orderId=ORD-001/shipments
 
 ### Where Shipment Orders Come From
 
-A shipment order comes from the trade order's `createShipment` action, on the releases that have it. Nothing else creates one: **`tryFulfill` fulfils the order directly and raises no shipment order** — the order reads `Fulfilled`, the stock moves, and `GET …/shipments` stays `[]` — and `POST /v1/shipment-orders` does not create a usable shipment: the collection has no `create`, so a body carrying `shipper`, `recipient`, `items` and the rest is **dropped** and all you get back is an identifier shell with none of the fields you sent.
+A shipment order comes from the trade order's `createShipment` action, on the releases that have it. Nothing else creates one: **`tryFulfill` fulfils the order directly and raises no shipment order** — the order reads `Fulfilled`, the sold units leave the seller's stock, and `GET …/shipments` stays `[]` (the physical count at the source place moves only when the buyer has a destination place, see [gotcha 57](../common-gotchas.md#57-tryfulfill-leaves-physicalquantity-alone-unless-the-buyer-has-a-place)) — and `POST /v1/shipment-orders` does not create a usable shipment: the collection has no `create`, so a body carrying `shipper`, `recipient`, `items` and the rest is **dropped** and all you get back is an identifier shell with none of the fields you sent.
 
 > **Availability: v26.1.12 and earlier.** Approve the order, send `{"createShipment": true}`, then `release` the shipment order it created. `tryFulfill` is the alternative that fulfils the order without a shipment order.
 >
@@ -1613,13 +1613,13 @@ GET /v1/trade-orders~where(status=Committed)~take(50)
 GET /v1/trade-orders~where(status=~Committed)~take(50)
 
 # Filter by customer
-GET /v1/trade-orders~where(customer.identifiers.com.example.customerId=CUST-001)~take(50)
+GET /v1/trade-orders~where(customer/identifiers/com.example.customerId=CUST-001)~take(50)
 
 # Filter by date range
 GET /v1/trade-orders~where(timestamp>=2024-01-01)~where(timestamp<2024-02-01)~take(50)
 
 # Filter by seller
-GET /v1/trade-orders~where(sellers.identifiers.com.example.storeId=STORE-001)~take(50)
+GET /v1/trade-orders~where(sellers/com.example.storeId=STORE-001)~take(50)
 ```
 
 ### Sorting
@@ -1665,7 +1665,7 @@ GET /v1/trade-orders/com.example.orderId=ORD-001/items~with(unitAmountInclVat,to
 
 ```bash
 # First order for customer
-GET /v1/trade-orders~where(customer.identifiers.com.example.customerId=CUST-001)~first
+GET /v1/trade-orders~where(customer/identifiers/com.example.customerId=CUST-001)~first
 
 # First committed order
 GET /v1/trade-orders~where(status=Committed)~orderBy(timestamp:asc)~first
@@ -1864,7 +1864,7 @@ GET /v1/trade-orders/com.example.orderId=ORD-001~with(status,items.unitAmountInc
    PATCH /v1/trade-orders/com.example.orderId=ORD-001/actions
    {"tryFulfill": true}
    ```
-   The order reads `Fulfilled` and the stock has moved. No shipment order is created by this action.
+   The order reads `Fulfilled` and the sold units leave the seller's stock. The physical count at the source stock place (`physicalQuantity`) moves only when the buyer has a destination place: a stock root, or a main or delivery address. A sale to a customer with neither leaves `physicalQuantity` where it was. No shipment order is created by this action.
 
 **Checkpoint:** Orders progress through Committed → Fulfilled.
 
@@ -2133,7 +2133,7 @@ PATCH /v1/trade-orders/com.example.orderId=ORD-MOBILE-2024-001/actions
 ### Step 7: Fulfill
 
 ```bash
-# Fulfill the order: every eligible line is fulfilled and the stock moves. No shipment order is created
+# Fulfill the order: eligible lines are fulfilled and the seller's stock is debited. No shipment order is created
 PATCH /v1/trade-orders/com.example.orderId=ORD-MOBILE-2024-001/actions
 {"tryFulfill": true}
 ```

@@ -1656,7 +1656,9 @@ Related: [Orders → Status Behavior](working-with/orders.md#status-behavior), [
 
 ## 56. A Filter Through an Array Relation Takes the Identifier Directly Under the Relation Name
 
-Filtering through a **single** reference goes through `identifiers/`, as documented everywhere: `~where(currency/identifiers/currencyCode=SEK)`. Filtering through an **array** relation — `buyers`, `sellers`, `products` on a price — does not: the identifier sits directly under the relation name, and the `identifiers/` form is a `200 []` that matches nothing, with no complaint.
+Filtering through a **single** reference goes through `identifiers/`: `~where(currency/identifiers/currencyCode=SEK)`, `~where(customer/identifiers/com.example.customerId=CUST-001)`. Filtering through an **array** relation — `buyers`, `sellers`, `products` on a price, `sellers` on a trade order, `categories` on a product — does not: the identifier sits directly under the relation name, and the `identifiers/` form is a `200 []` that matches nothing, with no complaint. The rule holds on every collection.
+
+The separator is `/`. A dotted path such as `customer.identifiers.com.example.customerId` is read as one member name that does not exist, and the filter answers `200 []`.
 
 ```bash
 # RIGHT - array relation: identifier directly under the relation name
@@ -1664,17 +1666,34 @@ GET /v1/prices~where(buyers/com.example.groupId=wholesale-customers)~take(100)
 GET /v1/prices~where(products/com.example.sku=PROD-001)~take(100)
 GET /v1/prices~where(buyers/key=<database key>)~take(100)
 
+GET /v1/trade-orders~where(sellers/com.example.storeId=STORE-001)~take(50)
+
 # WRONG - 200 [] with nothing matched
 GET /v1/prices~where(buyers/identifiers/com.example.groupId=wholesale-customers)~take(100)
+GET /v1/trade-orders~where(customer.identifiers.com.example.customerId=CUST-001)~take(50)   # dotted path
 
 # Single reference: the identifiers/ segment is the form that works
 GET /v1/prices~where(currency/identifiers/currencyCode=SEK)~take(100)     # matches
 GET /v1/prices~where(currency/currencyCode=SEK)~take(100)                 # 200 []
 ```
 
-Measured on `/v1/prices`: `buyers/com.example.groupId=…` and `buyers/key=…` return the same set, `products/com.example.sku=…` returns the price for that product, and each `identifiers/` form on those three returns `[]`; for the single reference `currency` it is the other way round. An empty result from a filter through a relation is therefore not proof that nothing matches — check which of the two forms the relation takes before trusting it.
+Measured on `/v1/prices`, `/v1/trade-orders`, `/v1/products` and `/v1/stock-places`: `buyers/…`, `sellers/…`, `products/…` and `categories/…` match with the identifier directly under the name and return `[]` with `identifiers/`; the single references `currency`, `customer` and `owner` match with `identifiers/` and return `[]` without it; every dotted spelling returns `[]`. An empty result from a filter through a relation is therefore not proof that nothing matches — check which of the two forms the relation takes before trusting it.
 
 Related: [Prices → Customer Groups as Buyers](working-with/prices.md#customer-groups-as-buyers-price-lists), [Operators → `~where`](operators-catalog.md#wherepredicates).
+
+---
+
+## 57. `tryFulfill` Leaves `physicalQuantity` Alone Unless the Buyer Has a Place
+
+`tryFulfill` debits the seller's stock, but the ledger behind `physicalQuantity` on a stock place entry is written only when the order has both a source place and a destination place. The destination is the buyer's stock root, or failing that the buyer's main or delivery address; a customer with neither gives the order no destination, and `physicalQuantity` at the source reads the same after the sale as before it. If the physical figure has to follow sales to customers without an address, count the units out with a stock adjustment. Same on every release.
+
+```bash
+GET /v1/stock-places/{key}~with(entries)                    # physicalQuantity 7
+PATCH /v1/trade-orders/{id}/actions  {"tryFulfill": true}   # 2 sold to a person with no address
+GET /v1/stock-places/{key}~with(entries)                    # physicalQuantity still 7
+```
+
+Related: [Orders → Where Shipment Orders Come From](working-with/orders.md#where-shipment-orders-come-from), [Stock → Where Shipment Orders Come From](working-with/stock.md#where-shipment-orders-come-from), [Stock → Shipment Timing](working-with/stock.md#shipment-timing).
 
 ---
 

@@ -95,7 +95,7 @@ Trade order status is a read-only string array that reflects the current state o
 └─────┬─────┘                └───────────┘
       │
       ├─── tryFulfill ─────────────────► ┌───────────┐
-      │                                  │ Fulfilled │  stock moved; no shipment order
+      │                                  │ Fulfilled │  seller's stock debited; no shipment order
       │                                  └───────────┘
       │
       └─── createShipment ─────────────► ┌───────────────────────────────────────────┐
@@ -1065,7 +1065,7 @@ For high-traffic events (flash sales, Black Friday):
 - [ ] **Create order** — Basic order creation works
 - [ ] **Add payment** — Payment recording works
 - [ ] **Approve order** — Status transitions correctly
-- [ ] **Fulfil order** — `tryFulfill` fulfils eligible items and moves the stock
+- [ ] **Fulfil order** — `tryFulfill` fulfils eligible items and debits the seller's stock; the physical count moves only when the buyer has a destination place
 - [ ] **Cancel order** — Cancellation works
 
 ### Go-Live
@@ -1188,7 +1188,7 @@ PATCH /v1/trade-orders/com.acme.order-id=PAYMENT-FLOW-001/actions
 ### Complete Fulfillment Flow
 
 ```bash
-# Fulfill the order: eligible lines are fulfilled and the stock moves. No shipment order is created
+# Fulfill the order: eligible lines are fulfilled and the seller's stock is debited. No shipment order is created
 PATCH /v1/trade-orders/com.acme.order-id=PAYMENT-FLOW-001/actions
 {
   "tryFulfill": true

@@ -489,7 +489,7 @@ GET /v1/products/com.example.sku=PHONE-001~with(stockLevels)
 
 ```bash
 # Entries for specific product
-GET /v1/stock-places/com.example.stockPlaceId=WAREHOUSE-001/entries~where(product.identifiers.com.example.sku=PHONE-001)
+GET /v1/stock-places/com.example.stockPlaceId=WAREHOUSE-001/entries~where(product/identifiers/com.example.sku=PHONE-001)
 
 # Low stock entries (if supported)
 GET /v1/stock-places/com.example.stockPlaceId=WAREHOUSE-001/entries~where(availableQuantity<10)
@@ -906,7 +906,7 @@ Shipment orders track physical delivery of products. Over the API they are creat
 
 A shipment order comes from the trade order's `createShipment` action, and from nothing else:
 
-- **`tryFulfill` does not create one.** It fulfils the order directly: the order reads `Fulfilled`, the stock moves, and the order's `shipments` stay empty.
+- **`tryFulfill` does not create one.** It fulfils the order directly: the order reads `Fulfilled`, the sold units leave the seller's stock, and the order's `shipments` stay empty. The physical count at the source place moves only when the buyer has a destination place — see [gotcha 57](../common-gotchas.md#57-tryfulfill-leaves-physicalquantity-alone-unless-the-buyer-has-a-place).
 - **`POST /v1/shipment-orders` does not build a shipment from your body.** Posting explicit fields (`sender`, `receiver`, `source`, `items`, …) creates an identifier shell only — the body is dropped, and the resulting resource carries none of the values you sent.
 
 > **Availability: v26.1.12 and earlier.** Approve the order, send `{"createShipment": true}`, then `release` the shipment order it created. `tryFulfill` is the alternative that fulfils the order without a shipment order.
@@ -924,7 +924,7 @@ Once it exists, your integration's job is to **find it, read it, and release it*
 
 ```bash
 # Find the shipments belonging to an order
-GET /v1/shipment-orders~where(orders.identifiers.com.example.orderId=ORD-001)
+GET /v1/shipment-orders~where(orders/com.example.orderId=ORD-001)
 
 # Read it
 GET /v1/shipment-orders/com.example.shipmentId=SHIP-001
@@ -1268,7 +1268,7 @@ Shipment orders reference a carrier as an `agent` (typically a company). There i
 GET /v1/stock-places~take(50)
 
 # By owner
-GET /v1/stock-places~where(owner.identifiers.com.example.companyId=OUR-COMPANY)~take(50)
+GET /v1/stock-places~where(owner/identifiers/com.example.companyId=OUR-COMPANY)~take(50)
 
 # Root places (no parent)
 GET /v1/stock-places~where(parent=null)~take(50)
@@ -1539,7 +1539,7 @@ POST /v1/shipment-orders/@find
 
 1. **Find the shipment for an order** (the platform creates it during fulfilment — your integration does not):
    ```bash
-   GET /v1/shipment-orders~where(orders.identifiers.com.example.orderId=ORD-001)
+   GET /v1/shipment-orders~where(orders/com.example.orderId=ORD-001)
    ```
 
 2. **Or sync incrementally:**
@@ -1669,10 +1669,10 @@ On v26.1.12 and earlier, create the shipment order from the approved order, then
 PATCH /v1/trade-orders/com.example.orderId=ORD-CUST-2024-001/actions
 {"createShipment": true}
 
-GET /v1/shipment-orders~where(orders.identifiers.com.example.orderId=ORD-CUST-2024-001)
+GET /v1/shipment-orders~where(orders/com.example.orderId=ORD-CUST-2024-001)
 ```
 
-> **Note:** Source, items and delivery terms come from the trade order; `POST /v1/shipment-orders` with explicit fields would create an identifier shell with the body dropped. The release that carries deliveries and returns has no `createShipment`: fulfil with `tryFulfill` instead, which moves the stock at fulfilment and creates no shipment order — see [Where Shipment Orders Come From](#where-shipment-orders-come-from).
+> **Note:** Source, items and delivery terms come from the trade order; `POST /v1/shipment-orders` with explicit fields would create an identifier shell with the body dropped. The release that carries deliveries and returns has no `createShipment`: fulfil with `tryFulfill` instead, which debits the seller's stock at fulfilment and creates no shipment order — see [Where Shipment Orders Come From](#where-shipment-orders-come-from).
 
 ### Step 6: Release Shipment
 
@@ -1837,7 +1837,7 @@ POST /v1/stock-adjustments  # Second request (may fail)
 | 4 | Release shipment (decrements stock) |
 | 5 | (External: fulfillment/tracking via integrations) |
 
-`tryFulfill` is the alternative that fulfils the order without a shipment order: the stock moves at fulfilment and there is nothing to release. See [Where Shipment Orders Come From](#where-shipment-orders-come-from).
+`tryFulfill` is the alternative that fulfils the order without a shipment order: the seller's stock is debited at fulfilment and there is nothing to release. The physical count at the source place moves only when the buyer has a destination place — see [gotcha 57](../common-gotchas.md#57-tryfulfill-leaves-physicalquantity-alone-unless-the-buyer-has-a-place) and [Where Shipment Orders Come From](#where-shipment-orders-come-from).
 
 ### Instance Tracking
 

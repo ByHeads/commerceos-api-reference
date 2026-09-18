@@ -408,6 +408,7 @@ The entity-level cousin of this is [gotcha 41](common-gotchas.md#41-a-write-unde
 
 ```bash
 DELETE /v1/products/com.example.sku=SKU-1        # 0 — products are not deletable, so zero even with write:api
+DELETE /v1/people/com.example.customerId=CUST-1  # 0 — nor are people; erasure is PATCH {"gdprForgotten": true}
 DELETE /v1/products/com.example.sku=SKU-1/prices/{key}   # 0 from a token holding products:write but not prices:write
 DELETE /v1/prices/com.example.priceId=PRICE-1    # 1 — prices are
 DELETE /v1/products/com.example.sku=SKU-1/unit   # 0 — the member is empty, so there is nothing to write

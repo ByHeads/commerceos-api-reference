@@ -671,8 +671,10 @@ PATCH /v1/people/com.acme.crm-id=CRM-CUST-00001234
 ```
 
 **Effects of `gdprForgotten: true`:**
-- Personal data fields are masked in responses
-- Historical transactions remain for accounting (anonymized)
+- The names are replaced (`givenName "GDPR"`, `familyName "Forgotten"`), and the national ID, nationality, email addresses, phone numbers, postal addresses and user login are cleared
+- It cannot be undone: `{"gdprForgotten": false}` answers `200` and the flag stays `true`
+- It is refused silently while the person takes part in a trade order that is not only `New` or only `Unreserved` — read the flag back, a `200` alone is not confirmation
+- `DELETE /v1/people/{id}` is a `200` with `deletedCount: 0`; erasure is the only removal a person has — see [GDPR Considerations](../working-with/customers.md#gdpr-considerations)
 - Identifiers may be retained for "do not recreate" tracking
 
 ### Consent Fields via Trade Relationship

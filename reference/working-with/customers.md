@@ -1048,6 +1048,7 @@ The `timeline` returns receipts where the agent is the buyer.
 | Create agent | POST | `/v1/{collection}` | Returns created agent |
 | Create or update | PUT | `/v1/{collection}/{id}` | Upsert by identifier |
 | Update agent | PATCH | `/v1/{collection}/{id}` | Partial update |
+| Delete person | DELETE | `/v1/people/{id}` | Not supported — `200` with `deletedCount: 0`. Use `gdprForgotten` for erasure (see [GDPR Considerations](#gdpr-considerations)) |
 | Find by email/phone | PUT | `/v1/agents/@find` | Method type (heuristic lookup) |
 | Get relationships | GET | `/v1/{collection}/{id}/customerRelations` | As supplier |
 | Get timeline | GET | `/v1/{collection}/{id}/timeline` | Receipt history |
@@ -1437,7 +1438,17 @@ PATCH /v1/people/com.example.customerId=CUST-001
 }
 ```
 
-When `gdprForgotten: true`, personal data is masked in responses.
+**A person cannot be deleted through the API; `gdprForgotten` is the removal.** No agent resource (person, company, store) implements deletion, so `DELETE /v1/people/{id}` is the same no-op as on products and orders. Erasure through `gdprForgotten` is final:
+
+| Request | Answer |
+|---|---|
+| `DELETE /v1/people/{key}` | `200 {"deletedCount": 0, "info": "Nothing happened"}` — the person is still there |
+| `PATCH /v1/people/{key} {"gdprForgotten": true}` | `200`; the person now reads `givenName "GDPR"`, `familyName "Forgotten"`, `fullName "GDPR Forgotten"`, `emailAddress null`, `gdprForgotten true` |
+| the same `PATCH` again | `200`, unchanged |
+| `PATCH /v1/people/{key} {"gdprForgotten": false}` | `200`, and the flag still reads `true` — erasure cannot be undone |
+| `GET /v1/companies~just(gdprForgotten)` | `null`: the member exists on people only |
+
+Erasure also clears the national ID, nationality, every email address, phone number and postal address, and removes the person's user login. It is **refused silently** when the person takes part in any trade order whose status is anything other than only `New` or only `Unreserved`: the `PATCH` answers `200` and the flag reads `false` afterwards. An approved, fulfilled or cancelled order blocks it for good. Read `gdprForgotten` back; a `200` alone does not mean the person was erased.
 
 ---
 
