@@ -7,8 +7,9 @@
 // Direction "Payout" gives ["Authorize"] unless `debitSynchronously` is true.
 //
 // A `.03` payment waits WAIT_MS for the cancel call and completes when none arrives. A `.04`
-// payment waits WAIT_MS for the customer's phone (`POST /tap/{sessionId}`) and the phone taps by
-// itself when the window closes. Set PIGGY_WAIT_MS to play by hand. Set PORT to pick the port.
+// payment waits WAIT_MS for the customer's phone (`POST /tap/{sessionId}`, the id travels in the
+// Wait step's `params`) and the phone taps by itself when the window closes. Set PIGGY_WAIT_MS to
+// play by hand. Set PORT to pick the port.
 import { createServer } from "node:http";
 import { createBank } from "./bank.mjs";
 
@@ -96,7 +97,7 @@ export function startPiggyServer({ port = 0, now = () => new Date(), waitMs = 30
             const response = await fetch(url, { method: "PUT", headers, body: JSON.stringify(state), signal: AbortSignal.timeout(2000) });
             log(`kv ${paymentKey} ${response.status}`);
         } catch (error) {
-            log(`kv ${paymentKey} failed: ${error.message}`);
+            log(`kv ${paymentKey} not written (${error.message}); CommerceOS is not reachable at ${cosBaseUrl}`);
         }
     }
 
@@ -130,7 +131,7 @@ export function startPiggyServer({ port = 0, now = () => new Date(), waitMs = 30
                 break;
             }
             case "04": {
-                send("Wait", { message: "Waiting for the customer's phone" });
+                send("Wait", { message: "Waiting for the customer's phone", params: [sessionId] });
                 writeState(paymentKey, { sessionId, state: "waiting" });
                 const tap = window_(waitMs);
                 const tapped = await Promise.race([bank.waitForTap(sessionId), tap.promise]);
