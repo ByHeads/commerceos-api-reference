@@ -1,0 +1,26 @@
+{
+    "id": "E1",
+    "title": "Bad request: an unknown methodId yields a non-2xx status with errors",
+    "amount": "100.00",
+    "steps": [
+        {
+            "call": "startPayment",
+            "key": "{{paymentKey}}",
+            "args": {
+                "methodId": "com.epicheck.unknown",
+                "amount": "{{amount}}",
+                "currencyCode": "{{currencyCode}}",
+                "direction": "Payment",
+                "payer": "{{payer}}",
+                "payee": "{{payee}}",
+                "token": "{{token}}",
+                "locale": "{{locale}}",
+                "specification": "{{specification}}"
+            },
+            "expect": {
+                "status": "4xx",
+                "schema": "ErrorBody"
+            }
+        }
+    ]
+}

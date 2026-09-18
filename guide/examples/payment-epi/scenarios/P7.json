@@ -1,0 +1,40 @@
+{
+    "id": "P7",
+    "title": "Cancel: Cancellable, then Cancel after POST /payments/{token}/cancel",
+    "amount": "100.03",
+    "steps": [
+        {
+            "call": "startPayment",
+            "key": "{{paymentKey}}",
+            "args": {
+                "methodId": "{{methodId}}",
+                "amount": "{{amount}}",
+                "currencyCode": "{{currencyCode}}",
+                "direction": "Payment",
+                "payer": "{{payer}}",
+                "payee": "{{payee}}",
+                "token": "{{token}}",
+                "locale": "{{locale}}",
+                "specification": "{{specification}}"
+            },
+            "expect": {
+                "status": 200,
+                "schema": "StepCancel",
+                "events": [
+                    "Cancellable",
+                    "Cancel"
+                ]
+            },
+            "react": {
+                "Cancellable": {
+                    "call": "cancel",
+                    "key": "{{event.cancellationToken}}",
+                    "args": "{{cancel}}",
+                    "expect": {
+                        "status": 200
+                    }
+                }
+            }
+        }
+    ]
+}

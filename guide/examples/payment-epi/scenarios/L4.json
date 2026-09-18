@@ -1,0 +1,16 @@
+{
+    "id": "L4",
+    "title": "Methods: GET /methods returns at least one method with a unique methodId",
+    "steps": [
+        {
+            "call": "methods",
+            "expect": {
+                "status": 200,
+                "schema": "MethodDto",
+                "each": true,
+                "minItems": 1,
+                "unique": "methodId"
+            }
+        }
+    ]
+}

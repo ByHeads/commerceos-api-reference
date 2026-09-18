@@ -1,0 +1,15 @@
+{
+    "id": "L3",
+    "title": "Config schema: GET /config-schema returns a form description with members",
+    "steps": [
+        {
+            "call": "configSchema",
+            "expect": {
+                "status": 200,
+                "keys": [
+                    "members"
+                ]
+            }
+        }
+    ]
+}
