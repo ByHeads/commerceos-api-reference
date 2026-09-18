@@ -217,7 +217,7 @@ PUT /people/com.myapp.userId=123 '{"givenName": "John"}'
 GET /people/com.myapp.userId=123
 ```
 
-**The shape of a namespaced key.** What the API recognises as a namespaced identifier key is **exactly three dot-separated segments**, at most 128 characters, with **no dash in the first** — `com.myapp.userId`, `com.example.sku`. A dash is fine in the second and third segments, and case is not significant to the shape. Full grammar: [namespaced key](primitives.md#namespaced-key).
+**The shape of a namespaced key.** What the API recognises as a namespaced identifier key is **exactly three dot-separated segments**, at most 128 characters, with **no dash in the first** — `com.myapp.userId`, `com.example.sku`. A dash is fine in the second and third segments, and case is not significant to the shape. Full grammar: [namespaced key](primitives.md#namespaced-key). A key with four segments is **not refused**: the write answers `200`, the identifier is simply absent from the response, and a lookup by it is `404` — which reads like a resource that does not store external identifiers. When an identifier "does not stick", count the segments first.
 
 "Exactly three" is the part to check, because the natural way to overshoot it is to write something that looks *more* correct rather than less:
 

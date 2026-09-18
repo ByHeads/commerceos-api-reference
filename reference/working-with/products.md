@@ -328,7 +328,7 @@ GET /v1/products/com.example.sku=PRODUCE-001~with(plu)
 
 ### Instance Types
 
-The `instanceType` field categorizes how products behave, especially for serialized tracking:
+The `instanceType` field categorizes how products behave, especially for serialized tracking. A product created through the API without one still gets the platform's default instance type, so no product is type-less: `productInstances` on a stock adjustment or an order line work for it as for any other product.
 
 | Instance Type | Description | Tracking Field | Use Case |
 |---------------|-------------|----------------|----------|

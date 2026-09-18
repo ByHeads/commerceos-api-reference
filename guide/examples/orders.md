@@ -87,6 +87,11 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/trade-orders/cust
 # received order reads ["Committed","Fulfilled"] and = would miss it
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/trade-orders~where(customer/identifiers/com.heads.seedID=store1,status=~Committed)~just(identifiers,supplier,requestedArrivalTime,status,deliveryDiscrepancy)"
 
+# Approve first: a receipt is booked against the order's Committed units; on a New order it is a 400
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=PO-2024-001/actions" \
+  -H "Content-Type: application/json" \
+  -d '{"tryApprove": true}'
+
 # Book a receipt in one request: bare delivery shape, lines naming the order lines with the
 # counted quantity, and approve in the same body. sender, receiver and currency are required.
 curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/deliveries" \
@@ -265,9 +270,15 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/trade-relations
 
 ## Shipment Orders
 
-> **Note:** Shipment orders are **not created over the API**. The platform raises them out of fulfilment. `POST /v1/shipment-orders` creates only an identifier shell — the body is dropped — and there is no trade order action that creates one either (`createShipment` is not an action). Read them and `release` them.
+> **Note:** `POST /v1/shipment-orders` creates only an identifier shell — the body is dropped. A shipment order is created from an approved trade order by the `createShipment` action on v26.1.12 and earlier; the release that carries deliveries and returns has no `createShipment` (sending it is dropped) and books outbound goods as a delivery on `/v1/deliveries`. `tryFulfill` never creates one. Read them and `release` them.
 
 ```bash
+# v26.1.12 and earlier: create the shipment order from an approved order. A second send changes
+# nothing while the order already has a New shipment order
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-2024-001/actions" \
+  -H "Content-Type: application/json" \
+  -d '{"createShipment": true}'
+
 # List all shipment orders
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/shipment-orders"
 
@@ -283,7 +294,7 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/shipment-orders/c
 # Get shipment records
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/shipment-orders/com.myapp.shipmentId=SHIP-001/records"
 
-# Find the shipment orders raised for a trade order
+# Find the shipment orders of a trade order
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-2024-001/shipments"
 
 # Shipment finder (only modifiedTag filter is supported)
@@ -824,7 +835,7 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/trade-orders" \
 - **Item mutations**: While the API may accept POST/PATCH/DELETE to `/items`, the intended pattern is to set all items at creation. `unitAmountExclVat` can be PATCHed on editable items.
 - **Action names**: Use `tryApprove`/`tryCancel`, not `confirm`/`cancel`
 - **Payments**: Can be created directly via `POST /v1/payment-orders`, or via the trade order actions `createPayment` / `createWalletPayment`
-- **Shipments**: Cannot be created over the API. `POST /v1/shipment-orders` returns an identifier shell with the body dropped, and `createShipment` is not a trade order action — the OpenAPI document's action example still shows it, but it is ignored. The platform raises shipment orders out of fulfilment; `release` is the only write they take
+- **Shipments**: `POST /v1/shipment-orders` returns an identifier shell with the body dropped. On v26.1.12 and earlier the trade order action `{"createShipment": true}` creates one from the approved order; the release that carries deliveries and returns has no `createShipment`. `tryFulfill` never creates one. `release` is the only write a shipment order takes
 - **Purchasing**: Receiving against a purchase order and returning to a supplier are separate documents — see [Working with Purchasing](../../reference/working-with/purchasing.md)
 - **createPayment requires currency**: The `createPayment` action requires a `currency` field; omitting it throws "Currency not found."
 - **Payment methods**: Use `methodId` from `/v1/payment-methods` (e.g., `methodId: "com.heads.cash"`, `methodId: "com.heads.card"`)

@@ -255,7 +255,7 @@ Company Stock Roots
 
 ### Shipment Order Fields
 
-Shipment orders are created by the platform as part of fulfilment. Over the API they are **read and released** — see [Shipment Orders](#shipment-orders). The following fields are exposed:
+Shipment orders are created from an approved trade order by `createShipment` on v26.1.12 and earlier; `tryFulfill` does not create one on any release. Over the API they are **read and released** — see [Shipment Orders](#shipment-orders). The following fields are exposed:
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -900,16 +900,27 @@ Stock roots determine where an agent's inventory is managed:
 
 ## Shipment Orders
 
-Shipment orders track physical delivery of products. They are **created by the platform** as part of fulfilment; over the API they are read and released. `status` is an array with values `New`, `Released`, `Transiting`, `Acquired` (plus partial summaries).
+Shipment orders track physical delivery of products. Over the API they are created from an approved trade order (on the releases that have `createShipment`), read, and released. `status` is an array with values `New`, `Released`, `Transiting`, `Acquired` (plus partial summaries).
 
 ### Where Shipment Orders Come From
 
-Shipment orders are not something an integration creates:
+A shipment order comes from the trade order's `createShipment` action, and from nothing else:
 
-- **There is no `createShipment` action on a trade order.** The action does not exist. An OpenAPI example that shows `{"createShipment": true}` on `/v1/trade-orders/{id}/actions` is stale and is ignored by the server.
+- **`tryFulfill` does not create one.** It fulfils the order directly: the order reads `Fulfilled`, the stock moves, and the order's `shipments` stay empty.
 - **`POST /v1/shipment-orders` does not build a shipment from your body.** Posting explicit fields (`sender`, `receiver`, `source`, `items`, …) creates an identifier shell only — the body is dropped, and the resulting resource carries none of the values you sent.
 
-The shipment order appears when the platform fulfils the order. Your integration's job is to **find it, read it, and release it**:
+> **Availability: v26.1.12 and earlier.** Approve the order, send `{"createShipment": true}`, then `release` the shipment order it created. `tryFulfill` is the alternative that fulfils the order without a shipment order.
+>
+> **Availability: the release that carries deliveries and returns.** `createShipment` is removed and sending it is dropped: `200`, no shipment order. Outbound goods are booked as a delivery on `/v1/deliveries`.
+
+```bash
+# v26.1.12 and earlier: one shipment order from the approved order's shippable lines.
+# Does nothing if the order already has a shipment order in status New
+PATCH /v1/trade-orders/com.example.orderId=ORD-001/actions
+{"createShipment": true}
+```
+
+Once it exists, your integration's job is to **find it, read it, and release it**:
 
 ```bash
 # Find the shipments belonging to an order
@@ -1650,15 +1661,18 @@ WH-STORAGE:
   IPHONE-15-PRO: physical=50, available=49, reserved=1
 ```
 
-### Step 5: Pick Up the Shipment
+### Step 5: Create the Shipment Order
 
-The platform creates the shipment order as part of fulfilment. Find it from the order:
+On v26.1.12 and earlier, create the shipment order from the approved order, then find it:
 
 ```bash
+PATCH /v1/trade-orders/com.example.orderId=ORD-CUST-2024-001/actions
+{"createShipment": true}
+
 GET /v1/shipment-orders~where(orders.identifiers.com.example.orderId=ORD-CUST-2024-001)
 ```
 
-> **Note:** There is nothing to post here. Source, items and delivery terms are determined by the platform from the trade order, and `POST /v1/shipment-orders` with explicit fields would create an identifier shell with the body dropped.
+> **Note:** Source, items and delivery terms come from the trade order; `POST /v1/shipment-orders` with explicit fields would create an identifier shell with the body dropped. The release that carries deliveries and returns has no `createShipment`: fulfil with `tryFulfill` instead, which moves the stock at fulfilment and creates no shipment order — see [Where Shipment Orders Come From](#where-shipment-orders-come-from).
 
 ### Step 6: Release Shipment
 
@@ -1819,9 +1833,11 @@ POST /v1/stock-adjustments  # Second request (may fail)
 |----------|---------------|
 | 1 | Create trade order |
 | 2 | Approve order (reserves stock) |
-| 3 | Fulfil the order (`{"tryFulfill": true}`); the platform raises the shipment order from fulfilment — it is not created over the API |
+| 3 | Create the shipment order (`{"createShipment": true}`) — v26.1.12 and earlier; the release that carries deliveries and returns has no `createShipment` |
 | 4 | Release shipment (decrements stock) |
 | 5 | (External: fulfillment/tracking via integrations) |
+
+`tryFulfill` is the alternative that fulfils the order without a shipment order: the stock moves at fulfilment and there is nothing to release. See [Where Shipment Orders Come From](#where-shipment-orders-come-from).
 
 ### Instance Tracking
 

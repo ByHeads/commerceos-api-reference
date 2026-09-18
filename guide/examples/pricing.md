@@ -61,7 +61,7 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/prices" \
 curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/prices" \
   -H "Content-Type: application/json" \
   -d '{
-    "identifiers": {"com.myapp.priceId": "PRICE-004", "com.myapp.priceList": "B2B-2026"},
+    "identifiers": {"com.myapp.priceId": "PRICE-004"},
     "products": [{"identifiers": {"com.myapp.sku": "SKU-001"}}],
     "sellers": [{"identifiers": {"com.heads.seedID": "ourcompany"}}],
     "buyers": [{"identifiers": {"com.myapp.groupId": "wholesale-customers"}}],
@@ -69,8 +69,10 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/prices" \
     "currency": {"identifiers": {"currencyCode": "SEK"}}
   }'
 
-# List every price on a tagged price list
-curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/prices~where(identifiers/com.myapp.priceList=B2B-2026)~with(products,buyers)~take(100)"
+# List a "price list": every price whose buyer is the group. The identifier goes directly
+# under buyers/ - buyers/identifiers/... matches nothing. Do not tag prices with a shared
+# identifier value: every identifier value names exactly one price
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/prices~where(buyers/com.myapp.groupId=wholesale-customers)~with(products,buyers)~take(100)"
 
 # Update price
 curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/prices/com.myapp.priceId=PRICE-001" \

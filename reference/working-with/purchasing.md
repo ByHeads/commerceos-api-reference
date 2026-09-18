@@ -438,12 +438,22 @@ POST /v1/deliveries
 
 ### Safe Receiving
 
-**Always send your own identifier.** A `POST` is an upsert, so a retry with the same identifier is harmless; without one, every retry is a new document:
+**Always send your own identifier.** A `POST` is an upsert. A retry with the same identifier is harmless **for the `order` and `orderItems` shapes**, which carry no lines of their own: the replay resolves to the existing delivery and applies the body to it. A body with inline `items` is different — the lines carry no identifier of their own, so every replay adds them again while the delivery is `New`, and is refused once it is `Delivered`. Without an identifier, every retry is a new document:
 
 | Request | Deliveries afterwards |
 |---|---|
 | `POST [{ "identifiers": { "com.example.deliveryId": "GR-1" }, "order": {…PO-1…} }]` twice | one — the second `POST` is an update of `GR-1` and adds no lines |
+| `POST [{ "identifiers": { "com.example.deliveryId": "GR-1" }, "sender", "receiver", "currency", "items": [{ "orderItem": …, "quantity": "8" }] }]` twice while `GR-1` is `New` | one — with the line **a second time**: `200`, the same delivery, two lines of 8 |
+| the one-request receipt, same body with `"actions": { "approve": true }`, twice | one, `Delivered` — the replay is `400` `Items can only be added while the delivery is New.` and changes nothing; the `approve` in the body is a no-op on a `Delivered` delivery |
 | `POST [{ "order": {…PO-1…} }]` once more, without identifiers | two — a second `New` delivery expecting the same 10 |
+
+After a timeout on a body with inline `items`, read the delivery before you resend:
+
+```bash
+GET /v1/deliveries/com.example.deliveryId=GR-1~with(items)
+```
+
+Compare `status` and the number of lines with what you sent, and resend only what is missing.
 
 A delivery created without an identifier of your own cannot be retried safely, and the duplicate it leaves behind is exactly the situation the warning below is about.
 
@@ -513,10 +523,10 @@ A line's essentials are `identifiers`, `product`, `quantity` (received), `expect
 | `delivery` | delivery | The owning document. |
 | `orderItem` | trade order item | The order line this line delivers against. Absent on an unreferenced line. |
 | `package` | package | Read-only. |
-| `productInstances` | product instance[] | Read-only. |
+| `productInstances` | product instance[] | The received serial- or batch-tracked units. See the note below. |
 | `totalAmount` | decimal | `quantity` × the order line's unit price — see [What an Overdelivery Is Worth](#what-an-overdelivery-is-worth). |
 
-> **Serial numbers and batches cannot yet be captured on a delivery through the API.** Receive tracked products by `quantity`; a serial- or batch-tracked product is accepted on a plain count and the order line is fulfilled as usual. Capture at receipt is planned.
+> **Serial and batch capture at receipt does not work end to end on the first builds of the purchasing loop.** A delivery line accepts `productInstances`, but the received units are not counted against the order line, and a replacement while the line is `New` answers `200` without storing anything. Receive tracked products by `quantity` on those builds: a serial- or batch-tracked product is accepted on a plain count and the order line is fulfilled as usual.
 
 ### Status and Discrepancy Values
 
@@ -712,7 +722,9 @@ Essential members:
 | `status` | string[] | `New` \| `Committed` \| `Fulfilled` \| `Cancelled` |
 | `items` | return item[] | Each with `product`, `quantity`, `reason` and `status`. |
 
-Non-essential: `orders` (backlink) and `labels`, as on deliveries. On an item, `orderItem` and `deliveryItem` (the provenance of the line — whichever it was created from), `productInstances` (read-only) and `totalAmount`.
+Non-essential: `orders` (backlink) and `labels`, as on deliveries. On an item, `orderItem` and `deliveryItem` (the provenance of the line — whichever it was created from), `productInstances` (the returned serial- or batch-tracked units) and `totalAmount`.
+
+> **Serial and batch capture on a return line does not work end to end on the first builds of the purchasing loop**, as on a delivery line: the line accepts `productInstances`, but a replacement while the line is `New` answers `200` without storing anything. Return tracked products by `quantity` on those builds.
 
 ### Editing Return Items
 

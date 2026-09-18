@@ -346,7 +346,7 @@ A [customer group](customers.md#customer-groups) reference in `buyers` works exa
 # B2B price list: one price per product, all with the same group as buyer
 POST /v1/prices
 {
-  "identifiers": {"com.example.priceId": "PROD-001-B2B", "com.example.priceList": "B2B-2026"},
+  "identifiers": {"com.example.priceId": "PROD-001-B2B"},
   "products": [{"identifiers": {"com.example.sku": "PROD-001"}}],
   "sellers": [{"identifiers": {"com.example.companyId": "OUR-COMPANY"}}],
   "buyers": [{"identifiers": {"com.example.groupId": "wholesale-customers"}}],
@@ -355,12 +355,14 @@ POST /v1/prices
 }
 ```
 
-**There is no price-list object.** A "price list" is simply the set of prices that share a buyer. If you need to address the list as a whole — to audit it, or to replace it at a season change — tag its prices through an identifier namespace of your own, as `com.example.priceList` above, and select them with `~where(...)`:
+**There is no price-list object, and no tag field on a price.** A "price list" is the set of prices that share a buyer. Every identifier value names exactly one price, so do not give several prices one shared value such as a list name or a season: the second write resolves to the first price and updates it — its own identifier and amount included — instead of creating another. Measured: two prices written with `"com.example.priceList": "B2B-2026"` in their identifiers end as **one** price, whose `priceId` and `amount` are whatever the last write sent. List a price list through the buyer instead:
 
 ```bash
-# Every price on the B2B-2026 list
-GET /v1/prices~where(identifiers/com.example.priceList=B2B-2026)~with(products,buyers)~take(100)
+# Every price whose buyer is the wholesale group
+GET /v1/prices~where(buyers/com.example.groupId=wholesale-customers)~with(products,buyers)~take(100)
 ```
+
+Put the identifier directly under the relation name — `buyers/com.example.groupId=…`, or `buyers/key=…` for a database key. The form `buyers/identifiers/com.example.groupId=…` answers `200 []` and matches nothing (see [gotcha 56](../common-gotchas.md#56-a-filter-through-an-array-relation-takes-the-identifier-directly-under-the-relation-name)). To replace a list at a season change, give each price a `from`/`to` window ([Validity Periods](#validity-periods)) and list it with the buyer filter; there is no other grouping mechanism, and prices have no `labels` member.
 
 **Which price wins.** Selection picks the **lowest eligible amount** (see [Price Selection Logic](#price-selection-logic)), so a group price takes effect only when it is *lower* than the general price; a group price above the general price simply loses to it. `/v1/prices` has no buyer exclusion, so "group X pays more than everyone else" cannot be expressed through prices today.
 

@@ -1455,7 +1455,7 @@ Related: [gotcha 47](#47-a-declared-type-key-is-not-always-one-you-can-write), [
 
 > **Availability:** v26.1.11 and later.
 
-Every identifier in one `identifiers` object has to refer to the **same** object. Send two that are already owned by two different records and the request is refused with `400 failed indexing` — no new type of error, the one a reference that resolves to nothing has always produced — and **nothing is written**. In an array body the whole batch is rejected, not just the offending element.
+Every identifier in one `identifiers` object has to refer to the **same** object. Send two that are already owned by two different records and the request is refused with `400 failed indexing` — no new type of error, the one a reference that resolves to nothing has always produced — and the transaction chunk that holds the offending element is rolled back — 200 items by default — while chunks before it stay committed. Send `X-Transaction-Count: all` when the whole request must stand or fall together. See [transaction chunking](../features/streaming.md#3-transaction-chunking).
 
 ```bash
 # Two people already exist: X carries com.example.customerNo=12345, Y carries com.example.memberId=M-9
@@ -1651,6 +1651,30 @@ Measured on four orders for one supplier and store — `["Committed"]`, `["Commi
 A delivery's `status` is also an array, but a delivery has one status at a time, so `~where(status=Delivered)` is enough there.
 
 Related: [Orders → Status Behavior](working-with/orders.md#status-behavior), [Working with Purchasing → Finding Purchase Orders](working-with/purchasing.md#finding-purchase-orders--long-standing-except-deliverydiscrepancy), [Operators → `~where`](operators-catalog.md#wherepredicates).
+
+---
+
+## 56. A Filter Through an Array Relation Takes the Identifier Directly Under the Relation Name
+
+Filtering through a **single** reference goes through `identifiers/`, as documented everywhere: `~where(currency/identifiers/currencyCode=SEK)`. Filtering through an **array** relation — `buyers`, `sellers`, `products` on a price — does not: the identifier sits directly under the relation name, and the `identifiers/` form is a `200 []` that matches nothing, with no complaint.
+
+```bash
+# RIGHT - array relation: identifier directly under the relation name
+GET /v1/prices~where(buyers/com.example.groupId=wholesale-customers)~take(100)
+GET /v1/prices~where(products/com.example.sku=PROD-001)~take(100)
+GET /v1/prices~where(buyers/key=<database key>)~take(100)
+
+# WRONG - 200 [] with nothing matched
+GET /v1/prices~where(buyers/identifiers/com.example.groupId=wholesale-customers)~take(100)
+
+# Single reference: the identifiers/ segment is the form that works
+GET /v1/prices~where(currency/identifiers/currencyCode=SEK)~take(100)     # matches
+GET /v1/prices~where(currency/currencyCode=SEK)~take(100)                 # 200 []
+```
+
+Measured on `/v1/prices`: `buyers/com.example.groupId=…` and `buyers/key=…` return the same set, `products/com.example.sku=…` returns the price for that product, and each `identifiers/` form on those three returns `[]`; for the single reference `currency` it is the other way round. An empty result from a filter through a relation is therefore not proof that nothing matches — check which of the two forms the relation takes before trusting it.
+
+Related: [Prices → Customer Groups as Buyers](working-with/prices.md#customer-groups-as-buyers-price-lists), [Operators → `~where`](operators-catalog.md#wherepredicates).
 
 ---
 

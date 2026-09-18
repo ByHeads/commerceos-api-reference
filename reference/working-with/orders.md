@@ -923,9 +923,15 @@ PATCH /v1/trade-orders/{identifier}/actions
 | `changeDeliveryAddress` | Address object | Updates delivery address |
 | `changeInvoiceAddress` | Address object | Updates invoice address |
 
-That table is the whole set — there are no other trade order actions.
+That table is the whole set on the release that carries deliveries and returns. Earlier releases have one more:
 
-> **Note:** `createShipment` is **not** a trade order action and never was. The OpenAPI document's example for the trade order `actions` member still shows `{ "createShipment": true }`; sending it is ignored, and no shipment order is created. Shipment orders are raised by the platform out of fulfilment — see [Shipments](#shipments).
+> **`createShipment`** — whether it is a trade order action depends on the release.
+>
+> **Availability: v26.1.12 and earlier.** Approve the order, send `{"createShipment": true}`, then `release` the shipment order it created. `tryFulfill` is the alternative that fulfils the order without a shipment order.
+>
+> **Availability: the release that carries deliveries and returns.** `createShipment` is removed and sending it is dropped: `200`, no shipment order. Outbound goods are booked as a delivery on `/v1/deliveries`.
+>
+> On the releases that have it, it creates one shipment order from the order's shippable lines — the `Committed`, physical ones — unless the order already has a shipment order in status `New`, in which case it does nothing. See [Where Shipment Orders Come From](#where-shipment-orders-come-from).
 
 ### Approve Order (tryApprove)
 
@@ -1204,11 +1210,21 @@ GET /v1/trade-orders/com.example.orderId=ORD-001/shipments
 
 ### Where Shipment Orders Come From
 
-**Shipment orders are not created over the API.** The platform raises them out of fulfilment; an integration reads them and releases them.
+A shipment order comes from the trade order's `createShipment` action, on the releases that have it. Nothing else creates one: **`tryFulfill` fulfils the order directly and raises no shipment order** — the order reads `Fulfilled`, the stock moves, and `GET …/shipments` stays `[]` — and `POST /v1/shipment-orders` does not create a usable shipment: the collection has no `create`, so a body carrying `shipper`, `recipient`, `items` and the rest is **dropped** and all you get back is an identifier shell with none of the fields you sent.
 
-`POST /v1/shipment-orders` does not create a usable shipment: the collection has no `create`, so a body carrying `shipper`, `recipient`, `items` and the rest is **dropped** and all you get back is an identifier shell with none of the fields you sent. There is no trade order action that creates one either — `createShipment` is not an action (see [Available Actions](#available-actions)).
+> **Availability: v26.1.12 and earlier.** Approve the order, send `{"createShipment": true}`, then `release` the shipment order it created. `tryFulfill` is the alternative that fulfils the order without a shipment order.
+>
+> **Availability: the release that carries deliveries and returns.** `createShipment` is removed and sending it is dropped: `200`, no shipment order. Outbound goods are booked as a delivery on `/v1/deliveries`.
 
-What you can do with a shipment order is read it and release it.
+```bash
+# v26.1.12 and earlier: create the shipment order from the approved order's shippable lines
+PATCH /v1/trade-orders/com.example.orderId=ORD-001/actions
+{"createShipment": true}
+
+GET /v1/trade-orders/com.example.orderId=ORD-001/shipments
+```
+
+It creates one shipment order from the lines that are `Committed` and physical, unless the order already has a shipment order in status `New` — then it does nothing, so sending it twice leaves one shipment. With no shippable line it creates nothing and still answers `200`. The lines must share buyer, seller, source and destination; a mix is refused. What you can do with a shipment order afterwards is read it and release it.
 
 ### Releasing Shipments
 
@@ -1219,7 +1235,7 @@ PATCH /v1/shipment-orders/com.example.shipmentId=SHIP-001/actions
 {"release": true}
 ```
 
-> **Note:** `release` is the only action available on shipment orders, and it is the only write a shipment order takes. Creation and configuration happen inside the platform's fulfilment flow, not over the API.
+> **Note:** `release` is the only action available on shipment orders, and it is the only write a shipment order takes. Its contents come from the trade order it was created from — see [Where Shipment Orders Come From](#where-shipment-orders-come-from).
 
 See the [Stock guide](stock.md) for detailed shipment management.
 
@@ -1565,7 +1581,7 @@ PATCH /v1/trade-orders/com.example.orderId=ORD-001/actions
 | Get items | GET | `/v1/shipment-orders/{id}/items` | Line items |
 | Release shipment | PATCH | `/v1/shipment-orders/{id}/actions` | Release shipment (`{"release": true}`) |
 
-> **Note:** There is no create operation. `POST /v1/shipment-orders` returns an identifier shell with the body dropped, and `createShipment` is not a trade order action. Shipment orders are raised by the platform out of fulfilment — see [Where Shipment Orders Come From](#where-shipment-orders-come-from).
+> **Note:** There is no create operation on this collection: `POST /v1/shipment-orders` returns an identifier shell with the body dropped. A shipment order is created from an approved trade order by `{"createShipment": true}` on v26.1.12 and earlier; the release that carries deliveries and returns has no `createShipment`, and `tryFulfill` never creates one on any release — see [Where Shipment Orders Come From](#where-shipment-orders-come-from).
 
 ---
 
@@ -1848,15 +1864,7 @@ GET /v1/trade-orders/com.example.orderId=ORD-001~with(status,items.unitAmountInc
    PATCH /v1/trade-orders/com.example.orderId=ORD-001/actions
    {"tryFulfill": true}
    ```
-
-4. **Release the shipment the platform raised:**
-   ```bash
-   # Shipment orders are created by the platform out of fulfilment, not over the API
-   GET /v1/trade-orders/com.example.orderId=ORD-001/shipments
-
-   PATCH /v1/shipment-orders/{shipmentId}/actions
-   {"release": true}
-   ```
+   The order reads `Fulfilled` and the stock has moved. No shipment order is created by this action.
 
 **Checkpoint:** Orders progress through Committed → Fulfilled.
 
@@ -2122,21 +2130,15 @@ PATCH /v1/trade-orders/com.example.orderId=ORD-MOBILE-2024-001/actions
 }
 ```
 
-### Step 7: Fulfill and Ship
+### Step 7: Fulfill
 
 ```bash
-# Fulfill the order
+# Fulfill the order: every eligible line is fulfilled and the stock moves. No shipment order is created
 PATCH /v1/trade-orders/com.example.orderId=ORD-MOBILE-2024-001/actions
 {"tryFulfill": true}
-
-# Find the shipment order the platform raised, then release it when ready
-GET /v1/trade-orders/com.example.orderId=ORD-MOBILE-2024-001/shipments
-
-PATCH /v1/shipment-orders/com.example.shipmentId=SHIP-MOBILE-2024-001/actions
-{"release": true}
 ```
 
-> **Note:** Shipment orders are effectively read-only over the API: the only write they take is `release`. They are raised by the platform out of fulfilment, not created by a request — see [Where Shipment Orders Come From](#where-shipment-orders-come-from).
+> **Note:** To ship through a shipment order instead, on v26.1.12 and earlier send `{"createShipment": true}` to the approved order and `release` the shipment order it creates — `release` is the only write a shipment order takes. The release that carries deliveries and returns has no `createShipment` — see [Where Shipment Orders Come From](#where-shipment-orders-come-from).
 
 ### Step 8: Verify Final State
 
