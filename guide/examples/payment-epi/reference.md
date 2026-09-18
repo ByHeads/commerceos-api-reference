@@ -21,8 +21,7 @@ received at install (section 8).
 ## 2. Lifecycle endpoints
 
 CommerceOS calls these endpoints outside a payment. *Bare* calls carry no context headers,
-because they run before any configuration exists. *Contextful* calls carry the three headers of
-section 3.
+because they run before any configuration exists. *Contextful* calls carry the headers of section 3.
 
 | Call | Headers | Request body | Response | When |
 |---|---|---|---|---|
@@ -34,7 +33,14 @@ section 3.
 | `GET {baseUrl}/terminals` | contextful | none | `TerminalDto[]` | an administrator lists the terminals of a configuration |
 | `GET {baseUrl}/terminals/{terminalId}` | contextful | none | `TerminalDto` | CommerceOS reads one terminal to create its own record of it |
 
-The install payload:
+The answer of `GET {baseUrl}/methods` for one method, as the Piggy Bank sample sends it (field
+meanings in section 11), and then the install payload:
+
+```json
+[ { "methodId": "com.example.piggy", "name": "Piggy Bank",
+    "supports": { "incoming": true, "outgoing": true, "reversal": true },
+    "requires": { "terminal": false, "specification": false } } ]
+```
 <!-- fixture: scenarios/fixtures.json#/install -->
 ```json
 { "cosBaseUrl": "http://localhost:5000", "tokenUrl": "http://localhost:5000/oauth/token",
@@ -84,13 +90,9 @@ renders one form field per member when an administrator edits the configuration.
 
 The configuration values, for example merchant ids or acquirer keys per store, live in CommerceOS
 as an *EPI configuration* on an organization node. Your integration reads them with the OAuth2
-client from the install payload:
-
-1. `POST {tokenUrl}` with `grant_type=client_credentials`, `client_id`, `client_secret`, `scope`,
-   as `application/x-www-form-urlencoded`. The answer carries `access_token` and `expires_in`.
-2. `GET {cosBaseUrl}/api/v1/context/config/{configId}` with `Authorization: Bearer <token>`.
-   The answer is `{ "configuration": { ... }, "configurationHash": "..." }`. The `me` scope
-   grants this path.
+client from the install payload: `POST {tokenUrl}` for a token (section 8), then
+`GET {cosBaseUrl}/api/v1/context/config/{configId}` with `Authorization: Bearer <token>`. The
+answer is `{ "configuration": { ... }, "configurationHash": "..." }`. The `me` scope grants it.
 
 ## 5. The payment stream
 
@@ -154,16 +156,13 @@ reverse the original transaction instead of starting a new one:
 ```
 
 A cancel goes to `POST {baseUrl}/payments/{cancellationToken}/cancel` with a `CancelDto`. The
-token is the one from the `Cancellable` step. The answer is any 2xx. The stream then ends with
-`Cancel`.
-
+token is the one from the `Cancellable` step. The answer is any 2xx, and the stream then ends with
+`Cancel`. The four fields of `CancelDto` carry the local-terminal context, so that a provider can
+route the cancel to the terminal that processes the payment.
 <!-- fixture: scenarios/fixtures.json#/cancel -->
 ```json
 { "isLocalTerminal": false }
 ```
-
-The four fields of `CancelDto` carry the local-terminal context, so that a provider can route the
-cancel to the terminal that processes the payment.
 
 ## 7. Errors
 
@@ -223,7 +222,7 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/payment-orders/
       } ] }'
 ```
 
-A record needs these members. CommerceOS rejects a record with a missing one.
+A record needs these members, and CommerceOS rejects a record with a missing one.
 
 | Member | Meaning |
 |---|---|
@@ -249,7 +248,9 @@ so an order can carry several values at once.
 | `Credited` | a captured amount was refunded |
 
 `actions` on a payment record lists what one transaction did. Most transactions carry one action.
-A provider that does not separate authorization from capture answers `["Authorize","Debit"]`.
+A provider that does not separate authorization from capture answers `["Authorize","Debit"]`. The
+ledger has three accounts: `source` is the payer's side, `destination` the payee's side, and
+`transit` the money between them at the provider.
 
 | `actions` value | Ledger move | Verb |
 |---|---|---|
@@ -258,8 +259,8 @@ A provider that does not separate authorization from capture answers `["Authoriz
 | `Debit` | source to transit | capture |
 | `Credit` | destination to source | refund |
 
-Typical sets: a one-step sale `["Debited"]`, a reservation `["Authorized"]`, a released
-reservation `["Annulled"]`, a refunded sale `["Credited","Debited"]`.
+Typical `status` sets on an order: a one-step sale `["Debited"]`, a reservation `["Authorized"]`,
+a released reservation `["Annulled"]`, a refunded sale `["Credited","Debited"]`.
 
 ## 10. Test amounts
 
@@ -268,7 +269,6 @@ The cents of the amount select the outcome: [Build a payment EPI](../payment-epi
 ## 11. Field appendix
 
 `?` marks an optional field. A decimal is a string such as `"100.00"`. A timestamp is ISO 8601.
-
 **Install payload:** `cosBaseUrl`, `tokenUrl`, `clientId`, `clientSecret`, `scope`. All strings, all required.
 
 **MethodDto**

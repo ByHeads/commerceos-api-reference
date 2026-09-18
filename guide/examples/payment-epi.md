@@ -51,7 +51,7 @@ Piggy Bank is a sample EPI in three files, Node 22, no dependencies. Clone the r
 start it.
 
 ```bash
-git clone git@github.com:ByHeads/commerceos-api-reference.git
+git clone https://github.com/ByHeads/commerceos-api-reference.git
 cd commerceos-api-reference/guide/examples/payment-epi/sample
 node server.mjs
 # Piggy Bank EPI at http://127.0.0.1:8787/piggy (tap and cancel window 3000 ms)
@@ -90,15 +90,14 @@ curl -X POST http://localhost:8787/piggy/tap/PB-3
 # PB-4           Authorize+Debit  10.04   SEK           tok-10.04  2026-09-18T20:13:30.317Z
 ```
 
-The server log adds `kv pay-... not written: token 404`. The sample records the waiting session
-in the CommerceOS key-value store, and no CommerceOS runs on your machine. That is expected.
+The server log adds `kv pay-... not written`: the sample records the waiting session in the
+CommerceOS key-value store, and no CommerceOS runs on your machine. That is expected.
 
 ## 3. What you build
 
 Ten routes under one base URL. CommerceOS holds that base URL on a *payment integration* record
-and appends a fixed path per call. A *bare* call carries no headers of its own. A *contextful*
-call carries the three context headers of the reference, section 3. Reject a contextful call
-that arrives without them.
+and appends a fixed path per call. A *bare* call carries no context headers. A *contextful* call
+carries the three context headers of the reference, section 3. Reject one that arrives without them.
 
 | Route | Kind | Answers |
 |---|---|---|
@@ -114,14 +113,13 @@ that arrives without them.
 | `POST /payments/{cancellationToken}/cancel` | contextful | any 2xx. The stream then ends with `Cancel` |
 
 Calls go in two directions. CommerceOS calls your EPI for everything in the table. Your EPI
-calls CommerceOS for three things: the configuration values behind a context id, a key-value
-store for your own state, and the completion of a payment that ends asynchronously. Those calls
-use the OAuth2 client from the install body. The reference, section 8, lists them.
+calls CommerceOS for three things, with the OAuth2 client from the install body: the configuration
+behind a context id, a key-value store for your own state, and the completion of a payment that
+ends asynchronously. The reference, section 8, lists them.
 
 **Authentication of the calls into your EPI.** CommerceOS sends no credential on its calls to
 your EPI. The three context headers identify the configuration, and nothing identifies the
-caller. Protect the endpoint at the network level. How you do that is your choice, and your
-security review must see this paragraph before it sees the code.
+caller. Protect the endpoint at the network level. How you do that is your choice.
 
 ## 4. A tour of the sample
 
@@ -238,6 +236,8 @@ from a payment terminal to its integration. The link goes through the payment me
 in the chain has an API resource, see [POS examples](./pos.md). In a test environment where your
 key is read-only, a Heads administrator creates them: ask for a payment terminal when your method
 requires one. CommerceOS reads `GET /terminals/{terminalId}` on your EPI when it creates its record.
+`assignedTerminals` on the payment integration does not list terminals: it lists the organization
+nodes that hold a configuration, and each node carries a `terminals` member that calls your EPI.
 
 ## 6. Test amounts
 
@@ -276,8 +276,9 @@ are the others, and they share the same base: a `baseUrl`, `install`, `uninstall
 configurations on organization nodes. The API exposes the family at `/v1/epi-integrations` and
 each kind at its own path. A payment integration read through either path returns the same
 record. `/v1/payment-integrations` adds the members that only a payment integration has, such as
-`methods`. Use `/v1/payment-integrations` for a payment provider. Use `/v1/epi-integrations` only
-to list every integration kind at once.
+`methods` and `assignedTerminals`. `install`, `uninstall` and `test` belong to the family and work
+on both paths. Use `/v1/payment-integrations` for a payment provider. Use `/v1/epi-integrations`
+only to list every integration kind at once.
 
 ## 9. Glossary
 

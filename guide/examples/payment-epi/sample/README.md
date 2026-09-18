@@ -2,7 +2,7 @@
 
 Piggy Bank is the smallest payment provider that CommerceOS can talk to: a payment EPI (External
 Partner Interface) in three files. `bank.mjs` is an in-memory bank with sessions and a ledger,
-`server.mjs` the seven contract endpoints on `node:http`, `play.mjs` a script that acts as
+`server.mjs` the ten contract routes on `node:http`, `play.mjs` a script that acts as
 CommerceOS. Node 22, no dependencies, no install. The contract is in `../reference.md`.
 
 ## Run it
