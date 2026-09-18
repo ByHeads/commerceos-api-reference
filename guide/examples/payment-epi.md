@@ -258,7 +258,7 @@ tool takes that mapping in a profile file.
 
 ## 7. Go live
 
-- [ ] Your endpoint passes `epi-check`, every scenario.
+- [ ] Your endpoint passes [`epi-check`](../../tools/epi-check/README.md), every scenario. Run it yourself: `node tools/epi-check/run.mjs --base <your EPI base url>`.
 - [ ] A contextful call without the three context headers gets a 4xx and an error body.
 - [ ] `POST /test` answers per node: it reads the configuration of the context id and checks it.
 - [ ] State lives in the CommerceOS key-value store or in your database, never only in memory.
