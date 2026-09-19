@@ -6,7 +6,7 @@
             "call": "install",
             "args": "{{install}}",
             "expect": {
-                "status": 200
+                "status": "2xx"
             }
         }
     ]

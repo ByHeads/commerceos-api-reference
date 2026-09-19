@@ -6,6 +6,8 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync, spawnSync } from "node:child_process";
+import { Readable } from "node:stream";
+import { startReferenceServer } from "./reference-server.mjs";
 import { run, parseArgs, resolvePlaceholders, ORDER } from "./run.mjs";
 import { validate } from "./validate.mjs";
 import { buildReport, reportJson, reportMarkdown, sortKeys } from "./report.mjs";
@@ -134,13 +136,44 @@ test("--target against a server that answers 500 everywhere fails L1 and still w
         const l1 = result.report.scenarios.find(s => s.id === "L1");
         assert.equal(l1.result, "fail");
         assert.deepEqual(l1.failures.map(f => f.path), ["status"]);
-        assert.match(l1.failures[0].message, /expected 200, got 500/);
+        assert.match(l1.failures[0].message, /expected 2xx, got 500/);
         assert.equal(result.report.scenarios.find(s => s.id === "H1").result, "skip");
         assert.ok(existsSync(join(out, "report.json")));
         assert.match(readFileSync(join(out, "report.md"), "utf8"), /\| L1 \| FAIL \|/);
     } finally {
         angry.closeAllConnections();
         await new Promise(resolve => angry.close(resolve));
+    }
+});
+
+test("the status of a stream step is the PUT's, not a react sub-call's; a plain-call echo mismatch is reported once", async () => {
+    // A proxy in front of the reference server: cancel answers 201 (any 2xx passes), and one terminal
+    // comes back under another id (exactly one failure, on `terminalId`).
+    const upstream = await startReferenceServer({ now: () => new Date(NOW) });
+    const proxy = createServer(async (request, response) => {
+        const chunks = [];
+        for await (const chunk of request) chunks.push(chunk);
+        const body = Buffer.concat(chunks);
+        const headers = { ...request.headers };
+        delete headers.host;
+        const answer = await fetch(`${upstream.url}${request.url}`, { method: request.method, headers, body: body.length ? body : undefined });
+        const responseHeaders = Object.fromEntries([...answer.headers].filter(([name]) => !["content-length", "transfer-encoding"].includes(name)));
+        if (request.url.endsWith("/cancel")) { response.writeHead(201, responseHeaders); response.end(await answer.text()); return; }
+        if (request.url.endsWith("/terminals/T-01")) { response.writeHead(200, responseHeaders); response.end((await answer.text()).replace('"T-01"', '"T-99"')); return; }
+        response.writeHead(answer.status, responseHeaders);
+        Readable.fromWeb(answer.body).pipe(response);
+    });
+    await new Promise(resolve => proxy.listen(0, "127.0.0.1", resolve));
+    try {
+        const result = await run({ target: `http://127.0.0.1:${proxy.address().port}`, now: NOW, out: join(scratch, "proxy"), timeout: 10000 });
+        const p7 = result.report.scenarios.find(s => s.id === "P7");
+        assert.equal(p7.result, "pass", JSON.stringify(p7.failures));
+        const l5 = result.report.scenarios.find(s => s.id === "L5");
+        assert.deepEqual(l5.failures.map(f => f.path), ["terminalId"]);
+    } finally {
+        proxy.closeAllConnections();
+        await new Promise(resolve => proxy.close(resolve));
+        await upstream.close();
     }
 });
 

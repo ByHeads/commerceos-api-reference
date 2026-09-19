@@ -1,6 +1,6 @@
 {
     "id": "E1",
-    "title": "Bad request: an unknown methodId yields a non-2xx status with errors",
+    "title": "Bad request: an unknown methodId yields a 4xx status with errors",
     "amount": "100.00",
     "steps": [
         {

@@ -33,6 +33,9 @@ test("the key-value store round-trips a value and the configuration answers the 
         assert.deepEqual(await (await fetch(url, { headers })).json(), { state: "pending" });
         assert.equal((await fetch(url, { method: "DELETE", headers })).status, 200);
         assert.equal((await fetch(url, { headers })).status, 404);
+        const malformed = await fetch(url, { method: "PUT", headers, body: "not json" });
+        assert.equal(malformed.status, 400, "a malformed body is answered, not thrown");
+        assert.match((await malformed.json()).errors[0].message, /JSON/);
         const config = await (await fetch(`${cos.url}/api/v1/context/config/EPI1`, { headers })).json();
         assert.deepEqual(config, { configuration: { merchantId: "M-0001", mode: "TEST" }, configurationHash: "cos-sim-1" });
         assert.deepEqual(lines.slice(0, 3), ["POST /oauth2/v1/token 200", "PUT /api/v1/kv/com.example.piggy/pay-1 200", "GET /api/v1/kv/com.example.piggy/pay-1 200"]);

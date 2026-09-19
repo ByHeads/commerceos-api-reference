@@ -182,14 +182,13 @@ function checkStep({ step, label, expect, status, subject, events, args, key, tr
         for (const field of expect.echo) {
             const want = expected(field);
             if (want === undefined) continue;
-            if (result && typeof result === "object" && !Array.isArray(result) && step.call !== "transaction" && field in result && !sameJson(result[field], want)) fail(label, `result.${field}`, `expected ${JSON.stringify(want)}, got ${JSON.stringify(result[field])}`);
-            if (step.call === "transaction" && !sameJson(subject?.[field], want)) fail(label, field, `expected ${JSON.stringify(want)}, got ${JSON.stringify(subject?.[field])}`);
             if (step.call === "startPayment") {
+                // `token` is not on PaymentDto, so the result is checked only for the fields it carries.
+                if (result && typeof result === "object" && field in result && !sameJson(result[field], want)) fail(label, `result.${field}`, `expected ${JSON.stringify(want)}, got ${JSON.stringify(result[field])}`);
                 transactionsOfStep.forEach((transaction, index) => {
                     if (!sameJson(transaction[field], want)) fail(label, `transactions[${index}].${field}`, `expected ${JSON.stringify(want)}, got ${JSON.stringify(transaction[field])}`);
                 });
-            }
-            if (step.call !== "startPayment" && step.call !== "transaction" && result && !sameJson(result[field], want)) fail(label, field, `expected ${JSON.stringify(want)}, got ${JSON.stringify(result[field])}`);
+            } else if (!sameJson(subject?.[field], want)) fail(label, field, `expected ${JSON.stringify(want)}, got ${JSON.stringify(subject?.[field])}`);
         }
     }
 
@@ -222,6 +221,7 @@ async function runStep(step, label, vars, context) {
     if (profile.terminalId && args && typeof args === "object" && (step.call === "startPayment" || step.call === "cancel")) args.terminalId = profile.terminalId;
 
     let status = 0, subject, events, transactionsOfStep = [];
+    const logIndex = d.log.length; // a `react` sub-call logs after this call, so `at(-1)` would read the wrong one
     try {
         if (step.call === "startPayment") {
             events = [];
@@ -237,7 +237,7 @@ async function runStep(step, label, vars, context) {
             subject = await d[step.call](...positional);
             if (step.call === "transaction" && subject && typeof subject === "object") transactionsOfStep = [subject];
         }
-        status = d.log.at(-1)?.status ?? 0;
+        status = d.log[logIndex]?.status ?? 0;
     } catch (error) {
         if (!(error instanceof EpiCheckError)) { fail(label, "", error.message); return; }
         status = error.status;

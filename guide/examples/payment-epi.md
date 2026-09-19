@@ -254,12 +254,12 @@ amount to select the outcome. The sample follows the same table.
 | `.04` | exactly `Wait`, then `Complete`. No `Create` step: the tool checks the step list as given |
 | `.05` | `Complete`, actions `["Authorize"]` only |
 
-If your sandbox selects outcomes another way, tell Heads which amount produces each outcome. The tool takes that mapping in a profile file. Where the reference says "any 2xx", the tool expects `200`. Answer `200`.
+If your sandbox selects outcomes another way, tell Heads which amount produces each outcome. The tool takes that mapping in a profile file.
 
 ## 7. Go live
 
 - [ ] Your endpoint passes [`epi-check`](../../tools/epi-check/README.md), every scenario. Run it yourself: `node tools/epi-check/run.mjs --base <your EPI base url>`.
-- [ ] A contextful call without the three context headers gets a 4xx and an error body.
+- [ ] A contextful call without the three context headers gets a 4xx and an error body. `epi-check` does not test this against your EPI.
 - [ ] `POST /test` answers per node: it reads the configuration of the context id and checks it.
 - [ ] State lives in the CommerceOS key-value store or in your database, never only in memory.
 - [ ] `POST /payments/{paymentKey}/transactions` is idempotent. A retry does not capture twice.

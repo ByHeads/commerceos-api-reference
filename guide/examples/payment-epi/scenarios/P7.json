@@ -1,6 +1,6 @@
 {
     "id": "P7",
-    "title": "Cancel: Cancellable, then Cancel after POST /payments/{token}/cancel",
+    "title": "Cancel: Cancellable, then Cancel after POST /payments/{cancellationToken}/cancel",
     "amount": "100.03",
     "steps": [
         {
@@ -31,7 +31,7 @@
                     "key": "{{event.cancellationToken}}",
                     "args": "{{cancel}}",
                     "expect": {
-                        "status": 200
+                        "status": "2xx"
                     }
                 }
             }

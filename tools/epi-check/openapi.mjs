@@ -25,7 +25,7 @@ const ROUTES = [
     { method: "get", path: "/terminals", contextful: true, summary: "The terminals that this configuration knows", response: "TerminalDto[]" },
     { method: "get", path: "/terminals/{terminalId}", contextful: true, summary: "One terminal", response: "TerminalDto" },
     { method: "put", path: "/payments/{paymentKey}", contextful: true, summary: "Start a payment: a stream of steps", request: "PaymentInitDto", response: "stream",
-      description: `The response is a Server-Sent-Events stream (one \`event:\` line, one \`data:\` line, a blank line per step). Step types: ${STEPS}. A stream holds zero or more intermediate steps and exactly one final step. The data of each step is the schema of the same name, prefixed with Step: StepWait, StepComplete, and so on, or PaymentStep for any of them.` },
+      description: `The response is a Server-Sent-Events stream (one \`event:\` line, one \`data:\` line, a blank line per step). Step types: ${STEPS}. A stream holds zero or more intermediate steps and exactly one final step. The \`event:\` line carries the step type. The \`data:\` JSON, with that type added as \`type\`, matches the schema of the same name prefixed with Step (StepWait, StepComplete, and so on), or PaymentStep for any of them. A step with no fields, such as Cancel, can omit the \`data:\` line.` },
     { method: "post", path: "/payments/{paymentKey}/transactions", contextful: true, summary: "Capture, release or refund", request: "TransactionInitDto", response: "TransactionDto" },
     { method: "post", path: "/payments/{cancellationToken}/cancel", contextful: true, summary: "Cancel a payment that sent a Cancellable step", request: "CancelDto", response: "none" },
 ];

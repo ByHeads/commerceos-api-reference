@@ -151,7 +151,7 @@ paths:
   "/payments/{paymentKey}":
     put:
       summary: "Start a payment: a stream of steps"
-      description: "The response is a Server-Sent-Events stream (one `event:` line, one `data:` line, a blank line per step). Step types: Create, Cancellable, Wait, ShowImage, VisitPage, RenderView (intermediate); Complete, Decline, Cancel, Fail (final). A stream holds zero or more intermediate steps and exactly one final step. The data of each step is the schema of the same name, prefixed with Step: StepWait, StepComplete, and so on, or PaymentStep for any of them."
+      description: "The response is a Server-Sent-Events stream (one `event:` line, one `data:` line, a blank line per step). Step types: Create, Cancellable, Wait, ShowImage, VisitPage, RenderView (intermediate); Complete, Decline, Cancel, Fail (final). A stream holds zero or more intermediate steps and exactly one final step. The `event:` line carries the step type. The `data:` JSON, with that type added as `type`, matches the schema of the same name prefixed with Step (StepWait, StepComplete, and so on), or PaymentStep for any of them. A step with no fields, such as Cancel, can omit the `data:` line."
       parameters:
         - name: "paymentKey"
           in: "path"

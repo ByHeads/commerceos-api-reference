@@ -62,7 +62,7 @@ The conformance tool sends this context. `debugInfo` is the value of the third h
   "debugInfo": { "nodeName": "epi-check", "baseUrl": "{{baseUrl}}", "name": "epi-check" } }
 ```
 
-Reject a contextful call without the headers: the tool expects a 4xx status and an error body (section 7).
+Reject a contextful call without the headers with a 4xx status and an error body (section 7). The conformance tool checks this only against its own reference server, not against your EPI.
 
 ## 4. Configuration
 
@@ -144,7 +144,7 @@ Capture, release and refund go to `POST {baseUrl}/payments/{paymentKey}/transact
 ```
 
 A cancel goes to `POST {baseUrl}/payments/{cancellationToken}/cancel` with a `CancelDto`. The token
-is the one from the `Cancellable` step. The answer is any 2xx (`200` for the conformance tool), and the stream then ends with `Cancel`.
+is the one from the `Cancellable` step. The answer is any 2xx, and the stream then ends with `Cancel`.
 The four fields of `CancelDto` carry the local-terminal context, so that a provider can route the cancel to the right terminal.
 <!-- fixture: scenarios/fixtures.json#/cancel -->
 ```json
@@ -324,7 +324,7 @@ The cents of the amount select the outcome: [Build a payment EPI](../payment-epi
 | `walletCode?`, `isLocalTerminal?`, `terminalDirectUrl?`, `localProxy?` | as in `PaymentInitDto` |
 | `reversalArgs?` | `ReversalDto` |
 
-**TransactionDto:** `TransactionInitDto` plus `transactionId`, `timestamp`, `means?`, `token?`,
+**TransactionDto:** `TransactionInitDto` plus `transactionId`, `timestamp`, `means?`,
 `consumerPrintout?`, `merchantPrintout?`, `rawData?` (any JSON object).
 
 **ReversalDto:** `originalTransactionId?`, `originalTimestamp?`, `terminalId?`.

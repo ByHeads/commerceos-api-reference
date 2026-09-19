@@ -13,7 +13,7 @@ it tests itself. The contract it checks: [Payment EPI reference](../../guide/exa
 | Payment stream | `PUT /payments/{key}` answers `text/event-stream`, with zero or more intermediate steps and exactly one final step. A `Complete` result echoes `methodId`, `amount` and `currencyCode`, and each transaction echoes the request `token` and carries only known actions |
 | Transactions | `POST /payments/{key}/transactions` for capture, release and refund returns a transaction with `transactionId` and `timestamp`. The order status derived from all transactions equals the expected set |
 | Cancel | After a `Cancellable` step, `POST /payments/{cancellationToken}/cancel` returns 2xx and the stream ends with `Cancel`. A `Wait` step in between is allowed, and the POS needs one to show the cancel button |
-| Errors | A bad request yields a non-2xx status with `{ "errors": [ { "message": ... } ] }` |
+| Errors | A bad request yields a 4xx status with `{ "errors": [ { "message": ... } ] }` |
 | Headers | Contextful calls carry `X-EPI-Context-Config-Id`, `X-EPI-Context-Config-Hash` and `X-EPI-Debug-Info`. Bare calls (`/install`, `/uninstall`, `/config-schema`) carry none |
 
 The header scenario `H1` strips the headers on purpose, so it runs only against the bundled

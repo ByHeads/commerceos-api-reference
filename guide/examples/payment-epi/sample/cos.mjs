@@ -54,37 +54,41 @@ export function startCosStandIn({ port = 0, clientId = CLIENT.clientId, clientSe
         const text = await readBody(request);
         let match;
 
-        if (route === "POST /oauth2/v1/token") {
-            const form = new URLSearchParams(text);
-            if (form.get("grant_type") === "client_credentials" && form.get("client_id") === clientId && form.get("client_secret") === clientSecret) {
-                const token = `cos-token-${++tokenCount}`;
-                tokens.add(token);
-                answer(200, { access_token: token, expires_in: 3600, token_type: "Bearer", scope: form.get("scope") ?? "" });
-            } else {
-                answer(401, { errors: [{ message: "Unknown client" }] });
+        try {
+            if (route === "POST /oauth2/v1/token") {
+                const form = new URLSearchParams(text);
+                if (form.get("grant_type") === "client_credentials" && form.get("client_id") === clientId && form.get("client_secret") === clientSecret) {
+                    const token = `cos-token-${++tokenCount}`;
+                    tokens.add(token);
+                    answer(200, { access_token: token, expires_in: 3600, token_type: "Bearer", scope: form.get("scope") ?? "" });
+                } else {
+                    answer(401, { errors: [{ message: "Unknown client" }] });
+                }
+            } else if (!tokens.has(/^Bearer (.+)$/.exec(request.headers.authorization ?? "")?.[1])) {
+                answer(401, { errors: [{ message: "A bearer token from POST /oauth2/v1/token is required" }] });
+            } else if ((match = /^GET \/api\/v1\/context\/config\/([^/]+)$/.exec(route))) {
+                answer(200, CONFIG);
+            } else if ((match = /^(GET|PUT|DELETE) \/api\/v1\/kv\/([^/]+)\/([^/]+)$/.exec(route))) {
+                const id = `${match[2]}/${decodeURIComponent(match[3])}`;
+                if (match[1] === "PUT") { kv.set(id, JSON.parse(text)); answer(200, kv.get(id)); }
+                else if (match[1] === "DELETE") answer(kv.delete(id) ? 200 : 404, {});
+                else if (kv.has(id)) answer(200, kv.get(id));
+                else answer(404, { errors: [{ message: `No value ${id}` }] });
+            } else if ((match = /^PATCH \/api\/v1\/payment-orders\/([^/]+)$/.exec(route))) {
+                const key = decodeURIComponent(match[1]);
+                const records = orders.get(key) ?? [];
+                // A record is identified by its method and transaction id. A second copy is ignored.
+                for (const record of JSON.parse(text)?.records ?? []) {
+                    const id = `${record.identifiers?.transactionId?.method?.identifiers?.methodId}/${record.identifiers?.transactionId?.id}`;
+                    if (!records.some(existing => existing.id === id)) records.push({ id, ...record });
+                }
+                orders.set(key, records);
+                answer(200, { identifiers: { key }, status: orderStatus(records), records: records.map(({ id, ...record }) => record) });
             }
-        } else if (!tokens.has(/^Bearer (.+)$/.exec(request.headers.authorization ?? "")?.[1])) {
-            answer(401, { errors: [{ message: "A bearer token from POST /oauth2/v1/token is required" }] });
-        } else if ((match = /^GET \/api\/v1\/context\/config\/([^/]+)$/.exec(route))) {
-            answer(200, CONFIG);
-        } else if ((match = /^(GET|PUT|DELETE) \/api\/v1\/kv\/([^/]+)\/([^/]+)$/.exec(route))) {
-            const id = `${match[2]}/${decodeURIComponent(match[3])}`;
-            if (match[1] === "PUT") { kv.set(id, JSON.parse(text)); answer(200, kv.get(id)); }
-            else if (match[1] === "DELETE") answer(kv.delete(id) ? 200 : 404, {});
-            else if (kv.has(id)) answer(200, kv.get(id));
-            else answer(404, { errors: [{ message: `No value ${id}` }] });
-        } else if ((match = /^PATCH \/api\/v1\/payment-orders\/([^/]+)$/.exec(route))) {
-            const key = decodeURIComponent(match[1]);
-            const records = orders.get(key) ?? [];
-            // A record is identified by its method and transaction id. A second copy is ignored.
-            for (const record of JSON.parse(text)?.records ?? []) {
-                const id = `${record.identifiers?.transactionId?.method?.identifiers?.methodId}/${record.identifiers?.transactionId?.id}`;
-                if (!records.some(existing => existing.id === id)) records.push({ id, ...record });
-            }
-            orders.set(key, records);
-            answer(200, { identifiers: { key }, status: orderStatus(records), records: records.map(({ id, ...record }) => record) });
-        }
 
+        } catch (error) {
+            answer(400, { errors: [{ message: error.message }] }); // a malformed body, as server.mjs answers it
+        }
         log(`${route} ${status}`);
         response.writeHead(status, { "content-type": "application/json" });
         response.end(JSON.stringify(body));
