@@ -41,7 +41,7 @@ CommerceOS starts every payment with one HTTP call to your EPI. The response is 
 It is a stream of steps, one per line of progress. A `Wait` step tells the cashier what happens. A
 `Complete` step ends the stream with the money that moved. CommerceOS turns each transaction of that
 step into a payment record on the payment order. The receipt then closes. Your EPI never calls the
-POS, and the POS never calls your EPI. Everything goes through CommerceOS, and your EPI talks to your own provider in between.
+POS, and the POS never calls your EPI. Everything goes through CommerceOS, and your EPI talks to your own provider in between. Four more flows: [flows](./payment-epi/flows.md).
 
 ## 2. Ten minutes
 

@@ -28,8 +28,8 @@ test("play 10.01 ends with Decline", async () => {
     const lines = [];
     try {
         const final = await play({ amount: "10.01", base: piggy.url, print: line => lines.push(line), install });
-        assert.deepEqual(final, { type: "Decline", reason: "InsufficientFunds" });
-        assert.deepEqual(lines.slice(1), ['→ Decline {"reason":"InsufficientFunds"}']);
+        assert.deepEqual(final, { type: "Decline", reason: "InsufficientFunds", params: ["0.00", "10.01"] });
+        assert.deepEqual(lines.slice(1), ['→ Decline {"reason":"InsufficientFunds","params":["0.00","10.01"]}']);
     } finally {
         await piggy.close();
     }

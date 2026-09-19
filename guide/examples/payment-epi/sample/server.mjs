@@ -115,7 +115,8 @@ export function startPiggyServer({ port = 0, now = () => new Date(), waitMs = 30
         switch (cents(dto.amount)) {
             case "01":
                 bank.close(sessionId, "declined");
-                send("Decline", { reason: "InsufficientFunds" });
+                // The POS sentence for this reason takes two params: the balance and the requested amount.
+                send("Decline", { reason: "InsufficientFunds", params: ["0.00", dto.amount] });
                 break;
             case "02":
                 bank.close(sessionId, "failed");
