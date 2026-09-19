@@ -53,6 +53,7 @@ commerceos-api-reference/
 │   │   ├── orders.md             # Trade order examples
 │   │   ├── users.md              # User management examples
 │   │   ├── configuration.md      # Settings and config examples
+│   │   ├── payment-epi.md        # Build a payment EPI: tutorial, reference and sample
 │   │   ├── labels.md             # Labels guide (all entity types)
 │   │   ├── query-operators.md    # Query operator examples
 │   │   ├── advanced.md           # Advanced usage patterns

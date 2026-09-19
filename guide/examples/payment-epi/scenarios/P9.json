@@ -1,0 +1,45 @@
+{
+    "id": "P9",
+    "title": "Wait, then Complete",
+    "amount": "100.04",
+    "steps": [
+        {
+            "call": "startPayment",
+            "key": "{{paymentKey}}",
+            "args": {
+                "methodId": "{{methodId}}",
+                "amount": "{{amount}}",
+                "currencyCode": "{{currencyCode}}",
+                "direction": "Payment",
+                "payer": "{{payer}}",
+                "payee": "{{payee}}",
+                "token": "{{token}}",
+                "locale": "{{locale}}",
+                "specification": "{{specification}}"
+            },
+            "expect": {
+                "status": 200,
+                "schema": "StepComplete",
+                "events": [
+                    "Wait",
+                    "Complete"
+                ],
+                "actions": [
+                    [
+                        "Authorize",
+                        "Debit"
+                    ]
+                ],
+                "echo": [
+                    "methodId",
+                    "amount",
+                    "currencyCode",
+                    "token"
+                ],
+                "derivedStatus": [
+                    "Debited"
+                ]
+            }
+        }
+    ]
+}

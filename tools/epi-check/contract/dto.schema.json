@@ -1,0 +1,447 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://heads.com/schemas/payment-epi/dto.schema.json",
+  "title": "Payment EPI contract",
+  "description": "Every DTO and every SSE step of the CommerceOS payment EPI, copied from CommerceOS at the contract commit named in run.mjs.",
+  "$defs": {
+    "DecimalDto": {
+      "type": "string",
+      "pattern": "^-?\\d+(\\.\\d+)?$"
+    },
+    "PaymentDirection": {
+      "type": "string",
+      "enum": ["Payment", "Payout"]
+    },
+    "PaymentDeclineReason": {
+      "type": "string"
+    },
+    "Audience": {
+      "type": "string",
+      "enum": ["merchant", "customer", "all"]
+    },
+    "InstallPayload": {
+      "type": "object",
+      "properties": {
+        "cosBaseUrl": { "type": "string" },
+        "tokenUrl": { "type": "string" },
+        "clientId": { "type": "string" },
+        "clientSecret": { "type": "string" },
+        "scope": { "type": "string" }
+      },
+      "required": ["cosBaseUrl", "tokenUrl", "clientId", "clientSecret", "scope"]
+    },
+    "MethodDto": {
+      "type": "object",
+      "properties": {
+        "methodId": { "type": "string" },
+        "name": { "type": "string" },
+        "requires": {
+          "type": "object",
+          "properties": {
+            "terminal": { "type": "boolean" },
+            "specification": { "type": "boolean" }
+          },
+          "required": ["terminal", "specification"]
+        },
+        "supports": {
+          "type": "object",
+          "properties": {
+            "incoming": { "type": "boolean" },
+            "outgoing": { "type": "boolean" },
+            "reversal": { "type": "boolean" }
+          },
+          "required": ["incoming", "outgoing", "reversal"]
+        },
+        "allows": {
+          "type": "object",
+          "properties": {
+            "availableInPos": { "type": "boolean" },
+            "openCashBoxOnUse": { "type": "boolean" },
+            "openCashBoxOnReturn": { "type": "boolean" },
+            "fullAmountFinishesReceipt": { "type": "boolean" }
+          }
+        }
+      },
+      "required": ["methodId", "name", "requires", "supports"]
+    },
+    "TerminalDto": {
+      "type": "object",
+      "properties": {
+        "terminalId": { "type": "string" },
+        "methodId": { "type": "string" },
+        "name": { "type": "string" },
+        "directUrl": { "type": "string" }
+      },
+      "required": ["terminalId", "methodId"]
+    },
+    "LocalProxyDto": {
+      "type": "object",
+      "properties": {
+        "hostname": { "type": "string" },
+        "secret": { "type": "string" }
+      },
+      "required": ["hostname", "secret"]
+    },
+    "PaymentInitDto": {
+      "type": "object",
+      "properties": {
+        "methodId": { "type": "string" },
+        "amount": { "$ref": "#/$defs/DecimalDto" },
+        "currencyCode": { "type": "string" },
+        "direction": { "$ref": "#/$defs/PaymentDirection" },
+        "payer": { "$ref": "#/$defs/AgentDto" },
+        "payee": { "$ref": "#/$defs/AgentDto" },
+        "token": { "type": "string" },
+        "locale": { "type": "string" },
+        "specification": { "$ref": "#/$defs/SpecificationDto" },
+        "debitSynchronously": { "const": true },
+        "redirectUrls": {
+          "type": "object",
+          "properties": {
+            "completed": { "type": "string" },
+            "failed": { "type": "string" },
+            "cancelled": { "type": "string" }
+          },
+          "required": ["completed", "failed", "cancelled"]
+        },
+        "termsUrl": { "type": "string" },
+        "terminalId": { "type": "string" },
+        "terminalDirectUrl": { "type": "string" },
+        "localProxy": { "$ref": "#/$defs/LocalProxyDto" },
+        "isLocalTerminal": { "type": "boolean" },
+        "walletCode": { "type": "string" },
+        "walletPin": { "type": "string" },
+        "cardAcquisitionReference": {
+          "type": "object",
+          "properties": {
+            "poiTransactionId": { "type": "string" },
+            "timestamp": { "type": "string" }
+          },
+          "required": ["poiTransactionId", "timestamp"]
+        }
+      },
+      "required": ["methodId", "amount", "currencyCode", "direction", "payer", "payee", "token", "locale", "specification"]
+    },
+    "PaymentDto": {
+      "type": "object",
+      "properties": {
+        "methodId": { "type": "string" },
+        "amount": { "$ref": "#/$defs/DecimalDto" },
+        "currencyCode": { "type": "string" },
+        "processorsId": { "type": "string" },
+        "transactions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/TransactionDto" }
+        },
+        "issuedWalletKey": { "type": "string" }
+      },
+      "required": ["methodId", "amount", "currencyCode", "processorsId", "transactions"]
+    },
+    "TransactionInitDto": {
+      "type": "object",
+      "properties": {
+        "actions": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["Authorize", "Annul", "Debit", "Credit"] }
+        },
+        "token": { "type": "string" },
+        "amount": { "$ref": "#/$defs/DecimalDto" },
+        "currencyCode": { "type": "string" },
+        "methodId": { "type": "string" },
+        "specification": { "$ref": "#/$defs/SpecificationDto" },
+        "walletCode": { "type": "string" },
+        "isLocalTerminal": { "type": "boolean" },
+        "terminalDirectUrl": { "type": "string" },
+        "localProxy": { "$ref": "#/$defs/LocalProxyDto" },
+        "reversalArgs": { "$ref": "#/$defs/ReversalDto" }
+      },
+      "required": ["actions", "token", "amount", "currencyCode", "methodId"]
+    },
+    "TransactionDto": {
+      "type": "object",
+      "properties": {
+        "actions": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["Authorize", "Annul", "Debit", "Credit"] }
+        },
+        "token": { "type": "string" },
+        "amount": { "$ref": "#/$defs/DecimalDto" },
+        "currencyCode": { "type": "string" },
+        "methodId": { "type": "string" },
+        "specification": { "$ref": "#/$defs/SpecificationDto" },
+        "walletCode": { "type": "string" },
+        "isLocalTerminal": { "type": "boolean" },
+        "terminalDirectUrl": { "type": "string" },
+        "localProxy": { "$ref": "#/$defs/LocalProxyDto" },
+        "reversalArgs": { "$ref": "#/$defs/ReversalDto" },
+        "transactionId": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "means": { "$ref": "#/$defs/PaymentMeansDto" },
+        "consumerPrintout": { "type": "string" },
+        "merchantPrintout": { "type": "string" },
+        "rawData": { "type": "object" }
+      },
+      "required": ["actions", "token", "amount", "currencyCode", "methodId", "transactionId", "timestamp"]
+    },
+    "ReversalDto": {
+      "type": "object",
+      "properties": {
+        "originalTransactionId": { "type": "string" },
+        "originalTimestamp": { "type": "string" },
+        "terminalId": { "type": "string" }
+      }
+    },
+    "CancelDto": {
+      "type": "object",
+      "properties": {
+        "terminalId": { "type": "string" },
+        "terminalDirectUrl": { "type": "string" },
+        "isLocalTerminal": { "type": "boolean" },
+        "localProxy": { "$ref": "#/$defs/LocalProxyDto" }
+      }
+    },
+    "SpecificationDto": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/SpecificationItemDto" }
+    },
+    "SpecificationItemDto": {
+      "type": "object",
+      "properties": {
+        "identifier": { "type": "string" },
+        "description": { "type": "string" },
+        "quantity": { "$ref": "#/$defs/DecimalDto" },
+        "unit": { "type": "string" },
+        "totalAmount": { "$ref": "#/$defs/DecimalDto" },
+        "vatPercentage": { "$ref": "#/$defs/DecimalDto" },
+        "currencyCode": { "type": "string" }
+      },
+      "required": ["description", "quantity", "unit", "totalAmount", "currencyCode"]
+    },
+    "PaymentMeansDto": {
+      "oneOf": [
+        { "$ref": "#/$defs/PaymentCardDto" },
+        { "$ref": "#/$defs/SingletonPaymentMeansDto" },
+        { "$ref": "#/$defs/WalletPaymentMeansDto" }
+      ]
+    },
+    "PaymentCardDto": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "Card" },
+        "scheme": { "type": "string" },
+        "issuer": { "type": "string" },
+        "maskedPan": { "type": "string" },
+        "token": { "type": "string" },
+        "validFrom": { "type": "string" },
+        "validTo": { "type": "string" }
+      },
+      "required": ["type"]
+    },
+    "SingletonPaymentMeansDto": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "Singleton" },
+        "id": { "type": "string" }
+      },
+      "required": ["type", "id"]
+    },
+    "WalletPaymentMeansDto": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "Wallet" },
+        "walletId": { "type": "string" },
+        "providerId": { "type": "string" },
+        "provider": { "type": "string" },
+        "maskedCode": { "type": "string" },
+        "remainingBalance": { "type": "string" },
+        "refillable": { "type": "boolean" },
+        "validFrom": { "type": "string" },
+        "validTo": { "type": "string" }
+      },
+      "required": ["type"]
+    },
+    "AgentDto": {
+      "oneOf": [
+        { "$ref": "#/$defs/PersonDto" },
+        { "$ref": "#/$defs/OrganizationDto" }
+      ]
+    },
+    "PersonDto": {
+      "type": "object",
+      "properties": {
+        "key": { "type": "string" },
+        "fullName": { "type": "string" },
+        "nationalId": { "type": "string" },
+        "email": { "type": "string" },
+        "landlinePhone": { "type": "string" },
+        "mobilePhone": { "type": "string" },
+        "invoiceAddress": { "$ref": "#/$defs/AddressDto" },
+        "deliveryAddress": { "$ref": "#/$defs/AddressDto" },
+        "type": { "const": "Person" },
+        "givenName": { "type": "string" },
+        "familyName": { "type": "string" },
+        "phoneNumber": { "type": "string" }
+      },
+      "required": ["key", "type"]
+    },
+    "OrganizationDto": {
+      "type": "object",
+      "properties": {
+        "key": { "type": "string" },
+        "fullName": { "type": "string" },
+        "nationalId": { "type": "string" },
+        "email": { "type": "string" },
+        "landlinePhone": { "type": "string" },
+        "mobilePhone": { "type": "string" },
+        "invoiceAddress": { "$ref": "#/$defs/AddressDto" },
+        "deliveryAddress": { "$ref": "#/$defs/AddressDto" },
+        "type": { "const": "Organization" }
+      },
+      "required": ["key", "type"]
+    },
+    "AddressDto": {
+      "type": "object",
+      "properties": {
+        "lines": { "type": "array", "items": { "type": "string" } },
+        "postalCode": { "type": "string" },
+        "cityName": { "type": "string" },
+        "regionName": { "type": "string" },
+        "countryCode": { "type": "string" }
+      }
+    },
+    "EpiErrorDetail": {
+      "type": "object",
+      "properties": {
+        "code": { "type": "string" },
+        "message": { "type": "string" },
+        "params": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["message"]
+    },
+    "ErrorBody": {
+      "type": "object",
+      "properties": {
+        "errors": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/EpiErrorDetail" }
+        }
+      },
+      "required": ["errors"]
+    },
+    "StepCreate": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "Create" },
+        "result": { "$ref": "#/$defs/PaymentDto" }
+      },
+      "required": ["type", "result"]
+    },
+    "StepCancellable": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "Cancellable" },
+        "cancellationToken": { "type": "string" }
+      },
+      "required": ["type", "cancellationToken"]
+    },
+    "StepWait": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "Wait" },
+        "message": { "type": "string" },
+        "element": { "type": "string" },
+        "translationKey": { "type": "string" },
+        "params": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["type"]
+    },
+    "StepShowImage": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "ShowImage" },
+        "url": { "type": "string" },
+        "audience": { "$ref": "#/$defs/Audience" }
+      },
+      "required": ["type", "url"]
+    },
+    "StepVisitPage": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "VisitPage" },
+        "url": { "type": "string" },
+        "audience": { "$ref": "#/$defs/Audience" }
+      },
+      "required": ["type", "url"]
+    },
+    "StepRenderView": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "RenderView" },
+        "path": { "type": "string" },
+        "config": { "type": "string" },
+        "audience": { "$ref": "#/$defs/Audience" }
+      },
+      "required": ["type", "path", "config"]
+    },
+    "StepComplete": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "Complete" },
+        "result": { "$ref": "#/$defs/PaymentDto" },
+        "issuedWalletKey": { "type": "string" }
+      },
+      "required": ["type", "result"]
+    },
+    "StepDecline": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "Decline" },
+        "reason": { "$ref": "#/$defs/PaymentDeclineReason" },
+        "params": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["type", "reason"]
+    },
+    "StepCancel": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "Cancel" }
+      },
+      "required": ["type"]
+    },
+    "StepFail": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "Fail" },
+        "errors": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/EpiErrorDetail" }
+        }
+      },
+      "required": ["type", "errors"]
+    },
+    "TerminalPaymentStep": {
+      "oneOf": [
+        { "$ref": "#/$defs/StepComplete" },
+        { "$ref": "#/$defs/StepDecline" },
+        { "$ref": "#/$defs/StepCancel" },
+        { "$ref": "#/$defs/StepFail" }
+      ]
+    },
+    "IntermediatePaymentStep": {
+      "oneOf": [
+        { "$ref": "#/$defs/StepCreate" },
+        { "$ref": "#/$defs/StepCancellable" },
+        { "$ref": "#/$defs/StepWait" },
+        { "$ref": "#/$defs/StepShowImage" },
+        { "$ref": "#/$defs/StepVisitPage" },
+        { "$ref": "#/$defs/StepRenderView" }
+      ]
+    },
+    "PaymentStep": {
+      "oneOf": [
+        { "$ref": "#/$defs/TerminalPaymentStep" },
+        { "$ref": "#/$defs/IntermediatePaymentStep" }
+      ]
+    }
+  }
+}

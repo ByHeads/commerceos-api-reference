@@ -1,0 +1,26 @@
+{
+    "id": "L5",
+    "title": "Terminals: GET /terminals returns a list, and each terminal is readable at /terminals/{id}",
+    "steps": [
+        {
+            "call": "terminals",
+            "expect": {
+                "status": 200,
+                "schema": "TerminalDto",
+                "each": true
+            }
+        },
+        {
+            "call": "terminal",
+            "forEach": "terminals",
+            "key": "{{item.terminalId}}",
+            "expect": {
+                "status": 200,
+                "schema": "TerminalDto",
+                "echo": [
+                    "terminalId"
+                ]
+            }
+        }
+    ]
+}

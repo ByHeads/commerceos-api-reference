@@ -600,6 +600,8 @@ The issued order numbers are read-only — a `PATCH` on `identifiers.customersId
 
 ## EPI Integrations & Configurations
 
+To build the integration behind `baseUrl`, read [Build a payment EPI](./payment-epi.md).
+
 ### OAuth2 Client Prerequisites
 
 Installing an EPI integration requires a **confidential OAuth2 client** associated with the integration's user (`User.byHolder(integration)`). The install action will fail if:

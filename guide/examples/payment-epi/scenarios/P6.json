@@ -1,0 +1,29 @@
+{
+    "id": "P6",
+    "title": "Decline with a reason",
+    "amount": "100.01",
+    "steps": [
+        {
+            "call": "startPayment",
+            "key": "{{paymentKey}}",
+            "args": {
+                "methodId": "{{methodId}}",
+                "amount": "{{amount}}",
+                "currencyCode": "{{currencyCode}}",
+                "direction": "Payment",
+                "payer": "{{payer}}",
+                "payee": "{{payee}}",
+                "token": "{{token}}",
+                "locale": "{{locale}}",
+                "specification": "{{specification}}"
+            },
+            "expect": {
+                "status": 200,
+                "schema": "StepDecline",
+                "events": [
+                    "Decline"
+                ]
+            }
+        }
+    ]
+}

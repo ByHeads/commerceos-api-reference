@@ -31,6 +31,7 @@ Comprehensive curl examples demonstrating the full capabilities of the CommerceO
 | [Point of Sale](./examples/pos.md) | Terminals, profiles, tile sets, receipts, devices, printers | Tile layouts, receipt creation, payment terminals |
 | [Users & Auth](./examples/users.md) | Users, credentials, permissions, roles, role assignments, OAuth2, auth providers | User management, authentication (needs the `admin` scope — see the [provisioning guide](./provisioning-users.md)) |
 | [Configuration](./examples/configuration.md) | Countries, languages, templates, mapped types, dynamic properties, webhooks | System settings, integrations |
+| [Build a payment EPI](./examples/payment-epi.md) | A payment provider integration: sample server, the call set, setup in CommerceOS, go-live checklist | Sequence diagram, contract reference, conformance fixtures, [four more flows and troubleshooting](./examples/payment-epi/flows.md) |
 | [Query Operators](./examples/query-operators.md) | Operators reference | Filtering, pagination, projection |
 | [Advanced Patterns](./examples/advanced.md) | Complex queries, bulk operations, SQL export | Aggregations, NDJSON, mapped types |
 | [Streaming](../features/streaming.md) | Output streaming, input streaming, transaction chunking | NDJSON, `X-Transaction-Count`, error handling |

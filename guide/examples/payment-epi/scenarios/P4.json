@@ -1,0 +1,81 @@
+{
+    "id": "P4",
+    "title": "Sale, then refund with Credit and reversalArgs",
+    "amount": "100.00",
+    "steps": [
+        {
+            "call": "startPayment",
+            "key": "{{paymentKey}}",
+            "args": {
+                "methodId": "{{methodId}}",
+                "amount": "{{amount}}",
+                "currencyCode": "{{currencyCode}}",
+                "direction": "Payment",
+                "payer": "{{payer}}",
+                "payee": "{{payee}}",
+                "token": "{{token}}",
+                "locale": "{{locale}}",
+                "specification": "{{specification}}"
+            },
+            "expect": {
+                "status": 200,
+                "schema": "StepComplete",
+                "events": [
+                    "Complete"
+                ],
+                "actions": [
+                    [
+                        "Authorize",
+                        "Debit"
+                    ]
+                ],
+                "echo": [
+                    "methodId",
+                    "amount",
+                    "currencyCode",
+                    "token"
+                ],
+                "derivedStatus": [
+                    "Debited"
+                ]
+            }
+        },
+        {
+            "call": "transaction",
+            "key": "{{paymentKey}}",
+            "args": {
+                "actions": [
+                    "Credit"
+                ],
+                "token": "{{token}}",
+                "amount": "{{amount}}",
+                "currencyCode": "{{currencyCode}}",
+                "methodId": "{{methodId}}",
+                "specification": "{{specification}}",
+                "reversalArgs": {
+                    "originalTransactionId": "{{lastTransaction.transactionId}}",
+                    "originalTimestamp": "{{lastTransaction.timestamp}}"
+                }
+            },
+            "expect": {
+                "status": 200,
+                "schema": "TransactionDto",
+                "actions": [
+                    [
+                        "Credit"
+                    ]
+                ],
+                "echo": [
+                    "methodId",
+                    "amount",
+                    "currencyCode",
+                    "token"
+                ],
+                "derivedStatus": [
+                    "Credited",
+                    "Debited"
+                ]
+            }
+        }
+    ]
+}
