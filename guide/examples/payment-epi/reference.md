@@ -168,7 +168,7 @@ stream call, because CommerceOS reads no body from it.
 
 Every call goes to `{cosBaseUrl}/api{path}` with `Authorization: Bearer <token>`,
 `content-type: application/json` and `accept: application/json`. `cosBaseUrl` and `tokenUrl` come
-from the install payload (section 2). The examples use `-u ":banana"` in place of the bearer header, so that you can try them with an API key.
+from the install payload (section 2).
 
 | Call | Scope | Use |
 |---|---|---|

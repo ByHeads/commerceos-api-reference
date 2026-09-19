@@ -1,7 +1,7 @@
 # Scenarios
 
-One JSON file per scenario of the conformance tool `epi-check`. The tool runs them in the fixed
-order L1, L2, L3, L4, L5, P1 to P9, E1, H1. The JSON examples in [`../reference.md`](../reference.md)
+One JSON file per scenario of the conformance tool [`epi-check`](../../../../tools/epi-check/README.md), which runs them with
+`node tools/epi-check/run.mjs --base <your EPI base url>` in the fixed order L1, L2, L3, L4, L5, P1 to P9, E1, H1. The JSON examples in [`../reference.md`](../reference.md)
 quote these files, so a fixture and its example never drift apart.
 
 ## File shape
@@ -47,7 +47,7 @@ quote these files, so a fixture and its example never drift apart.
 | `unique` | The named field is unique across the array response |
 | `keys` | The response object has these keys |
 | `equals` | The response equals this JSON value |
-| `events` | For `startPayment`: the ordered list of event types |
+| `events` | For `startPayment`: the ordered list of event types. `Wait` steps are ignored unless listed, so a waiting message during P1 still passes |
 | `actions` | Per transaction, in order: the exact `actions` array |
 | `echo` | Field names that must equal the request. Checked on the response, on `result`, and on every transaction |
 | `derivedStatus` | The sorted status set (reference section 9), computed over every transaction the scenario collected so far, with `amount` as the limit |
@@ -62,8 +62,7 @@ inside a longer string is replaced by its text.
 | `{{id}}` | The scenario id |
 | `{{amount}}` | The scenario amount, after the profile override |
 | `{{half}}`, `{{remainder}}` | Two parts that sum to `{{amount}}`, for the two specification items |
-| `{{token}}`, `{{paymentKey}}` | `tok-<id>` and `pay-<id>` from `fixtures.json` |
-| `{{methodId}}`, `{{currencyCode}}`, `{{locale}}`, `{{payer}}`, `{{payee}}`, `{{specification}}`, `{{install}}`, `{{cancel}}` | The fixture of that name |
+| `{{token}}`, `{{paymentKey}}`, `{{methodId}}`, `{{currencyCode}}`, `{{locale}}`, `{{payer}}`, `{{payee}}`, `{{specification}}`, `{{install}}`, `{{cancel}}` | The fixture of that name, with `<id>` filled in |
 | `{{baseUrl}}` | The target base URL, for the debug header |
 | `{{event.<field>}}` | Inside `react`: a field of the event that fired |
 | `{{item.<field>}}` | Inside `forEach`: a field of the current item |

@@ -126,12 +126,12 @@ caller. Protect the endpoint at the network level. How you do that is your choic
 
 ## 4. A tour of the sample
 
-| File | Role | Lines |
-|---|---|---|
-| `sample/bank.mjs` | the in-memory bank: sessions, a ledger, and `tap(sessionId)` for the customer's phone | 77 |
-| `sample/server.mjs` | the EPI: the ten routes, the header check, the stream, transactions and cancel | 253 |
-| `sample/play.mjs` | the CommerceOS side: install, methods, one payment, every step printed | 133 |
-| `sample/cos.mjs` | a stand-in for the calls back: token, configuration, key-value store, payment-order completion | 107 |
+| File | Role |
+|---|---|
+| `sample/bank.mjs` | the in-memory bank: sessions, a ledger, and `tap(sessionId)` for the customer's phone |
+| `sample/server.mjs` | the EPI: the ten routes, the header check, the stream, transactions and cancel |
+| `sample/play.mjs` | the CommerceOS side: install, methods, one payment, every step printed |
+| `sample/cos.mjs` | a stand-in for the calls back: token, configuration, key-value store, payment-order completion |
 
 The header check. Every route below this line is contextful, so one test covers them all.
 
@@ -186,14 +186,14 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/payment-integrat
 
 ```bash
 # 2) Install. CommerceOS calls POST {baseUrl}/install. On success the status becomes Active.
-curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/epi-integrations/name=Piggy" \
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/payment-integrations/name=Piggy" \
   -H "Content-Type: application/json" \
   -d '{"install": true}'
 ```
 
 ```bash
 # 3) Create the EPI configuration on an organization node. Both references need database keys:
-#   curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/epi-integrations/name=Piggy/identifiers/key"
+#   curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/payment-integrations/name=Piggy/identifiers/key"
 #   curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/companies/com.heads.seedID=ourcompany/identifiers/key"
 # The configuration object holds the fields that your /config-schema describes.
 curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/epi-configurations" \
@@ -292,8 +292,3 @@ paths. Use `/v1/payment-integrations` for a payment provider, and `/v1/epi-integ
 | payment record | one transaction on a payment order, created from one item of a `Complete` result or one `TransactionDto` |
 | payment method | one way to pay that an integration offers, from `GET /methods`. The POS shows it as a button |
 | payment terminal | the CommerceOS record of a physical or virtual terminal, linked to a payment method and a device |
-
-## 10. Reference
-
-The full contract, every field, and the fixtures that `epi-check` sends:
-[Payment EPI reference](./payment-epi/reference.md).

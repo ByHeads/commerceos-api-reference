@@ -42,4 +42,4 @@ plays CommerceOS against it, and `node cos.mjs` runs the stand-in alone on port 
 node --test '*.test.mjs'
 ```
 The sample passes the `epi-check` conformance suite that Heads runs against every partner EPI: 15 pass,
-0 fail, 1 skip (the header scenario runs only against the tool's own server, `server.test.mjs` covers it here). Tool at contract commit `e70578427aa3`, run on 2026-09-18.
+0 fail, 1 skip (the header scenario runs only against the tool's own server, `server.test.mjs` covers it here).

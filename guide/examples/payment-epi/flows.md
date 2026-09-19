@@ -108,10 +108,8 @@ sequenceDiagram
     POS-->>Cashier: Receipt
 ```
 
-The payment order exists from the first `Create` or `Complete` step, so send `Create` before `Wait` when a payment can complete asynchronously (the conformance amount `.04` is the synchronous case and expects `Wait` then `Complete` without `Create`):
-`PATCH /v1/payment-orders/{key}` answers `Payment order not found.` for a key that saw neither. The
-record needs the members of reference, section 8. When the cashier pays again, CommerceOS finds the order
-`Debited` for the tender amount and attaches it to the sale without a new call to your EPI. A record with a `transactionId` that CommerceOS already holds is ignored, so a repeated callback is safe.
+The payment order exists from the first `Create` or `Complete` step. Send `Create` before `Wait` when a payment can complete asynchronously. `PATCH /v1/payment-orders/{key}` answers `Payment order not found.` for a key that saw neither step. The record needs the members of reference, section 8. When the cashier pays again, CommerceOS finds the order
+`Debited` for the tender amount and attaches it to the sale without a new call to your EPI. A record with a `transactionId` that CommerceOS already holds is ignored, so a repeated callback is safe. The conformance amount `.04` is the synchronous case: it expects `Wait` then `Complete`, without `Create`.
 
 ## What the cashier sees
 

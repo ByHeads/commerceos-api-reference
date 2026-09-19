@@ -34,9 +34,8 @@ The profile names the sample's method id, see the next section.
 
 ## The profile file
 
-The cents of the amount select the outcome (`.00` complete, `.01` decline, `.02` fail, `.03`
-cancellable, `.04` wait, `.05` authorize only, see the reference, section 10). If your sandbox
-selects outcomes another way, give the tool a profile with `--profile partner.json`. Every key
+The cents of the amount select the outcome, see the tutorial
+[section 6](../../guide/examples/payment-epi.md#6-test-amounts). If your sandbox selects outcomes another way, give the tool a profile with `--profile partner.json`. Every key
 is optional:
 
 ```json

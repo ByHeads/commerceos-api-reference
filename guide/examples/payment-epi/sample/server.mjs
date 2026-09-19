@@ -1,7 +1,7 @@
 // Piggy Bank: a complete payment EPI on node:http, backed by the in-memory bank in bank.mjs.
 // Every endpoint names its section in the contract reference (guide/examples/payment-epi/reference.md).
 //
-// The cents of `amount` select the outcome (guide section 10):
+// The cents of `amount` select the outcome (tutorial section 6):
 //   .00 Complete ["Authorize","Debit"]   .01 Decline   .02 Fail
 //   .03 Cancellable, then Cancel         .04 Wait, then Complete   .05 Complete ["Authorize"]
 // Direction "Payout" gives ["Authorize"] unless `debitSynchronously` is true.

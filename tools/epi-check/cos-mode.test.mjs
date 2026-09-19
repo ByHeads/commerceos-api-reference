@@ -21,7 +21,7 @@ const AUTH = `Basic ${Buffer.from(":" + KEY).toString("base64")}`;
 
 // The stub. `integrations` maps a name to how it behaves:
 //   status, configurations, methods  -> the first GET
-//   tests                            -> configurationTests of the PATCH
+//   tests                            -> configurationTests of the POST
 //   terminals: "ok" | "d1"           -> the second GET
 const integrations = {
     Mock: { status: "Active", configurations: 1, methods: 2, tests: { Veddesta: "success" }, terminals: "ok" },

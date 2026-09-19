@@ -18,7 +18,7 @@ const STEPS = "Create, Cancellable, Wait, ShowImage, VisitPage, RenderView (inte
 /** The ten routes of the tutorial, section 3. `request` and `response` name a schema, or a literal shape. */
 const ROUTES = [
     { method: "post", path: "/install", contextful: false, summary: "Install: receive the OAuth2 client for the calls back to CommerceOS", request: "InstallPayload", response: "none" },
-    { method: "post", path: "/uninstall", contextful: false, summary: "Uninstall", response: "none" },
+    { method: "post", path: "/uninstall", contextful: false, summary: "Uninstall: the integration becomes Inactive", response: "none" },
     { method: "get", path: "/config-schema", contextful: false, summary: "The form that an administrator fills in per organization node", response: "configSchema" },
     { method: "post", path: "/test", contextful: true, summary: "Test the configuration of the context", response: "boolean" },
     { method: "get", path: "/methods", contextful: true, summary: "The payment methods that this configuration offers", response: "MethodDto[]" },
@@ -37,7 +37,7 @@ function responseOf(kind) {
     if (kind === "none") return { "2XX": { description: "Accepted. The body is ignored." } };
     if (kind === "boolean") return { "200": { description: "The configuration works.", content: json({ type: "boolean", const: true }) } };
     if (kind === "configSchema") return { "200": { description: "A form description: { title?, description?, members: { <key>: { type, title?, description?, members? } } }. See the reference, section 4.", content: json({ type: "object", additionalProperties: true }) } };
-    if (kind === "stream") return { "200": { description: `A stream of steps. Step types: ${STEPS}.`, content: { "text/event-stream": { schema: { type: "string" } } } } };
+    if (kind === "stream") return { "200": { description: "A stream of steps, see the operation description.", content: { "text/event-stream": { schema: { type: "string" } } } } };
     if (kind.endsWith("[]")) return { "200": { description: "OK", content: json({ type: "array", items: ref(kind.slice(0, -2)) }) } };
     return { "200": { description: "OK", content: json(ref(kind)) } };
 }
@@ -47,7 +47,7 @@ function operation(route) {
     if (route.contextful) parameters.push(...CONTEXT.map(name => ({ $ref: `#/components/parameters/${name}` })));
     const operation = { summary: route.summary, ...(route.description ? { description: route.description } : {}), ...(parameters.length ? { parameters } : {}) };
     if (route.request) operation.requestBody = { required: true, content: json(ref(route.request)) };
-    operation.responses = { ...responseOf(route.response), "4XX": { description: "A failed call. The error body is the ErrorBody schema.", content: json(ref("ErrorBody")) } };
+    operation.responses = { ...responseOf(route.response), "4XX": { description: "A failed call, see the reference, section 7.", content: json(ref("ErrorBody")) } };
     return operation;
 }
 
