@@ -37,13 +37,11 @@ sequenceDiagram
     POS-->>Cashier: Receipt
 ```
 
-CommerceOS starts every payment with one HTTP call to your EPI. The response is not one JSON
-body. It is a stream of steps, one per line of progress. A `Wait` step tells the cashier what
-happens. A `Complete` step ends the stream with the money that moved. CommerceOS turns each
-transaction of that step into a payment record on the payment order. The receipt then closes.
-Your EPI never calls the POS, and the POS never calls your EPI. Everything goes through
-CommerceOS, and your EPI talks to your own provider in between. The rest of this page fills in
-the calls.
+CommerceOS starts every payment with one HTTP call to your EPI. The response is not one JSON body.
+It is a stream of steps, one per line of progress. A `Wait` step tells the cashier what happens. A
+`Complete` step ends the stream with the money that moved. CommerceOS turns each transaction of that
+step into a payment record on the payment order. The receipt then closes. Your EPI never calls the
+POS, and the POS never calls your EPI. Everything goes through CommerceOS, and your EPI talks to your own provider in between.
 
 ## 2. Ten minutes
 
@@ -90,8 +88,13 @@ curl -X POST http://localhost:8787/piggy/tap/PB-3
 # PB-4           Authorize+Debit  10.04   SEK           tok-10.04  2026-09-18T20:13:30.317Z
 ```
 
-The server log adds `kv pay-... not written`: the sample records the waiting session in the
-CommerceOS key-value store, and no CommerceOS runs on your machine. That is expected.
+The server log adds `kv pay-... not written`: the bank records the waiting session in the CommerceOS
+key-value store, and no CommerceOS runs on your machine. `--cos` starts a stand-in for that side:
+
+```bash
+node play.mjs 10.04 --cos
+# [cos] PUT /api/v1/kv/com.example.piggy/pay-1789798917507 200
+```
 
 ## 3. What you build
 
@@ -112,10 +115,9 @@ carries the three context headers of the reference, section 3. Reject one that a
 | `POST /payments/{paymentKey}/transactions` | contextful | one `TransactionDto`: a capture, a release or a refund |
 | `POST /payments/{cancellationToken}/cancel` | contextful | any 2xx. The stream then ends with `Cancel` |
 
-Calls go in two directions. CommerceOS calls your EPI for everything in the table. Your EPI
-calls CommerceOS for three things, with the OAuth2 client from the install body: the configuration
-behind a context id, a key-value store for your own state, and the completion of a payment that
-ends asynchronously. The reference, section 8, lists them.
+Calls go in two directions. CommerceOS calls your EPI for everything in the table. Your EPI calls
+CommerceOS for three things, with the OAuth2 client from the install body: the configuration behind a
+context id, a key-value store for your own state, and the completion of a payment that ends asynchronously (reference, section 8).
 
 **Authentication of the calls into your EPI.** CommerceOS sends no credential on its calls to
 your EPI. The three context headers identify the configuration, and nothing identifies the
@@ -127,7 +129,8 @@ caller. Protect the endpoint at the network level. How you do that is your choic
 |---|---|---|
 | `sample/bank.mjs` | the in-memory bank: sessions, a ledger, and `tap(sessionId)` for the customer's phone | 77 |
 | `sample/server.mjs` | the EPI: the ten routes, the header check, the stream, transactions and cancel | 237 |
-| `sample/play.mjs` | the CommerceOS side: install, methods, one payment, every step printed | 112 |
+| `sample/play.mjs` | the CommerceOS side: install, methods, one payment, every step printed | 133 |
+| `sample/cos.mjs` | a stand-in for the calls back: token, configuration, key-value store, payment-order completion | 107 |
 
 The header check. Every route below this line is contextful, so one test covers them all.
 
@@ -138,8 +141,7 @@ if (typeof request.headers["x-epi-context-config-id"] !== "string") {
 }
 ```
 
-One step written to the stream. A step is one `event:` line, one `data:` line and a blank line.
-The response stays open until the final step.
+One step written to the stream: one `event:` line, one `data:` line, a blank line. The response stays open until the final step.
 
 ```js
 const formatEvent = (type, data) => `event: ${type}\n${data == null ? "" : `data: ${JSON.stringify(data)}\n`}\n`;
@@ -168,9 +170,8 @@ if ((match = /^POST \/payments\/([^/]+)\/transactions$/.exec(route))) {
 ## 5. Connect it to CommerceOS
 
 Five steps, each one curl. Before step 2, the integration needs a user with a confidential OAuth2
-client, because `install` hands that client to your EPI. [Configuration](./configuration.md)
-§ EPI Integrations shows that user. Replace `https://piggy.example.com/piggy` with the public
-URL of your EPI.
+client, because `install` hands that client to your EPI. [Configuration](./configuration.md) § EPI
+Integrations shows that user. Replace `https://piggy.example.com/piggy` with the public URL of your EPI.
 
 ```bash
 # 1) Create the payment integration. name and baseUrl are required.
@@ -232,12 +233,11 @@ flowchart LR
 ```
 
 A POS terminal and a payment terminal meet only through the same device. There is no direct link
-from a payment terminal to its integration. The link goes through the payment method. Each record
-in the chain has an API resource, see [POS examples](./pos.md). In a test environment where your
-key is read-only, a Heads administrator creates them: ask for a payment terminal when your method
-requires one. CommerceOS reads `GET /terminals/{terminalId}` on your EPI when it creates its record.
-`assignedTerminals` on the payment integration does not list terminals: it lists the organization
-nodes that hold a configuration, and each node carries a `terminals` member that calls your EPI.
+from a payment terminal to its integration: the link goes through the payment method. Each record in
+the chain has an API resource, see [POS examples](./pos.md). In a test environment where your key is
+read-only, a Heads administrator creates them: ask for a payment terminal when your method requires
+one. CommerceOS reads `GET /terminals/{terminalId}` on your EPI when it creates its record. `assignedTerminals`
+on the payment integration does not list terminals: it lists the organization nodes that hold a configuration, and each node carries a `terminals` member that calls your EPI.
 
 ## 6. Test amounts
 
@@ -253,8 +253,7 @@ amount to select the outcome. The sample follows the same table.
 | `.04` | `Wait`, then `Complete` |
 | `.05` | `Complete`, actions `["Authorize"]` only |
 
-If your sandbox selects outcomes another way, tell Heads which amount produces each outcome. The
-tool takes that mapping in a profile file.
+If your sandbox selects outcomes another way, tell Heads which amount produces each outcome. The tool takes that mapping in a profile file.
 
 ## 7. Go live
 
@@ -271,14 +270,13 @@ tool takes that mapping in a profile file.
 
 ## 8. One family, two paths
 
-A payment integration is one kind of EPI integration. Shipment, loyalty and wallet integrations
-are the others, and they share the same base: a `baseUrl`, `install`, `uninstall`, and
-configurations on organization nodes. The API exposes the family at `/v1/epi-integrations` and
-each kind at its own path. A payment integration read through either path returns the same
-record. `/v1/payment-integrations` adds the members that only a payment integration has, such as
-`methods` and `assignedTerminals`. `install`, `uninstall` and `test` belong to the family and work
-on both paths. Use `/v1/payment-integrations` for a payment provider. Use `/v1/epi-integrations`
-only to list every integration kind at once.
+A payment integration is one kind of EPI integration. Shipment, loyalty and wallet integrations are
+the others, and they share the same base: a `baseUrl`, `install`, `uninstall`, and configurations on
+organization nodes. The API exposes the family at `/v1/epi-integrations` and each kind at its own
+path. A payment integration read through either path returns the same record.
+`/v1/payment-integrations` adds the members that only a payment integration has, such as `methods`
+and `assignedTerminals`. `install`, `uninstall` and `test` belong to the family and work on both
+paths. Use `/v1/payment-integrations` for a payment provider, and `/v1/epi-integrations` only to list every kind at once.
 
 ## 9. Glossary
 
