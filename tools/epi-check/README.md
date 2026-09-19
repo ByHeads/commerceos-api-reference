@@ -75,3 +75,7 @@ node --test 'tools/epi-check/*.test.mjs'
 
 The scenarios live in `guide/examples/payment-epi/scenarios/`, one JSON file each, next to the
 tutorial that quotes them. `run.mjs` names the folder in one constant.
+
+`openapi.mjs` writes `guide/examples/payment-epi/epi-openapi.yaml`, the OpenAPI 3.1 document of the
+ten routes, from `contract/dto.schema.json` and a route table in the script. `--check` exits 1 when
+the file on disk is stale. Run it after any change to the contract schema.

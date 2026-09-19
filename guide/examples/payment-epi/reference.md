@@ -279,7 +279,7 @@ The cents of the amount select the outcome: [Build a payment EPI](../payment-epi
 
 ## 12. Field appendix
 
-`?` marks an optional field. A decimal is a string such as `"100.00"`. A timestamp is ISO 8601. **Install payload:** `cosBaseUrl`, `tokenUrl`, `clientId`, `clientSecret`, `scope`. All strings, all required.
+`?` marks an optional field. A decimal is a string such as `"100.00"`. A timestamp is ISO 8601. The same fields as an OpenAPI 3.1 document, for a server stub: [`epi-openapi.yaml`](./epi-openapi.yaml). **Install payload:** `cosBaseUrl`, `tokenUrl`, `clientId`, `clientSecret`, `scope`. All strings, all required.
 
 **MethodDto**
 
