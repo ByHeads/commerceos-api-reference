@@ -57,3 +57,17 @@ test("play 10.04 prints the tap command, and a tap completes the payment before 
 test("play against a closed port is a transport error", async () => {
     await assert.rejects(play({ amount: "10.00", base: "http://127.0.0.1:1/piggy", print: () => {}, install }), /fetch failed/);
 });
+
+test("play 10.04 --cos: the bank writes its session to the stand-in's key-value store, and the output shows it", async () => {
+    const piggy = await startPiggyServer({ now: clock, waitMs: 200 });
+    const lines = [];
+    try {
+        const final = await play({ amount: "10.04", base: piggy.url, print: line => lines.push(line), cos: true });
+        assert.equal(final.type, "Complete");
+        assert.ok(lines.includes("[cos] POST /oauth2/v1/token 200"), lines.join("\n"));
+        assert.ok(lines.some(line => /^\[cos\] PUT \/api\/v1\/kv\/com\.example\.piggy\/pay-\d+ 200$/.test(line)), lines.join("\n"));
+        assert.equal(lines.filter(line => line.startsWith("[cos] PUT")).length, 2, "waiting, then settled");
+    } finally {
+        await piggy.close();
+    }
+});

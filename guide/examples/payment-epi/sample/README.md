@@ -3,6 +3,7 @@
 Piggy Bank is the smallest payment provider that CommerceOS can talk to: a payment EPI (External
 Partner Interface) in three files. `bank.mjs` is an in-memory bank with sessions and a ledger,
 `server.mjs` the ten contract routes on `node:http`, `play.mjs` a script that acts as
+CommerceOS. A fourth file, `cos.mjs`, stands in for the calls that the bank makes back to
 CommerceOS. Node 22, no dependencies, no install. The contract is in `../reference.md`.
 
 ## Run it
@@ -11,6 +12,7 @@ CommerceOS. Node 22, no dependencies, no install. The contract is in `../referen
 node server.mjs                 # the bank, at http://localhost:8787/piggy (PORT to change)
 node play.mjs 10.00             # in a second terminal: install, read the methods, pay 10.00
 node play.mjs 10.04             # a payment that waits for the customer's phone
+node play.mjs 10.04 --cos       # the same, with the CommerceOS stand-in started in-process
 ```
 The cents of the amount select the outcome. Every other amount completes.
 
@@ -26,6 +28,16 @@ The cents of the amount select the outcome. Every other amount completes.
 `--payout` sends the money the other way and gives `["Authorize"]`. The window is 3 seconds. Set
 `PIGGY_WAIT_MS=60000` before `node server.mjs` to tap or cancel by hand. The tap, with the session
 id that the `Wait` step prints: `curl -X POST http://localhost:8787/piggy/tap/PB-1`
+
+## Both directions on one laptop
+
+The bank records a waiting `.04` session in the CommerceOS key-value store (reference, section 8).
+Without CommerceOS that write fails, and the server logs `kv pay-... not written`. `--cos` starts
+`cos.mjs` inside the play script and installs the bank against it: a token endpoint, the
+configuration behind a context id, the key-value store, and `PATCH /api/v1/payment-orders/{key}`,
+all in memory. Every call shows as a `[cos]` line in the play output. `node cos.mjs` runs it alone
+on port 8790 (`COS_PORT` to change), for an EPI of your own: install it with `cosBaseUrl`
+`http://localhost:8790`, `tokenUrl` `http://localhost:8790/oauth2/v1/token`, client `play` / `play-secret`.
 
 ## Test it
 

@@ -2,14 +2,17 @@
 // print every step of the stream as it arrives. The request bodies and headers are the ones the
 // contract reference describes (guide/examples/payment-epi/reference.md, sections 2, 3 and 5).
 //
-//   node play.mjs <amount> [--base http://localhost:8787/piggy] [--payout]
+//   node play.mjs <amount> [--base http://localhost:8787/piggy] [--payout] [--cos]
 //
-// Exit 0 when the stream ends with a final step, 1 on a transport error.
+// `--cos` starts the CommerceOS stand-in of cos.mjs in-process and installs the bank against it,
+// so that the bank's calls back (the key-value store, section 8) land somewhere and show in the
+// output as `[cos]` lines. Exit 0 when the stream ends with a final step, 1 on a transport error.
+import { startCosStandIn, CLIENT } from "./cos.mjs";
 
 const DEFAULT_BASE = "http://localhost:8787/piggy";
 
-/** The install payload CommerceOS hands over. The bank logs a failed callback and carries on. */
-const INSTALL = { cosBaseUrl: "http://localhost:5000", tokenUrl: "http://localhost:5000/oauth/token", clientId: "play", clientSecret: "play-secret", scope: "kv" };
+/** The install payload CommerceOS hands over. Without `--cos`, the bank logs a failed callback and carries on. */
+const INSTALL = { cosBaseUrl: "http://localhost:5000", tokenUrl: "http://localhost:5000/oauth/token", ...CLIENT, scope: "kv" };
 
 const customer = { type: "Person", key: "person-0001", givenName: "Anna", familyName: "Lindqvist", fullName: "Anna Lindqvist", email: "anna.lindqvist@example.com" };
 const store = { type: "Organization", key: "org-0001", fullName: "Sample Store AB" };
@@ -68,7 +71,17 @@ export function transactionTable(transactions) {
  * Plays one payment. `print` receives every output line. Returns the final step. Throws on a
  * transport error or a stream that ends without a final step.
  */
-export async function play({ amount, base = DEFAULT_BASE, payout = false, print = console.log, install = INSTALL }) {
+export async function play({ amount, base = DEFAULT_BASE, payout = false, print = console.log, install = INSTALL, cos = false }) {
+    const standIn = cos ? await startCosStandIn({ log: line => print(`[cos] ${line}`) }) : null;
+    if (standIn) install = { ...install, cosBaseUrl: standIn.url, tokenUrl: `${standIn.url}/oauth2/v1/token` };
+    try {
+        return await playAgainst({ amount, base, payout, print, install, standIn });
+    } finally {
+        await standIn?.close();
+    }
+}
+
+async function playAgainst({ amount, base, payout, print, install, standIn }) {
     const headers = { ...contextHeaders(base), "content-type": "application/json" };
     const call = async (method, path, body, contextful = true) => {
         const response = await fetch(`${base}${path}`, { method, headers: contextful ? headers : { "content-type": "application/json" }, body: body && JSON.stringify(body) });
@@ -85,26 +98,34 @@ export async function play({ amount, base = DEFAULT_BASE, payout = false, print 
     if (!response.headers.get("content-type")?.startsWith("text/event-stream")) throw new Error(`PUT /payments answered ${response.headers.get("content-type")}, not an event stream`);
 
     let final;
+    let sawWait = false;
     for await (const event of readEvents(response.body)) {
         const { type, ...data } = event;
         print(`→ ${type} ${JSON.stringify(data)}`);
+        if (type === "Wait") sawWait = true;
         if (type === "Wait" && data.params?.[0]) print(`  tap:    curl -X POST ${base}/tap/${data.params[0]}`);
         if (type === "Cancellable") print(`  cancel: curl -X POST ${base}/payments/${data.cancellationToken}/cancel -H 'X-EPI-Context-Config-Id: EPI1' -d '{}'`);
         if (type === "Complete") print(transactionTable(data.result.transactions));
         if (FINAL.has(type)) final = event;
     }
     if (!final) throw new Error("The stream ended without a final step");
+    // The bank writes "settled" to the store after the final step. Give that write two seconds to land.
+    if (standIn && sawWait) await until(() => standIn.kv.get(`com.example.piggy/${paymentKey}`)?.state === "settled", 2000);
     return final;
 }
 
-// `node play.mjs <amount> [--base <url>] [--payout]`
+async function until(condition, timeoutMs) {
+    for (const end = Date.now() + timeoutMs; !condition() && Date.now() < end;) await new Promise(next => setTimeout(next, 20));
+}
+
+// `node play.mjs <amount> [--base <url>] [--payout] [--cos]`
 if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
     const args = process.argv.slice(2);
     const amount = args.find(arg => /^\d+\.\d{2}$/.test(arg));
     const baseIndex = args.indexOf("--base");
-    if (!amount) { console.error("Usage: node play.mjs <amount, for example 10.00> [--base <url>] [--payout]"); process.exit(1); }
+    if (!amount) { console.error("Usage: node play.mjs <amount, for example 10.00> [--base <url>] [--payout] [--cos]"); process.exit(1); }
     try {
-        await play({ amount, base: baseIndex === -1 ? DEFAULT_BASE : args[baseIndex + 1], payout: args.includes("--payout") });
+        await play({ amount, base: baseIndex === -1 ? DEFAULT_BASE : args[baseIndex + 1], payout: args.includes("--payout"), cos: args.includes("--cos") });
     } catch (error) {
         console.error(`Transport error: ${error.message}`);
         process.exit(1);
