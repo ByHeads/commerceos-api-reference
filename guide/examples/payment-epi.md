@@ -247,14 +247,14 @@ amount to select the outcome. The sample follows the same table.
 
 | Cents | Outcome |
 |---|---|
-| `.00` | `Complete`, actions `["Authorize","Debit"]` |
+| `.00` | `Complete`, actions `["Authorize","Debit"]`. A `Payout` gets `["Authorize"]` only, unless the request sets `debitSynchronously` |
 | `.01` | `Decline`, reason `InsufficientFunds` |
 | `.02` | `Fail`, one error |
 | `.03` | `Cancellable`, then `Cancel` after the cancel call |
-| `.04` | `Wait`, then `Complete` |
+| `.04` | exactly `Wait`, then `Complete`. No `Create` step: the tool checks the step list as given |
 | `.05` | `Complete`, actions `["Authorize"]` only |
 
-If your sandbox selects outcomes another way, tell Heads which amount produces each outcome. The tool takes that mapping in a profile file.
+If your sandbox selects outcomes another way, tell Heads which amount produces each outcome. The tool takes that mapping in a profile file. Where the reference says "any 2xx", the tool expects `200`. Answer `200`.
 
 ## 7. Go live
 

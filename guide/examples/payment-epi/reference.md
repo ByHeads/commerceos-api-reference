@@ -109,7 +109,7 @@ is the key of the payment order that CommerceOS allocates before the call. The o
 ```
 
 The response has `Content-Type: text/event-stream`. Each step is one SSE message: a line
-`event: <type>`, a line `data: <JSON>`, then a blank line. CommerceOS reads the JSON and adds `type`.
+`event: <type>`, a line `data: <JSON>`, then a blank line. A step with no fields, such as `Cancel`, can omit the `data:` line. CommerceOS reads the JSON and adds `type`.
 It splits messages at `\n\n`, joins several `data:` lines with a newline, ignores `id:`, `retry:` and
 comment lines, and assumes one space after each colon. A stream holds zero or more intermediate steps and exactly one final step.
 
@@ -144,7 +144,7 @@ Capture, release and refund go to `POST {baseUrl}/payments/{paymentKey}/transact
 ```
 
 A cancel goes to `POST {baseUrl}/payments/{cancellationToken}/cancel` with a `CancelDto`. The token
-is the one from the `Cancellable` step. The answer is any 2xx, and the stream then ends with `Cancel`.
+is the one from the `Cancellable` step. The answer is any 2xx (`200` for the conformance tool), and the stream then ends with `Cancel`.
 The four fields of `CancelDto` carry the local-terminal context, so that a provider can route the cancel to the right terminal.
 <!-- fixture: scenarios/fixtures.json#/cancel -->
 ```json
