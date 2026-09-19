@@ -68,6 +68,7 @@ function window_(ms) {
 export function startPiggyServer({ port = 0, now = () => new Date(), waitMs = 3000, log = () => {} } = {}) {
     const bank = createBank({ now });
     const sessionsByKey = new Map(); // paymentKey -> sessionId
+    const resultsByKey = new Map(); // paymentKey -> the Complete result, replayed on a repeated PUT
     const pendingCancels = new Map(); // cancellationToken -> release()
     let installation = null;
 
@@ -102,12 +103,23 @@ export function startPiggyServer({ port = 0, now = () => new Date(), waitMs = 30
     }
 
     // Section 5: the payment stream. One session per payment key, and one final step per stream.
+    // A repeated PUT for a key is a resume (reference section 11): a settled payment is replayed
+    // with the same processorsId, a payment still in progress is refused, and a declined,
+    // cancelled or failed one starts over.
     async function streamPayment(response, paymentKey, dto) {
-        const { sessionId } = bank.createSession({ amount: dto.amount, currencyCode: dto.currencyCode, methodId: dto.methodId, token: dto.token });
-        sessionsByKey.set(paymentKey, sessionId);
         response.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
         const send = (type, data) => response.write(formatEvent(type, data));
-        const complete = actions => send("Complete", { result: paymentResult(sessionId, [bank.settle(sessionId, actions)]) });
+        if (resultsByKey.has(paymentKey)) { send("Complete", { result: resultsByKey.get(paymentKey) }); return response.end(); }
+        if (sessionsByKey.has(paymentKey) && bank.session(sessionsByKey.get(paymentKey)).state === "open") {
+            send("Fail", { errors: [{ code: "InProgress", message: `Payment ${paymentKey} is still in progress` }] });
+            return response.end();
+        }
+        const { sessionId } = bank.createSession({ amount: dto.amount, currencyCode: dto.currencyCode, methodId: dto.methodId, token: dto.token });
+        sessionsByKey.set(paymentKey, sessionId);
+        const complete = actions => {
+            resultsByKey.set(paymentKey, paymentResult(sessionId, [bank.settle(sessionId, actions)]));
+            send("Complete", { result: resultsByKey.get(paymentKey) });
+        };
         const saleActions = dto.direction === "Payout"
             ? (dto.debitSynchronously ? ["Authorize", "Debit"] : ["Authorize"])
             : (cents(dto.amount) === "05" ? ["Authorize"] : ["Authorize", "Debit"]);
@@ -126,6 +138,9 @@ export function startPiggyServer({ port = 0, now = () => new Date(), waitMs = 30
                 const cancel = window_(waitMs);
                 pendingCancels.set(paymentKey, cancel.release);
                 send("Cancellable", { cancellationToken: paymentKey });
+                // The POS shows the cancel button on the waiting dialog only: a Cancellable step
+                // alone shows the cashier nothing.
+                send("Wait", { message: "Waiting for the bank. Cancel from the till to stop." });
                 const cancelled = await cancel.promise;
                 pendingCancels.delete(paymentKey);
                 if (cancelled) { bank.close(sessionId, "cancelled"); send("Cancel"); } else complete(saleActions);

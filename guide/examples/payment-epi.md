@@ -129,7 +129,7 @@ caller. Protect the endpoint at the network level. How you do that is your choic
 | File | Role | Lines |
 |---|---|---|
 | `sample/bank.mjs` | the in-memory bank: sessions, a ledger, and `tap(sessionId)` for the customer's phone | 77 |
-| `sample/server.mjs` | the EPI: the ten routes, the header check, the stream, transactions and cancel | 237 |
+| `sample/server.mjs` | the EPI: the ten routes, the header check, the stream, transactions and cancel | 253 |
 | `sample/play.mjs` | the CommerceOS side: install, methods, one payment, every step printed | 133 |
 | `sample/cos.mjs` | a stand-in for the calls back: token, configuration, key-value store, payment-order completion | 107 |
 

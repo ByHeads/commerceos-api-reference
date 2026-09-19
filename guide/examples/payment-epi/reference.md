@@ -116,7 +116,7 @@ comment lines, and assumes one space after each colon. A stream holds zero or mo
 | Step | Kind | Fields | Meaning |
 |---|---|---|---|
 | `Create` | intermediate | `result: PaymentDto` | a session exists at the provider. More steps follow |
-| `Cancellable` | intermediate | `cancellationToken` | CommerceOS can now cancel (section 6) |
+| `Cancellable` | intermediate | `cancellationToken` | CommerceOS can now cancel (section 6). Send a `Wait` step after it: the POS shows the cancel button on the waiting dialog, and nothing on `Cancellable` alone |
 | `Wait` | intermediate | `message?`, `element?`, `translationKey?`, `params?` | show a waiting message |
 | `ShowImage` | intermediate | `url`, `audience?` | show an image, for example a QR code |
 | `VisitPage` | intermediate | `url`, `audience?` | open a web page |

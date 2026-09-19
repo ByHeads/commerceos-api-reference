@@ -82,9 +82,25 @@ test("a .03 payment ends with Cancel after the cancel call, and the bank keeps n
         await new Promise(resolve => setTimeout(resolve, 100));
         const cancel = await fetch(`${piggy.url}/payments/pay-7/cancel`, { method: "POST", headers: context, body: "{}" });
         assert.equal(cancel.status, 200);
-        assert.deepEqual((await events(await stream)).map(s => s.type), ["Cancellable", "Cancel"]);
+        assert.deepEqual((await events(await stream)).map(s => s.type), ["Cancellable", "Wait", "Cancel"]);
         assert.deepEqual(piggy.bank.ledger, []);
         assert.equal(piggy.bank.session("PB-1").state, "cancelled");
+    } finally {
+        await piggy.close();
+    }
+});
+
+test("a repeated PUT for a completed payment key replays the same result, and a declined key starts over", async () => {
+    const piggy = await startPiggyServer({ now: clock });
+    try {
+        const first = await events(await fetch(`${piggy.url}/payments/pay-again`, { method: "PUT", headers: context, body: JSON.stringify(init("10.00")) }));
+        const second = await events(await fetch(`${piggy.url}/payments/pay-again`, { method: "PUT", headers: context, body: JSON.stringify(init("10.00")) }));
+        assert.deepEqual(second, first, "same processorsId, same transaction");
+        assert.equal(piggy.bank.ledger.length, 1, "no second charge");
+        const declined = await events(await fetch(`${piggy.url}/payments/pay-declined`, { method: "PUT", headers: context, body: JSON.stringify(init("10.01")) }));
+        assert.equal(declined[0].type, "Decline");
+        const retry = await events(await fetch(`${piggy.url}/payments/pay-declined`, { method: "PUT", headers: context, body: JSON.stringify(init("10.00")) }));
+        assert.equal(retry[0].type, "Complete", "a retry after a decline is a new payment");
     } finally {
         await piggy.close();
     }

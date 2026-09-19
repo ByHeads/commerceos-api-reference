@@ -138,7 +138,10 @@ function checkStep({ step, label, expect, status, subject, events, args, key, tr
         events.forEach((event, index) => {
             for (const error of validate(schemaDoc, "PaymentStep", event)) fail(label, `events[${index}]${error.path ? "." + error.path : ""}`, error.message);
         });
-        if (expect.events && !sameJson(events.map(e => e.type), expect.events)) fail(label, "events", `expected [${expect.events.join(", ")}], got [${events.map(e => e.type).join(", ")}]`);
+        // A Wait step between the expected steps is the EPI's choice (contract section 5), so the
+        // comparison ignores Wait unless the expectation names it.
+        const types = events.map(e => e.type).filter(type => type !== "Wait" || expect.events?.includes("Wait"));
+        if (expect.events && !sameJson(types, expect.events)) fail(label, "events", `expected [${expect.events.join(", ")}], got [${events.map(e => e.type).join(", ")}]`);
     }
 
     if (expect.schema) {
