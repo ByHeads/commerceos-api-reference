@@ -43,7 +43,7 @@ function responseOf(kind) {
 }
 
 function operation(route) {
-    const parameters = [...(route.path.match(/\{(\w+)\}/g) ?? []).map(name => ({ name: name.slice(1, -1), in: "path", required: true, schema: { type: "string" } }))];
+    const parameters = (route.path.match(/\{(\w+)\}/g) ?? []).map(name => ({ name: name.slice(1, -1), in: "path", required: true, schema: { type: "string" } }));
     if (route.contextful) parameters.push(...CONTEXT.map(name => ({ $ref: `#/components/parameters/${name}` })));
     const operation = { summary: route.summary, ...(route.description ? { description: route.description } : {}), ...(parameters.length ? { parameters } : {}) };
     if (route.request) operation.requestBody = { required: true, content: json(ref(route.request)) };
@@ -91,7 +91,7 @@ export function toYaml(value, indent = 0) {
     const pad = " ".repeat(indent);
     if (Array.isArray(value)) {
         if (value.length === 0) return `${pad}[]\n`;
-        return value.map(item => Array.isArray(item) || (item && typeof item === "object")
+        return value.map(item => item && typeof item === "object"
             ? Object.keys(item).length === 0 ? `${pad}- ${Array.isArray(item) ? "[]" : "{}"}\n` : `${pad}- ${toYaml(item, indent + 2).slice(indent + 2)}`
             : `${pad}- ${scalar(item)}\n`).join("");
     }

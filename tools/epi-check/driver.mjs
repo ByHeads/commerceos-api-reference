@@ -87,8 +87,6 @@ export function createDriver({ baseUrl, context, timeoutMs = 10000, fetch = glob
 
     return {
         log,
-        baseUrl,
-        context,
         // Bare calls: they run before any configuration exists (plan § 7).
         install: payload => bare("POST", "/install", payload),
         uninstall: () => bare("POST", "/uninstall"),

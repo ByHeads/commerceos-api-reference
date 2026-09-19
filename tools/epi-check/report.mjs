@@ -35,7 +35,7 @@ export function buildReport(outcomes) {
 }
 
 export function reportJson(report) {
-    return JSON.stringify(sortKeys(report), null, 2) + "\n";
+    return JSON.stringify(report, null, 2) + "\n";
 }
 
 export function buildMeta({ target, generatedAt, contractCommit, durationMs }) {

@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createServer } from "node:http";
 import { startPiggyServer, METHOD_ID } from "./server.mjs";
+import { readEvents } from "./play.mjs";
+import { startCosStandIn } from "./cos.mjs";
 
 const clock = () => new Date("2026-01-01T00:00:00Z");
 const context = { "X-EPI-Context-Config-Id": "EPI1", "X-EPI-Context-Config-Hash": "h", "content-type": "application/json" };
@@ -10,37 +11,7 @@ const init = amount => ({
     payer: { type: "Person", key: "p" }, payee: { type: "Organization", key: "o" }, specification: [],
 });
 
-/** Reads a whole SSE stream into `[{ type, ...data }]`. */
-async function events(response) {
-    const text = await response.text();
-    return text.trim().split("\n\n").map(record => {
-        const type = /^event: (.*)$/m.exec(record)[1];
-        const data = /^data: (.*)$/m.exec(record)?.[1];
-        return { type, ...(data ? JSON.parse(data) : {}) };
-    });
-}
-
-/** A stub CommerceOS: a token endpoint and a key-value store that records every PUT. */
-function startStubCos() {
-    const writes = [];
-    const server = createServer((request, response) => {
-        let body = "";
-        request.on("data", chunk => { body += chunk; });
-        request.on("end", () => {
-            if (request.url === "/oauth2/v1/token") {
-                response.writeHead(200, { "content-type": "application/json" });
-                return response.end(JSON.stringify({ access_token: "stub-token", expires_in: 3600 }));
-            }
-            writes.push({ url: request.url, authorization: request.headers.authorization, body: JSON.parse(body) });
-            response.writeHead(200, { "content-type": "application/json" });
-            response.end("{}");
-        });
-    });
-    return new Promise(resolve => server.listen(0, "127.0.0.1", () => {
-        const url = `http://127.0.0.1:${server.address().port}`;
-        resolve({ url, writes, close: () => new Promise(done => { server.closeAllConnections(); server.close(done); }) });
-    }));
-}
+const events = response => Array.fromAsync(readEvents(response.body));
 
 test("a contextful call without the config id header answers 400 with an error body", async () => {
     const piggy = await startPiggyServer({ now: clock });
@@ -54,7 +25,8 @@ test("a contextful call without the config id header answers 400 with an error b
 });
 
 test("a .04 payment records its session in the key-value store with a bearer token, then completes", async () => {
-    const cos = await startStubCos();
+    const lines = [];
+    const cos = await startCosStandIn({ clientId: "c", clientSecret: "s", log: line => lines.push(line) });
     const piggy = await startPiggyServer({ now: clock, waitMs: 200 });
     try {
         const install = { cosBaseUrl: cos.url, tokenUrl: `${cos.url}/oauth2/v1/token`, clientId: "c", clientSecret: "s", scope: "kv" };
@@ -64,11 +36,9 @@ test("a .04 payment records its session in the key-value store with a bearer tok
         assert.deepEqual(steps.map(s => s.type), ["Wait", "Complete"]);
         assert.deepEqual(steps[1].result.transactions[0].actions, ["Authorize", "Debit"]);
         await new Promise(resolve => setTimeout(resolve, 100));
-        assert.deepEqual(cos.writes.map(w => [w.url, w.authorization, w.body.state]), [
-            ["/api/v1/kv/com.example.piggy/pay-9", "Bearer stub-token", "waiting"],
-            ["/api/v1/kv/com.example.piggy/pay-9", "Bearer stub-token", "settled"],
-        ]);
-        assert.equal(cos.writes[0].body.sessionId, "PB-1");
+        // The stand-in answers 200 only with its own bearer token, so two 200 lines prove the token flow.
+        assert.deepEqual(lines.filter(line => line.startsWith("PUT ")), ["PUT /api/v1/kv/com.example.piggy/pay-9 200", "PUT /api/v1/kv/com.example.piggy/pay-9 200"]);
+        assert.deepEqual(cos.kv.get("com.example.piggy/pay-9"), { sessionId: "PB-1", state: "settled" });
     } finally {
         await piggy.close();
         await cos.close();

@@ -62,10 +62,10 @@ test("report: sorted keys, no timestamps, markdown rows", () => {
 
 test("parseArgs and placeholders", () => {
     assert.deepEqual(parseArgs(["--reference", "--now", NOW]), { reference: true, now: NOW, timeout: 10000 });
-    assert.equal(parseArgs(["--target", "http://x", "--timeout", "500"]).timeout, 500);
+    assert.equal(parseArgs(["--base", "http://x", "--timeout", "500"]).timeout, 500);
     assert.throws(() => parseArgs([]), /exactly one/);
-    assert.throws(() => parseArgs(["--reference", "--target", "http://x"]), /exactly one/);
-    assert.throws(() => parseArgs(["--target", "http://x", "--reference-defect", "drop-token"]), /needs --reference/);
+    assert.throws(() => parseArgs(["--reference", "--base", "http://x"]), /exactly one/);
+    assert.throws(() => parseArgs(["--base", "http://x", "--reference-defect", "drop-token"]), /needs --reference/);
     assert.throws(() => parseArgs(["--reference", "--bogus"]), /Unknown argument/);
     const vars = { id: "P1", amount: "100.05", token: "tok-{{id}}", payer: { key: "k" } };
     assert.equal(resolvePlaceholders("{{token}}", vars), "tok-P1");
@@ -123,7 +123,7 @@ test("a profile overrides amounts, currency and method", async () => {
     assert.match(p6.failures[0].message, /expected \[Decline\], got \[Complete\]/);
 });
 
-test("--target against a server that answers 500 everywhere fails L1 and still writes the report", async () => {
+test("--base against a server that answers 500 everywhere fails L1 and still writes the report", async () => {
     const angry = createServer((request, response) => {
         response.writeHead(500, { "content-type": "application/json" });
         response.end(JSON.stringify({ errors: [{ message: "boom" }] }));

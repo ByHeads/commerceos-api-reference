@@ -68,9 +68,6 @@ export function createBank({ now = () => new Date() } = {}) {
         /** A later move on settled money: `Debit` captures, `Annul` releases, `Credit` refunds. */
         record: (sessionId, actions, amount) => post(sessionId, actions, amount),
 
-        /** A refund of `amount` back to the customer. */
-        credit: (sessionId, amount) => post(sessionId, ["Credit"], amount),
-
         /** Closes a session without money moving, for example `declined` or `cancelled`. */
         close(sessionId, state) { get(sessionId).state = state; },
     };

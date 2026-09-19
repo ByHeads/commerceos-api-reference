@@ -98,19 +98,18 @@ async function playAgainst({ amount, base, payout, print, install, standIn }) {
     if (!response.headers.get("content-type")?.startsWith("text/event-stream")) throw new Error(`PUT /payments answered ${response.headers.get("content-type")}, not an event stream`);
 
     let final;
-    let sawWait = false;
+    let sessionId;
     for await (const event of readEvents(response.body)) {
         const { type, ...data } = event;
         print(`→ ${type} ${JSON.stringify(data)}`);
-        if (type === "Wait") sawWait = true;
-        if (type === "Wait" && data.params?.[0]) print(`  tap:    curl -X POST ${base}/tap/${data.params[0]}`);
+        if (type === "Wait" && data.params?.[0]) { sessionId = data.params[0]; print(`  tap:    curl -X POST ${base}/tap/${sessionId}`); }
         if (type === "Cancellable") print(`  cancel: curl -X POST ${base}/payments/${data.cancellationToken}/cancel -H 'X-EPI-Context-Config-Id: EPI1' -d '{}'`);
         if (type === "Complete") print(transactionTable(data.result.transactions));
         if (FINAL.has(type)) final = event;
     }
     if (!final) throw new Error("The stream ended without a final step");
     // The bank writes "settled" to the store after the final step. Give that write two seconds to land.
-    if (standIn && sawWait) await until(() => standIn.kv.get(`com.example.piggy/${paymentKey}`)?.state === "settled", 2000);
+    if (standIn && sessionId) await until(() => standIn.kv.get(`com.example.piggy/${paymentKey}`)?.state === "settled", 2000);
     return final;
 }
 

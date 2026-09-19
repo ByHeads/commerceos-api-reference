@@ -14,10 +14,8 @@
 
 export const COS_SCENARIO = { id: "C1", title: "CommerceOS side: Active, test success per node, assignedTerminals 200" };
 
-/** Known defects. A failure that matches one carries its label in `path`. */
-export const DEFECTS = {
-    D1: { step: "assignedTerminals", status: 500 },
-};
+/** Known defect D1: `assignedTerminals` answers 500. A failure that matches it carries "D1" in `path`. */
+const D1_STATUS = 500;
 
 function joinUrl(baseUrl, path) {
     return baseUrl.replace(/\/+$/, "") + "/api/v1" + (path.startsWith("/") ? path : "/" + path);
@@ -102,7 +100,7 @@ export async function runCosScenario({ client, integration }) {
                 if (!isArray(body?.assignedTerminals ?? body)) fail(label, "assignedTerminals", `expected an array, got ${JSON.stringify(body)}`);
                 return;
             }
-            const defect = status === DEFECTS.D1.status ? "D1" : "status";
+            const defect = status === D1_STATUS ? "D1" : "status";
             const details = typeof body?.details === "string" ? body.details : undefined;
             fail(label, defect, `${defect === "D1" ? "D1: " : ""}expected 200, got ${status}${details !== undefined ? ` — details: ${details}` : describe(body)}`);
         }],

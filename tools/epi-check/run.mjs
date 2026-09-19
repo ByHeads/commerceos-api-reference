@@ -29,7 +29,7 @@ export const ORDER = ["L1", "L2", "L3", "L4", "L5", "P1", "P2", "P3", "P4", "P5"
 
 export function parseArgs(args) {
     const options = { timeout: 10000 };
-    const valued = { "--base": "target", "--target": "target", "--profile": "profile", "--out": "out", "--now": "now", "--timeout": "timeout", "--reference-defect": "referenceDefect", "--cos": "cos", "--key": "key", "--integration": "integration" };
+    const valued = { "--base": "target", "--profile": "profile", "--out": "out", "--now": "now", "--timeout": "timeout", "--reference-defect": "referenceDefect", "--cos": "cos", "--key": "key", "--integration": "integration" };
     for (let i = 0; i < args.length; i++) {
         const arg = args[i];
         if (arg === "--help") return { help: true };
@@ -47,10 +47,6 @@ export function parseArgs(args) {
     if (!Number.isFinite(options.timeout) || options.timeout <= 0) throw new Error("--timeout must be a positive number of milliseconds.");
     if (options.now !== undefined && Number.isNaN(Date.parse(options.now))) throw new Error("--now must be an ISO date.");
     return options;
-}
-
-export function contractCommit() {
-    return CONTRACT_COMMIT;
 }
 
 export function loadScenarios() {
@@ -295,7 +291,7 @@ function defaultOut(target, generatedAt) {
 }
 
 /** Runs every scenario and writes the three files. Returns `{ report, meta, outDir, exitCode }`. */
-export async function run(options, { log = () => {} } = {}) {
+export async function run(options) {
     const started = performance.now();
     const generatedAt = options.now ?? new Date().toISOString();
     const schemaDoc = JSON.parse(readFileSync(join(here, "contract", "dto.schema.json"), "utf8"));
@@ -320,7 +316,6 @@ export async function run(options, { log = () => {} } = {}) {
             const client = createCosClient({ baseUrl: options.cos, key: options.key, timeoutMs: options.timeout });
             const outcome = await runCosScenario({ client, integration: options.integration });
             outcomes.push(outcome);
-            log(`${outcome.id} ${outcome.result}`);
         } else {
             const context = resolvePlaceholders(fixtures.context, { baseUrl });
             const driver = createDriver({ baseUrl, context, timeoutMs: options.timeout });
@@ -328,11 +323,10 @@ export async function run(options, { log = () => {} } = {}) {
             for (const scenario of scenarios) {
                 const outcome = await runScenario(scenario, { driver, strippedDriver, schemaDoc, fixtures, profile, baseUrl, reference: Boolean(options.reference) });
                 outcomes.push(outcome);
-                log(`${outcome.id} ${outcome.result}`);
             }
         }
         const report = buildReport(outcomes);
-        const meta = buildMeta({ target: targetLabel, generatedAt, contractCommit: contractCommit(), durationMs: Math.round(performance.now() - started) });
+        const meta = buildMeta({ target: targetLabel, generatedAt, contractCommit: CONTRACT_COMMIT, durationMs: Math.round(performance.now() - started) });
         mkdirSync(outDir, { recursive: true });
         writeFileSync(join(outDir, "report.json"), reportJson(report));
         writeFileSync(join(outDir, "report.md"), reportMarkdown(report, { target: targetLabel }));
@@ -355,8 +349,8 @@ if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).
         process.exit(2);
     }
     if (options.help) { console.log(usage); process.exit(0); }
-    const { report, outDir, exitCode } = await run(options);
-    process.stdout.write(reportMarkdown(report, { target: options.reference ? "reference" : (options.cos ?? options.target) }));
+    const { report, meta, outDir, exitCode } = await run(options);
+    process.stdout.write(reportMarkdown(report, { target: meta.target }));
     console.log(`Written to ${outDir}`);
     process.exit(exitCode);
 }

@@ -36,8 +36,7 @@ function readBody(request) {
 
 /**
  * Starts the stand-in. `clientId` and `clientSecret` are the OAuth2 client of the install payload.
- * Returns `{ url, kv, orders, close }`: `kv` maps "container/key" to the stored JSON, `orders` maps
- * a payment key to its records.
+ * Returns `{ url, kv, close }`: `kv` maps "container/key" to the stored JSON.
  */
 export function startCosStandIn({ port = 0, clientId = CLIENT.clientId, clientSecret = CLIENT.clientSecret, log = () => {} } = {}) {
     const tokens = new Set();
@@ -66,7 +65,7 @@ export function startCosStandIn({ port = 0, clientId = CLIENT.clientId, clientSe
                 }
             } else if (!tokens.has(/^Bearer (.+)$/.exec(request.headers.authorization ?? "")?.[1])) {
                 answer(401, { errors: [{ message: "A bearer token from POST /oauth2/v1/token is required" }] });
-            } else if ((match = /^GET \/api\/v1\/context\/config\/([^/]+)$/.exec(route))) {
+            } else if (/^GET \/api\/v1\/context\/config\/[^/]+$/.test(route)) {
                 answer(200, CONFIG);
             } else if ((match = /^(GET|PUT|DELETE) \/api\/v1\/kv\/([^/]+)\/([^/]+)$/.exec(route))) {
                 const id = `${match[2]}/${decodeURIComponent(match[3])}`;
@@ -99,7 +98,6 @@ export function startCosStandIn({ port = 0, clientId = CLIENT.clientId, clientSe
         server.listen(port, "127.0.0.1", () => resolve({
             url: `http://localhost:${server.address().port}`,
             kv,
-            orders,
             close: () => new Promise(done => server.close(done)),
         }));
     });

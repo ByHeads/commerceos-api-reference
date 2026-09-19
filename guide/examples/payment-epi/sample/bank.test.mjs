@@ -22,11 +22,11 @@ test("tap resolves a waiting session, and an unknown session is refused", async 
     assert.equal(bank.tap("PB-999"), false);
 });
 
-test("settle records the first transaction, and credit appends a Credit", () => {
+test("settle records the first transaction, and record appends a Credit", () => {
     const bank = createBank({ now: clock });
     const { sessionId } = bank.createSession(init);
     const sale = bank.settle(sessionId, ["Authorize", "Debit"]);
-    const refund = bank.credit(sessionId, "4.00");
+    const refund = bank.record(sessionId, ["Credit"], "4.00");
     assert.equal(bank.session(sessionId).state, "settled");
     assert.deepEqual(sale, { ...init, transactionId: "PB-2", actions: ["Authorize", "Debit"], timestamp: "2026-01-01T00:00:00.000Z" });
     assert.deepEqual(refund.actions, ["Credit"]);

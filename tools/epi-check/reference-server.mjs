@@ -12,6 +12,7 @@
 // clock, and the response bodies never carry a wall-clock value.
 import { createServer } from "node:http";
 import { formatEvent } from "./sse.mjs";
+import { cents } from "../../guide/examples/payment-epi/sample/server.mjs";
 
 export const METHOD_ID = "com.epicheck.reference";
 export const CANCEL_WAIT_MS = 2000;
@@ -34,12 +35,6 @@ export const DEFECTS = ["drop-token"];
 
 function errorBody(message) {
     return { errors: [{ message }] };
-}
-
-function cents(amount) {
-    const match = /^-?\d+(?:\.(\d+))?$/.exec(String(amount));
-    if (!match) return null;
-    return (match[1] ?? "").padEnd(2, "0").slice(0, 2);
 }
 
 /**

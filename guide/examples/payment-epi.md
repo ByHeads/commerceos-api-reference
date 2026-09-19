@@ -149,7 +149,11 @@ const formatEvent = (type, data) => `event: ${type}\n${data == null ? "" : `data
 // ...
 response.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
 const send = (type, data) => response.write(formatEvent(type, data));
-const complete = actions => send("Complete", { result: paymentResult(sessionId, [bank.settle(sessionId, actions)]) });
+const complete = actions => {
+    const { methodId, amount, currencyCode } = dto;
+    resultsByKey.set(paymentKey, { processorsId: sessionId, methodId, amount, currencyCode, transactions: [bank.settle(sessionId, actions)] });
+    send("Complete", { result: resultsByKey.get(paymentKey) });
+};
 // ...
 send("Wait", { message: "Waiting for the customer's phone", params: [sessionId] });
 ```
@@ -163,7 +167,7 @@ if ((match = /^POST \/payments\/([^/]+)\/transactions$/.exec(route))) {
     const sessionId = sessionsByKey.get(decodeURIComponent(match[1]));
     if (!sessionId) return json(response, 404, errorBody(`No payment ${match[1]}`));
     if (dto?.methodId !== METHOD_ID) return json(response, 400, errorBody(`Unknown method ${dto?.methodId}`));
-    const transaction = dto.reversalArgs ? bank.credit(sessionId, dto.amount) : bank.record(sessionId, dto.actions, dto.amount);
+    const transaction = bank.record(sessionId, dto.reversalArgs ? ["Credit"] : dto.actions, dto.amount);
     return json(response, 200, transaction);
 }
 ```

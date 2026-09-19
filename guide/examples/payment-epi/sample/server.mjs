@@ -52,12 +52,9 @@ const readJson = request => new Promise((resolve, reject) => {
 
 /** A resolved-or-timed-out wait: `promise` resolves true on `release()`, false after `ms`. */
 function window_(ms) {
-    let release;
-    const promise = new Promise(resolve => {
-        const timer = setTimeout(() => resolve(false), ms);
-        release = () => { clearTimeout(timer); resolve(true); };
-    });
-    return { promise, release };
+    const { promise, resolve } = Promise.withResolvers();
+    const timer = setTimeout(() => resolve(false), ms);
+    return { promise, release: () => { clearTimeout(timer); resolve(true); } };
 }
 
 /**
@@ -76,11 +73,6 @@ export function startPiggyServer({ port = 0, now = () => new Date(), waitMs = 30
         const text = body === undefined ? "" : JSON.stringify(body, null, 2);
         response.writeHead(status, { "content-type": "application/json", "content-length": Buffer.byteLength(text) });
         response.end(text);
-    };
-
-    const paymentResult = (sessionId, transactions) => {
-        const { methodId, amount, currencyCode } = bank.session(sessionId);
-        return { processorsId: sessionId, methodId, amount, currencyCode, transactions };
     };
 
     // Section 8: a client-credentials token from the install payload, then a key-value write.
@@ -117,14 +109,16 @@ export function startPiggyServer({ port = 0, now = () => new Date(), waitMs = 30
         const { sessionId } = bank.createSession({ amount: dto.amount, currencyCode: dto.currencyCode, methodId: dto.methodId, token: dto.token });
         sessionsByKey.set(paymentKey, sessionId);
         const complete = actions => {
-            resultsByKey.set(paymentKey, paymentResult(sessionId, [bank.settle(sessionId, actions)]));
+            const { methodId, amount, currencyCode } = dto;
+            resultsByKey.set(paymentKey, { processorsId: sessionId, methodId, amount, currencyCode, transactions: [bank.settle(sessionId, actions)] });
             send("Complete", { result: resultsByKey.get(paymentKey) });
         };
+        const outcome = cents(dto.amount);
         const saleActions = dto.direction === "Payout"
             ? (dto.debitSynchronously ? ["Authorize", "Debit"] : ["Authorize"])
-            : (cents(dto.amount) === "05" ? ["Authorize"] : ["Authorize", "Debit"]);
+            : (outcome === "05" ? ["Authorize"] : ["Authorize", "Debit"]);
 
-        switch (cents(dto.amount)) {
+        switch (outcome) {
             case "01":
                 bank.close(sessionId, "declined");
                 // The POS sentence for this reason takes two params: the balance and the requested amount.
@@ -207,7 +201,7 @@ export function startPiggyServer({ port = 0, now = () => new Date(), waitMs = 30
             const sessionId = sessionsByKey.get(decodeURIComponent(match[1]));
             if (!sessionId) return json(response, 404, errorBody(`No payment ${match[1]}`));
             if (dto?.methodId !== METHOD_ID) return json(response, 400, errorBody(`Unknown method ${dto?.methodId}`));
-            const transaction = dto.reversalArgs ? bank.credit(sessionId, dto.amount) : bank.record(sessionId, dto.actions, dto.amount);
+            const transaction = bank.record(sessionId, dto.reversalArgs ? ["Credit"] : dto.actions, dto.amount);
             return json(response, 200, transaction);
         }
         // Section 6: cancel a Cancellable payment by its token. The stream then ends with Cancel.
@@ -234,7 +228,6 @@ export function startPiggyServer({ port = 0, now = () => new Date(), waitMs = 30
             resolve({
                 url: `http://127.0.0.1:${server.address().port}${BASE_PATH}`,
                 bank,
-                get installation() { return installation; },
                 close: () => new Promise(done => {
                     for (const release of pendingCancels.values()) release();
                     server.closeAllConnections();
