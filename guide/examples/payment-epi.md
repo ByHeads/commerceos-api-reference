@@ -101,7 +101,7 @@ node play.mjs 10.04 --cos
 Ten routes under one base URL. CommerceOS holds that base URL on a *payment integration* record
 and appends a fixed path per call. A *bare* call carries no context headers. A *contextful* call
 carries the three context headers of the reference, section 3. Reject one that arrives without them.
-Generate a server stub from [`epi-openapi.yaml`](./payment-epi/epi-openapi.yaml) with your OpenAPI generator.
+Generate a server stub from [`epi-openapi.yaml`](./payment-epi/epi-openapi.yaml) with your OpenAPI generator, for example `openapi-generator` with the server generator for your language.
 
 | Route | Kind | Answers |
 |---|---|---|

@@ -38,7 +38,7 @@ The answer of `GET {baseUrl}/methods` for one method as the Piggy Bank sample se
 ```
 <!-- fixture: scenarios/fixtures.json#/install -->
 ```json
-{ "cosBaseUrl": "http://localhost:5000", "tokenUrl": "http://localhost:5000/oauth/token",
+{ "cosBaseUrl": "http://localhost:5000", "tokenUrl": "http://localhost:5000/oauth2/v1/token",
   "clientId": "epi-check", "clientSecret": "epi-check-secret", "scope": "epi" }
 ```
 
@@ -124,7 +124,7 @@ comment lines, and assumes one space after each colon. A stream holds zero or mo
 | `Complete` | final | `result: PaymentDto`, `issuedWalletKey?` | success. CommerceOS creates one payment record per `result.transactions[]` item |
 | `Decline` | final | `reason`, `params?` | a normal negative outcome. `reason` is a code such as `InsufficientFunds` |
 | `Cancel` | final | none | the payment was cancelled |
-| `Fail` | final | `errors[]` | an error, shown to the operator (section 7) |
+| `Fail` | final | `errors[]` | an error. The cashier sees `Payment failed: <text>` from `errors[0]` (section 7) |
 
 `audience` is `merchant`, `customer` or `all`. A `Complete` result echoes `methodId`, `amount` and
 `currencyCode`, and each transaction echoes the request `token`.
@@ -158,7 +158,7 @@ A failed call answers a non-2xx status with the body `{ "errors": [ ... ] }`. Ea
 | Field | Required | Meaning |
 |---|---|---|
 | `message` | yes | a human-readable description |
-| `code` | no | a provider-defined code. CommerceOS shows `<code>: <message>` |
+| `code` | no | a provider-defined code. On a `Fail` step the POS shows the translation of the code when it has one, else `message`. Never `<code>: <message>` |
 | `params` | no | positional parameters for a translated message |
 
 A non-2xx answer without that body fails with `Request failed: <status>`, and so does a failed
@@ -220,7 +220,7 @@ A record needs these members, and CommerceOS rejects a record with a missing one
 | `token` | the request `token`. Without it, CommerceOS takes the available money for the first action |
 | `specification`, `means`, `rawData`, `consumerPrintout`, `merchantPrintout` | optional |
 
-## 9. Status and action values
+## 9. Status, actions and decline reasons
 
 `status` on a payment order is a set of flags, recomputed from four running amounts on every read, so an order can carry several values.
 
@@ -271,7 +271,7 @@ The cents of the amount select the outcome: [Build a payment EPI](../payment-epi
 | Situation | What CommerceOS does | What you must do |
 |---|---|---|
 | The stream sends no step for a long time | Sets no timeout of its own. The HTTP runtime closes a stream with no bytes after about five minutes. That limit is the runtime's, not a contract value | Send a final step within minutes, or a `Wait` step at intervals while you wait for the provider |
-| The stream drops before a final step | Shows the cashier the transport error in a dialog. The payment order is not marked failed. The cashier's next attempt reuses the same `paymentKey` when no order exists yet, or a fresh key when a non-debited order exists | Treat a second `PUT` with a known `paymentKey` as a resume, not a second charge |
+| The stream drops before a final step | Shows the cashier the transport error in a dialog. The payment order is not marked failed. The cashier's next attempt reuses the same `paymentKey` when no order exists yet, attaches an order that is already `Debited` for the amount without a new call, or takes a fresh key when a non-debited order exists | Treat a second `PUT` with a known `paymentKey` as a resume: answer the same `processorsId` and the same transactions, never a second charge |
 | A stream call or a transactions call fails (network error, non-2xx) | Makes no retry. The cashier sees the error and starts the payment again by hand. Data after a final step is ignored | Make every call idempotent on `paymentKey`, `token` and `transactionId`. Send exactly one final step, then close |
 | A duplicate `records` item in `PATCH /v1/payment-orders/{key}` (same `methodId` and `transactionId.id`) | Ignores it: no second record, no error, also when the amount differs. The lookup is per method across all orders, not per order | Give every transaction an id that is unique within your method |
 | A `records` item after the order is `Debited` | Has no state guard. A late `Debit` or `Authorize` beyond the remaining amount answers 400. A `Credit` up to the debited amount is accepted and adds `Credited` | Post the completion once. Do not post a `Debit` for a sale that the stream already completed |

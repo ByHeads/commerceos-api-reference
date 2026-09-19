@@ -27,7 +27,7 @@ function startStubCos() {
         let body = "";
         request.on("data", chunk => { body += chunk; });
         request.on("end", () => {
-            if (request.url === "/oauth/token") {
+            if (request.url === "/oauth2/v1/token") {
                 response.writeHead(200, { "content-type": "application/json" });
                 return response.end(JSON.stringify({ access_token: "stub-token", expires_in: 3600 }));
             }
@@ -57,7 +57,7 @@ test("a .04 payment records its session in the key-value store with a bearer tok
     const cos = await startStubCos();
     const piggy = await startPiggyServer({ now: clock, waitMs: 200 });
     try {
-        const install = { cosBaseUrl: cos.url, tokenUrl: `${cos.url}/oauth/token`, clientId: "c", clientSecret: "s", scope: "kv" };
+        const install = { cosBaseUrl: cos.url, tokenUrl: `${cos.url}/oauth2/v1/token`, clientId: "c", clientSecret: "s", scope: "kv" };
         await fetch(`${piggy.url}/install`, { method: "POST", headers: context, body: JSON.stringify(install) });
         const response = await fetch(`${piggy.url}/payments/pay-9`, { method: "PUT", headers: context, body: JSON.stringify(init("10.04")) });
         const steps = await events(response);

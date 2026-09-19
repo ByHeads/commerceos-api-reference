@@ -58,7 +58,7 @@
     ],
     "install": {
         "cosBaseUrl": "http://localhost:5000",
-        "tokenUrl": "http://localhost:5000/oauth/token",
+        "tokenUrl": "http://localhost:5000/oauth2/v1/token",
         "clientId": "epi-check",
         "clientSecret": "epi-check-secret",
         "scope": "epi"

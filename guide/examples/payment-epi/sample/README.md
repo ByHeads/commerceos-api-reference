@@ -33,8 +33,8 @@ The bank records a waiting `.04` session in the CommerceOS key-value store (refe
 Without CommerceOS that write fails, and the server logs `kv pay-... not written`. `--cos` starts
 `cos.mjs` inside the play script and installs the bank against it: a token endpoint, the configuration
 behind a context id, the key-value store, and `PATCH /api/v1/payment-orders/{key}`, all in memory.
-Every call shows as a `[cos]` line in the play output. `node cos.mjs` runs it alone on port 8790 (`COS_PORT`
-to change) for an EPI of your own: `cosBaseUrl` `http://localhost:8790`, `tokenUrl` `http://localhost:8790/oauth2/v1/token`, client `play` / `play-secret`.
+Every call shows as a `[cos]` line in the play output. For an EPI of your own: `node play.mjs 10.04 --base <your EPI base url> --cos`
+plays CommerceOS against it, and `node cos.mjs` runs the stand-in alone on port 8790 (`COS_PORT` to change): `cosBaseUrl` `http://localhost:8790`, `tokenUrl` `http://localhost:8790/oauth2/v1/token`, client `play` / `play-secret`.
 
 ## Test it
 
