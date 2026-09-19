@@ -267,7 +267,7 @@ tool takes that mapping in a profile file.
 - [ ] Every call to your provider has a timeout, and a timeout ends the stream with `Fail`.
 - [ ] You log the `X-EPI-Debug-Info` header on every contextful call.
 - [ ] The base URL is `https://`, and the endpoint is protected at the network level (section 3).
-- [ ] The `Decline` reasons that you use are listed for Heads, so the POS can translate them.
+- [ ] Your `Decline` reasons are in the translated list (reference § 9), or you accept the generic text.
 
 ## 8. One family, two paths
 
