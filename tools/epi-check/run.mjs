@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The epi-check CLI. Runs every scenario in scenarios/ against a payment EPI and writes
+// The epi-check CLI. Runs every scenario in scenarios/ against a payment integration and writes
 // report.json, report.md and meta.json. Exit 0 only when every scenario passes.
 //
 //   node tools/epi-check/run.mjs --base <yourEpiBaseUrl> --profile p.json
@@ -134,7 +134,7 @@ function checkStep({ step, label, expect, status, subject, events, args, key, tr
         events.forEach((event, index) => {
             for (const error of validate(schemaDoc, "PaymentStep", event)) fail(label, `events[${index}]${error.path ? "." + error.path : ""}`, error.message);
         });
-        // A Wait step between the expected steps is the EPI's choice (contract section 5), so the
+        // A Wait step between the expected steps is the integration's choice (contract section 5), so the
         // comparison ignores Wait unless the expectation names it.
         const types = events.map(e => e.type).filter(type => type !== "Wait" || expect.events?.includes("Wait"));
         if (expect.events && !sameJson(types, expect.events)) fail(label, "events", `expected [${expect.events.join(", ")}], got [${events.map(e => e.type).join(", ")}]`);
@@ -312,7 +312,7 @@ export async function run(options) {
     try {
         const outcomes = [];
         if (options.cos) {
-            // COS mode: the CommerceOS side only. The EPI scenarios need a partner URL.
+            // COS mode: the CommerceOS side only. The integration scenarios need a partner URL.
             const client = createCosClient({ baseUrl: options.cos, key: options.key, timeoutMs: options.timeout });
             const outcome = await runCosScenario({ client, integration: options.integration });
             outcomes.push(outcome);

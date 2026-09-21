@@ -1,7 +1,7 @@
-// A complete payment EPI with scripted outcomes, on node:http only. It mirrors the Mock payment
-// EPI that Heads hosts, at the contract commit named in run.mjs, and adds what the Mock leaves
+// A complete payment integration with scripted outcomes, on node:http only. It mirrors the Mock payment
+// integration that Heads hosts, at the contract commit named in run.mjs, and adds what the Mock leaves
 // out: terminals, cancel, decline, fail, wait, and the context header check that every hosted
-// EPI performs.
+// integration performs.
 //
 // The cents of `amount` select the outcome (README, *Amount convention*):
 //   .00 Complete ["Authorize","Debit"]   .01 Decline   .02 Fail

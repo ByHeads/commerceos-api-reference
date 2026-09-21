@@ -26,7 +26,7 @@ function joinUrl(baseUrl, path) {
 }
 
 /**
- * Creates a driver bound to one EPI base URL and one configuration context.
+ * Creates a driver bound to one integration base URL and one configuration context.
  * `context` is `{ configId, configHash, debugInfo: { nodeName, baseUrl, name } }`, the same
  * three values `fetchContextfulResponse` reads from the EpiConfiguration.
  */

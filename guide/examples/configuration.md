@@ -600,7 +600,7 @@ The issued order numbers are read-only — a `PATCH` on `identifiers.customersId
 
 ## EPI Integrations & Configurations
 
-To build the integration behind `baseUrl`, read [Build a payment EPI](./payment-epi.md).
+To build the integration behind `baseUrl`, read [Build a payment integration](./payment-epi.md).
 
 ### OAuth2 Client Prerequisites
 

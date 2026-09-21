@@ -1,7 +1,7 @@
 # Scenarios
 
 One JSON file per scenario of the conformance tool [`epi-check`](../../../../tools/epi-check/README.md), which runs them with
-`node tools/epi-check/run.mjs --base <your EPI base url>` in the fixed order L1, L2, L3, L4, L5, P1 to P9, E1, H1. The JSON examples in [`../reference.md`](../reference.md)
+`node tools/epi-check/run.mjs --base <your integration base url>` in the fixed order L1, L2, L3, L4, L5, P1 to P9, E1, H1. The JSON examples in [`../reference.md`](../reference.md)
 quote these files, so a fixture and its example never drift apart.
 
 ## File shape

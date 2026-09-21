@@ -1,4 +1,4 @@
-// Piggy Bank: a complete payment EPI on node:http, backed by the in-memory bank in bank.mjs.
+// Piggy Bank: a complete payment integration on node:http, backed by the in-memory bank in bank.mjs.
 // Every endpoint names its section in the contract reference (guide/examples/payment-epi/reference.md).
 //
 // The cents of `amount` select the outcome (tutorial section 6):
@@ -58,7 +58,7 @@ function window_(ms) {
 }
 
 /**
- * Starts the Piggy Bank EPI. `url` is the base URL, path included, that CommerceOS points at.
+ * Starts the Piggy Bank integration. `url` is the base URL, path included, that CommerceOS points at.
  * `now` is the clock for every timestamp, `waitMs` the tap and cancel window, `log` the sink for
  * the one-line log of every CommerceOS callback.
  */
@@ -242,5 +242,5 @@ export function startPiggyServer({ port = 0, now = () => new Date(), waitMs = 30
 if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
     const waitMs = Number(process.env.PIGGY_WAIT_MS ?? 3000);
     const server = await startPiggyServer({ port: Number(process.env.PORT ?? 8787), waitMs, log: line => console.log(`[piggy] ${line}`) });
-    console.log(`Piggy Bank EPI at ${server.url} (tap and cancel window ${waitMs} ms)`);
+    console.log(`Piggy Bank integration at ${server.url} (tap and cancel window ${waitMs} ms)`);
 }

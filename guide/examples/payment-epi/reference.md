@@ -1,8 +1,8 @@
 # Payment EPI reference
 
-The contract between CommerceOS and a payment EPI (External Partner Interface): the HTTP service
-that you build so that CommerceOS can take, capture, release and refund payments through your
-provider. The tutorial [Build a payment EPI](../payment-epi.md) gets you started. Every JSON
+The payment EPI (External Partner Interface) is the contract between CommerceOS and a payment
+integration: the HTTP service that you build so that CommerceOS can take, capture, release and
+refund payments through your provider. The tutorial [Build a payment integration](../payment-epi.md) gets you started. Every JSON
 example is a fixture of the conformance tool `epi-check` that Heads runs against your endpoint. An
 HTML comment names its file in [`scenarios/`](./scenarios/), and `{{name}}` is filled at run time.
 
@@ -13,7 +13,9 @@ HTML comment names its file in [`scenarios/`](./scenarios/), and `{{name}}` is f
 
 CommerceOS calls `{baseUrl}` plus a fixed path with JSON bodies, and one call answers with a
 stream (section 5). Those calls carry no credential, only the three context headers of section 3.
-Your integration calls `{cosBaseUrl}/api/v1/...` with the OAuth2 client from the install (section 8).
+Your integration calls `{cosBaseUrl}/api/v1/...` with the OAuth2 client that it receives in the
+install payload (section 2). That client is the only credential of your integration: it holds no
+API key. Section 8 lists what the client can do.
 
 ## 2. Lifecycle endpoints
 
@@ -62,7 +64,7 @@ The conformance tool sends this context. `debugInfo` is the value of the third h
   "debugInfo": { "nodeName": "epi-check", "baseUrl": "{{baseUrl}}", "name": "epi-check" } }
 ```
 
-Reject a contextful call without the headers with a 4xx status and an error body (section 7). The conformance tool checks this only against its own reference server, not against your EPI.
+Reject a contextful call without the headers with a 4xx status and an error body (section 7). The conformance tool checks this only against its own reference server, not against your integration.
 
 ## 4. Configuration
 
@@ -167,8 +169,11 @@ stream call, because CommerceOS reads no body from it.
 ## 8. Calls from your integration to CommerceOS
 
 Every call goes to `{cosBaseUrl}/api{path}` with `Authorization: Bearer <token>`,
-`content-type: application/json` and `accept: application/json`. `cosBaseUrl` and `tokenUrl` come
-from the install payload (section 2).
+`content-type: application/json` and `accept: application/json`. `cosBaseUrl`, `tokenUrl`,
+`clientId` and `clientSecret` come from the install payload (section 2). The token is a
+client-credentials token for that client. The scopes of the client limit it to the calls in this
+table. Other resources, such as payment integrations and payment terminals, are not available to
+the client.
 
 | Call | Scope | Use |
 |---|---|---|
@@ -185,20 +190,20 @@ curl -X POST "https://example.app.heads.com/oauth2/v1/token" \
 # → { "access_token": "...", "expires_in": 3600, ... }
 
 # The configuration for the context id of an incoming call
-curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/context/config/EPI1"
+curl -X GET -H "Authorization: Bearer <access token>" "https://example.app.heads.com/api/v1/context/config/EPI1"
 # → { "configuration": { ... }, "configurationHash": "..." }
 
 # Key-value store: write, read, delete
-curl -X PUT -u ":banana" "https://example.app.heads.com/api/v1/kv/com.example.payments/session-pay-P1" \
+curl -X PUT -H "Authorization: Bearer <access token>" "https://example.app.heads.com/api/v1/kv/com.example.payments/session-pay-P1" \
   -H "Content-Type: application/json" -d '{ "providerSessionId": "S-123", "state": "pending" }'
-curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/kv/com.example.payments/session-pay-P1"
-curl -X DELETE -u ":banana" "https://example.app.heads.com/api/v1/kv/com.example.payments/session-pay-P1"
+curl -X GET -H "Authorization: Bearer <access token>" "https://example.app.heads.com/api/v1/kv/com.example.payments/session-pay-P1"
+curl -X DELETE -H "Authorization: Bearer <access token>" "https://example.app.heads.com/api/v1/kv/com.example.payments/session-pay-P1"
 ```
 
 Complete an asynchronous payment. `paymentKey` is the key from `PUT {baseUrl}/payments/{paymentKey}`:
 
 ```bash
-curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/payment-orders/pay-P1" \
+curl -X PATCH -H "Authorization: Bearer <access token>" "https://example.app.heads.com/api/v1/payment-orders/pay-P1" \
   -H "Content-Type: application/json" \
   -d '{ "records": [ {
         "identifiers": { "transactionId": { "method": { "identifiers": { "methodId": "com.example.card" } }, "id": "T-0001" } },
@@ -264,7 +269,7 @@ a released reservation `["Annulled"]`, a refunded sale `["Credited","Debited"]`.
 
 ## 10. Test amounts
 
-The cents of the amount select the outcome: [Build a payment EPI](../payment-epi.md#6-test-amounts).
+The cents of the amount select the outcome: [Build a payment integration](../payment-epi.md#6-test-amounts).
 
 ## 11. What CommerceOS does on your side
 

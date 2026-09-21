@@ -1,4 +1,4 @@
-// Piggy Bank: the in-memory bank behind the sample EPI. It holds payment sessions and a
+// Piggy Bank: the in-memory bank behind the sample integration. It holds payment sessions and a
 // ledger of transactions, and nothing else. A session waits until the customer's phone taps
 // it (`tap`). The clock is injected, so tests and the conformance run get the same output.
 //

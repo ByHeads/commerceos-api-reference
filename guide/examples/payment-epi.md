@@ -1,8 +1,9 @@
-# Build a payment EPI
+# Build a payment integration
 
-A payment EPI (External Partner Interface) is the HTTP service that you build so that CommerceOS
-can take, capture, release and refund payments through your provider. This page gets you from
-nothing to a working EPI in one sitting. The contract behind it is in
+A payment integration is the HTTP service that you build so that CommerceOS can take, capture,
+release and refund payments through your provider. It follows the payment EPI (External Partner
+Interface), which is the Heads specification of the calls between CommerceOS and your service.
+This page gets you from nothing to a working integration in one sitting. The contract is in
 [Payment EPI reference](./payment-epi/reference.md).
 
 **Base URL:** `https://example.app.heads.com/api/v1`
@@ -21,41 +22,41 @@ sequenceDiagram
     participant Cashier
     participant POS
     participant CommerceOS
-    participant EPI as Your EPI
+    participant Integration as Your integration
     participant Bank as Piggy Bank
     Cashier->>POS: Pay 10.04 with Piggy Bank
     POS->>CommerceOS: Start the payment
-    CommerceOS->>EPI: PUT /payments/{key} (context headers, PaymentInitDto)
-    EPI->>Bank: Open a session
-    EPI-->>CommerceOS: stream step Wait ("Waiting for the customer's phone")
+    CommerceOS->>Integration: PUT /payments/{key} (context headers, PaymentInitDto)
+    Integration->>Bank: Open a session
+    Integration-->>CommerceOS: stream step Wait ("Waiting for the customer's phone")
     CommerceOS-->>POS: Show the waiting message
     Cashier->>Bank: The customer taps the phone
-    Bank-->>EPI: Session paid
-    EPI-->>CommerceOS: stream step Complete (PaymentDto, one transaction)
+    Bank-->>Integration: Session paid
+    Integration-->>CommerceOS: stream step Complete (PaymentDto, one transaction)
     CommerceOS->>CommerceOS: Create the payment record
     CommerceOS-->>POS: Payment done
     POS-->>Cashier: Receipt
 ```
 
-CommerceOS starts every payment with one HTTP call to your EPI. The response is not one JSON body.
+CommerceOS starts every payment with one HTTP call to your integration. The response is not one JSON body.
 It is a stream of steps, one per line of progress. A `Wait` step tells the cashier what happens. A
 `Complete` step ends the stream with the money that moved. CommerceOS turns each transaction of that
-step into a payment record on the payment order. The receipt then closes. Your EPI never calls the
-POS, and the POS never calls your EPI. Everything goes through CommerceOS, and your EPI talks to your own provider in between. Four more flows: [flows](./payment-epi/flows.md).
+step into a payment record on the payment order. The receipt then closes. Your integration never calls the
+POS, and the POS never calls your integration. Everything goes through CommerceOS, and your integration talks to your own provider in between. Four more flows: [flows](./payment-epi/flows.md).
 
 ## 2. Ten minutes
 
-Piggy Bank is a sample EPI in three files, Node 22, no dependencies. Clone the repository and
+Piggy Bank is a sample integration in three files, Node 22, no dependencies. Clone the repository and
 start it.
 
 ```bash
 git clone https://github.com/ByHeads/commerceos-api-reference.git
 cd commerceos-api-reference/guide/examples/payment-epi/sample
 node server.mjs
-# Piggy Bank EPI at http://127.0.0.1:8787/piggy (tap and cancel window 3000 ms)
+# Piggy Bank integration at http://127.0.0.1:8787/piggy (tap and cancel window 3000 ms)
 ```
 
-In a second terminal, play the CommerceOS side. The play script installs the EPI, reads the
+In a second terminal, play the CommerceOS side. The play script installs the integration, reads the
 methods, and starts one payment. It prints every step of the stream.
 
 ```bash
@@ -105,7 +106,7 @@ Generate a server stub from [`epi-openapi.yaml`](./payment-epi/epi-openapi.yaml)
 
 | Route | Kind | Answers |
 |---|---|---|
-| `POST /install` | bare | any 2xx. The body holds the OAuth2 client that your EPI uses to call CommerceOS back |
+| `POST /install` | bare | any 2xx. The body holds the OAuth2 client that your integration uses to call CommerceOS back |
 | `POST /uninstall` | bare | any 2xx |
 | `GET /config-schema` | bare | a form description: the fields that an administrator fills in per store |
 | `POST /test` | contextful | JSON `true` |
@@ -116,20 +117,28 @@ Generate a server stub from [`epi-openapi.yaml`](./payment-epi/epi-openapi.yaml)
 | `POST /payments/{paymentKey}/transactions` | contextful | one `TransactionDto`: a capture, a release or a refund |
 | `POST /payments/{cancellationToken}/cancel` | contextful | any 2xx. The stream then ends with `Cancel` |
 
-Calls go in two directions. CommerceOS calls your EPI for everything in the table. Your EPI calls
-CommerceOS for three things, with the OAuth2 client from the install body: the configuration behind a
-context id, a key-value store for your own state, and the completion of a payment that ends asynchronously (reference, section 8).
+Calls go in two directions, and each direction has its own authentication.
 
-**Authentication of the calls into your EPI.** CommerceOS sends no credential on its calls to
-your EPI. The three context headers identify the configuration, and nothing identifies the
-caller. Protect the endpoint at the network level. How you do that is your choice.
+**Your integration calls CommerceOS with an OAuth2 client.** Your integration holds no API key. A
+Heads administrator creates a confidential OAuth2 client for the integration and then runs
+`install`. CommerceOS sends `cosBaseUrl`, `tokenUrl`, `clientId`, `clientSecret` and `scope` in the
+body of `POST /install`. Store them. Your integration gets a client-credentials token from
+`tokenUrl` and sends it as a bearer token on every call to CommerceOS. The client is limited to
+what an integration needs: the configuration behind a context id, a key-value store for your own
+state, and payment orders and payment records, for example to complete a payment that ends
+asynchronously (reference, section 8). It cannot read other resources, such as payment
+integrations or payment terminals. A second install sends the same client again.
+
+**CommerceOS calls your integration without a credential.** CommerceOS calls your integration for
+everything in the table. The three context headers identify the configuration, and nothing
+identifies the caller. Protect the endpoint at the network level. How you do that is your choice.
 
 ## 4. A tour of the sample
 
 | File | Role |
 |---|---|
 | `sample/bank.mjs` | the in-memory bank: sessions, a ledger, and `tap(sessionId)` for the customer's phone |
-| `sample/server.mjs` | the EPI: the ten routes, the header check, the stream, transactions and cancel |
+| `sample/server.mjs` | the integration: the ten routes, the header check, the stream, transactions and cancel |
 | `sample/play.mjs` | the CommerceOS side: install, methods, one payment, every step printed |
 | `sample/cos.mjs` | a stand-in for the calls back: token, configuration, key-value store, payment-order completion |
 
@@ -174,9 +183,15 @@ if ((match = /^POST \/payments\/([^/]+)\/transactions$/.exec(route))) {
 
 ## 5. Connect it to CommerceOS
 
-Five steps, each one curl. Before step 2, the integration needs a user with a confidential OAuth2
-client, because `install` hands that client to your EPI. [Configuration](./configuration.md) § EPI
-Integrations shows that user. Replace `https://piggy.example.com/piggy` with the public URL of your EPI.
+A Heads administrator does these five steps, with an administrator key. You do not run them
+against a Heads environment: send Heads the public URL of your integration, and Heads installs
+it. They are shown here so that you know which calls reach your integration and when, and so
+that you can run them on a CommerceOS of your own. Each step is one curl.
+
+Before step 2, the administrator creates a user for the integration with a confidential OAuth2
+client. `install` fails without that client, because `install` hands it to your integration: it is
+the only credential that your integration gets. [Configuration](./configuration.md) § EPI
+Integrations shows that user. Replace `https://piggy.example.com/piggy` with the public URL of your integration.
 
 ```bash
 # 1) Create the payment integration. name and baseUrl are required.
@@ -239,10 +254,10 @@ flowchart LR
 
 A POS terminal and a payment terminal meet only through the same device. There is no direct link
 from a payment terminal to its integration: the link goes through the payment method. Each record in
-the chain has an API resource, see [POS examples](./pos.md). In a test environment where your key is
-read-only, a Heads administrator creates them: ask for a payment terminal when your method requires
-one. CommerceOS reads `GET /terminals/{terminalId}` on your EPI when it creates its record. `assignedTerminals`
-on the payment integration does not list terminals: it lists the organization nodes that hold a configuration, and each node carries a `terminals` member that calls your EPI.
+the chain has an API resource, see [POS examples](./pos.md). A Heads administrator creates
+these records, because the OAuth2 client of your integration cannot: ask for a payment terminal when
+your method requires one. CommerceOS reads `GET /terminals/{terminalId}` on your integration when it creates its record. `assignedTerminals`
+on the payment integration does not list terminals: it lists the organization nodes that hold a configuration, and each node carries a `terminals` member that calls your integration.
 
 ## 6. Test amounts
 
@@ -262,8 +277,8 @@ If your sandbox selects outcomes another way, tell Heads which amount produces e
 
 ## 7. Go live
 
-- [ ] Your endpoint passes [`epi-check`](../../tools/epi-check/README.md), every scenario. Run it yourself: `node tools/epi-check/run.mjs --base <your EPI base url>`.
-- [ ] A contextful call without the three context headers gets a 4xx and an error body. `epi-check` does not test this against your EPI.
+- [ ] Your endpoint passes [`epi-check`](../../tools/epi-check/README.md), every scenario. Run it yourself: `node tools/epi-check/run.mjs --base <your integration base url>`.
+- [ ] A contextful call without the three context headers gets a 4xx and an error body. `epi-check` does not test this against your integration.
 - [ ] `POST /test` answers per node: it reads the configuration of the context id and checks it.
 - [ ] State lives in the CommerceOS key-value store or in your database, never only in memory.
 - [ ] `POST /payments/{paymentKey}/transactions` is idempotent. A retry does not capture twice.
@@ -287,7 +302,7 @@ paths. Use `/v1/payment-integrations` for a payment provider, and `/v1/epi-integ
 
 | Term | Meaning |
 |---|---|
-| EPI | External Partner Interface: an HTTP service that CommerceOS calls at a base URL plus fixed paths |
+| EPI | External Partner Interface: the Heads specification of the HTTP calls between CommerceOS and an integration. You build an integration that follows it |
 | payment integration | the CommerceOS record of one provider: a name, a `baseUrl`, a status, and its payment methods |
 | EPI configuration | the values of one integration on one organization node, for example a merchant id. The form comes from `/config-schema` |
 | context | the three headers on a contextful call. They name the configuration that the call runs under |

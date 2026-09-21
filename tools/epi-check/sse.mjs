@@ -1,5 +1,5 @@
 // Server-sent events, read the way CommerceOS reads them (`decodeSSE`) and written the way the
-// EPIs that Heads hosts write them (`event()`). Both at the contract commit named in run.mjs.
+// integrations that Heads hosts write them (`event()`). Both at the contract commit named in run.mjs.
 
 /**
  * Splits a byte stream into `{ event?, data? }` records exactly as `decodeSSE` does:

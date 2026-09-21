@@ -1,5 +1,5 @@
 // Writes guide/examples/payment-epi/epi-openapi.yaml: the OpenAPI 3.1 document of the ten routes
-// that a payment EPI serves, with the DTOs of contract/dto.schema.json under components/schemas.
+// that a payment integration serves, with the DTOs of contract/dto.schema.json under components/schemas.
 // The route table below is the table of the tutorial, section 3. Generation is deterministic.
 //
 //   node tools/epi-check/openapi.mjs            # writes the file
@@ -65,9 +65,9 @@ export function buildDocument(schemaDoc = JSON.parse(readFileSync(SCHEMA_PATH, "
     return {
         openapi: "3.1.0",
         info: {
-            title: "Payment EPI (the service you implement)",
+            title: "Payment EPI (the routes that your integration implements)",
             version: "1.0.0",
-            description: "The ten routes that CommerceOS calls on a payment EPI (External Partner Interface), under the base URL of the payment integration record. Bare routes carry no context headers. Contextful routes carry the three X-EPI-Context headers. Generated from the conformance tool's contract; the contract reference explains every field.",
+            description: "The ten routes that CommerceOS calls on a payment integration, as the payment EPI (External Partner Interface) specifies them, under the base URL of the payment integration record. Bare routes carry no context headers. Contextful routes carry the three X-EPI-Context headers. Generated from the conformance tool's contract; the contract reference explains every field.",
         },
         servers: [{ url: "{baseUrl}", variables: { baseUrl: { default: "https://piggy.example.com/piggy", description: "The baseUrl of the payment integration record in CommerceOS" } } }],
         paths,

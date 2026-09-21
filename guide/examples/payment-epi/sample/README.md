@@ -1,7 +1,7 @@
-# Piggy Bank: a sample payment EPI
+# Piggy Bank: a sample payment integration
 
-Piggy Bank is the smallest payment provider that CommerceOS can talk to: a payment EPI (External
-Partner Interface) in three files. `bank.mjs` is an in-memory bank with sessions and a ledger,
+Piggy Bank is the smallest payment provider that CommerceOS can talk to: a payment integration on the payment EPI
+(External Partner Interface) in three files. `bank.mjs` is an in-memory bank with sessions and a ledger,
 `server.mjs` the ten contract routes on `node:http`, `play.mjs` a script that acts as CommerceOS.
 `cos.mjs` stands in for the calls back to CommerceOS. Node 22, no dependencies, no install. The contract is in `../reference.md`.
 
@@ -33,7 +33,7 @@ The bank records a waiting `.04` session in the CommerceOS key-value store (refe
 Without CommerceOS that write fails, and the server logs `kv pay-... not written`. `--cos` starts
 `cos.mjs` inside the play script and installs the bank against it: a token endpoint, the configuration
 behind a context id, the key-value store, and `PATCH /api/v1/payment-orders/{key}`, all in memory.
-Every call shows as a `[cos]` line in the play output. For an EPI of your own: `node play.mjs 10.04 --base <your EPI base url> --cos`
+Every call shows as a `[cos]` line in the play output. For an integration of your own: `node play.mjs 10.04 --base <your integration base url> --cos`
 plays CommerceOS against it, and `node cos.mjs` runs the stand-in alone on port 8790 (`COS_PORT` to change): `cosBaseUrl` `http://localhost:8790`, `tokenUrl` `http://localhost:8790/oauth2/v1/token`, client `play` / `play-secret`.
 
 ## Test it
@@ -41,5 +41,5 @@ plays CommerceOS against it, and `node cos.mjs` runs the stand-in alone on port 
 ```bash
 node --test '*.test.mjs'
 ```
-The sample passes the `epi-check` conformance suite that Heads runs against every partner EPI: 15 pass,
+The sample passes the `epi-check` conformance suite that Heads runs against every partner integration: 15 pass,
 0 fail, 1 skip (the header scenario runs only against the tool's own server, `server.test.mjs` covers it here).

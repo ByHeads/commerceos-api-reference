@@ -1,9 +1,8 @@
 # epi-check
 
-A dependency-free Node 22 tool that acts as CommerceOS and calls your payment EPI (External
-Partner Interface) at a base URL. It runs the same sixteen scenarios that Heads runs before an
-EPI goes live, and reports pass or fail per scenario. It ships with a reference EPI server, so
-it tests itself. The contract it checks: [Payment EPI reference](../../guide/examples/payment-epi/reference.md).
+A dependency-free Node 22 tool that acts as CommerceOS and calls your payment integration at a base
+URL. It runs the same sixteen scenarios that Heads runs before an integration goes live, and
+reports pass or fail per scenario. It ships with a reference server, so it tests itself. The contract it checks: [Payment EPI reference](../../guide/examples/payment-epi/reference.md).
 
 ## What it proves
 
@@ -17,9 +16,9 @@ it tests itself. The contract it checks: [Payment EPI reference](../../guide/exa
 | Headers | Contextful calls carry `X-EPI-Context-Config-Id`, `X-EPI-Context-Config-Hash` and `X-EPI-Debug-Info`. Bare calls (`/install`, `/uninstall`, `/config-schema`) carry none |
 
 The header scenario `H1` strips the headers on purpose, so it runs only against the bundled
-reference server and is skipped against your EPI. Expect 15 pass, 0 fail, 1 skip.
+reference server and is skipped against your integration. Expect 15 pass, 0 fail, 1 skip.
 
-## Run it against your EPI
+## Run it against your integration
 
 ```
 node tools/epi-check/run.mjs --base https://your-host.example/cos/payment

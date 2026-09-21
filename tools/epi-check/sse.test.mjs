@@ -59,6 +59,6 @@ test("several data: lines join with a newline before JSON.parse", async () => {
     assert.deepEqual(records, [{ event: "Complete", data: "{\"a\":\n1}" }]);
 });
 
-test("formatEvent matches the hosted EPIs' event() byte for byte", () => {
+test("formatEvent matches the hosted integrations' event() byte for byte", () => {
     assert.equal(formatEvent("Decline", { reason: "InsufficientFunds" }), "event: Decline\ndata: {\"reason\":\"InsufficientFunds\"}\n\n");
 });

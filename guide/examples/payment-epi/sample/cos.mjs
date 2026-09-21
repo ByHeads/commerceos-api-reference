@@ -1,4 +1,4 @@
-// A CommerceOS stand-in for the calls that a payment EPI makes back (contract reference, section 8):
+// A CommerceOS stand-in for the calls that a payment integration makes back (contract reference, section 8):
 // the token endpoint, the configuration behind a context id, the key-value store, and the
 // completion of a payment order. In memory, node:http only, no install. It is not CommerceOS:
 // it answers the shapes of the reference so that both directions run on one laptop.
