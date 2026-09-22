@@ -26,24 +26,34 @@ give the tool the values your schema needs, or `L2` reports the `false` your int
 ## Run it against your integration
 
 ```
-node tools/epi-check/run.mjs --base https://your-host.example/cos/payment
+node tools/epi-check/run.mjs --base https://your-host.example/cos/payment --profile partner.json
 ```
+
+The profile is not optional. Without it every request carries the fixture method id
+`com.epicheck.reference`, and every payment scenario fails with the 4xx that only `E1` should get:
+ten failures that look like a bug in your integration. Write the profile first, see the next section.
 
 Try it first against the Piggy Bank sample: start `node guide/examples/payment-epi/sample/server.mjs`
 in one terminal, then in another run
 `node tools/epi-check/run.mjs --base http://localhost:8787/piggy --profile tools/epi-check/piggy-profile.json`.
 The profile names the sample's method id, see the next section.
 `--reference` runs the sixteen scenarios against the bundled server instead, and exits 0.
-`--timeout <ms>` bounds every call (default 10000). `--out <dir>` chooses the report folder.
+`--timeout <ms>` bounds every call (default 10000). A `Wait` window longer than that fails `P9`, the
+wait-then-complete scenario, with `This operation was aborted`: run your integration with a short
+window while the tool runs, or raise the timeout. `--out <dir>` chooses the report folder.
 `--cos <cosBaseUrl> --key <apiKey> --integration <name>` runs the one CommerceOS-side scenario instead:
 it reads the installed integration through the API and checks that it is `Active` and that `test` succeeds per node.
 
 ## The profile file
 
+Every run against a partner uses a profile, given with `--profile partner.json`. Two keys matter for
+everyone: `methodId`, your method id, and `configuration`, the values your `/test` reads through
+`GET /v1/context/config/{configId}`. The default configuration is `{}`, so a `/test` that checks
+anything, as the go-live checklist demands, answers `false` and `L2` fails until you fill it in.
 The cents of the amount select the outcome, see the tutorial
-[section 6](../../guide/examples/payment-epi.md#6-test-amounts). If your sandbox selects outcomes another way, give the tool a profile with `--profile partner.json`:
-it names your method id, the configuration your `/test` expects to read, amounts per scenario, and a
-terminal id. The keys and an example are in [scenarios/README.md](../../guide/examples/payment-epi/scenarios/README.md) § Profile file.
+[section 6](../../guide/examples/payment-epi.md#6-test-amounts); if your sandbox selects outcomes
+another way, `amounts` overrides them per scenario. A method that requires a terminal names one in
+`terminalId`. The keys and an example are in [scenarios/README.md](../../guide/examples/payment-epi/scenarios/README.md) § Profile file.
 
 ## How to read the report
 

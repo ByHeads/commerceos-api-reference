@@ -190,7 +190,7 @@ unless the JSON carries its own `type`. A stream holds zero or more intermediate
 | `ShowImage` | intermediate | `url`, `audience?` | show an image, for example a QR code |
 | `VisitPage` | intermediate | `url`, `audience?` | open a web page |
 | `RenderView` | intermediate | `path`, `config`, `audience?` | render a view |
-| `Complete` | final | `result: PaymentDto`, `issuedWalletKey?` | success. CommerceOS creates one payment record per `result.transactions[]` item |
+| `Complete` | final | `result: PaymentDto`, `issuedWalletKey?` | success. CommerceOS creates one payment record per `result.transactions[]` item. Amounts are positive for both directions: CommerceOS stores and shows a `Payout` amount negative |
 | `Decline` | final | `reason`, `params?` | a normal negative outcome. `reason` is a code such as `InsufficientFunds` |
 | `Cancel` | final | none | the payment was cancelled |
 | `Fail` | final | `errors[]` | an error. The cashier sees `Payment failed: <text>` from `errors[0]` (section 7) |
@@ -202,7 +202,17 @@ it gives a record with no items in the back office.
 
 ## 6. Transactions, cancel, and reversal arguments
 
-A `paymentKey` whose stream ended in `Decline`, `Cancel` or `Fail` has no payment order: treat a new `PUT` for it as a new payment, and answer a transactions call for it with `404` and an error body.
+A `paymentKey` whose stream ended in `Decline`, `Cancel` or `Fail` has no payment order: treat a new `PUT` for it as a new payment, and answer a transactions call for it with `404` and an error body. An administrator who reads `GET /v1/payment-orders/key=<key>` for such a key gets `200` with the body `null`, the same as for an unknown key, never a 404.
+
+**When a refund reaches this route.** The POS makes the `Credit` call only from the *Refund*
+action under the cart, on a return whose original sale your method paid, and only when your method
+declares `supports.reversal` and the amount fits the original order. When the cashier instead opens
+the pay screen and picks your method for the negative balance, the POS starts a new payment with
+`direction: "Payout"` through `PUT {baseUrl}/payments/{paymentKey}` whenever `supports.outgoing` is
+`true`, and tries the `Credit` path there only for a method with `supports.outgoing` `false`. A
+method that declares both flags, as the sample does, is refunded by `Payout` from the pay screen
+and by `Credit` from the *Refund* action. Nothing else in CommerceOS makes this call: no
+back-office action and no API route.
 
 Capture, release and refund go to `POST {baseUrl}/payments/{paymentKey}/transactions` with a
 `TransactionInitDto`. The answer is a `TransactionDto`: the same fields plus `transactionId` and

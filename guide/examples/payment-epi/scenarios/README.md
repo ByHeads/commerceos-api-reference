@@ -71,8 +71,8 @@ inside a longer string is replaced by its text.
 
 ## Profile file
 
-A partner sandbox scripts outcomes its own way. A profile file, given with `--profile`, overrides
-the fixtures:
+Every partner runs the tool with a profile file, given with `--profile`. It overrides the fixtures,
+and `methodId` is the reason it is never omitted: the fixture id is not yours:
 
 ```json
 {
@@ -87,8 +87,8 @@ the fixtures:
 | Key | Effect |
 |---|---|
 | `currencyCode` | Replaces the fixture currency in every request |
-| `methodId` | Replaces the fixture method id in every request except E1, which keeps its unknown id |
-| `configuration` | What the tool's CommerceOS stand-in answers for `GET /v1/context/config/{configId}`: the values your `/test` reads and checks. Default `{}` |
+| `methodId` | Replaces the fixture method id in every request except E1, which keeps its unknown id. Without it every payment scenario gets the 4xx that only E1 expects |
+| `configuration` | What the tool's CommerceOS stand-in answers for `GET /v1/context/config/{configId}`: the values your `/test` reads and checks. Default `{}`, which makes L2 fail for a `/test` that checks anything |
 | `amounts` | Per scenario id, replaces `amount` |
 | `terminalId` | Added to every `PaymentInitDto` and `CancelDto`, for a method that requires a terminal |
 

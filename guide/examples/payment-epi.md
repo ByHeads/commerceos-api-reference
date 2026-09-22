@@ -224,15 +224,12 @@ if ((match = /^POST \/payments\/([^/]+)\/transactions$/.exec(route))) {
 
 ## 5. Connect it to CommerceOS
 
-A Heads administrator does these five steps, with an administrator key. You do not run them
+A Heads administrator does these seven steps, with an administrator key. You do not run them
 against a Heads environment: send Heads the public URL of your integration, and Heads installs
 it. They are shown here so that you know which calls reach your integration and when, and so
-that you can run them on a CommerceOS of your own. Each step is one curl.
-
-Before step 2, the administrator creates a user for the integration with a confidential OAuth2
-client. `install` fails without that client, because `install` hands it to your integration: it is
-the only credential that your integration gets. [Configuration](./configuration.md) § EPI
-Integrations shows that user. Replace `https://piggy.example.com/piggy` with the public URL of your integration.
+that you can run them on a CommerceOS of your own. Each step is one curl, and the order is
+load-bearing: step 3 fails without step 2, and step 7 is what puts your method on the till.
+Replace `https://piggy.example.com/piggy` with the public URL of your integration.
 
 ```bash
 # 1) Create the payment integration. name and baseUrl are required.
@@ -245,17 +242,42 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/payment-integrat
 ```
 
 ```bash
-# 2) Install. CommerceOS calls POST {baseUrl}/install. On success the status becomes Active.
+# 2) Create a user for the integration, with one confidential OAuth2 client. install fails
+#    without it, because install hands this client to your integration: it is the only
+#    credential that your integration gets. The agent is the integration's database key:
+#   curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/payment-integrations/name=Piggy/identifiers/key"
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/users" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "identifiers": {"com.myapp.userId": "user-piggy-integration"},
+    "agent": {"identifiers": {"key": "<integration key>"}},
+    "oauth2Clients": [{
+      "identifiers": {"clientID": "piggy-integration-client"},
+      "scopes": ["me", "geo:read", "orders.sales:write", "orders.payments:write", "payment-records:write", "kv"],
+      "secret": "<a secret you generate>",
+      "accessTokenLifetimeSeconds": 3600,
+      "refreshTokenLifetimeSeconds": 2592000,
+      "grants": ["client_credentials"],
+      "isConfidential": true,
+      "node": {"identifiers": {"com.heads.seedID": "ourcompany"}}
+    }]
+  }'
+```
+
+```bash
+# 3) Install. CommerceOS calls POST {baseUrl}/install. On success the status becomes Active.
 curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/payment-integrations/name=Piggy" \
   -H "Content-Type: application/json" \
   -d '{"install": true}'
 ```
 
 ```bash
-# 3) Create the EPI configuration on an organization node. Both references need database keys:
+# 4) Create the EPI configuration on an organization node. Both references need database keys:
 #   curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/payment-integrations/name=Piggy/identifiers/key"
 #   curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/companies/com.heads.seedID=ourcompany/identifiers/key"
-# The configuration object holds the fields that your /config-schema describes.
+# The configuration object holds the fields that your /config-schema describes. The answer
+# carries contextConfigId, a four-character id that CommerceOS generates: it is the value of
+# X-EPI-Context-Config-Id on every later contextful call for this node.
 curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/epi-configurations" \
   -H "Content-Type: application/json" \
   -d '{
@@ -267,7 +289,7 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/epi-configuratio
 ```
 
 ```bash
-# 4) Configure. CommerceOS calls GET {baseUrl}/methods with the context of this node and
+# 5) Configure. CommerceOS calls GET {baseUrl}/methods with the context of this node and
 #    creates one payment method per item.
 curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/epi-configurations/com.myapp.configId=company-piggy-config" \
   -H "Content-Type: application/json" \
@@ -275,12 +297,26 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/epi-configurati
 ```
 
 ```bash
-# 5) Test. CommerceOS calls POST {baseUrl}/test once per configured node.
+# 6) Test. CommerceOS calls POST {baseUrl}/test once per configured node.
 curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/payment-integrations/name=Piggy/test" \
   -H "Content-Type: application/json" \
   -d 'true'
 # → { "integrationName": "Piggy", "configurationTests": { "Our Company": "success" } }
 ```
+
+```bash
+# 7) Allow the method on the POS profile. A method that configure created is not on the pay
+#    screen until the profile of the till allows it. Without this step the integration tests
+#    green and the cashier never sees the button.
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/pos-profiles/posProfileId=default/allowedPaymentMethods" \
+  -H "Content-Type: application/json" \
+  -d '{"identifiers": {"methodId": "com.example.piggy"}}'
+```
+
+**Before the first payment on a till.** Two more things are administrator work, and both block
+the first real payment. The browser that runs the till must be associated with a device that a
+POS terminal is assigned to: in the back office, open the device and press *Associate*. Then the
+cashier opens the till and starts it for the day. Only then does the pay screen list your method.
 
 **Terminals.** A payment method that requires a terminal reaches the POS through a chain of four
 records. The arrows show which record points at which.
@@ -313,13 +349,19 @@ amount to select the outcome. The sample follows the same table.
 | `.04` | exactly `Wait`, then `Complete`. No `Create` step: the tool checks the step list as given |
 | `.05` | `Complete`, actions `["Authorize"]` only |
 
-A `Payout` that completes gets `["Authorize"]` only, on every amount, unless the request sets `debitSynchronously`.
+On a till every request carries `debitSynchronously: true`, `Payment` and `Payout` alike, so a
+`Payout` that completes on a till answers `["Authorize","Debit"]`: the money leaves in the same
+call. Only a `Payout` request without `debitSynchronously` gets `["Authorize"]` alone. Answer the
+`amount` of a `Payout` positive: CommerceOS stores and shows it negative. A return that the
+cashier pays out with your method from the pay screen reaches you as such a `Payout`. Only the
+*Refund* action under the cart makes the refund transaction, see
+[four more flows](./payment-epi/flows.md) section 3.
 
 Heads runs the tool with a profile file that names your method id and, if your sandbox selects outcomes another way, which amount produces each outcome. Tell Heads both.
 
 ## 7. Go live
 
-- [ ] Your endpoint passes [`epi-check`](../../tools/epi-check/README.md), every scenario. Run it yourself: `node tools/epi-check/run.mjs --base <your integration base url>`.
+- [ ] Your endpoint passes [`epi-check`](../../tools/epi-check/README.md), every scenario. Run it yourself: `node tools/epi-check/run.mjs --base <your integration base url> --profile <your profile>`. The profile names your method id and the configuration your `/test` reads; without it ten of sixteen scenarios fail. Run it against a short wait window: the tool times out a call after ten seconds.
 - [ ] A contextful call without the three context headers gets a 4xx and an error body.
 - [ ] `POST /test` answers per node: it reads the configuration of the context id and checks it.
 - [ ] State lives in the CommerceOS key-value store or in your database, never only in memory.

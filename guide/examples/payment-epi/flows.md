@@ -66,7 +66,7 @@ sequenceDiagram
     participant Integration as Your integration
     participant Bank as Piggy Bank
     Note over Cashier,Bank: Earlier: the sale completed, the order is Debited, the receipt closed
-    Cashier->>POS: Return the article, refund to Piggy Bank
+    Cashier->>POS: Return the article, press Refund under the cart
     POS->>CommerceOS: Refund the payment
     CommerceOS->>Integration: POST /payments/{key}/transactions (actions ["Credit"], reversalArgs)
     Integration->>Bank: Credit the original session
@@ -80,6 +80,13 @@ A refund is one `TransactionInitDto` with `actions: ["Credit"]` and `reversalArg
 original transaction and its timestamp (reference, section 6). `amount` is positive. Answer a
 `TransactionDto` with your own `transactionId`, and CommerceOS adds one payment record to the same order, so its status gains `Credited`.
 CommerceOS makes this call once and does not retry: a non-2xx with an error body shows your `<code>: <message>` as the dialog text, and the cashier starts the refund again by hand.
+
+This flow runs only from the *Refund* action under the cart, and only for a method with
+`supports.reversal`. A cashier who returns the article, opens the pay screen and picks your method
+for the negative balance starts a **new payment** instead: `PUT /payments/{key}` with
+`direction: "Payout"` and `debitSynchronously: true`, on a new key, and your integration answers it
+like a sale, with `["Authorize","Debit"]`. The reference, section 6, gives the rule that chooses
+between the two.
 
 ## 4. Asynchronous completion
 
