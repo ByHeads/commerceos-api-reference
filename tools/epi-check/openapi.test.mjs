@@ -4,7 +4,7 @@ import { spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildDocument, render, toYaml, OUTPUT_PATH } from "./openapi.mjs";
+import { buildDocument, buildCosDocument, render, renderAll, toYaml, OUTPUT_PATH, OUTPUT_PATHS } from "./openapi.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const script = join(here, "openapi.mjs");
@@ -72,9 +72,10 @@ export function unresolvedRefs(document, value = document, found = []) {
     return found;
 }
 
-test("generation is deterministic and the file on disk is current", () => {
-    assert.equal(render(), render());
-    assert.equal(readFileSync(OUTPUT_PATH, "utf8"), render(), "run node tools/epi-check/openapi.mjs");
+test("generation is deterministic and both files on disk are current", () => {
+    assert.deepEqual(renderAll(), renderAll());
+    assert.equal(render(), renderAll().epi);
+    for (const [name, path] of Object.entries(OUTPUT_PATHS)) assert.equal(readFileSync(path, "utf8"), renderAll()[name], `${path}: run node tools/epi-check/openapi.mjs`);
 });
 
 test("the document lists the ten routes, three context parameters on every contextful route, and every DTO", () => {
@@ -94,15 +95,62 @@ test("the document lists the ten routes, three context parameters on every conte
     const stream = document.paths["/payments/{paymentKey}"].put;
     assert.equal(Object.keys(stream.responses["200"].content)[0], "text/event-stream");
     for (const step of ["Create", "Cancellable", "Wait", "ShowImage", "VisitPage", "RenderView", "Complete", "Decline", "Cancel", "Fail"]) assert.match(stream.description, new RegExp(`\\b${step}\\b`));
+    assert.equal(stream.responses["200"].content["text/event-stream"].schema.$ref, "#/components/schemas/PaymentStep");
+    assert.equal(document.paths["/config-schema"].get.responses["200"].content["application/json"].schema.$ref, "#/components/schemas/ConfigSchema");
+    for (const [path, methods] of Object.entries(document.paths)) for (const [method, operation] of Object.entries(methods)) {
+        assert.ok(operation.description?.length > 40, `${method} ${path} says when CommerceOS calls it`);
+        assert.equal(operation.tags.length, 1, `${method} ${path} has one tag`);
+    }
     const schema = JSON.parse(readFileSync(join(here, "contract", "dto.schema.json"), "utf8"));
-    assert.deepEqual(Object.keys(document.components.schemas), Object.keys(schema.$defs));
-    assert.equal(JSON.stringify(document).includes("#/$defs/"), false, "every $defs reference is rewritten");
+    const cos = buildCosDocument();
+    const inEpi = Object.keys(document.components.schemas), inCos = Object.keys(cos.components.schemas);
+    assert.deepEqual(new Set([...inEpi, ...inCos]), new Set(Object.keys(schema.$defs)), "every definition is in at least one document");
+    assert.ok(inEpi.includes("ConfigSchema") && !inEpi.includes("PaymentOrderPatch"), "the EPI document carries the routes it serves");
+    assert.ok(inCos.includes("PaymentOrderPatch") && inCos.includes("TokenResponse") && !inCos.includes("PaymentInitDto"), "the CommerceOS document carries the calls back");
+    for (const doc of [document, cos]) assert.equal(JSON.stringify(doc).includes("#/$defs/"), false, "every $defs reference is rewritten");
 });
 
-test("the YAML on disk loads back to the same document and every $ref resolves", () => {
+test("every schema and every property carries a description, so the documents explain themselves", () => {
+    const schema = JSON.parse(readFileSync(join(here, "contract", "dto.schema.json"), "utf8"));
+    const missing = [];
+    const walk = (node, path) => {
+        for (const [name, property] of Object.entries(node.properties ?? {})) {
+            if (!property.description && !property.$ref) missing.push(`${path}.${name}`);
+            walk(property, `${path}.${name}`);
+        }
+    };
+    for (const [name, definition] of Object.entries(schema.$defs)) {
+        if (!definition.description) missing.push(name);
+        walk(definition, name);
+    }
+    assert.deepEqual(missing, []);
+});
+
+test("the CommerceOS document: one scope per operation, the token route on its own server, form body for the token", () => {
+    const cos = buildCosDocument();
+    const token = cos.paths["/oauth2/v1/token"].post;
+    assert.deepEqual(token.security, []);
+    assert.ok(token.requestBody.content["application/x-www-form-urlencoded"]);
+    assert.equal(token.servers[0].url, "{tokenUrl}");
+    const scopes = Object.keys(cos.components.securitySchemes.oauth2.flows.clientCredentials.scopes);
+    for (const [path, methods] of Object.entries(cos.paths)) for (const [method, operation] of Object.entries(methods)) {
+        if (path === "/oauth2/v1/token") continue;
+        assert.equal(operation.security.length, 1, `${method} ${path}`);
+        const [scope] = operation.security[0].oauth2;
+        assert.ok(scopes.includes(scope), `${method} ${path} needs a declared scope, got ${scope}`);
+    }
+    assert.equal(cos.paths["/v1/context/config/{configId}"].get.security[0].oauth2[0], "me");
+    assert.equal(cos.paths["/v1/payment-orders/{paymentKey}"].patch.security[0].oauth2[0], "orders.payments:write");
+    assert.equal(JSON.stringify(cos).includes('"epi"'), false, "no scope named epi exists in CommerceOS");
+});
+
+test("the YAML on disk loads back to the same documents and every $ref resolves", () => {
     const loaded = loadYaml(readFileSync(OUTPUT_PATH, "utf8"));
     assert.deepEqual(loaded, buildDocument());
     assert.deepEqual(unresolvedRefs(loaded), []);
+    const cos = loadYaml(readFileSync(OUTPUT_PATHS.cos, "utf8"));
+    assert.deepEqual(cos, buildCosDocument());
+    assert.deepEqual(unresolvedRefs(cos), []);
     assert.deepEqual(unresolvedRefs({ a: { $ref: "#/b/c" } }), ["#/b/c"], "the check itself sees a dangling reference");
 });
 
@@ -125,6 +173,6 @@ test("--check passes on a fresh file and fails after an edit", () => {
 });
 
 test("redocly lint, when the CLI is installed", { skip: spawnSync("npx", ["--no-install", "@redocly/cli", "--version"], { encoding: "utf8" }).status !== 0 && "@redocly/cli is not installed" }, () => {
-    const lint = spawnSync("npx", ["--no-install", "@redocly/cli", "lint", OUTPUT_PATH], { encoding: "utf8" });
+    const lint = spawnSync("npx", ["--no-install", "@redocly/cli", "lint", ...Object.values(OUTPUT_PATHS)], { encoding: "utf8" });
     assert.equal(lint.status, 0, lint.stdout + lint.stderr);
 });
