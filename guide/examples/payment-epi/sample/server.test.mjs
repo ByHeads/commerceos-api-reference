@@ -14,7 +14,7 @@ const init = amount => ({
 const events = response => Array.fromAsync(readEvents(response.body));
 
 test("a contextful call without the config id header answers 400 with an error body", async () => {
-    const piggy = await startPiggyServer({ now: clock });
+    const piggy = await startPiggyServer({ idPrefix: "PB-", now: clock });
     try {
         const response = await fetch(`${piggy.url}/methods`);
         assert.equal(response.status, 400);
@@ -27,7 +27,7 @@ test("a contextful call without the config id header answers 400 with an error b
 test("a .04 payment records its session in the key-value store with a bearer token, then completes", async () => {
     const lines = [];
     const cos = await startCosStandIn({ clientId: "c", clientSecret: "s", log: line => lines.push(line) });
-    const piggy = await startPiggyServer({ now: clock, waitMs: 200 });
+    const piggy = await startPiggyServer({ idPrefix: "PB-", now: clock, waitMs: 200 });
     try {
         const install = { cosBaseUrl: cos.url, tokenUrl: `${cos.url}/oauth2/v1/token`, clientId: "c", clientSecret: "s", scope: "kv" };
         await fetch(`${piggy.url}/install`, { method: "POST", headers: context, body: JSON.stringify(install) });
@@ -46,7 +46,7 @@ test("a .04 payment records its session in the key-value store with a bearer tok
 });
 
 test("a .03 payment ends with Cancel after the cancel call, and the bank keeps no money", async () => {
-    const piggy = await startPiggyServer({ now: clock, waitMs: 2000 });
+    const piggy = await startPiggyServer({ idPrefix: "PB-", now: clock, waitMs: 2000 });
     try {
         const stream = fetch(`${piggy.url}/payments/pay-7`, { method: "PUT", headers: context, body: JSON.stringify(init("10.03")) });
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -61,7 +61,7 @@ test("a .03 payment ends with Cancel after the cancel call, and the bank keeps n
 });
 
 test("a repeated PUT for a completed payment key replays the same result, and a declined key starts over", async () => {
-    const piggy = await startPiggyServer({ now: clock });
+    const piggy = await startPiggyServer({ idPrefix: "PB-", now: clock });
     try {
         const first = await events(await fetch(`${piggy.url}/payments/pay-again`, { method: "PUT", headers: context, body: JSON.stringify(init("10.00")) }));
         const second = await events(await fetch(`${piggy.url}/payments/pay-again`, { method: "PUT", headers: context, body: JSON.stringify(init("10.00")) }));

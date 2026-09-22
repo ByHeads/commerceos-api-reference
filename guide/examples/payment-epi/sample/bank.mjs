@@ -2,14 +2,16 @@
 // ledger of transactions, and nothing else. A session waits until the customer's phone taps
 // it (`tap`). The clock is injected, so tests and the conformance run get the same output.
 //
-// Ids are `PB-<counter>`: sessions and transactions share one counter.
+// Ids are `<prefix><counter>`: sessions and transactions share one counter. CommerceOS requires a
+// processorsId to be unique per payment method for all time, so a prefix that changes on every
+// start (the default) keeps a restarted bank from colliding with orders it created earlier.
 
-/** Creates a bank. `now` returns the Date used for every timestamp. */
-export function createBank({ now = () => new Date() } = {}) {
+/** Creates a bank. `now` returns the Date used for every timestamp; `idPrefix` starts every id. */
+export function createBank({ now = () => new Date(), idPrefix = `PB-${Date.now().toString(36)}-` } = {}) {
     let counter = 0;
     const sessions = new Map();
     const ledger = [];
-    const nextId = () => `PB-${++counter}`;
+    const nextId = () => `${idPrefix}${++counter}`;
 
     function get(sessionId) {
         const session = sessions.get(sessionId);

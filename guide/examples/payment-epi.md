@@ -62,10 +62,10 @@ methods, and starts one payment. It prints every step of the stream.
 ```bash
 node play.mjs 10.00
 # Method com.example.piggy (Piggy Bank)
-# → Complete {"result":{"processorsId":"PB-1","methodId":"com.example.piggy","amount":"10.00","currencyCode":"SEK","transactions":[{"transactionId":"PB-2","actions":["Authorize","Debit"],"amount":"10.00","currencyCode":"SEK","methodId":"com.example.piggy","token":"tok-10.00","timestamp":"2026-09-18T20:13:28.756Z"}]}}
+# → Complete {"result":{"processorsId":"PB-mfx2k1-1","methodId":"com.example.piggy","amount":"10.00","currencyCode":"SEK","transactions":[{"transactionId":"PB-mfx2k1-2","actions":["Authorize","Debit"],"amount":"10.00","currencyCode":"SEK","methodId":"com.example.piggy","token":"tok-10.00","timestamp":"2026-09-18T20:13:28.756Z"}]}}
 # transactionId  actions          amount  currencyCode  token      timestamp
 # -------------  ---------------  ------  ------------  ---------  ------------------------
-# PB-2           Authorize+Debit  10.00   SEK           tok-10.00  2026-09-18T20:13:28.756Z
+# PB-mfx2k1-2    Authorize+Debit  10.00   SEK           tok-10.00  2026-09-18T20:13:28.756Z
 ```
 
 Now the sale from the picture. An amount that ends in `.04` waits for the customer's phone. Start
@@ -75,18 +75,19 @@ the server with a longer window, so that you can tap by hand.
 PIGGY_WAIT_MS=60000 node server.mjs      # first terminal
 node play.mjs 10.04                      # second terminal
 # Method com.example.piggy (Piggy Bank)
-# → Wait {"message":"Waiting for the customer's phone","params":["PB-3"]}
-#   tap:    curl -X POST http://localhost:8787/piggy/tap/PB-3
+# → Wait {"message":"Waiting for the customer's phone","params":["PB-mfx2k1-3"]}
+#   tap:    curl -X POST http://localhost:8787/piggy/tap/PB-mfx2k1-3
 ```
 
-Run the tap command from a third terminal. The stream completes.
+Run the tap command from a third terminal. The stream completes. Every id the bank hands out starts with a
+prefix that changes on each start, because CommerceOS requires a `processorsId` to be unique per method for all time.
 
 ```bash
-curl -X POST http://localhost:8787/piggy/tap/PB-3
-# → Complete {"result":{"processorsId":"PB-3","methodId":"com.example.piggy","amount":"10.04","currencyCode":"SEK","transactions":[{"transactionId":"PB-4","actions":["Authorize","Debit"],"amount":"10.04","currencyCode":"SEK","methodId":"com.example.piggy","token":"tok-10.04","timestamp":"2026-09-18T20:13:30.317Z"}]}}
+curl -X POST http://localhost:8787/piggy/tap/PB-mfx2k1-3
+# → Complete {"result":{"processorsId":"PB-mfx2k1-3","methodId":"com.example.piggy","amount":"10.04","currencyCode":"SEK","transactions":[{"transactionId":"PB-mfx2k1-4","actions":["Authorize","Debit"],"amount":"10.04","currencyCode":"SEK","methodId":"com.example.piggy","token":"tok-10.04","timestamp":"2026-09-18T20:13:30.317Z"}]}}
 # transactionId  actions          amount  currencyCode  token      timestamp
 # -------------  ---------------  ------  ------------  ---------  ------------------------
-# PB-4           Authorize+Debit  10.04   SEK           tok-10.04  2026-09-18T20:13:30.317Z
+# PB-mfx2k1-4    Authorize+Debit  10.04   SEK           tok-10.04  2026-09-18T20:13:30.317Z
 ```
 
 The server log adds `kv pay-... not written`: the bank records the waiting session in the CommerceOS

@@ -154,7 +154,7 @@
         "currencyCode": { "type": "string", "description": "Echo of the request." },
         "processorsId": {
           "type": "string",
-          "description": "Your id of the payment session at the provider. A repeated PUT for a paymentKey you already completed must answer the same processorsId and the same transactions: CommerceOS refuses a Complete whose processorsId differs from the order's."
+          "description": "Your id of the payment session at the provider. CommerceOS requires it to be unique per payment method for all time: a Complete whose processorsId equals that of any earlier payment order of the method fails with 'Payment order <id> already exists', so never restart a counter. A repeated PUT for a paymentKey you already completed must answer the same processorsId and the same transactions: CommerceOS refuses a Complete whose processorsId differs from the order's."
         },
         "transactions": {
           "type": "array",

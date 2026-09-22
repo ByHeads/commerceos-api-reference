@@ -62,8 +62,8 @@ function window_(ms) {
  * `now` is the clock for every timestamp, `waitMs` the tap and cancel window, `log` the sink for
  * the one-line log of every CommerceOS callback.
  */
-export function startPiggyServer({ port = 0, now = () => new Date(), waitMs = 3000, log = () => {} } = {}) {
-    const bank = createBank({ now });
+export function startPiggyServer({ port = 0, now = () => new Date(), waitMs = 3000, log = () => {}, idPrefix } = {}) {
+    const bank = createBank({ now, ...(idPrefix !== undefined ? { idPrefix } : {}) });
     const sessionsByKey = new Map(); // paymentKey -> sessionId
     const resultsByKey = new Map(); // paymentKey -> the Complete result, replayed on a repeated PUT
     const pendingCancels = new Map(); // cancellationToken -> release()

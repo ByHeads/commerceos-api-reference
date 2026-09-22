@@ -6,15 +6,16 @@ const clock = () => new Date("2026-01-01T00:00:00Z");
 const init = { amount: "10.00", currencyCode: "SEK", methodId: "com.example.piggy", token: "tok-1" };
 
 test("createSession opens a session with a PB id and an empty ledger", () => {
-    const bank = createBank({ now: clock });
+    const bank = createBank({ now: clock, idPrefix: "PB-" });
     const { sessionId } = bank.createSession(init);
     assert.equal(sessionId, "PB-1");
+    assert.match(createBank({ now: clock }).createSession(init).sessionId, /^PB-[0-9a-z]+-1$/, "the default prefix changes per start");
     assert.equal(bank.session(sessionId).state, "open");
     assert.deepEqual(bank.ledger, []);
 });
 
 test("tap resolves a waiting session, and an unknown session is refused", async () => {
-    const bank = createBank({ now: clock });
+    const bank = createBank({ now: clock, idPrefix: "PB-" });
     const { sessionId } = bank.createSession(init);
     const waiting = bank.waitForTap(sessionId);
     assert.equal(bank.tap(sessionId), true);
@@ -23,7 +24,7 @@ test("tap resolves a waiting session, and an unknown session is refused", async 
 });
 
 test("settle records the first transaction, and record appends a Credit", () => {
-    const bank = createBank({ now: clock });
+    const bank = createBank({ now: clock, idPrefix: "PB-" });
     const { sessionId } = bank.createSession(init);
     const sale = bank.settle(sessionId, ["Authorize", "Debit"]);
     const refund = bank.record(sessionId, ["Credit"], "4.00");

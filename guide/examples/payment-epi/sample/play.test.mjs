@@ -8,7 +8,7 @@ const clock = () => new Date("2026-01-01T00:00:00Z");
 const install = { cosBaseUrl: "", tokenUrl: "", clientId: "test", clientSecret: "test", scope: "kv" };
 
 test("play 10.00 ends with Complete and prints the transaction table", async () => {
-    const piggy = await startPiggyServer({ now: clock });
+    const piggy = await startPiggyServer({ idPrefix: "PB-", now: clock });
     const lines = [];
     try {
         const final = await play({ amount: "10.00", base: piggy.url, print: line => lines.push(line), install });
@@ -24,7 +24,7 @@ test("play 10.00 ends with Complete and prints the transaction table", async () 
 });
 
 test("play 10.01 ends with Decline", async () => {
-    const piggy = await startPiggyServer({ now: clock });
+    const piggy = await startPiggyServer({ idPrefix: "PB-", now: clock });
     const lines = [];
     try {
         const final = await play({ amount: "10.01", base: piggy.url, print: line => lines.push(line), install });
@@ -36,7 +36,7 @@ test("play 10.01 ends with Decline", async () => {
 });
 
 test("play 10.04 prints the tap command, and a tap completes the payment before the window closes", async () => {
-    const piggy = await startPiggyServer({ now: clock, waitMs: 5000 });
+    const piggy = await startPiggyServer({ idPrefix: "PB-", now: clock, waitMs: 5000 });
     const lines = [];
     try {
         const print = line => {
@@ -59,7 +59,7 @@ test("play against a closed port is a transport error", async () => {
 });
 
 test("play 10.04 --cos: the bank writes its session to the stand-in's key-value store, and the output shows it", async () => {
-    const piggy = await startPiggyServer({ now: clock, waitMs: 200 });
+    const piggy = await startPiggyServer({ idPrefix: "PB-", now: clock, waitMs: 200 });
     const lines = [];
     try {
         const final = await play({ amount: "10.04", base: piggy.url, print: line => lines.push(line), cos: true });

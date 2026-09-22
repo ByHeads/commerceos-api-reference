@@ -25,7 +25,7 @@ The cents of the amount select the outcome. Every other amount completes.
 | `10.05` | `Complete` with `["Authorize"]` only: a reservation, captured later through `/transactions` |
 
 `--payout` sends the money the other way and gives `["Authorize"]`. The window is 3 seconds. Set
-`PIGGY_WAIT_MS=60000` before `node server.mjs` to tap or cancel by hand. The tap, with the session id that the `Wait` step prints: `curl -X POST http://localhost:8787/piggy/tap/PB-1`
+`PIGGY_WAIT_MS=60000` before `node server.mjs` to tap or cancel by hand. The tap, with the session id that the `Wait` step prints: `curl -X POST http://localhost:8787/piggy/tap/PB-<run>-1`
 
 ## Both directions on one laptop
 
