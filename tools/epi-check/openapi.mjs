@@ -28,13 +28,13 @@ const STEPS = "Create, Cancellable, Wait, ShowImage, VisitPage, RenderView (inte
  */
 const EPI_ROUTES = [
     { method: "post", path: "/install", tag: "Lifecycle", contextful: false, summary: "Install: receive the OAuth2 client for the calls back to CommerceOS", request: "InstallPayload", response: "none",
-      when: "A Heads administrator runs the install action on the payment integration record. Store the body: it is the only credential your integration gets. On any 2xx the integration becomes Active." },
+      when: "A Heads administrator runs the install action on the payment integration record. Store the body: it is the only credential your integration gets. The request carries no Content-Type header, so parse the body unconditionally. On any 2xx the integration becomes Active." },
     { method: "post", path: "/uninstall", tag: "Lifecycle", contextful: false, summary: "Uninstall: the integration becomes Inactive", response: "none",
       when: "The administrator runs the uninstall action. Forget the stored client. A failure is logged and ignored." },
     { method: "get", path: "/config-schema", tag: "Lifecycle", contextful: false, summary: "The form that an administrator fills in per organization node", response: "ConfigSchema",
       when: "An administrator opens the configuration form of your integration on an organization node. The back office renders one field per member and stores the values; your integration reads them back through GET /v1/context/config/{configId} on the CommerceOS side. Answer members: {} when you need no configuration." },
     { method: "post", path: "/test", tag: "Lifecycle", contextful: true, summary: "Test the configuration of the context", response: "boolean",
-      when: "The administrator runs the test method on the integration: one call per configured node. Read the configuration behind the context id, check it against your provider, and answer true. A non-2xx or anything else counts as fail for that node." },
+      when: "The administrator runs the test method on the integration: one call per configured node. Read the configuration behind the context id, check it against your provider, and answer true. false, an empty body or a non-2xx counts as fail for that node." },
     { method: "get", path: "/methods", tag: "Lifecycle", contextful: true, summary: "The payment methods that this configuration offers", response: "MethodDto[]",
       when: "The administrator runs configure on a configuration. CommerceOS creates one payment method record per item. A method reaches the POS pay screen once it is added to the POS profile." },
     { method: "get", path: "/terminals", tag: "Lifecycle", contextful: true, summary: "The terminals that this configuration knows", response: "TerminalDto[]",
@@ -42,7 +42,7 @@ const EPI_ROUTES = [
     { method: "get", path: "/terminals/{terminalId}", tag: "Lifecycle", contextful: true, summary: "One terminal", response: "TerminalDto",
       when: "CommerceOS creates its own payment terminal record for one of your terminals and reads it first." },
     { method: "put", path: "/payments/{paymentKey}", tag: "Payment", contextful: true, summary: "Start a payment: a stream of steps", request: "PaymentInitDto", response: "stream",
-      when: `The cashier chooses your method on the POS. CommerceOS allocates a payment order, whose key is paymentKey, and calls this route. The response is a Server-Sent-Events stream: per step one line \`event: <type>\`, one line \`data: <JSON>\`, a blank line. Step types: ${STEPS}. A stream holds zero or more intermediate steps and exactly one final step. The \`data:\` JSON, with the type added, matches the schema Step<Type>, or PaymentStep for any of them. A step with no fields, such as Cancel, can omit the \`data:\` line. CommerceOS sets no timeout of its own and makes no retry: a dropped stream is a transport error to the cashier, and the next attempt reuses the same paymentKey when no order exists yet, so answer a repeated PUT for a completed key with the same result.` },
+      when: `The cashier chooses your method on the POS. CommerceOS allocates a key, paymentKey, and calls this route; the payment order itself exists after your first Create or Complete step. The response is a Server-Sent-Events stream: per step one line \`event: <type>\`, one line \`data: <JSON>\`, a blank line. Step types: ${STEPS}. A stream holds zero or more intermediate steps and exactly one final step. The \`data:\` JSON, with the type added, matches the schema Step<Type>, or PaymentStep for any of them. A step with no fields, such as Cancel, can omit the \`data:\` line. CommerceOS sets no timeout of its own and makes no retry: a dropped stream is a transport error to the cashier, and the next attempt reuses the same paymentKey when no order exists yet, so answer a repeated PUT for a completed key with the same result.` },
     { method: "post", path: "/payments/{paymentKey}/transactions", tag: "Payment", contextful: true, summary: "Capture, release or refund", request: "TransactionInitDto", response: "TransactionDto",
       when: "The cashier captures a reservation, releases it, or refunds a completed sale. CommerceOS adds one payment record from the answer. It calls once and does not retry. Make the route idempotent on its request: the same paymentKey, token, actions and amount answer the same transaction. A key whose stream did not end in Complete has no payment: answer 404 with an error body." },
     { method: "post", path: "/payments/{cancellationToken}/cancel", tag: "Payment", contextful: true, summary: "Cancel a payment that sent a Cancellable step", request: "CancelDto", response: "none",
@@ -58,22 +58,24 @@ const COS_ROUTES = [
     { method: "get", path: "/v1/context/config/{configId}", tag: "Configuration", summary: "The configuration behind a context id", scope: "me", response: "ContextConfig",
       when: "On a contextful call whose X-EPI-Context-Config-Hash you have not seen: read the values an administrator saved against your config schema, and cache them by configurationHash." },
     { method: "get", path: "/v1/kv/{container}/{key}", tag: "Key-value store", summary: "Read a value", scope: "kv", response: "any",
-      when: "Your own state, for example a provider session behind a paymentKey, so that a restart of your integration loses nothing. container is a namespaced key such as com.example.payments." },
+      when: "Your own state, for example a provider session behind a paymentKey, so that a restart of your integration loses nothing. container is a namespaced key such as com.example.payments. A missing entry answers 200 with null, not 404. A sub-path of a stored document is addressable on its own: /v1/kv/{container}/{key}/state." },
     { method: "put", path: "/v1/kv/{container}/{key}", tag: "Key-value store", summary: "Write a value", scope: "kv", request: "any", response: "any",
       when: "Any JSON value. The answer echoes it." },
-    { method: "delete", path: "/v1/kv/{container}/{key}", tag: "Key-value store", summary: "Delete a value", scope: "kv", response: "none",
+    { method: "delete", path: "/v1/kv/{container}/{key}", tag: "Key-value store", summary: "Delete a value", scope: "kv", response: "deleted",
       when: "After the payment is settled and you no longer need the state." },
     { method: "patch", path: "/v1/payment-orders/{paymentKey}", tag: "Payment orders", summary: "Add payment records: complete a payment asynchronously", scope: "orders.payments:write", request: "PaymentOrderPatch", response: "PaymentOrder",
-      when: "Your provider confirms a payment after the stream dropped, for example through a callback. The order exists once your stream sent Create or Complete; for a key that saw neither, the answer is 404 'Payment order not found.'. A record whose transactionId CommerceOS already holds is ignored, so a repeated callback is safe. When the cashier pays again, CommerceOS finds the order Debited for the amount and attaches it without a new call to your integration." },
+      when: "Your provider confirms a payment after the stream dropped, for example through a callback. The order exists once your stream sent Create or Complete; for a key that saw neither, the answer is 400 with details 'Payment order not found.'. A repeat of the identical record on the same order is a no-op, so a repeated callback with the same body is safe; a record that reuses a transactionId with any field changed is refused. When the cashier pays again, CommerceOS finds the order Debited for the amount and attaches it without a new call to your integration." },
 ];
 
 const ref = name => ({ $ref: `#/components/schemas/${name}` });
 const json = schema => ({ "application/json": { schema } });
-const ERROR_RESPONSE = { description: "A failed call: a non-2xx status with an error body.", content: json(ref("ErrorBody")) };
+const ERROR_RESPONSE = { description: "A failed call: a non-2xx status with an error body. Read on every route except the stream, whose body CommerceOS discards.", content: json(ref("ErrorBody")) };
+const COS_ERROR_RESPONSE = { description: "A failed call: a non-2xx status with a CommerceOS error body; the reason is in details.", content: json(ref("CosErrorBody")) };
 
 function responseOf(kind) {
     if (kind === "none") return { "2XX": { description: "Accepted. The body is ignored, and an empty body is fine." } };
-    if (kind === "boolean") return { "200": { description: "The configuration works.", content: json({ type: "boolean", const: true }) } };
+    if (kind === "boolean") return { "200": { description: "true: the configuration works. false: it does not; the node is reported as fail.", content: json({ type: "boolean" }) } };
+    if (kind === "deleted") return { "200": { description: "Deleted." } };
     if (kind === "any") return { "200": { description: "The stored JSON value.", content: json({}) } };
     if (kind === "stream") return { "200": { description: "One SSE message per step, see the operation description. Each data line, with the event type added as type, is a PaymentStep.", content: { "text/event-stream": { schema: ref("PaymentStep") } } } };
     if (kind.endsWith("[]")) return { "200": { description: "OK", content: json({ type: "array", items: ref(kind.slice(0, -2)) }) } };
@@ -99,7 +101,7 @@ function cosOperation(route) {
     if (route.form) operation.requestBody = { required: true, content: { "application/x-www-form-urlencoded": { schema: ref(route.form) } } };
     if (route.request) operation.requestBody = { required: true, content: json(route.request === "any" ? {} : ref(route.request)) };
     operation.security = route.scope === null ? [] : [{ oauth2: [route.scope] }];
-    operation.responses = { ...responseOf(route.response), "4XX": ERROR_RESPONSE };
+    operation.responses = { ...responseOf(route.response), "4XX": COS_ERROR_RESPONSE };
     return operation;
 }
 
@@ -160,13 +162,13 @@ export function buildDocument(schemaDoc = loadSchema()) {
 export function buildCosDocument(schemaDoc = loadSchema()) {
     const paths = {};
     for (const route of COS_ROUTES) (paths[route.path] ??= {})[route.method] = cosOperation(route);
-    const schemas = reachable(schemaDoc.$defs, { paths, extra: [ref("ErrorBody")] });
+    const schemas = reachable(schemaDoc.$defs, { paths, extra: [ref("CosErrorBody")] });
     return {
         openapi: "3.1.0",
         info: {
             title: "CommerceOS for payment integrations: the routes that your integration calls",
             version: "1.0.0",
-            description: "The four things a payment integration does on CommerceOS, with the OAuth2 client it received in the install payload: get a token, read the configuration behind a context id, keep its own state in the key-value store, and complete a payment asynchronously. Every call carries Authorization: Bearer <token>, content-type application/json and accept application/json. The scopes of the client bound what it can do; the default client of an integration has me geo:read orders.sales:write orders.payments:write payment-records:write kv, and these routes need me, kv and orders.payments:write. Other resources, such as payment integrations and payment terminals, are not available to the client. The full CommerceOS API is documented at {cosBaseUrl}/api-docs.",
+            description: "The four things a payment integration does on CommerceOS, with the OAuth2 client it received in the install payload: get a token, read the configuration behind a context id, keep its own state in the key-value store, and complete a payment asynchronously. Every call carries Authorization: Bearer <token>, content-type application/json and accept application/json. The scopes of the client bound what it can do; a client created in the back office for an integration has me geo:read orders.sales:write orders.payments:write payment-records:write kv (a seeded one also payment-means:read), and these routes need me, kv and orders.payments:write. Other resources, such as payment integrations and payment terminals, are not available to the client. The full CommerceOS API is documented at {cosBaseUrl}/api-docs.",
         },
         tags: [{ name: "Token" }, { name: "Configuration" }, { name: "Key-value store" }, { name: "Payment orders" }],
         servers: [{ url: "{cosBaseUrl}/api", variables: { cosBaseUrl: { default: "https://example.app.heads.com", description: "cosBaseUrl from the install payload" } } }],
@@ -175,8 +177,8 @@ export function buildCosDocument(schemaDoc = loadSchema()) {
             securitySchemes: {
                 oauth2: {
                     type: "oauth2",
-                    description: "Client credentials of the OAuth2 client from the install payload. Request the token at tokenUrl.",
-                    flows: { clientCredentials: { tokenUrl: "{tokenUrl}", scopes: {
+                    description: "Client credentials of the OAuth2 client from the install payload. Request the token at the tokenUrl of the install payload; the URL below is the example instance.",
+                    flows: { clientCredentials: { tokenUrl: "https://example.app.heads.com/oauth2/v1/token", scopes: {
                         me: "Read the configuration behind a context id (and the integration's own user).",
                         kv: "Read, write and delete values in the key-value store.",
                         "orders.payments:write": "Add payment records to a payment order.",

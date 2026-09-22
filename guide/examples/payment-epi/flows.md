@@ -51,10 +51,9 @@ sequenceDiagram
     POS-->>Cashier: "Payment cancelled."
 ```
 
-The Cancel button sits on the waiting dialog, so it needs a `Cancellable` step and then a `Wait` step:
-`Cancellable` alone shows the cashier nothing. The cancel call is a second request, in parallel with the stream, and CommerceOS makes it once. Answer
-2xx, then end the stream with `Cancel`: the button does not close the payment, the final step does. A
-non-2xx answer shows `Cancel failed: <message>` and leaves the stream and the button as they were.
+The Cancel button sits on the `Wait` dialog, so `Cancellable` alone shows the cashier nothing. The cancel
+call runs in parallel with the stream; the button does not close the payment, your `Cancel` step does.
+A non-2xx answer shows `Cancel failed: <code>: <message>` and leaves the stream and the button as they were.
 In self-checkout mode a `Cancel` step also locks the terminal for a supervisor.
 
 ## 3. Refund of a completed sale
@@ -80,7 +79,7 @@ sequenceDiagram
 A refund is one `TransactionInitDto` with `actions: ["Credit"]` and `reversalArgs` that name the
 original transaction and its timestamp (reference, section 6). `amount` is positive. Answer a
 `TransactionDto` with your own `transactionId`, and CommerceOS adds one payment record to the same order, so its status gains `Credited`.
-CommerceOS makes this call once and does not retry: a non-2xx shows `Payment failed: <message>`, and the cashier starts the refund again by hand.
+CommerceOS makes this call once and does not retry: a non-2xx with an error body shows your `<code>: <message>` as the dialog text, and the cashier starts the refund again by hand.
 
 ## 4. Asynchronous completion
 
@@ -108,8 +107,10 @@ sequenceDiagram
     POS-->>Cashier: Receipt
 ```
 
-The payment order exists from the first `Create` or `Complete` step. Send `Create` before `Wait` when a payment can complete asynchronously. `PATCH /v1/payment-orders/{key}` answers `Payment order not found.` for a key that saw neither step. The record needs the members of reference, section 8. When the cashier pays again, CommerceOS finds the order
-`Debited` for the tender amount and attaches it to the sale without a new call to your integration. A record with a `transactionId` that CommerceOS already holds is ignored, so a repeated callback is safe. The conformance amount `.04` is the synchronous case: it expects `Wait` then `Complete`, without `Create`.
+Send `Create` before `Wait` when a payment can complete asynchronously: the payment order exists from
+that step, and the completion is `PATCH /v1/payment-orders/{key}` (`commerceos-openapi.yaml` says what it
+accepts and refuses). What CommerceOS does when the cashier pays again: reference, section 11. The
+conformance amount `.04` is the synchronous case: it expects `Wait` then `Complete`, without `Create`.
 
 ## What the cashier sees
 
@@ -133,6 +134,6 @@ Captures from a manned till with Piggy Bank installed: one line of 15.00, paid i
 | The waiting dialog never ends | The stream sent no final step | Give every provider call a timeout, and end the stream with `Fail` on it |
 | The stream stops after about five minutes | The HTTP runtime of CommerceOS closes a stream with no bytes for that long | Send a `Wait` step at intervals while you wait |
 | `POST /payments/{key}/transactions` answers 404 from your integration | Your integration lost the session behind `paymentKey` after a restart | Keep the session in the key-value store or your database (reference, section 8), not only in memory |
-| `PATCH /v1/payment-orders/{key}` answers `Payment order not found.` | The stream sent no `Create` or `Complete` step before it dropped | Send `Create` as the first step of an asynchronous payment |
+| `PATCH /v1/payment-orders/{key}` answers 400 with details `Payment order not found.` | The stream sent no `Create` or `Complete` step before it dropped | Send `Create` as the first step of an asynchronous payment |
 | `PATCH /v1/payment-orders/{key}` answers 400 `Amount must agree with designated instance.` | A `Debit` or `Authorize` beyond what the order still allows, for example a completion posted twice with two ids | Post the completion once, with one `transactionId` |
 | `GET /v1/payment-integrations/...` or `GET /v1/payment-terminals` fails with the token of your integration | The OAuth2 client of your integration cannot read payment integrations or payment terminals. Only an administrator key can | Ask Heads for the record that you need. Your integration needs only the calls in reference section 8 |

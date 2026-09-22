@@ -13,13 +13,16 @@ server stub and a client from them.
 | [`epi-openapi.yaml`](./epi-openapi.yaml) | CommerceOS calls your integration | the ten routes under your `baseUrl`, the context headers, the config-schema format, every step of the payment stream, every DTO |
 | [`commerceos-openapi.yaml`](./commerceos-openapi.yaml) | your integration calls CommerceOS | the token endpoint, the configuration behind a context id, the key-value store, the payment-order completion, and the OAuth2 scope each call needs |
 
-This page holds what a schema cannot: the order of calls, what the cashier sees, the ledger effect
-of each action, and what CommerceOS does when a stream drops. Every JSON example is a fixture of
-the conformance tool `epi-check` that Heads runs against your endpoint. An HTML comment names its
-file in [`scenarios/`](./scenarios/), and `{{name}}` is filled at run time.
+Open them in any OpenAPI viewer (`npx @redocly/cli preview-docs guide/examples/payment-epi/epi-openapi.yaml`),
+or generate a server stub from the first and a client from the second.
 
-**Base URL of the CommerceOS API:** `https://example.app.heads.com/api/v1`
-**Credential in the examples:** `-u ":banana"` (Basic auth, empty user name). In production your integration sends the OAuth2 bearer token of section 8.
+This page holds what a schema cannot: the order of calls, what the cashier sees, the ledger effect
+of each action, and what CommerceOS does when a stream drops. A JSON example under an HTML comment
+is a fixture of the conformance tool `epi-check` that Heads runs against your endpoint; the comment
+names its file in [`scenarios/`](./scenarios/), and `{{name}}` is filled at run time.
+
+**Base URL of the CommerceOS API:** `https://example.app.heads.com/api/v1`. The calls in section 8
+carry the bearer token of your integration's OAuth2 client.
 
 ## 1. The two directions
 
@@ -53,16 +56,16 @@ The answer of `GET {baseUrl}/methods` for one method as the Piggy Bank sample se
 <!-- fixture: scenarios/fixtures.json#/install -->
 ```json
 { "cosBaseUrl": "http://localhost:5000", "tokenUrl": "http://localhost:5000/oauth2/v1/token",
-  "clientId": "epi-check", "clientSecret": "epi-check-secret", "scope": "epi" }
+  "clientId": "epi-check", "clientSecret": "epi-check-secret", "scope": "me geo:read orders.sales:write orders.payments:write payment-records:write kv" }
 ```
 
 `scope` is the space-separated scope list of the OAuth2 client, as CommerceOS holds it. A client that
 the back office creates for an integration has `me geo:read orders.sales:write orders.payments:write payment-records:write kv`.
-Send the string as `scope` in the token request; section 8 names the three scopes these calls need. The `test` method on the API answers
+Send it, or the subset section 8 names, as `scope` in the token request. The `test` method on the API answers
 `{ integrationName, configurationTests: { "<node name>": "success" | "fail" } }`. A non-2xx or a thrown error is `fail`.
 
 **The payment method record.** `configure` creates one payment method per item of your `GET /methods`
-answer and, on every later `configure`, overwrites nine fields from the DTO: `name`, the three
+answer and, on every later `configure`, overwrites ten fields from the DTO: `name`, the three
 `supports`, the two `requires`, and the four `allows`. An omitted `allows` block resets those four to
 `true`, `false`, `false`, `false`. Everything else on the method is set by a Heads administrator in the
 back office, is never touched by `configure`, and your integration cannot read it. What it does to
@@ -88,7 +91,7 @@ the three until Heads adds it. Ask Heads if your method should count as one of t
 
 ## 3. Context headers
 
-Every contextful call carries three headers; CommerceOS always sends all three. Check at least `X-EPI-Context-Config-Id` and reject a call without it. CommerceOS finds the EPI configuration for the organization node of the call, and a configuration on a parent node applies to the nodes below it.
+Every contextful call carries three headers; CommerceOS always sends all three. Check at least `X-EPI-Context-Config-Id` and reject a call without it with a 4xx and an error body (section 7). CommerceOS finds the EPI configuration for the organization node of the call, and a configuration on a parent node applies to the nodes below it.
 
 | Header | Value | Use |
 |---|---|---|
@@ -103,7 +106,6 @@ The conformance tool sends this context. `debugInfo` is the value of the third h
   "debugInfo": { "nodeName": "epi-check", "baseUrl": "{{baseUrl}}", "name": "epi-check" } }
 ```
 
-Reject a contextful call without the headers with a 4xx status and an error body (section 7). The conformance tool checks this only against its own reference server, not against your integration.
 
 ## 4. Configuration
 
@@ -143,15 +145,10 @@ the same language, then `en-US`, then the first value. When a member has a `desc
 the field label and `title` becomes the placeholder. Answer `"members": {}` when your integration
 needs no configuration: the Mock integration that Heads hosts does exactly that.
 
-**What happens with the values.** The administrator's input is stored as an *EPI configuration* on
-the organization node, as a plain object keyed like `members`. A configuration on a parent node
-applies to the nodes below it. Every contextful call then carries the id of that configuration in
-`X-EPI-Context-Config-Id`. Your integration reads the values with the OAuth2 client from the
-install payload: `POST {tokenUrl}` for a token (section 8), then `GET {cosBaseUrl}/api/v1/context/config/{configId}`
-with `Authorization: Bearer <token>`. The answer is `{ "configuration": { ... }, "configurationHash": "..." }`,
-and `configurationHash` equals the `X-EPI-Context-Config-Hash` header of the call, so cache by it.
-The `me` scope grants the read. Validate the values in `POST /test`, once per node, and answer
-`true`: that is the administrator's check that the configuration works against your provider.
+**What happens with the values.** They are stored as an *EPI configuration* on the organization node,
+as a plain object keyed like `members`. Read them back per section 8, cache by
+`X-EPI-Context-Config-Hash`, and validate them in `POST /test`: that is the administrator's check
+that the configuration works against your provider.
 
 ## 5. The payment stream
 
@@ -177,14 +174,15 @@ is the key of the payment order that CommerceOS allocates before the call. The o
 ```
 
 The response has `Content-Type: text/event-stream`. Each step is one SSE message: a line
-`event: <type>`, a line `data: <JSON>`, then a blank line. A step with no fields, such as `Cancel`, can omit the `data:` line. CommerceOS reads the JSON and adds `type`.
-It splits messages at `\n\n`, joins several `data:` lines with a newline, ignores `id:`, `retry:` and
-comment lines, and assumes one space after each colon. A stream holds zero or more intermediate steps and exactly one final step.
+`event: <type>`, a line `data: <JSON>`, then a blank line. Write exactly one space after each colon:
+CommerceOS strips a fixed number of characters. It splits messages at `\n\n`, joins several `data:`
+lines with a newline, ignores `id:`, `retry:` and comment lines, and adds `type` from the `event:` line
+unless the JSON carries its own `type`. A stream holds zero or more intermediate steps and exactly one final step.
 
 | Step | Kind | Fields | Meaning |
 |---|---|---|---|
 | `Create` | intermediate | `result: PaymentDto` | a session exists at the provider. More steps follow |
-| `Cancellable` | intermediate | `cancellationToken` | CommerceOS can now cancel (section 6). Send a `Wait` step after it: the POS shows the cancel button on the waiting dialog, and nothing on `Cancellable` alone |
+| `Cancellable` | intermediate | `cancellationToken` | CommerceOS can now cancel (section 6). Send a `Wait` or `ShowImage` step after it: the cancel button sits on that dialog, and `Cancellable` alone shows nothing |
 | `Wait` | intermediate | `message?`, `element?`, `translationKey?`, `params?` | show a waiting message |
 | `ShowImage` | intermediate | `url`, `audience?` | show an image, for example a QR code |
 | `VisitPage` | intermediate | `url`, `audience?` | open a web page |
@@ -201,7 +199,7 @@ it gives a record with no items in the back office.
 
 ## 6. Transactions, cancel, and reversal arguments
 
-A `paymentKey` whose stream ended in `Decline`, `Cancel` or `Fail` has no payment order, so a new `PUT` for it is a new payment, and a transactions call for it is answered `404` with an error body.
+A `paymentKey` whose stream ended in `Decline`, `Cancel` or `Fail` has no payment order: treat a new `PUT` for it as a new payment, and answer a transactions call for it with `404` and an error body.
 
 Capture, release and refund go to `POST {baseUrl}/payments/{paymentKey}/transactions` with a
 `TransactionInitDto`. The answer is a `TransactionDto`: the same fields plus `transactionId` and
@@ -215,35 +213,33 @@ Capture, release and refund go to `POST {baseUrl}/payments/{paymentKey}/transact
                     "originalTimestamp": "{{lastTransaction.timestamp}}" } }
 ```
 
-A cancel goes to `POST {baseUrl}/payments/{cancellationToken}/cancel` with a `CancelDto`. The token
-is the one from the `Cancellable` step. The answer is any 2xx, and the stream then ends with `Cancel`.
-The four fields of `CancelDto` carry the local-terminal context, so that a provider can route the cancel to the right terminal.
+A cancel goes to `POST {baseUrl}/payments/{cancellationToken}/cancel` with a `CancelDto`, whose four
+fields carry the local-terminal context so that a provider can route the cancel to the right terminal.
+Answer any 2xx, then end the stream with `Cancel`.
 <!-- fixture: scenarios/fixtures.json#/cancel -->
 ```json
 { "isLocalTerminal": false }
 ```
 
-**`means`: what paid.** Set it on every transaction you return. The receipt prints it instead of the
-method name, the back office shows it in the *Payment means* column, and the sales reports group by
-it. Without it the receipt falls back to the method name, the column stays hidden and the reports
-bucket the payment under `--`. A card terminal sends `{ "type": "Card", "scheme": "Visa", "maskedPan": "************1234" }`.
-A provider without card data sends its brand as a singleton, the same id on every transaction,
-written as the cashier should read it: `{ "type": "Singleton", "id": "Piggy Bank" }`. Do not send
-`Card` without a real card: CommerceOS creates a card record per transaction, and a `token` joins an
-index shared by every provider. Do not send `Wallet` unless CommerceOS holds the wallet's balance.
+**`means`: what paid.** Set it on every transaction; `TransactionDto.means` in the OpenAPI document says
+what CommerceOS shows for it. Two warnings the schema has no room for: do not send `Card` without a
+real card, because CommerceOS creates a card record per transaction and a `token` joins an index shared
+by every provider; and do not send `Wallet` unless CommerceOS holds the wallet's balance.
 
 ## 7. Errors
 
-A failed call answers a non-2xx status with the body `{ "errors": [ ... ] }`. Each item has:
+A failed call answers a non-2xx status with the body `{ "errors": [ ... ] }`. CommerceOS reads that body
+on every route except the stream, `PUT /payments/{paymentKey}`: there it discards the body and the
+cashier sees `Request failed: <status>.`, so report a payment error as a `Fail` step in a 200 stream. Each item has:
 
 | Field | Required | Meaning |
 |---|---|---|
 | `message` | yes | a human-readable description |
-| `code` | no | a provider-defined code. On a `Fail` step the POS shows the translation of the code when it has one, else `message`. Never `<code>: <message>` |
+| `code` | no | a provider-defined code. On a `Fail` step the POS shows the translation of the code when it has one (key `ErrorCondition:<code>`), else `message`, never both. On an error body the cashier sees `<code>: <message>` verbatim |
 | `params` | no | positional parameters for a translated message |
 
-A non-2xx answer without that body fails with `Request failed: <status>`, and so does a failed
-stream call, because CommerceOS reads no body from it.
+A non-2xx answer without that body shows `Request failed: <status>.`, followed by a parse note when
+the body is not JSON.
 
 ## 8. Calls from your integration to CommerceOS
 
@@ -299,7 +295,7 @@ Without `token`, CommerceOS takes the available money for the first action.
 
 ## 9. Status, actions and decline reasons
 
-`status` on a payment order is a set of flags, recomputed from four running amounts on every read, so an order can carry several values.
+`status` on a payment order is a set of flags, recomputed from four running amounts whenever a record is added, so an order can carry several values. The order of the values carries no meaning.
 
 | `status` value | Meaning |
 |---|---|
@@ -311,7 +307,7 @@ Without `token`, CommerceOS takes the available money for the first action.
 
 `actions` on a payment record lists what one transaction did. Most transactions carry one action. A
 provider that does not separate authorization from capture answers `["Authorize","Debit"]`. The ledger
-has three accounts: `source` is the payer's side, `destination` the payee's side, `transit` the money between them at the provider.
+has three accounts: `source` is the payer's side, `destination` the payee's side, `transit` the payee's money that is reserved or in flight.
 
 | `actions` value | Ledger move | Verb |
 |---|---|---|
@@ -360,19 +356,15 @@ The cents of the amount select the outcome: [Build a payment integration](../pay
 | Situation | What CommerceOS does | What you must do |
 |---|---|---|
 | The stream sends no step for a long time | Sets no timeout of its own. The HTTP runtime closes a stream with no bytes after about five minutes. That limit is the runtime's, not a contract value | Send a final step within minutes, or a `Wait` step at intervals while you wait for the provider |
-| The stream drops before a final step | Shows the cashier the transport error in a dialog. The payment order is not marked failed. The cashier's next attempt reuses the same `paymentKey` when no order exists yet, attaches an order that is already `Debited` for the amount without a new call, or takes a fresh key when a non-debited order exists | Treat a second `PUT` with a known `paymentKey` as a resume: answer the same `processorsId` and the same transactions, never a second charge |
+| The stream drops before a final step | Shows the cashier the transport error in a dialog. The payment order is not marked failed. On the cashier's next attempt with direction `Payment`: no order yet, same `paymentKey` again; an order `Debited` for the tender amount, attached without a new call; an order `Debited` for another amount, attached and the cashier told to tender the rest; a non-debited order, a fresh key | Treat a second `PUT` with a known `paymentKey` as a resume: answer the same `processorsId` and the same transactions, never a second charge |
 | A stream call or a transactions call fails (network error, non-2xx) | Makes no retry. The cashier sees the error and starts the payment again by hand. Data after a final step is ignored | Make every call idempotent on its request: the same `paymentKey`, `token`, `actions` and `amount` answer the same transaction. Send exactly one final step, then close |
-| A duplicate `records` item in `PATCH /v1/payment-orders/{key}` (same `methodId` and `transactionId.id`) | Ignores it: no second record, no error, also when the amount differs. The lookup is per method across all orders, not per order | Give every transaction an id that is unique within your method |
-| A `records` item after the order is `Debited` | Has no state guard. A late `Debit` or `Authorize` beyond the remaining amount answers 400. A `Credit` up to the debited amount is accepted and adds `Credited` | Post the completion once. Do not post a `Debit` for a sale that the stream already completed |
+| A repeated `records` item in `PATCH /v1/payment-orders/{key}` (same `transactionId.id` on the same order) | A repeat of the identical record is a no-op. A record that reuses the id with any field changed is refused | Repeat a callback with the same body, or not at all. Give every distinct transaction its own id |
+| A `records` item after the order is `Debited` | Has no state guard. A late `Debit` or `Authorize` beyond the remaining amount answers 400 (`Amount must agree with designated instance.`, or with a `token`, `Designated instance must be a subset of available instance.`). A `Credit` up to the debited amount is accepted and adds `Credited` | Post the completion once. Do not post a `Debit` for a sale that the stream already completed |
 | A `Complete` whose `processorsId` equals that of an earlier payment order of the same method | Refuses it. The cashier sees `Error: Payment order '<id>' already exists.` and no payment record is created | Make `processorsId` unique per method for all time. A counter that restarts with your process collides with the orders it created before the restart |
-| The cashier presses cancel | Calls `POST /payments/{cancellationToken}/cancel` once. A non-2xx shows `Cancel failed: <message>` and the stream keeps running | Answer 2xx, then end the stream with `Cancel` |
+| The cashier presses cancel | Calls `POST /payments/{cancellationToken}/cancel` once. A non-2xx shows `Cancel failed: <code>: <message>` from your error body and the stream keeps running | Answer 2xx, then end the stream with `Cancel` |
 
 ## 12. Where every field is defined
 
 Every DTO, every step of the stream and every CommerceOS-side type is defined with a description
 per field in the two OpenAPI documents named at the top of this page. `?` in this page marks an
-optional field. A decimal is a string, never a JSON number; CommerceOS sends a whole amount as `"15"`, not `"15.00"`, so compare numerically. A timestamp is ISO 8601. To read the
-documents as pages, open them in any OpenAPI viewer, for example
-`npx @redocly/cli preview-docs guide/examples/payment-epi/epi-openapi.yaml`. To start from code,
-generate a server stub from `epi-openapi.yaml` and a client from `commerceos-openapi.yaml` with
-your OpenAPI generator.
+optional field. A decimal is a string, never a JSON number; CommerceOS sends a whole amount as `"15"`, not `"15.00"`, so compare numerically. A timestamp is ISO 8601.

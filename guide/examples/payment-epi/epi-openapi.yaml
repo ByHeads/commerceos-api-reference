@@ -21,7 +21,7 @@ paths:
       tags:
         - "Lifecycle"
       summary: "Install: receive the OAuth2 client for the calls back to CommerceOS"
-      description: "A Heads administrator runs the install action on the payment integration record. Store the body: it is the only credential your integration gets. On any 2xx the integration becomes Active."
+      description: "A Heads administrator runs the install action on the payment integration record. Store the body: it is the only credential your integration gets. The request carries no Content-Type header, so parse the body unconditionally. On any 2xx the integration becomes Active."
       requestBody:
         required: true
         content:
@@ -32,7 +32,7 @@ paths:
         "2XX":
           description: "Accepted. The body is ignored, and an empty body is fine."
         "4XX":
-          description: "A failed call: a non-2xx status with an error body."
+          description: "A failed call: a non-2xx status with an error body. Read on every route except the stream, whose body CommerceOS discards."
           content:
             "application/json":
               schema:
@@ -47,7 +47,7 @@ paths:
         "2XX":
           description: "Accepted. The body is ignored, and an empty body is fine."
         "4XX":
-          description: "A failed call: a non-2xx status with an error body."
+          description: "A failed call: a non-2xx status with an error body. Read on every route except the stream, whose body CommerceOS discards."
           content:
             "application/json":
               schema:
@@ -66,7 +66,7 @@ paths:
               schema:
                 "$ref": "#/components/schemas/ConfigSchema"
         "4XX":
-          description: "A failed call: a non-2xx status with an error body."
+          description: "A failed call: a non-2xx status with an error body. Read on every route except the stream, whose body CommerceOS discards."
           content:
             "application/json":
               schema:
@@ -76,21 +76,20 @@ paths:
       tags:
         - "Lifecycle"
       summary: "Test the configuration of the context"
-      description: "The administrator runs the test method on the integration: one call per configured node. Read the configuration behind the context id, check it against your provider, and answer true. A non-2xx or anything else counts as fail for that node."
+      description: "The administrator runs the test method on the integration: one call per configured node. Read the configuration behind the context id, check it against your provider, and answer true. false, an empty body or a non-2xx counts as fail for that node."
       parameters:
         - "$ref": "#/components/parameters/ConfigId"
         - "$ref": "#/components/parameters/ConfigHash"
         - "$ref": "#/components/parameters/DebugInfo"
       responses:
         "200":
-          description: "The configuration works."
+          description: "true: the configuration works. false: it does not; the node is reported as fail."
           content:
             "application/json":
               schema:
                 type: "boolean"
-                const: true
         "4XX":
-          description: "A failed call: a non-2xx status with an error body."
+          description: "A failed call: a non-2xx status with an error body. Read on every route except the stream, whose body CommerceOS discards."
           content:
             "application/json":
               schema:
@@ -115,7 +114,7 @@ paths:
                 items:
                   "$ref": "#/components/schemas/MethodDto"
         "4XX":
-          description: "A failed call: a non-2xx status with an error body."
+          description: "A failed call: a non-2xx status with an error body. Read on every route except the stream, whose body CommerceOS discards."
           content:
             "application/json":
               schema:
@@ -140,7 +139,7 @@ paths:
                 items:
                   "$ref": "#/components/schemas/TerminalDto"
         "4XX":
-          description: "A failed call: a non-2xx status with an error body."
+          description: "A failed call: a non-2xx status with an error body. Read on every route except the stream, whose body CommerceOS discards."
           content:
             "application/json":
               schema:
@@ -168,7 +167,7 @@ paths:
               schema:
                 "$ref": "#/components/schemas/TerminalDto"
         "4XX":
-          description: "A failed call: a non-2xx status with an error body."
+          description: "A failed call: a non-2xx status with an error body. Read on every route except the stream, whose body CommerceOS discards."
           content:
             "application/json":
               schema:
@@ -178,7 +177,7 @@ paths:
       tags:
         - "Payment"
       summary: "Start a payment: a stream of steps"
-      description: "The cashier chooses your method on the POS. CommerceOS allocates a payment order, whose key is paymentKey, and calls this route. The response is a Server-Sent-Events stream: per step one line `event: <type>`, one line `data: <JSON>`, a blank line. Step types: Create, Cancellable, Wait, ShowImage, VisitPage, RenderView (intermediate); Complete, Decline, Cancel, Fail (final). A stream holds zero or more intermediate steps and exactly one final step. The `data:` JSON, with the type added, matches the schema Step<Type>, or PaymentStep for any of them. A step with no fields, such as Cancel, can omit the `data:` line. CommerceOS sets no timeout of its own and makes no retry: a dropped stream is a transport error to the cashier, and the next attempt reuses the same paymentKey when no order exists yet, so answer a repeated PUT for a completed key with the same result."
+      description: "The cashier chooses your method on the POS. CommerceOS allocates a key, paymentKey, and calls this route; the payment order itself exists after your first Create or Complete step. The response is a Server-Sent-Events stream: per step one line `event: <type>`, one line `data: <JSON>`, a blank line. Step types: Create, Cancellable, Wait, ShowImage, VisitPage, RenderView (intermediate); Complete, Decline, Cancel, Fail (final). A stream holds zero or more intermediate steps and exactly one final step. The `data:` JSON, with the type added, matches the schema Step<Type>, or PaymentStep for any of them. A step with no fields, such as Cancel, can omit the `data:` line. CommerceOS sets no timeout of its own and makes no retry: a dropped stream is a transport error to the cashier, and the next attempt reuses the same paymentKey when no order exists yet, so answer a repeated PUT for a completed key with the same result."
       parameters:
         - name: "paymentKey"
           in: "path"
@@ -202,7 +201,7 @@ paths:
               schema:
                 "$ref": "#/components/schemas/PaymentStep"
         "4XX":
-          description: "A failed call: a non-2xx status with an error body."
+          description: "A failed call: a non-2xx status with an error body. Read on every route except the stream, whose body CommerceOS discards."
           content:
             "application/json":
               schema:
@@ -236,7 +235,7 @@ paths:
               schema:
                 "$ref": "#/components/schemas/TransactionDto"
         "4XX":
-          description: "A failed call: a non-2xx status with an error body."
+          description: "A failed call: a non-2xx status with an error body. Read on every route except the stream, whose body CommerceOS discards."
           content:
             "application/json":
               schema:
@@ -266,7 +265,7 @@ paths:
         "2XX":
           description: "Accepted. The body is ignored, and an empty body is fine."
         "4XX":
-          description: "A failed call: a non-2xx status with an error body."
+          description: "A failed call: a non-2xx status with an error body. Read on every route except the stream, whose body CommerceOS discards."
           content:
             "application/json":
               schema:
@@ -297,8 +296,8 @@ components:
   schemas:
     DecimalDto:
       type: "string"
-      pattern: "^-?\\d+(\\.\\d+)?$"
-      description: "A decimal number as a string, never a JSON number. CommerceOS sends a whole amount without decimals (\"15\", not \"15.00\") and a fraction as typed (\"10.04\"); accept both and compare numerically. Answer in either form."
+      pattern: "^(-?\\d+(\\.\\d+)?|Missing)$"
+      description: "A decimal number as a string, never a JSON number. CommerceOS sends a whole amount without decimals (\"15\", not \"15.00\") and a fraction as typed (\"10.04\"); accept both and compare numerically. In a specification item CommerceOS may send the literal \"Missing\" for a quantity or amount it does not know; do not parse it as a number. Answer in either numeric form."
     PaymentDirection:
       type: "string"
       enum:
@@ -332,7 +331,7 @@ components:
           description: "The OAuth2 client secret. CommerceOS refuses to install an integration whose client has no secret."
         scope:
           type: "string"
-          description: "The scopes of that client, space-separated, as CommerceOS holds them. The default client of an integration has: me geo:read orders.sales:write orders.payments:write payment-records:write kv. Send the string as scope in the token request. Your integration needs me, kv and orders.payments:write."
+          description: "The scopes of that client, space-separated, as CommerceOS holds them. A client created in the back office for an integration has: me geo:read orders.sales:write orders.payments:write payment-records:write kv; a seeded one also has payment-means:read. Send the string back as scope in the token request. Your integration needs me, kv and orders.payments:write."
       required:
         - "cosBaseUrl"
         - "tokenUrl"
@@ -542,7 +541,7 @@ components:
           description: "Echo of the request."
         processorsId:
           type: "string"
-          description: "Your id of the payment session at the provider. CommerceOS requires it to be unique per payment method for all time: a Complete whose processorsId equals that of any earlier payment order of the method fails with 'Payment order <id> already exists', so never restart a counter. A repeated PUT for a paymentKey you already completed must answer the same processorsId and the same transactions: CommerceOS refuses a Complete whose processorsId differs from the order's."
+          description: "Your id of the payment session at the provider. CommerceOS requires it to be unique per payment method for all time: a Complete whose processorsId equals that of any earlier payment order of the method fails with \"Payment order '<id>' already exists.\", so never restart a counter. A repeated PUT for a paymentKey you already completed must answer the same processorsId and the same transactions: a Complete whose processorsId differs from the order's is refused with \"The payment processor ID of the payment has changed.\"."
         transactions:
           type: "array"
           items:
@@ -635,7 +634,7 @@ components:
           description: "The method of the payment."
         specification:
           "$ref": "#/components/schemas/SpecificationDto"
-          description: "The items this transaction is about. Echo the specification of the request (the payment's, or the transaction's): CommerceOS stores it verbatim as the rows of the payment record, and an omitted or empty list gives a record with no items."
+          description: "The items this transaction is about. In a stream step CommerceOS stores it verbatim as the rows of the payment record, and an omitted or empty list gives a record with no items. On POST /payments/{paymentKey}/transactions an omitted field falls back to the request's specification; only an explicit [] gives no items."
         walletCode:
           type: "string"
           description: "As in PaymentInitDto."
@@ -653,7 +652,7 @@ components:
           description: "Present on a refund: the original transaction to reverse."
         transactionId:
           type: "string"
-          description: "Your id of the transaction, unique within the method. CommerceOS ignores a later record with a transactionId it already holds, so a repeated completion is safe."
+          description: "Your id of the transaction, unique within the payment. A repeat of the identical record on the same payment order is idempotent; a record that reuses a transactionId with any field changed is refused. Use a new id for every distinct transaction."
         timestamp:
           type: "string"
           description: "When it happened, ISO 8601."
@@ -930,7 +929,7 @@ components:
       properties:
         code:
           type: "string"
-          description: "A provider-defined code. On a Fail step the POS shows the translation of the code when it has one, else message. Never '<code>: <message>'."
+          description: "A provider-defined code. On a Fail step the POS shows the translation of the code when it has one (translation key ErrorCondition:<code>), else message, and never concatenates the two. On an error body (transactions, cancel, test, methods, terminals) the cashier sees '<code>: <message>' verbatim."
         message:
           type: "string"
           description: "A human-readable description. On a Fail step the cashier sees errors[0].message unless code has a translation."
@@ -952,7 +951,7 @@ components:
           description: "At least one error. Only the first is shown to the cashier."
       required:
         - "errors"
-      description: "The body of every non-2xx answer from your integration. A non-2xx without this body is shown as 'Request failed: <status>'."
+      description: "The body of a non-2xx answer on every route except PUT /payments/{paymentKey}. On the stream route CommerceOS discards the body and the cashier sees 'Request failed: <status>.'; report a payment error as a Fail step in a 200 stream instead. A non-2xx whose body is not JSON with errors is shown as 'Request failed: <status>.' followed by a parse note."
     StepCreate:
       type: "object"
       properties:
@@ -978,7 +977,7 @@ components:
       required:
         - "type"
         - "cancellationToken"
-      description: "Intermediate. CommerceOS may now call POST /payments/{cancellationToken}/cancel with this token. Follow it with a Wait step: the cancel button sits on the waiting dialog, and Cancellable alone shows the cashier nothing."
+      description: "Intermediate. CommerceOS may now call POST /payments/{cancellationToken}/cancel with this token. Follow it with a Wait or ShowImage step: the cancel button sits on that dialog, and Cancellable alone shows the cashier nothing."
     StepWait:
       type: "object"
       properties:
@@ -1029,7 +1028,7 @@ components:
           description: "The page URL."
         audience:
           "$ref": "#/components/schemas/Audience"
-          description: "Who sees it."
+          description: "Who sees it. Default: merchant."
       required:
         - "type"
         - "url"
@@ -1048,7 +1047,7 @@ components:
           description: "Its configuration."
         audience:
           "$ref": "#/components/schemas/Audience"
-          description: "Who sees it."
+          description: "Who sees it. Default: merchant."
       required:
         - "type"
         - "path"
@@ -1065,7 +1064,7 @@ components:
           description: "The payment with its transactions."
         issuedWalletKey:
           type: "string"
-          description: "The key of a wallet that this payment issued."
+          description: "Ignored here: CommerceOS reads issuedWalletKey from result."
       required:
         - "type"
         - "result"
@@ -1132,18 +1131,18 @@ components:
       oneOf:
         - "$ref": "#/components/schemas/TerminalPaymentStep"
         - "$ref": "#/components/schemas/IntermediatePaymentStep"
-      description: "Any step of the payment stream. On the wire each step is one SSE message: a line 'event: <type>', a line 'data: <JSON without type>', a blank line. CommerceOS reads the JSON and adds type from the event line."
+      description: "Any step of the payment stream. On the wire each step is one SSE message: a line 'event: <type>', a line 'data: <JSON>', a blank line. Write exactly one space after each colon: CommerceOS strips a fixed number of characters. It adds type from the event line unless the data JSON carries its own type, which wins. Messages are split at a blank line, several data lines are joined with a newline, and id:, retry: and comment lines are ignored."
     LocalizableString:
-      description: "A string, or a map from locale to string, for example {\"en-US\": \"The API key\", \"sv-SE\": \"API-nyckeln\"}. The back office picks the exact locale, then the same language, then en-US, then the first value."
+      description: "A string, or a map from locale to string, for example {\"en-US\": \"The API key\", \"sv-SE\": \"API-nyckeln\"}. The back office picks the exact locale, then any key of the same language, then en-US, then en, then the first value."
       oneOf:
         - type: "string"
         - type: "object"
           additionalProperties:
             type: "string"
     ConfigTypeString:
-      description: "The type of one configuration field, written as in the CommerceOS API's own type declarations. Base types: string, number, boolean, object (give it members), string[], number[], object[]. A union of quoted values: 'TEST' or 'LIVE' (two or more, joined by or). A trailing ? makes the field optional. Nothing else is accepted: no named types, no (read-only), no and."
+      description: "The type of one configuration field, written as in the CommerceOS API's own type declarations. Base types: string, number, boolean, object (give it members), and any array type such as string[] or object[]. A union of quoted values: 'TEST' or 'LIVE' (two or more; the recommended separator is or, and | or , are also read). A trailing ? makes the field optional. Nothing else is accepted: no named types, no (read-only), no and. Only string, number, boolean and quoted unions are validated on save; arrays and object are stored as entered."
       type: "string"
-      pattern: "^(string|number|boolean|object|string\\[\\]|number\\[\\]|object\\[\\]|'[^']+'( or '[^']+')*)\\??$"
+      pattern: "^(string|number|boolean|object|[A-Za-z]+\\[\\]|'[^']+'(\\s*(or|\\||,)\\s*'[^']+')*)\\??$"
     ConfigMember:
       description: "One configuration field. The back office shows description as the label when present, else title, and title as the placeholder. A field whose type has no trailing ? is required: the form shows 'Required' until it has a value."
       type: "object"

@@ -53,3 +53,16 @@ test("the amounts follow the plan's scenario table", () => {
     const p5 = JSON.parse(readFileSync(join(scenariosDir, "P5.json"), "utf8"));
     assert.equal(p5.steps[0].args.direction, "Payout");
 });
+
+test("every JSON example in the reference that names a fixture equals that fixture", () => {
+    const reference = readFileSync(join(scenariosDir, "..", "reference.md"), "utf8");
+    const pattern = /<!-- fixture: (scenarios\/[^ #]+)(?:#(\/[^ ]+))? -->\n```json\n([\s\S]*?)```/g;
+    let count = 0;
+    for (const [, file, pointer, body] of reference.matchAll(pattern)) {
+        let node = JSON.parse(readFileSync(join(scenariosDir, "..", file), "utf8"));
+        for (const part of (pointer ?? "").split("/").filter(Boolean)) node = Array.isArray(node) ? node[Number(part)] : node[part];
+        assert.deepEqual(JSON.parse(body), node, `${file}${pointer ?? ""} drifted from the reference`);
+        count++;
+    }
+    assert.ok(count >= 5, `found ${count} fixture examples`);
+});

@@ -13,7 +13,6 @@ reports pass or fail per scenario. It ships with a reference server, so it tests
 | Transactions | `POST /payments/{key}/transactions` for capture, release and refund returns a transaction with `transactionId` and `timestamp`. The order status derived from all transactions equals the expected set |
 | Cancel | After a `Cancellable` step, `POST /payments/{cancellationToken}/cancel` returns 2xx and the stream ends with `Cancel`. A `Wait` step in between is allowed, and the POS needs one to show the cancel button |
 | Errors | A bad request yields a 4xx status with `{ "errors": [ { "message": ... } ] }` |
-| Headers | Contextful calls carry `X-EPI-Context-Config-Id`, `X-EPI-Context-Config-Hash` and `X-EPI-Debug-Info`. Bare calls (`/install`, `/uninstall`, `/config-schema`) carry none |
 
 The header scenario `H1` strips the headers on purpose, so it runs only against the bundled
 reference server and is skipped against your integration. Expect 15 pass, 0 fail, 1 skip.
@@ -35,25 +34,15 @@ in one terminal, then in another run
 The profile names the sample's method id, see the next section.
 `--reference` runs the sixteen scenarios against the bundled server instead, and exits 0.
 `--timeout <ms>` bounds every call (default 10000). `--out <dir>` chooses the report folder.
+`--cos <cosBaseUrl> --key <apiKey> --integration <name>` runs the one CommerceOS-side scenario instead:
+it reads the installed integration through the API and checks that it is `Active` and that `test` succeeds per node.
 
 ## The profile file
 
 The cents of the amount select the outcome, see the tutorial
-[section 6](../../guide/examples/payment-epi.md#6-test-amounts). If your sandbox selects outcomes another way, give the tool a profile with `--profile partner.json`. Every key
-is optional:
-
-```json
-{
-    "currencyCode": "EUR",
-    "methodId": "com.partner.card",
-    "amounts": { "P6": "10.01", "P8": "10.02" },
-    "terminalId": "TERM-1"
-}
-```
-
-`amounts` gives a scenario the amount that scripts its outcome in your sandbox. `terminalId` is
-added to every payment and cancel request, for a method that requires a terminal. The full key
-list is in [scenarios/README.md](../../guide/examples/payment-epi/scenarios/README.md).
+[section 6](../../guide/examples/payment-epi.md#6-test-amounts). If your sandbox selects outcomes another way, give the tool a profile with `--profile partner.json`:
+it names your method id, replaces amounts per scenario, and adds a terminal id. The keys and an
+example are in [scenarios/README.md](../../guide/examples/payment-epi/scenarios/README.md) § Profile file.
 
 ## How to read the report
 
@@ -98,7 +87,7 @@ node --test 'tools/epi-check/*.test.mjs'
 ```
 
 The scenarios live in `guide/examples/payment-epi/scenarios/`, one JSON file each, next to the
-tutorial that quotes them. `run.mjs` names the folder in one constant.
+reference that quotes them. `run.mjs` names the folder in one constant.
 
 `openapi.mjs` writes the two OpenAPI 3.1 documents under `guide/examples/payment-epi/`: `epi-openapi.yaml`
 (the ten routes the integration serves) and `commerceos-openapi.yaml` (the calls it makes back), from

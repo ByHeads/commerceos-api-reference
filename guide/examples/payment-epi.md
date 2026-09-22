@@ -46,7 +46,7 @@ POS, and the POS never calls your integration. Everything goes through CommerceO
 
 ## 2. Ten minutes
 
-Piggy Bank is a sample integration in three files, Node 22, no dependencies. Clone the repository and
+Piggy Bank is a sample integration in four files, Node 22, no dependencies. Clone the repository and
 start it.
 
 ```bash
@@ -62,40 +62,47 @@ methods, and starts one payment. It prints every step of the stream.
 ```bash
 node play.mjs 10.00
 # Method com.example.piggy (Piggy Bank)
-# → Complete {"result":{"processorsId":"PB-mfx2k1-1","methodId":"com.example.piggy","amount":"10.00","currencyCode":"SEK","transactions":[{"transactionId":"PB-mfx2k1-2","actions":["Authorize","Debit"],"amount":"10.00","currencyCode":"SEK","methodId":"com.example.piggy","token":"tok-10.00","timestamp":"2026-09-18T20:13:28.756Z","means":{"type":"Singleton","id":"Piggy Bank"}}]}}
+# → Complete {"result":{"processorsId":"PB-mucmciak-1","methodId":"com.example.piggy","amount":"10.00","currencyCode":"SEK","transactions":[{"transactionId":"PB-mucmciak-2","actions":["Authorize","Debit"],"amount":"10.00","currencyCode":"SEK","methodId":"com.example.piggy","token":"tok-10.00","specification":[{"identifier":"ART-0001","description":"Sample article","quantity":"1","unit":"pcs","totalAmount":"10.00","vatPercentage":"25","currencyCode":"SEK"}],"timestamp":"2026-09-22T11:56:50.454Z","means":{"type":"Singleton","id":"Piggy Bank"}}]}}
 # transactionId  actions          amount  currencyCode  token      timestamp
 # -------------  ---------------  ------  ------------  ---------  ------------------------
-# PB-mfx2k1-2    Authorize+Debit  10.00   SEK           tok-10.00  2026-09-18T20:13:28.756Z
+# PB-mucmciak-2  Authorize+Debit  10.00   SEK           tok-10.00  2026-09-22T11:56:50.454Z
 ```
 
-Now the sale from the picture. An amount that ends in `.04` waits for the customer's phone. Start
-the server with a longer window, so that you can tap by hand.
+Every id the bank hands out starts with a prefix that changes on each start, because CommerceOS
+requires a `processorsId` to be unique per method for all time. Now the sale from the picture. An
+amount that ends in `.04` waits for the customer's phone. Start the server with a longer window, so
+that you can tap by hand.
 
 ```bash
 PIGGY_WAIT_MS=60000 node server.mjs      # first terminal
 node play.mjs 10.04                      # second terminal
 # Method com.example.piggy (Piggy Bank)
-# → Wait {"message":"Waiting for the customer's phone","params":["PB-mfx2k1-3"]}
-#   tap:    curl -X POST http://localhost:8787/piggy/tap/PB-mfx2k1-3
+# → Wait {"message":"Waiting for the customer's phone","params":["PB-mucmciak-3"]}
+#   tap:    curl -X POST http://127.0.0.1:8787/piggy/tap/PB-mucmciak-3
 ```
 
-Run the tap command from a third terminal. The stream completes. Every id the bank hands out starts with a
-prefix that changes on each start, because CommerceOS requires a `processorsId` to be unique per method for all time.
+Run the tap command from a third terminal. The stream completes.
 
 ```bash
-curl -X POST http://localhost:8787/piggy/tap/PB-mfx2k1-3
-# → Complete {"result":{"processorsId":"PB-mfx2k1-3","methodId":"com.example.piggy","amount":"10.04","currencyCode":"SEK","transactions":[{"transactionId":"PB-mfx2k1-4","actions":["Authorize","Debit"],"amount":"10.04","currencyCode":"SEK","methodId":"com.example.piggy","token":"tok-10.04","timestamp":"2026-09-18T20:13:30.317Z","means":{"type":"Singleton","id":"Piggy Bank"}}]}}
+curl -X POST http://127.0.0.1:8787/piggy/tap/PB-mucmciak-3
+# → Complete {"result":{"processorsId":"PB-mucmciak-3","methodId":"com.example.piggy","amount":"10.04","currencyCode":"SEK","transactions":[{"transactionId":"PB-mucmciak-4","actions":["Authorize","Debit"],"amount":"10.04","currencyCode":"SEK","methodId":"com.example.piggy","token":"tok-10.04","specification":[{"identifier":"ART-0001","description":"Sample article","quantity":"1","unit":"pcs","totalAmount":"10.04","vatPercentage":"25","currencyCode":"SEK"}],"timestamp":"2026-09-22T11:56:53.521Z","means":{"type":"Singleton","id":"Piggy Bank"}}]}}
 # transactionId  actions          amount  currencyCode  token      timestamp
 # -------------  ---------------  ------  ------------  ---------  ------------------------
-# PB-mfx2k1-4    Authorize+Debit  10.04   SEK           tok-10.04  2026-09-18T20:13:30.317Z
+# PB-mucmciak-4  Authorize+Debit  10.04   SEK           tok-10.04  2026-09-22T11:56:53.521Z
 ```
 
 The server log adds `kv pay-... not written`: the bank records the waiting session in the CommerceOS
-key-value store, and no CommerceOS runs on your machine. `--cos` starts a stand-in for that side:
+key-value store, and no CommerceOS runs on your machine. `--cos` starts a stand-in for that side, and
+every call to it shows as a `[cos]` line:
 
 ```bash
 node play.mjs 10.04 --cos
-# [cos] PUT /api/v1/kv/com.example.piggy/pay-1789798917507 200
+# → Wait {"message":"Waiting for the customer's phone","params":["PB-mucmciak-5"]}
+# [cos] POST /oauth2/v1/token 200
+# [cos] PUT /api/v1/kv/com.example.piggy/pay-1790078210519 200
+# → Complete {...}
+# [cos] POST /oauth2/v1/token 200
+# [cos] PUT /api/v1/kv/com.example.piggy/pay-1790078210519 200
 ```
 
 ## 3. What you build
@@ -129,8 +136,7 @@ body of `POST /install`. Store them. Your integration gets a client-credentials 
 `tokenUrl` and sends it as a bearer token on every call to CommerceOS. The client is limited to
 what an integration needs: the configuration behind a context id, a key-value store for your own
 state, and payment orders and payment records, for example to complete a payment that ends
-asynchronously (reference, section 8). It cannot read other resources, such as payment
-integrations or payment terminals. A second install sends the same client again.
+asynchronously (reference, section 8). A second install sends the same client again.
 
 **CommerceOS calls your integration without a credential.** CommerceOS calls your integration for
 everything in the table. The three context headers identify the configuration, and nothing
@@ -258,8 +264,7 @@ flowchart LR
 A POS terminal and a payment terminal meet only through the same device. There is no direct link
 from a payment terminal to its integration: the link goes through the payment method. Each record in
 the chain has an API resource, see [POS examples](./pos.md). A Heads administrator creates
-these records, because the OAuth2 client of your integration cannot: ask for a payment terminal when
-your method requires one. CommerceOS reads `GET /terminals/{terminalId}` on your integration when it creates its record. `assignedTerminals`
+these records: ask for a payment terminal when your method requires one. CommerceOS reads `GET /terminals/{terminalId}` on your integration when it creates its record. `assignedTerminals`
 on the payment integration does not list terminals: it lists the organization nodes that hold a configuration, and each node carries a `terminals` member that calls your integration.
 
 ## 6. Test amounts
@@ -283,7 +288,7 @@ Heads runs the tool with a profile file that names your method id and, if your s
 ## 7. Go live
 
 - [ ] Your endpoint passes [`epi-check`](../../tools/epi-check/README.md), every scenario. Run it yourself: `node tools/epi-check/run.mjs --base <your integration base url>`.
-- [ ] A contextful call without the three context headers gets a 4xx and an error body. `epi-check` does not test this against your integration.
+- [ ] A contextful call without the three context headers gets a 4xx and an error body.
 - [ ] `POST /test` answers per node: it reads the configuration of the context id and checks it.
 - [ ] State lives in the CommerceOS key-value store or in your database, never only in memory.
 - [ ] `POST /payments/{paymentKey}/transactions` is idempotent: the same request (`paymentKey`, `token`, `actions`, `amount`) answers the same transaction, so a retry from your own infrastructure does not capture twice.

@@ -20,7 +20,7 @@ import { deriveStatus, toMinor, scaleOf } from "./status.mjs";
 import { buildReport, buildMeta, reportJson, reportMarkdown } from "./report.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
-// The scenarios live next to the tutorial, so the guide and the tool read the same files.
+// The scenarios live next to the reference that quotes them, so the guide and the tool read the same files.
 const SCENARIOS_DIR = resolve(here, "..", "..", "guide", "examples", "payment-epi", "scenarios");
 // The CommerceOS commit that contract/dto.schema.json and the scenarios were copied from.
 const CONTRACT_COMMIT = "e70578427aa3dcfecd73780b9d06043aa520da23";
