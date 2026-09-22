@@ -61,6 +61,31 @@ the back office creates for an integration has `me geo:read orders.sales:write o
 Send the string as `scope` in the token request; section 8 names the three scopes these calls need. The `test` method on the API answers
 `{ integrationName, configurationTests: { "<node name>": "success" | "fail" } }`. A non-2xx or a thrown error is `fail`.
 
+**The payment method record.** `configure` creates one payment method per item of your `GET /methods`
+answer and, on every later `configure`, overwrites nine fields from the DTO: `name`, the three
+`supports`, the two `requires`, and the four `allows`. An omitted `allows` block resets those four to
+`true`, `false`, `false`, `false`. Everything else on the method is set by a Heads administrator in the
+back office, is never touched by `configure`, and your integration cannot read it. What it does to
+your calls:
+
+| Administrator setting | Effect on your integration |
+|---|---|
+| Requires customer | The POS refuses to start the payment until the sale has a customer. Your integration is not called |
+| Requires credit approval | As above, and the customer must be approved for credit |
+| Currency rules, *rounding increment* | A typed amount that is not a multiple is refused before your integration is called. A plain Pay rounds the balance, so the `amount` you receive is the rounded one |
+| Currency rules, *maximum overpayment amount* | A tender that exceeds the balance by more than this is refused before your integration is called |
+| Currency rules, *minimum and maximum payment amount*, *minimum overpayment* | Stored and shown, not enforced at pay time |
+| A currency with no rule row | No limits. Nothing restricts which currencies reach you: check `currencyCode` yourself and answer `Fail` for one you do not take |
+| Customer friendly title and description | Not read by the POS |
+| Available in POS, and the POS profile | Both gate the button on the pay screen. `availableInPos` is yours; the profile's allowed methods are the administrator's |
+
+Two DTO flags have consequences the names do not show. `allows.fullAmountFinishesReceipt`: when the
+cashier tenders more than the balance with your method, the POS pays the change back through a
+second call to your integration, a `Payout` on the same method; set it only when `supports.outgoing`
+is `true`. And the POS classifies methods as cash, card or mobile by a fixed list of `methodId`
+values that Heads maintains, which steers refund and void handling; a new `methodId` is none of
+the three until Heads adds it. Ask Heads if your method should count as one of them.
+
 ## 3. Context headers
 
 Every contextful call carries three headers; CommerceOS always sends all three. Check at least `X-EPI-Context-Config-Id` and reject a call without it. CommerceOS finds the EPI configuration for the organization node of the call, and a configuration on a parent node applies to the nodes below it.

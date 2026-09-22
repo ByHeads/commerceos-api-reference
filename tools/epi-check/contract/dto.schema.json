@@ -66,13 +66,13 @@
             "availableInPos": { "type": "boolean", "description": "Default true. false hides the method from the pay screen." },
             "openCashBoxOnUse": { "type": "boolean", "description": "Default false. Open the cash drawer when the method is used." },
             "openCashBoxOnReturn": { "type": "boolean", "description": "Default false. Open the cash drawer on a return paid with the method." },
-            "fullAmountFinishesReceipt": { "type": "boolean", "description": "Default false. A payment of the full amount closes the receipt without a further step." }
+            "fullAmountFinishesReceipt": { "type": "boolean", "description": "Default false. When the cashier tenders more than the balance with this method, the POS pays the change back through a second call to your integration: a Payout on the same method. Set it only when supports.outgoing is true, for example for cash-like methods." }
           },
-          "description": "POS behavior switches. Every field defaults as stated when absent."
+          "description": "POS behavior switches. Every field defaults as stated when absent, and configure applies the defaults on every run: an omitted block resets an administrator's edit of these four fields."
         }
       },
       "required": ["methodId", "name", "requires", "supports"],
-      "description": "One way to pay that your integration offers. CommerceOS creates one payment method record per item of GET /methods when an administrator runs configure. The POS shows it as a button once it is added to the POS profile."
+      "description": "One way to pay that your integration offers. CommerceOS creates one payment method record per item of GET /methods when an administrator runs configure, and every configure overwrites name, requires, supports and allows from this DTO. The POS shows it as a button once it is added to the POS profile. The administrator sets the rest of the method in the back office, outside your control: requires customer, requires credit approval, and the currency rules (rounding increment, maximum overpayment). See the reference, section 2, The payment method record."
     },
     "TerminalDto": {
       "type": "object",

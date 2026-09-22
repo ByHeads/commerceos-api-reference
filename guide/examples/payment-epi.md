@@ -113,7 +113,7 @@ makes back. Generate a server stub from the first and a client from the second w
 | `POST /uninstall` | bare | any 2xx |
 | `GET /config-schema` | bare | a form description: the fields that an administrator fills in per store |
 | `POST /test` | contextful | JSON `true` |
-| `GET /methods` | contextful | the payment methods that you offer, `MethodDto[]` |
+| `GET /methods` | contextful | the payment methods that you offer, `MethodDto[]`. `configure` copies them into method records; the administrator adds the rest (reference, section 2) |
 | `GET /terminals` | contextful | the terminals that this configuration knows, `TerminalDto[]` |
 | `GET /terminals/{terminalId}` | contextful | one `TerminalDto` |
 | `PUT /payments/{paymentKey}` | contextful | a stream of steps that ends in `Complete`, `Decline`, `Cancel` or `Fail` |
