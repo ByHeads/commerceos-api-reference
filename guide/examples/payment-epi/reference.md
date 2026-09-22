@@ -88,7 +88,9 @@ leaves the integration `Inactive` and shows `Install error: Could not install in
 `GET /methods` answer: two items with the same `methodId` write the same record twice and the last
 wins, and an item without `supports` stops the run after the items before it were written. `POST /test`
 must answer the JSON literal `true`; any other body, `"ok"` or `{}` for example, reads as a failed test
-with no message. An unknown id on `GET /terminals/{terminalId}` is answered with `404` and an error body.
+with no message. When the test cannot run at all, because the configuration read from CommerceOS
+failed for example, answer a non-2xx with an error body: the administrator then sees
+`<code>: <message>` next to the failed status, and `false` shows nothing. An unknown id on `GET /terminals/{terminalId}` is answered with `404` and an error body.
 
 Two DTO flags have consequences the names do not show. `allows.fullAmountFinishesReceipt`: when the
 cashier tenders more than the balance with your method, the POS pays the change back through a
@@ -244,7 +246,9 @@ Capture, release and refund go to `POST {baseUrl}/payments/{paymentKey}/transact
 
 A cancel goes to `POST {baseUrl}/payments/{cancellationToken}/cancel` with a `CancelDto`, whose four
 fields carry the local-terminal context so that a provider can route the cancel to the right terminal.
-Answer any 2xx, then end the stream with `Cancel`.
+Answer any 2xx, then end the stream with `Cancel`. The cancel call runs beside the stream, so it can
+arrive after the stream ended: answer 2xx and do nothing. An unknown token is answered with `404` and an
+error body, which the cashier sees as `Cancel failed: <code>: <message>`.
 <!-- fixture: scenarios/fixtures.json#/cancel -->
 ```json
 { "isLocalTerminal": false }
@@ -261,7 +265,8 @@ One rule decides where an error goes. On every route except the stream, a failed
 non-2xx status with the body `{ "errors": [ ... ] }`, and CommerceOS reads it. On the stream,
 `PUT /payments/{paymentKey}`, CommerceOS discards the body of a non-2xx: the cashier sees the raw
 dialog `¿Error: Request failed: <status>.?`, the sale stays open, and the next attempt reuses the same
-`paymentKey` (verified on a till 2026-09-22). So a request that your integration cannot take on that
+`paymentKey` (verified on a till 2026-09-22). After a final `Decline`, `Fail` or `Cancel` step the
+next attempt carries a new `paymentKey`. So a request that your integration cannot take on that
 route, an unknown `methodId` for example, is answered as a 200 stream with one `Fail` step. The
 conformance scenario `E2` checks it, and the tool fails any scenario in which the stream route
 answered a non-2xx. Each error item has:

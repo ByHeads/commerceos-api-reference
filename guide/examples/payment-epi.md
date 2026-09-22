@@ -170,7 +170,7 @@ if (typeof request.headers["x-epi-context-config-id"] !== "string") {
 }
 ```
 
-The configuration round trip. `GET /config-schema` declares two fields, `merchantId` and `mode`. An
+The configuration round trip. `GET /config-schema` declares two fields, `merchantId` and `environment`. An
 administrator fills them in, and `POST /test` reads them back through the context id and checks them.
 The same helper serves a payment route that needs the merchant id.
 
@@ -188,7 +188,7 @@ async function readConfig(request) {
 // ...
 const configProblems = configuration => [
     ...(typeof configuration.merchantId === "string" && configuration.merchantId !== "" ? [] : ["merchantId is missing"]),
-    ...(["TEST", "LIVE"].includes(configuration.mode) ? [] : ["mode must be TEST or LIVE"]),
+    ...(["TEST", "LIVE"].includes(configuration.environment) ? [] : ["environment must be TEST or LIVE"]),
 ];
 ```
 
@@ -315,13 +315,16 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/pos-profiles/pos
 
 **Before the first payment on a till.** Two more things are administrator work, and both block
 the first real payment. First the device: in the back office, *Kassa* → *Enheter* (`/cos/devices`),
-open the device that a POS terminal is assigned to, and press *Associera*. That binds **the browser
-that presses it** to the device, so press it from the browser that will run the till, not from your
-own. Then the till: *Kassa* → *Kassa* (`/cos/pos/terminal`). The first visit asks for POS mode,
+pick the store in the organization tree that the page shows first, open the device that a POS
+terminal is assigned to, and press *Associera*. The button then reads *Avassociera*: that is success.
+It binds **the browser that pressed it** to the device, so press it from the browser that will run
+the till, not from your own. Then the till: *Kassa* → *Kassa* (`/cos/pos/terminal`). The first visit asks for POS mode,
 *Aktivera POS-läge*, which ends the back-office session in that browser, and then asks the cashier to
 start the till for the day. To pay with your method: add an article, press *Payments*, then *Pay*
 (`F4`), type the amount before you pick a method, and pick yours from the list. Your method is in
-that list, not on a tile, until an administrator gives it one.
+that list, not on a tile, until an administrator gives it one. A `Decline`, `Fail` or `Cancel`
+closes the pay screen, so the next attempt starts again from *Pay*; `Wait` and `Complete` keep the
+sale on screen with the remaining balance.
 
 **Terminals.** A payment method that requires a terminal reaches the POS through a chain of four
 records. The arrows show which record points at which.
@@ -366,7 +369,8 @@ Heads runs the tool with a profile file that names your method id and, if your s
 
 ## 7. Go live
 
-- [ ] Your endpoint passes [`epi-check`](../../tools/epi-check/README.md), every scenario. Run it yourself: `node tools/epi-check/run.mjs --base <your integration base url> --profile <your profile>`. The profile names your method id and the configuration your `/test` reads; without it every payment scenario fails. Run it against a short wait window: the tool times out a call after ten seconds. **Run it against a second instance of your integration, or a separate state file, never against the process that a CommerceOS installed:** the tool's own `install` replaces the stored client and `cosBaseUrl`.
+- [ ] Your endpoint passes [`epi-check`](../../tools/epi-check/README.md), every scenario. Run it yourself: `node tools/epi-check/run.mjs --base <your integration base url> --profile <your profile>`. The profile names your method id and the configuration your `/test` reads; without it every payment scenario fails. Run it against a short wait window: the tool times out a call after ten seconds. **Run it against a second instance of your integration, or a separate state file, never against the process that a CommerceOS installed:** the tool's own `install` replaces the stored client and `cosBaseUrl`. So give your server a
+switch for its port and its state file, and start the second instance with both.
 - [ ] A contextful call without the three context headers gets a 4xx and an error body.
 - [ ] A request your integration cannot take on the stream route is a 200 stream with one `Fail` step, never a non-2xx: CommerceOS discards the body there (reference, section 7).
 - [ ] A repeated `PUT` for a completed `paymentKey` answers the same `processorsId` and the same transactions, and `processorsId` is unique for all time.
