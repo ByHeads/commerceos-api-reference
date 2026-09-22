@@ -61,7 +61,7 @@
         "tokenUrl": "http://localhost:5000/oauth2/v1/token",
         "clientId": "epi-check",
         "clientSecret": "epi-check-secret",
-        "scope": "epi"
+        "scope": "me geo:read orders.sales:write orders.payments:write payment-records:write kv"
     },
     "context": {
         "configId": "EPI1",

@@ -6,6 +6,7 @@
             "call": "configSchema",
             "expect": {
                 "status": 200,
+                "schema": "ConfigSchema",
                 "keys": [
                     "members"
                 ]

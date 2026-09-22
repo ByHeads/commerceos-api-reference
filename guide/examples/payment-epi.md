@@ -102,7 +102,9 @@ node play.mjs 10.04 --cos
 Ten routes under one base URL. CommerceOS holds that base URL on a *payment integration* record
 and appends a fixed path per call. A *bare* call carries no context headers. A *contextful* call
 carries the three context headers of the reference, section 3. Reject one that arrives without them.
-Generate a server stub from [`epi-openapi.yaml`](./payment-epi/epi-openapi.yaml) with your OpenAPI generator, for example `openapi-generator` with the server generator for your language.
+The contract is two OpenAPI 3.1 documents: [`epi-openapi.yaml`](./payment-epi/epi-openapi.yaml) for these ten routes, with every field described and
+each operation saying when CommerceOS calls it, and [`commerceos-openapi.yaml`](./payment-epi/commerceos-openapi.yaml) for the calls your integration
+makes back. Generate a server stub from the first and a client from the second with your OpenAPI generator.
 
 | Route | Kind | Answers |
 |---|---|---|
@@ -174,7 +176,7 @@ session instead of opening a new one.
 if ((match = /^POST \/payments\/([^/]+)\/transactions$/.exec(route))) {
     const dto = await readJson(request);
     const sessionId = sessionsByKey.get(decodeURIComponent(match[1]));
-    if (!sessionId) return json(response, 404, errorBody(`No payment ${match[1]}`));
+    if (!sessionId || bank.session(sessionId).state !== "settled") return json(response, 404, errorBody(`No completed payment ${match[1]}`));
     if (dto?.methodId !== METHOD_ID) return json(response, 400, errorBody(`Unknown method ${dto?.methodId}`));
     const transaction = bank.record(sessionId, dto.reversalArgs ? ["Credit"] : dto.actions, dto.amount);
     return json(response, 200, transaction);
@@ -266,14 +268,16 @@ amount to select the outcome. The sample follows the same table.
 
 | Cents | Outcome |
 |---|---|
-| `.00` | `Complete`, actions `["Authorize","Debit"]`. A `Payout` gets `["Authorize"]` only, unless the request sets `debitSynchronously` |
+| `.00`, and every cents value not listed below | `Complete`, actions `["Authorize","Debit"]` |
 | `.01` | `Decline`, reason `InsufficientFunds` |
 | `.02` | `Fail`, one error |
-| `.03` | `Cancellable`, then `Cancel` after the cancel call |
+| `.03` | `Cancellable`, then `Wait`, then `Cancel` after the cancel call. The `Wait` step puts the cancel button on the cashier's dialog. Without a cancel call, end the stream when your own window runs out: the sample completes |
 | `.04` | exactly `Wait`, then `Complete`. No `Create` step: the tool checks the step list as given |
 | `.05` | `Complete`, actions `["Authorize"]` only |
 
-If your sandbox selects outcomes another way, tell Heads which amount produces each outcome. The tool takes that mapping in a profile file.
+A `Payout` that completes gets `["Authorize"]` only, on every amount, unless the request sets `debitSynchronously`.
+
+Heads runs the tool with a profile file that names your method id and, if your sandbox selects outcomes another way, which amount produces each outcome. Tell Heads both.
 
 ## 7. Go live
 
@@ -281,7 +285,7 @@ If your sandbox selects outcomes another way, tell Heads which amount produces e
 - [ ] A contextful call without the three context headers gets a 4xx and an error body. `epi-check` does not test this against your integration.
 - [ ] `POST /test` answers per node: it reads the configuration of the context id and checks it.
 - [ ] State lives in the CommerceOS key-value store or in your database, never only in memory.
-- [ ] `POST /payments/{paymentKey}/transactions` is idempotent. A retry does not capture twice.
+- [ ] `POST /payments/{paymentKey}/transactions` is idempotent: the same request (`paymentKey`, `token`, `actions`, `amount`) answers the same transaction, so a retry from your own infrastructure does not capture twice.
 - [ ] Every stream ends with exactly one final step, also on an exception.
 - [ ] Every call to your provider has a timeout, and a timeout ends the stream with `Fail`.
 - [ ] You log the `X-EPI-Debug-Info` header on every contextful call.

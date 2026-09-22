@@ -12,7 +12,7 @@ import { startCosStandIn, CLIENT } from "./cos.mjs";
 const DEFAULT_BASE = "http://localhost:8787/piggy";
 
 /** The install payload CommerceOS hands over. Without `--cos`, the bank logs a failed callback and carries on. */
-const INSTALL = { cosBaseUrl: "http://localhost:5000", tokenUrl: "http://localhost:5000/oauth2/v1/token", ...CLIENT, scope: "kv" };
+const INSTALL = { cosBaseUrl: "http://localhost:5000", tokenUrl: "http://localhost:5000/oauth2/v1/token", ...CLIENT, scope: "me geo:read orders.sales:write orders.payments:write payment-records:write kv" };
 
 const customer = { type: "Person", key: "person-0001", givenName: "Anna", familyName: "Lindqvist", fullName: "Anna Lindqvist", email: "anna.lindqvist@example.com" };
 const store = { type: "Organization", key: "org-0001", fullName: "Sample Store AB" };
