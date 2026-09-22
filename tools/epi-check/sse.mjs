@@ -40,7 +40,13 @@ export async function* decodeSSE(bytes) {
  */
 export async function* parseEvents(bytes) {
     for await (const item of decodeSSE(bytes)) {
-        const parsed = item.data ? JSON.parse(item.data) : undefined;
+        let parsed;
+        try {
+            parsed = item.data ? JSON.parse(item.data) : undefined;
+        } catch (error) {
+            // The usual cause is `data:{` without the space: CommerceOS drops the first character.
+            throw new Error(`the data of a ${item.event ?? "(untyped)"} step is not JSON as CommerceOS reads it (it takes the line from the 7th character, so write exactly one space after "data:"; reference section 5): ${error.message}`);
+        }
         yield { type: item.event, ...parsed };
     }
 }

@@ -1,7 +1,7 @@
 # epi-check
 
 A dependency-free Node 22 tool that acts as CommerceOS and calls your payment integration at a base
-URL. It runs the same sixteen scenarios that Heads runs before an integration goes live, and
+URL. It runs the same twenty scenarios that Heads runs before an integration goes live, and
 reports pass or fail per scenario. It ships with a reference server, so it tests itself. The contract it checks: [Payment EPI reference](../../guide/examples/payment-epi/reference.md).
 
 ## What it proves
@@ -9,13 +9,18 @@ reports pass or fail per scenario. It ships with a reference server, so it tests
 | Area | Passes when |
 |---|---|
 | Lifecycle | `POST /install` accepts the handshake. `POST /test` returns `true`. `GET /config-schema` returns a form description with `members`. `GET /methods` returns at least one method with a unique `methodId`. `GET /terminals` returns a list, and each terminal is readable at `/terminals/{id}` |
-| Payment stream | `PUT /payments/{key}` answers `text/event-stream`, with zero or more intermediate steps and exactly one final step. A `Complete` result echoes `methodId`, `amount` and `currencyCode`, and each transaction echoes the request `token` and carries only known actions |
-| Transactions | `POST /payments/{key}/transactions` for capture, release and refund returns a transaction with `transactionId` and `timestamp`. The order status derived from all transactions equals the expected set |
-| Cancel | After a `Cancellable` step, `POST /payments/{cancellationToken}/cancel` returns 2xx and the stream ends with `Cancel`. A `Wait` step in between is allowed, and the POS needs one to show the cancel button |
-| Errors | A bad request yields a 4xx status with `{ "errors": [ { "message": ... } ] }` |
+| Payment stream | `PUT /payments/{key}` answers a 200 `text/event-stream`, with zero or more intermediate steps and exactly one final step, which is the last event. A `Complete` result echoes `methodId`, `amount` and `currencyCode`, and each transaction echoes the request `token` and carries only known actions. A Payout with `debitSynchronously: true`, as every till sends it, completes with `["Authorize","Debit"]` |
+| Resume and repeats | The identical `PUT` for a completed key answers the same `processorsId` and the same transactions, no new charge. The identical `Credit` request answers the same transaction. A `processorsId` that a later scenario repeats fails it: CommerceOS refuses a reused id |
+| Transactions | `POST /payments/{key}/transactions` for capture, release and refund returns a transaction with `transactionId` and `timestamp`. The order status derived from all transactions equals the expected set. For a key that never completed it answers 404 with an error body |
+| Cancel | After a `Cancellable` step, a `Wait` or `ShowImage` step follows (the POS shows the cancel button there; `Cancellable` alone shows nothing), `POST /payments/{cancellationToken}/cancel` returns 2xx and the stream ends with `Cancel` |
+| Decline | A `Decline` carries a `reason`. One outside the ten codes the POS translates passes with a warning: the cashier reads the raw code |
+| Errors | A bad request on any route but the stream yields a non-2xx status with `{ "errors": [ { "message": ... } ] }`. On the stream route a request the integration cannot take, for example an unknown `methodId`, is a 200 stream with one `Fail` step: CommerceOS discards the body of a non-2xx there and the cashier sees nothing |
+| Headers | A contextful call without the `X-EPI-*` headers answers 400 with an error body |
 
-The header scenario `H1` strips the headers on purpose, so it runs only against the bundled
-reference server and is skipped against your integration. Expect 15 pass, 0 fail, 1 skip.
+Expect 20 pass, 0 fail, 0 skip. The scenario list with what each one proves is in
+[scenarios/README.md](../../guide/examples/payment-epi/scenarios/README.md). Every payment key and token of a
+run carries a run id (`pay-<runId>-P1`), so running the tool twice against the same integration never repeats a
+key that your integration stored; `--now <iso>` pins the id, and two pinned runs write byte-identical reports.
 
 The tool also plays the CommerceOS side. The install payload of `L1` points at a stand-in that the tool
 starts for the run: it answers the token endpoint for the fixture's client, serves the configuration of
@@ -30,19 +35,29 @@ node tools/epi-check/run.mjs --base https://your-host.example/cos/payment --prof
 ```
 
 The profile is not optional. Without it every request carries the fixture method id
-`com.epicheck.reference`, and every payment scenario fails with the 4xx that only `E1` should get:
-ten failures that look like a bug in your integration. Write the profile first, see the next section.
+`com.epicheck.reference`, and every payment scenario fails with the `Fail` step that only `E2` should get:
+a dozen failures that look like a bug in your integration. Write the profile first, see the next section.
+
+**Never point the tool at the process that a CommerceOS installed.** Scenario `L1` sends the tool's
+own install payload, and a correct integration stores it: after the run the integration holds the
+client `epi-check` and a `cosBaseUrl` on a port the tool has closed, and every call back to
+CommerceOS fails. Run the tool against a second instance of your integration, or the same code with a
+separate state file, and install on CommerceOS afterwards.
 
 Try it first against the Piggy Bank sample: start `node guide/examples/payment-epi/sample/server.mjs`
 in one terminal, then in another run
 `node tools/epi-check/run.mjs --base http://localhost:8787/piggy --profile tools/epi-check/piggy-profile.json`.
 The profile names the sample's method id, see the next section.
-`--reference` runs the sixteen scenarios against the bundled server instead, and exits 0.
+`--reference` runs the twenty scenarios against the bundled server instead, and exits 0.
+`--reference-defect <name>` switches one defect on in that server, to see what the tool reports for it;
+the names are listed in `reference-server.mjs`.
 `--timeout <ms>` bounds every call (default 10000). A `Wait` window longer than that fails `P9`, the
 wait-then-complete scenario, with `This operation was aborted`: run your integration with a short
 window while the tool runs, or raise the timeout. `--out <dir>` chooses the report folder.
 `--cos <cosBaseUrl> --key <apiKey> --integration <name>` runs the one CommerceOS-side scenario instead:
 it reads the installed integration through the API and checks that it is `Active` and that `test` succeeds per node.
+Its third step, `assignedTerminals`, answers 500 on every current CommerceOS (known platform defect D1, owned by
+Heads): the tool records that as a warning and the run exits 0; any other failure of the step is a real one.
 
 ## The profile file
 
@@ -59,13 +74,14 @@ another way, `amounts` overrides them per scenario. A method that requires a ter
 
 The tool prints one table row per scenario and lists each failure under it: the step that
 failed, the JSON path in the response, and what was expected. The first failing step ends the
-scenario. The run exits 0 only when every scenario passes. The same report goes to `--out`,
-default `./epi-check-reports/<date>-<host>/`:
+scenario. A warning, listed under its own heading, marks the row `pass (warn)` and does not fail
+the run: the contract allows it, but the cashier will notice. The run exits 0 only when every
+scenario passes. The same report goes to `--out`, default `./epi-check-reports/<date>-<host>/`:
 
 | File | Holds |
 |---|---|
 | `report.md` | The printed table |
-| `report.json` | Per scenario: `id`, `title`, `result`, `failures`, `calls`. Two runs with the same inputs are byte-identical |
+| `report.json` | Per scenario: `id`, `title`, `result`, `failures`, `warnings`, `calls`. Two runs with the same `--now` are byte-identical |
 | `meta.json` | `target`, `generatedAt`, `contractCommit`, `durationMs` |
 
 Send `report.md` to Heads with a question about a failure. The `path` column names the field.
@@ -82,13 +98,13 @@ node tools/epi-check/trial.mjs --attempts 3
 The trial stages the tutorial, the reference, the flows, the two OpenAPI documents and the
 scenarios into an empty folder, without the Piggy Bank sample or this tool's source, and asks the
 agent for a do-nothing integration in Python on the standard library, method `com.example.trial`.
-After each attempt it starts the integration, runs the sixteen scenarios against it, and hands the
+After each attempt it starts the integration, runs the twenty scenarios against it, and hands the
 report back as `FEEDBACK.md`. The agent also writes `NOTES.md`: what the documents left unclear and
 what it assumed. Read that file after every run; each line is a documentation fix or a question
 for Heads. The run needs the `claude` CLI and Python 3, costs a few dollars per attempt, and
 writes everything under `epi-check-reports/trial-<date>/`. Run it after any change to the
-documents that a partner reads. Result on 2026-09-22: pass on the first attempt, 15 of 15
-runnable scenarios, 404 lines of Python, fifteen notes, of which twelve became document fixes in
+documents that a partner reads. Result on 2026-09-22, on the sixteen scenarios of that day: pass on the
+first attempt, 15 of 15 runnable scenarios, 404 lines of Python, fifteen notes, of which twelve became document fixes in
 the same change.
 
 ## Test the tool itself

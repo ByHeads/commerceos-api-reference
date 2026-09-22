@@ -14,8 +14,15 @@
 
 export const COS_SCENARIO = { id: "C1", title: "CommerceOS side: Active, test success per node, assignedTerminals 200" };
 
-/** Known defect D1: `assignedTerminals` answers 500. A failure that matches it carries "D1" in `path`. */
+/**
+ * Known platform defect D1: `assignedTerminals` answers 500 on every current CommerceOS, because the
+ * `terminals` member hands the read pipeline a Promise (epi-integration.ts:281-286; unify.ts:196-201).
+ * `details` names that refusal. Heads owns the fix, so the tool warns instead of failing the partner,
+ * and the warning carries "D1" in `path`. A 500 with any other cause is a real failure.
+ */
 const D1_STATUS = 500;
+const D1_DETAILS = /sourceIterator\.next is not a function|items is not iterable/;
+export const D1_WARNING = "known platform defect D1: assignedTerminals answers 500 on every instance; Heads owns the fix";
 
 function joinUrl(baseUrl, path) {
     return baseUrl.replace(/\/+$/, "") + "/api/v1" + (path.startsWith("/") ? path : "/" + path);
@@ -72,8 +79,9 @@ const isArray = value => Array.isArray(value);
  * ends the scenario, as in every other scenario.
  */
 export async function runCosScenario({ client, integration }) {
-    const outcome = { id: COS_SCENARIO.id, title: COS_SCENARIO.title, result: "pass", failures: [], calls: [], steps: [] };
+    const outcome = { id: COS_SCENARIO.id, title: COS_SCENARIO.title, result: "pass", failures: [], warnings: [], calls: [], steps: [] };
     const fail = (step, path, message) => outcome.failures.push({ step, path, message });
+    const warn = (step, path, message) => outcome.warnings.push({ step, path, message });
     const subSteps = [
         ["step 1 integration", async label => {
             const { status, body } = await client.integration(integration);
@@ -100,9 +108,9 @@ export async function runCosScenario({ client, integration }) {
                 if (!isArray(body?.assignedTerminals ?? body)) fail(label, "assignedTerminals", `expected an array, got ${JSON.stringify(body)}`);
                 return;
             }
-            const defect = status === D1_STATUS ? "D1" : "status";
             const details = typeof body?.details === "string" ? body.details : undefined;
-            fail(label, defect, `${defect === "D1" ? "D1: " : ""}expected 200, got ${status}${details !== undefined ? ` — details: ${details}` : describe(body)}`);
+            if (status === D1_STATUS && details !== undefined && D1_DETAILS.test(details)) { warn(label, "D1", `${D1_WARNING} — details: ${details}`); return; }
+            fail(label, "status", `expected 200, got ${status}${details !== undefined ? ` — details: ${details}` : describe(body)}`);
         }],
     ];
 

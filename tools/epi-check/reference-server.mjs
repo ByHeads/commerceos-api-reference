@@ -1,12 +1,20 @@
 // A complete payment integration with scripted outcomes, on node:http only. It mirrors the Mock payment
 // integration that Heads hosts, at the contract commit named in run.mjs, and adds what the Mock leaves
-// out: terminals, cancel, decline, fail, wait, and the context header check that every hosted
+// out: terminals, cancel, decline, fail, wait, resume, and the context header check that every hosted
 // integration performs.
 //
 // The cents of `amount` select the outcome (README, *Amount convention*):
 //   .00 Complete ["Authorize","Debit"]   .01 Decline   .02 Fail
-//   .03 Cancellable, then Cancel         .04 Wait, then Complete   .05 Complete ["Authorize"]
+//   .03 Cancellable, Wait, then Cancel   .04 Wait, then Complete   .05 Complete ["Authorize"]
 // Direction "Payout" gives ["Authorize"] unless `debitSynchronously` is true (Mock lines 60-66).
+//
+// Contract facts it honors beyond the outcomes:
+//   - a request it cannot take (unknown methodId, a non-decimal amount) is a 200 stream with one Fail
+//     step, because CommerceOS reads no non-2xx body on the stream route (reference section 7)
+//   - a transactions call for a key that never completed is 404 with an error body (section 6)
+//   - a repeated PUT for a completed key is a resume: same processorsId, same transactions (section 11)
+//   - a repeated transactions call with the same body answers the same transaction (section 11)
+//   - Cancellable is followed by a Wait step, which is where the POS shows the cancel button (section 5)
 //
 // Deterministic: transaction ids come from a per-server counter, timestamps from the injected
 // clock, and the response bodies never carry a wall-clock value.
@@ -30,12 +38,31 @@ const TERMINALS = [
     { terminalId: "T-02", methodId: METHOD_ID, name: "Reference terminal 2" },
 ];
 
-/** The defects a test can switch on, so the runner proves that it catches them. */
-export const DEFECTS = ["drop-token"];
+/**
+ * The defects a test can switch on, so the runner proves that it catches each one. A defect that
+ * names a scenario applies to the payment whose key ends in that scenario id (fixtures.json gives
+ * every key the shape `pay-<runId>-<id>`), so exactly that scenario fails.
+ */
+export const DEFECT_SCENARIO = {
+    "no-final-step": "P9",              // the stream ends after Wait
+    "two-final-steps": "P1",            // Complete, then Fail
+    "no-space-after-colon": "P1",       // `data:{...}`: CommerceOS drops the first character
+    "processorsId-reused": "P2",        // P2 answers P1's processorsId
+    "resume-new-transaction": "P10",    // the repeated PUT mints a new transaction
+    "cancel-refuses": "P7",             // the cancel call answers 409 with a body
+    "credit-refuses": "P4",             // the Credit answers 500 with a body
+    "credit-not-idempotent": "P12",     // the repeated Credit gets a new transactionId
+    "cancellable-without-wait": "P7",   // no Wait after Cancellable
+};
+/** `drop-token` omits `token` from every transaction; `non-2xx-on-stream` answers an unknown method with 400 (E2). */
+export const DEFECTS = ["drop-token", "non-2xx-on-stream", ...Object.keys(DEFECT_SCENARIO)];
 
 function errorBody(message) {
     return { errors: [{ message }] };
 }
+
+/** The scenario id at the end of a payment key: `pay-<runId>-<id>`. */
+const scenarioOf = key => key.slice(key.lastIndexOf("-") + 1);
 
 /**
  * Starts the reference server. `url` is the base URL, prefix included, that a driver points at.
@@ -45,8 +72,12 @@ export function startReferenceServer({ port = 0, now = () => new Date("2026-01-0
     if (defect !== undefined && !DEFECTS.includes(defect)) throw new Error(`Unknown reference defect: ${defect}`);
     let installation = null;
     let counter = 0;
+    let firstProcessorsId;
     const pendingCancels = new Map();
+    const results = new Map();               // paymentKey -> the Complete result, replayed on a repeated PUT
+    const transactionsByRequest = new Map(); // paymentKey + body -> the transaction, replayed on a repeated call
 
+    const defective = (name, key) => defect === name && scenarioOf(key) === DEFECT_SCENARIO[name];
     const nextTransactionId = () => `REF-${String(++counter).padStart(6, "0")}`;
 
     const transaction = (dto, actions) => {
@@ -64,13 +95,12 @@ export function startReferenceServer({ port = 0, now = () => new Date("2026-01-0
         return result;
     };
 
-    const paymentResult = (key, dto, actions) => ({
-        processorsId: `proc-${key}`,
-        methodId: dto.methodId,
-        amount: dto.amount,
-        currencyCode: dto.currencyCode,
-        transactions: [transaction(dto, actions)],
-    });
+    // processorsId is unique per method for all time: one per key, and a key completes once.
+    const paymentResult = (key, dto, actions) => {
+        const processorsId = defective("processorsId-reused", key) && firstProcessorsId !== undefined ? firstProcessorsId : `proc-${key}`;
+        firstProcessorsId ??= processorsId;
+        return { processorsId, methodId: dto.methodId, amount: dto.amount, currencyCode: dto.currencyCode, transactions: [transaction(dto, actions)] };
+    };
 
     const readJson = request => new Promise((resolve, reject) => {
         const chunks = [];
@@ -92,22 +122,42 @@ export function startReferenceServer({ port = 0, now = () => new Date("2026-01-0
         typeof request.headers["x-epi-context-config-id"] !== "string" ||
         typeof request.headers["x-epi-context-config-hash"] !== "string";
 
+    /** What is wrong with a PaymentInitDto, or undefined. Reported as a Fail step, never as a status. */
+    const refusal = dto => {
+        if (dto?.methodId !== METHOD_ID) return { code: "UnknownMethod", message: `Unknown method ${dto?.methodId}` };
+        if (cents(dto.amount) === null) return { code: "BadAmount", message: "Amount is not a decimal string" };
+        return undefined;
+    };
+
     async function streamPayment(response, key, dto) {
         response.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
-        const send = (type, data) => response.write(formatEvent(type, data));
+        const send = (type, data) => response.write(defective("no-space-after-colon", key) ? formatEvent(type, data).replace("data: ", "data:") : formatEvent(type, data));
+        const refused = refusal(dto);
+        if (refused) { send("Fail", { errors: [refused] }); return response.end(); }
+        // Section 11: a completed key is resumed, never charged again.
+        if (results.has(key) && !defective("resume-new-transaction", key)) { send("Complete", { result: results.get(key) }); return response.end(); }
+
         const completeActions = dto.direction === "Payout"
             ? (dto.debitSynchronously ? ["Authorize", "Debit"] : ["Authorize"])
             : (cents(dto.amount) === "05" ? ["Authorize"] : ["Authorize", "Debit"]);
+        const complete = () => {
+            const result = paymentResult(key, dto, completeActions);
+            results.set(key, result);
+            send("Complete", { result });
+            if (defective("two-final-steps", key)) send("Fail", { errors: [{ code: "Scripted", message: "A second final step" }] });
+        };
 
         switch (cents(dto.amount)) {
             case "01":
-                send("Decline", { reason: "InsufficientFunds" });
+                send("Decline", { reason: "InsufficientFunds", params: ["0.00", dto.amount] });
                 break;
             case "02":
                 send("Fail", { errors: [{ code: "ScriptedFailure", message: "Scripted failure for amount ending in .02" }] });
                 break;
             case "03": {
                 send("Cancellable", { cancellationToken: key });
+                // Section 5: the cancel button sits on the Wait dialog. Cancellable alone shows nothing.
+                if (!defective("cancellable-without-wait", key)) send("Wait", { message: "Waiting for the provider. Cancel from the till to stop." });
                 const cancelled = await new Promise(resolve => {
                     const timer = setTimeout(() => { pendingCancels.delete(key); resolve(false); }, CANCEL_WAIT_MS);
                     pendingCancels.set(key, () => { clearTimeout(timer); pendingCancels.delete(key); resolve(true); });
@@ -118,10 +168,10 @@ export function startReferenceServer({ port = 0, now = () => new Date("2026-01-0
             }
             case "04":
                 send("Wait", { message: "Waiting for the customer" });
-                send("Complete", { result: paymentResult(key, dto, completeActions) });
+                if (!defective("no-final-step", key)) complete();
                 break;
             default:
-                send("Complete", { result: paymentResult(key, dto, completeActions) });
+                complete();
         }
         response.end();
     }
@@ -156,18 +206,29 @@ export function startReferenceServer({ port = 0, now = () => new Date("2026-01-0
         }
         if ((match = /^PUT \/payments\/([^/]+)$/.exec(route))) {
             const dto = await readJson(request);
-            if (dto?.methodId !== METHOD_ID) return json(response, 400, errorBody("Unknown method"));
-            if (cents(dto.amount) === null) return json(response, 400, errorBody("Amount is not a decimal string"));
+            // The defect the tool must catch: a refusal as a status, which CommerceOS shows as nothing.
+            if (defect === "non-2xx-on-stream" && refusal(dto)) return json(response, 400, errorBody(refusal(dto).message));
             return streamPayment(response, decodeURIComponent(match[1]), dto);
         }
         if ((match = /^POST \/payments\/([^/]+)\/transactions$/.exec(route))) {
             const dto = await readJson(request);
+            const key = decodeURIComponent(match[1]);
+            // Section 6: only a completed payment has transactions. Any other key is 404 with an error body.
+            if (!results.has(key)) return json(response, 404, errorBody(`No completed payment ${key}`));
             if (dto?.methodId !== METHOD_ID) return json(response, 400, errorBody("Unknown method"));
-            return json(response, 200, transaction(dto, dto.actions));
+            if (defective("credit-refuses", key) && dto.actions?.includes("Credit")) return json(response, 500, errorBody("Credit refused"));
+            // Section 11: the same request answers the same transaction.
+            const requestKey = `${key}\n${JSON.stringify(dto)}`;
+            if (transactionsByRequest.has(requestKey) && !defective("credit-not-idempotent", key)) return json(response, 200, transactionsByRequest.get(requestKey));
+            const result = transaction(dto, dto.actions);
+            transactionsByRequest.set(requestKey, result);
+            return json(response, 200, result);
         }
         if ((match = /^POST \/payments\/([^/]+)\/cancel$/.exec(route))) {
             await readJson(request);
-            const release = pendingCancels.get(decodeURIComponent(match[1]));
+            const token = decodeURIComponent(match[1]);
+            if (defective("cancel-refuses", token)) return json(response, 409, errorBody("Cancel refused"));
+            const release = pendingCancels.get(token);
             if (!release) return json(response, 404, errorBody("No cancellable payment with that token"));
             release();
             return json(response, 200, {});

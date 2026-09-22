@@ -1,5 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync, existsSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { startPiggyServer, METHOD_ID } from "./server.mjs";
 import { readEvents } from "./play.mjs";
 import { startCosStandIn } from "./cos.mjs";
@@ -95,5 +98,66 @@ test("a repeated PUT for a completed payment key replays the same result, and a 
         assert.equal(retry[0].type, "Complete", "a retry after a decline is a new payment");
     } finally {
         await piggy.close();
+    }
+});
+
+test("a request the bank cannot take is a 200 stream with one Fail step, because CommerceOS reads no non-2xx body on the stream route", async () => {
+    const piggy = await startPiggyServer({ idPrefix: "PB-", now: clock });
+    try {
+        for (const [dto, code] of [[{ ...init("10.00"), methodId: "com.other" }, "UnknownMethod"], [init("ten"), "BadAmount"], [{ ...init("10.00"), direction: "Sideways" }, "BadDirection"]]) {
+            const response = await fetch(`${piggy.url}/payments/pay-refused`, { method: "PUT", headers: context, body: JSON.stringify(dto) });
+            assert.equal(response.status, 200);
+            const steps = await events(response);
+            assert.deepEqual(steps.map(s => `${s.type} ${s.errors?.[0].code}`), [`Fail ${code}`]);
+        }
+        assert.deepEqual(piggy.bank.ledger, [], "nothing was charged");
+    } finally {
+        await piggy.close();
+    }
+});
+
+test("the identical transactions request answers the same transaction, and a different one gets a new id", async () => {
+    const piggy = await startPiggyServer({ idPrefix: "PB-", now: clock });
+    try {
+        const [sale] = await events(await fetch(`${piggy.url}/payments/pay-refund`, { method: "PUT", headers: context, body: JSON.stringify(init("10.00")) }));
+        const credit = { actions: ["Credit"], token: "tok-1", amount: "10.00", currencyCode: "SEK", methodId: METHOD_ID, reversalArgs: { originalTransactionId: sale.result.transactions[0].transactionId, originalTimestamp: sale.result.transactions[0].timestamp } };
+        const post = body => fetch(`${piggy.url}/payments/pay-refund/transactions`, { method: "POST", headers: context, body: JSON.stringify(body) }).then(r => r.json());
+        const first = await post(credit);
+        assert.deepEqual(await post(credit), first);
+        assert.equal(piggy.bank.ledger.length, 2, "the sale and one refund");
+        assert.notEqual((await post({ ...credit, amount: "5.00" })).transactionId, first.transactionId);
+    } finally {
+        await piggy.close();
+    }
+});
+
+test("PIGGY_STATE: a restarted bank resumes its payments from the file, and two files share nothing", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "piggy-state-"));
+    const stateFile = join(dir, "a.json");
+    try {
+        const first = await startPiggyServer({ now: clock, stateFile });
+        const [before] = await events(await fetch(`${first.url}/payments/pay-kept`, { method: "PUT", headers: context, body: JSON.stringify(init("10.00")) }));
+        await first.close();
+        assert.ok(existsSync(stateFile));
+
+        const second = await startPiggyServer({ now: clock, stateFile });
+        const other = await startPiggyServer({ now: clock, stateFile: join(dir, "b.json") });
+        try {
+            const [after] = await events(await fetch(`${second.url}/payments/pay-kept`, { method: "PUT", headers: context, body: JSON.stringify(init("10.00")) }));
+            assert.deepEqual(after, before, "the same processorsId and transaction: a resume, not a second charge");
+            assert.equal(second.bank.ledger.length, 1);
+            // The counter continues, so a new payment never reuses an id from before the restart.
+            const [fresh] = await events(await fetch(`${second.url}/payments/pay-new`, { method: "PUT", headers: context, body: JSON.stringify(init("10.00")) }));
+            assert.notEqual(fresh.result.processorsId, before.result.processorsId);
+            assert.ok(fresh.result.processorsId.startsWith(before.result.processorsId.replace(/\d+$/, "")), "same prefix, higher counter");
+            // The other instance knows nothing of pay-kept: a transactions call for it is 404.
+            const foreign = await fetch(`${other.url}/payments/pay-kept/transactions`, { method: "POST", headers: context, body: JSON.stringify({ actions: ["Credit"], token: "tok-1", amount: "10.00", currencyCode: "SEK", methodId: METHOD_ID }) });
+            assert.equal(foreign.status, 404);
+        } finally {
+            await second.close();
+            await other.close();
+        }
+    } finally {
+        rmSync(dir, { recursive: true, force: true });
     }
 });

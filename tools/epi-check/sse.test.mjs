@@ -21,6 +21,12 @@ const expected = [
     { type: "Complete", result: { methodId: "m", amount: "100.00", currencyCode: "SEK", processorsId: "p", transactions: [] } },
 ];
 
+test("a data line without the space after the colon fails as CommerceOS reads it, with the reason", async () => {
+    // `data:{"a":1}` loses its `{` in CommerceOS, so the JSON never parses. The tool says why.
+    const bytes = chunked('event: Complete\ndata:{"result":{}}\n\n', 64);
+    await assert.rejects(collectEvents(bytes), /the data of a Complete step is not JSON as CommerceOS reads it .*one space after "data:"/);
+});
+
 test("formatEvent then parseEvents is a round trip", async () => {
     assert.deepEqual(await collectEvents(chunked(stream, stream.length)), expected);
 });

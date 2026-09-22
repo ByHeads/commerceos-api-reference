@@ -1,0 +1,108 @@
+{
+    "id": "P12",
+    "title": "Refund twice: the identical Credit request answers the same transaction",
+    "amount": "100.00",
+    "steps": [
+        {
+            "call": "startPayment",
+            "key": "{{paymentKey}}",
+            "args": {
+                "methodId": "{{methodId}}",
+                "amount": "{{amount}}",
+                "currencyCode": "{{currencyCode}}",
+                "direction": "Payment",
+                "payer": "{{payer}}",
+                "payee": "{{payee}}",
+                "token": "{{token}}",
+                "locale": "{{locale}}",
+                "specification": "{{specification}}"
+            },
+            "expect": {
+                "status": 200,
+                "schema": "StepComplete",
+                "events": [
+                    "Complete"
+                ],
+                "actions": [
+                    [
+                        "Authorize",
+                        "Debit"
+                    ]
+                ],
+                "echo": [
+                    "methodId",
+                    "amount",
+                    "currencyCode",
+                    "token"
+                ],
+                "derivedStatus": [
+                    "Debited"
+                ]
+            }
+        },
+        {
+            "call": "transaction",
+            "key": "{{paymentKey}}",
+            "args": {
+                "actions": [
+                    "Credit"
+                ],
+                "token": "{{token}}",
+                "amount": "{{amount}}",
+                "currencyCode": "{{currencyCode}}",
+                "methodId": "{{methodId}}",
+                "specification": "{{specification}}",
+                "reversalArgs": {
+                    "originalTransactionId": "{{transactions.0.transactionId}}",
+                    "originalTimestamp": "{{transactions.0.timestamp}}"
+                }
+            },
+            "expect": {
+                "status": 200,
+                "schema": "TransactionDto",
+                "actions": [
+                    [
+                        "Credit"
+                    ]
+                ],
+                "echo": [
+                    "methodId",
+                    "amount",
+                    "currencyCode",
+                    "token"
+                ],
+                "derivedStatus": [
+                    "Credited",
+                    "Debited"
+                ]
+            }
+        },
+        {
+            "call": "transaction",
+            "key": "{{paymentKey}}",
+            "args": {
+                "actions": [
+                    "Credit"
+                ],
+                "token": "{{token}}",
+                "amount": "{{amount}}",
+                "currencyCode": "{{currencyCode}}",
+                "methodId": "{{methodId}}",
+                "specification": "{{specification}}",
+                "reversalArgs": {
+                    "originalTransactionId": "{{transactions.0.transactionId}}",
+                    "originalTimestamp": "{{transactions.0.timestamp}}"
+                }
+            },
+            "expect": {
+                "status": 200,
+                "schema": "TransactionDto",
+                "idempotent": true,
+                "derivedStatus": [
+                    "Credited",
+                    "Debited"
+                ]
+            }
+        }
+    ]
+}

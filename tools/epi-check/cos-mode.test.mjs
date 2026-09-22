@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { run, parseArgs } from "./run.mjs";
-import { createCosClient, runCosScenario, COS_SCENARIO } from "./cos.mjs";
+import { createCosClient, runCosScenario, COS_SCENARIO, D1_WARNING } from "./cos.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const scratch = mkdtempSync(join(tmpdir(), "epi-check-cos-"));
@@ -22,10 +22,11 @@ const AUTH = `Basic ${Buffer.from(":" + KEY).toString("base64")}`;
 // The stub. `integrations` maps a name to how it behaves:
 //   status, configurations, methods  -> the first GET
 //   tests                            -> configurationTests of the POST
-//   terminals: "ok" | "d1"           -> the second GET
+//   terminals: "ok" | "d1" | "500"   -> the second GET (d1 is the known defect, 500 another cause)
 const integrations = {
     Mock: { status: "Active", configurations: 1, methods: 2, tests: { Veddesta: "success" }, terminals: "ok" },
     Broken: { status: "Active", configurations: 1, methods: 1, tests: { Veddesta: "success" }, terminals: "d1" },
+    Crashed: { status: "Active", configurations: 1, methods: 1, tests: { Veddesta: "success" }, terminals: "500" },
     Inactive: { status: "Inactive", configurations: 0, methods: 0, tests: {}, terminals: "ok" },
     Flaky: { status: "Active", configurations: 2, methods: 1, tests: { Veddesta: "success", Kungsängen: "fail" }, terminals: "ok" },
 };
@@ -64,7 +65,8 @@ const stub = createServer((request, response) => {
             return send(response, 200, { integrationName: name, configurationTests: integration.tests });
         }
         if (request.method === "GET" && !isTest && fields === "assignedTerminals") {
-            if (integration.terminals === "d1") return send(response, 500, { info: "An unknown error has occured", details: "TypeError: items is not iterable" });
+            if (integration.terminals === "d1") return send(response, 500, { info: "An unknown error has occured", details: "TypeError: this.sourceIterator.next is not a function" });
+            if (integration.terminals === "500") return send(response, 500, { info: "An unknown error has occured", details: "TypeError: Cannot read properties of undefined (reading 'terminals')" });
             return send(response, 200, { assignedTerminals: [{ node: { identifiers: { key: "node-0" } }, terminals: [{ terminalId: "T1" }] }] });
         }
         return send(response, 404, { info: `Unhandled ${request.method} ${request.url}` });
@@ -102,19 +104,19 @@ test("C1 passes on a healthy integration: three calls, three sub-steps, Basic au
     assert.deepEqual(seen.map(r => r.method), ["GET", "POST", "GET"]);
 });
 
-test("C1 fails with D1 when assignedTerminals answers 500, and records the details string", async () => {
+test("C1 passes with a D1 warning when assignedTerminals answers the known 500, and fails on any other 500", async () => {
     const client = createCosClient({ baseUrl, key: KEY, timeoutMs: 2000 });
     const outcome = await runCosScenario({ client, integration: "Broken" });
-    assert.equal(outcome.result, "fail");
-    assert.deepEqual(outcome.steps, [
-        { label: "step 1 integration", result: "pass" },
-        { label: "step 2 test", result: "pass" },
-        { label: "step 3 assignedTerminals", result: "fail" },
-    ]);
-    assert.equal(outcome.failures.length, 1);
-    assert.equal(outcome.failures[0].step, "step 3 assignedTerminals");
-    assert.equal(outcome.failures[0].path, "D1");
-    assert.match(outcome.failures[0].message, /^D1: expected 200, got 500 — details: TypeError: items is not iterable$/);
+    assert.equal(outcome.result, "pass");
+    assert.deepEqual(outcome.failures, []);
+    assert.deepEqual(outcome.steps.map(s => s.result), ["pass", "pass", "pass"]);
+    assert.deepEqual(outcome.warnings, [{ step: "step 3 assignedTerminals", path: "D1", message: `${D1_WARNING} — details: TypeError: this.sourceIterator.next is not a function` }]);
+    // Heads owns D1; a 500 with another cause is the partner's problem, or a new defect.
+    const crashed = await runCosScenario({ client: createCosClient({ baseUrl, key: KEY, timeoutMs: 2000 }), integration: "Crashed" });
+    assert.equal(crashed.result, "fail");
+    assert.deepEqual(crashed.warnings, []);
+    assert.deepEqual(crashed.steps.map(s => s.result), ["pass", "pass", "fail"]);
+    assert.deepEqual(crashed.failures, [{ step: "step 3 assignedTerminals", path: "status", message: "expected 200, got 500 — details: TypeError: Cannot read properties of undefined (reading 'terminals')" }]);
 });
 
 test("C1 stops at the first failing sub-step and names what is wrong", async () => {
@@ -145,7 +147,7 @@ test("run --cos writes report.json and report.md with C1 and its sub-steps throu
     assert.deepEqual(result.report.scenarios.map(s => s.id), ["C1"]);
     assert.deepEqual(result.report.summary, { pass: 1, fail: 0, skip: 0 });
     const json = JSON.parse(readFileSync(join(out, "report.json"), "utf8"));
-    assert.deepEqual(Object.keys(json.scenarios[0]), ["calls", "failures", "id", "result", "steps", "title"]);
+    assert.deepEqual(Object.keys(json.scenarios[0]), ["calls", "failures", "id", "result", "steps", "title", "warnings"]);
     assert.deepEqual(json.scenarios[0].steps.map(s => s.result), ["pass", "pass", "pass"]);
     const md = readFileSync(join(out, "report.md"), "utf8");
     assert.match(md, new RegExp(`^\\| C1 \\| pass \\| ${COS_SCENARIO.title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} \\|`, "m"));
@@ -155,11 +157,15 @@ test("run --cos writes report.json and report.md with C1 and its sub-steps throu
     assert.equal(meta.generatedAt, NOW);
 
     const broken = await run({ cos: baseUrl, key: KEY, integration: "Broken", now: NOW, out: join(scratch, "cos-broken"), timeout: 2000 });
-    assert.equal(broken.exitCode, 1);
+    assert.equal(broken.exitCode, 0, "D1 is a warning, so the run exits 0");
     const brokenMd = readFileSync(join(scratch, "cos-broken", "report.md"), "utf8");
-    assert.match(brokenMd, /\| C1 \| FAIL \|/);
-    assert.match(brokenMd, /- step 3 assignedTerminals: `D1` — D1: expected 200, got 500 — details: TypeError: items is not iterable/);
+    assert.match(brokenMd, /\| C1 \| pass \(warn\) \|/);
+    assert.match(brokenMd, /1 pass, 0 fail, 0 skip, 1 with warnings/);
+    assert.match(brokenMd, /## Warnings\n\n### C1 — .*\n\n- step 3 assignedTerminals: `D1` — known platform defect D1: assignedTerminals answers 500 on every instance; Heads owns the fix — details: TypeError: this.sourceIterator.next is not a function/);
     assert.ok(existsSync(join(scratch, "cos-broken", "report.json")));
+    const crashed = await run({ cos: baseUrl, key: KEY, integration: "Crashed", now: NOW, out: join(scratch, "cos-crashed"), timeout: 2000 });
+    assert.equal(crashed.exitCode, 1);
+    assert.match(readFileSync(join(scratch, "cos-crashed", "report.md"), "utf8"), /\| C1 \| FAIL \|/);
 });
 
 test("the CLI runs COS mode end to end", async () => {

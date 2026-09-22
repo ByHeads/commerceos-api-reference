@@ -1,6 +1,7 @@
 // report.json (sorted keys, no wall-clock value), report.md (one row per scenario) and meta.json.
-// The self-test runs the tool twice and compares report.json byte for byte, so nothing
-// time-dependent may enter it. Durations and the run time go to meta.json.
+// The self-test runs the tool twice with the same --now and compares report.json byte for byte, so
+// nothing time-dependent may enter it beyond the run id that --now pins. Durations and the run time
+// go to meta.json.
 
 /** Deep-sorts object keys. Arrays keep their order. */
 export function sortKeys(value) {
@@ -13,7 +14,8 @@ export function sortKeys(value) {
 
 /**
  * Builds the report object from scenario outcomes:
- * `[{ id, title, result: "pass" | "fail" | "skip", failures: [{ step, path, message }], calls: [{ method, path, status }] }]`.
+ * `[{ id, title, result: "pass" | "fail" | "skip", failures: [{ step, path, message }], warnings: [same shape], calls: [{ method, path, status }] }]`.
+ * A warning is something the cashier will notice but the contract allows; it never fails a scenario.
  * An outcome with `steps` (`[{ label, result }]`, the COS scenario) keeps them, one per sub-step.
  */
 export function buildReport(outcomes) {
@@ -23,6 +25,7 @@ export function buildReport(outcomes) {
             title: outcome.title,
             result: outcome.result,
             failures: outcome.failures.map(({ step, path, message }) => ({ step, path, message })),
+            warnings: (outcome.warnings ?? []).map(({ step, path, message }) => ({ step, path, message })),
             calls: outcome.calls.map(({ method, path, status }) => ({ method, path, status })),
             ...(outcome.steps ? { steps: outcome.steps.map(({ label, result }) => ({ label, result })) } : {}),
         })),
@@ -43,17 +46,30 @@ export function buildMeta({ target, generatedAt, contractCommit, durationMs }) {
 }
 
 const marks = { pass: "pass", fail: "FAIL", skip: "skip" };
+const mark = scenario => (scenario.result === "pass" && scenario.warnings?.length > 0 ? "pass (warn)" : marks[scenario.result]);
 
-/** One table row per scenario, failures listed under the table. */
+/** Lists `{ step, path, message }` items under one heading per scenario. */
+function listUnder(lines, heading, scenarios, field) {
+    const listed = scenarios.filter(scenario => scenario[field]?.length > 0);
+    if (listed.length === 0) return;
+    lines.push("", `## ${heading}`);
+    for (const scenario of listed) {
+        lines.push("", `### ${scenario.id} — ${scenario.title}`, "");
+        for (const item of scenario[field]) lines.push(`- ${item.step}: \`${item.path || "(root)"}\` — ${item.message}`);
+    }
+}
+
+/** One table row per scenario, failures and warnings listed under the table. */
 export function reportMarkdown(report, { target } = {}) {
     const lines = [];
     lines.push(`# epi-check report${target ? ` — ${target}` : ""}`, "");
     lines.push("| Id | Result | Scenario | Calls |", "|---|---|---|---|");
     for (const scenario of report.scenarios) {
         const calls = scenario.calls.map(call => `${call.method} ${call.path} → ${call.status}`).join("<br>");
-        lines.push(`| ${scenario.id} | ${marks[scenario.result]} | ${scenario.title} | ${calls} |`);
+        lines.push(`| ${scenario.id} | ${mark(scenario)} | ${scenario.title} | ${calls} |`);
     }
-    lines.push("", `**${report.summary.pass} pass, ${report.summary.fail} fail, ${report.summary.skip} skip.**`);
+    const warned = report.scenarios.filter(scenario => scenario.warnings?.length > 0).length;
+    lines.push("", `**${report.summary.pass} pass, ${report.summary.fail} fail, ${report.summary.skip} skip${warned > 0 ? `, ${warned} with warnings` : ""}.**`);
     const stepped = report.scenarios.filter(scenario => scenario.steps);
     if (stepped.length > 0) {
         lines.push("", "## Sub-steps");
@@ -62,13 +78,7 @@ export function reportMarkdown(report, { target } = {}) {
             for (const step of scenario.steps) lines.push(`- ${step.label}: ${marks[step.result]}`);
         }
     }
-    const failed = report.scenarios.filter(scenario => scenario.failures.length > 0);
-    if (failed.length > 0) {
-        lines.push("", "## Failures");
-        for (const scenario of failed) {
-            lines.push("", `### ${scenario.id} — ${scenario.title}`, "");
-            for (const failure of scenario.failures) lines.push(`- ${failure.step}: \`${failure.path || "(root)"}\` — ${failure.message}`);
-        }
-    }
+    listUnder(lines, "Failures", report.scenarios, "failures");
+    listUnder(lines, "Warnings", report.scenarios, "warnings");
     return lines.join("\n") + "\n";
 }

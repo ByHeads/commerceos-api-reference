@@ -39,5 +39,7 @@ node --test '*.test.mjs'
 ```
 The sample passes the `epi-check` conformance suite that Heads runs against every partner integration:
 `node tools/epi-check/run.mjs --base http://127.0.0.1:8787/piggy --profile tools/epi-check/piggy-profile.json`
-from the repository root gives 15 pass, 0 fail, 1 skip. The profile names the sample's method id; without
-it every payment scenario fails on an unknown method. The skipped header scenario is covered by `server.test.mjs`.
+from the repository root gives 20 pass, 0 fail, 0 skip, twice in a row without a restart. The profile names
+the sample's method id; without it every payment scenario fails on an unknown method. `PIGGY_STATE=<file>`
+keeps the bank's state on disk, so a second instance with its own file can take the tool while the first
+stays installed on a CommerceOS.

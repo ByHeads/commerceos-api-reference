@@ -1,7 +1,6 @@
 {
     "id": "H1",
     "title": "Headers: a contextful call without the context headers is rejected",
-    "referenceOnly": true,
     "steps": [
         {
             "call": "methods",

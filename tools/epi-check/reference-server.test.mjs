@@ -1,6 +1,6 @@
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
-import { startReferenceServer, METHOD_ID } from "./reference-server.mjs";
+import { startReferenceServer, METHOD_ID, DEFECTS, DEFECT_SCENARIO } from "./reference-server.mjs";
 import { collectEvents, parseEvents } from "./sse.mjs";
 
 const context = { "x-epi-context-config-id": "AB12", "x-epi-context-config-hash": "hash-1" };
@@ -113,7 +113,7 @@ test(".05 completes with Authorize only", async () => {
 
 test(".01 declines with InsufficientFunds", async () => {
     const events = await collectEvents((await startPayment(server, "pay-01", "100.01")).body);
-    assert.deepEqual(events, [{ type: "Decline", reason: "InsufficientFunds" }]);
+    assert.deepEqual(events, [{ type: "Decline", reason: "InsufficientFunds", params: ["0.00", "100.01"] }]);
 });
 
 test(".02 fails with one error", async () => {
@@ -124,16 +124,17 @@ test(".02 fails with one error", async () => {
     assert.equal(typeof events[0].errors[0].message, "string");
 });
 
-test(".03 is Cancellable with the payment key as token, then Cancel after the cancel call", async () => {
+test(".03 is Cancellable with the payment key as token, then Wait for the cancel button, then Cancel after the cancel call", async () => {
     const response = await startPayment(server, "pay-03", "100.03");
     const events = [];
     const reader = (async () => { for await (const event of parseEvents(response.body)) events.push(event); })();
     await new Promise(resolve => setTimeout(resolve, 50));
-    assert.deepEqual(events, [{ type: "Cancellable", cancellationToken: "pay-03" }]);
+    assert.deepEqual(events[0], { type: "Cancellable", cancellationToken: "pay-03" });
+    assert.equal(events[1]?.type, "Wait", "the POS shows the cancel button on the Wait step");
     const cancel = await fetch(`${server.url}/payments/pay-03/cancel`, { method: "POST", headers: jsonHeaders, body: JSON.stringify({ isLocalTerminal: false }) });
     assert.equal(cancel.status, 200);
     await reader;
-    assert.deepEqual(events.map(e => e.type), ["Cancellable", "Cancel"]);
+    assert.deepEqual(events.map(e => e.type), ["Cancellable", "Wait", "Cancel"]);
 });
 
 test("a cancel for an unknown token is 404 with errors", async () => {
@@ -166,13 +167,65 @@ test("transactions echoes the TransactionInitDto and adds id and timestamp", asy
     assert.deepEqual(body, init);
 });
 
-test("an unknown methodId is 400 Unknown method on payments and transactions", async () => {
+test("an unknown methodId on the stream is a 200 stream with one Fail step, never a status", async () => {
+    // CommerceOS reads no non-2xx body on this route (reference section 7).
     const payment = await startPayment(server, "pay-bad", "100.00", { methodId: "com.other" });
-    assert.equal(payment.status, 400);
-    assert.deepEqual(await payment.json(), { errors: [{ message: "Unknown method" }] });
-    const transaction = await fetch(`${server.url}/payments/pay-bad/transactions`, { method: "POST", headers: jsonHeaders, body: JSON.stringify({ methodId: "com.other", actions: ["Debit"] }) });
+    assert.equal(payment.status, 200);
+    const events = await collectEvents(payment.body);
+    assert.equal(events.length, 1);
+    assert.equal(events[0].type, "Fail");
+    assert.deepEqual(events[0].errors, [{ code: "UnknownMethod", message: "Unknown method com.other" }]);
+    const amount = await collectEvents((await startPayment(server, "pay-bad-amount", "1,00")).body);
+    assert.deepEqual(amount.map(e => `${e.type} ${e.errors?.[0].code}`), ["Fail BadAmount"]);
+});
+
+test("transactions for a key that never completed is 404 with errors; an unknown method on a completed key is 400", async () => {
+    const unknown = await fetch(`${server.url}/payments/pay-never/transactions`, { method: "POST", headers: jsonHeaders, body: JSON.stringify({ methodId: METHOD_ID, actions: ["Debit"] }) });
+    assert.equal(unknown.status, 404);
+    assert.deepEqual(await unknown.json(), { errors: [{ message: "No completed payment pay-never" }] });
+    // A declined key has no payment either (reference section 6).
+    await collectEvents((await startPayment(server, "pay-declined", "100.01")).body);
+    assert.equal((await fetch(`${server.url}/payments/pay-declined/transactions`, { method: "POST", headers: jsonHeaders, body: JSON.stringify({ methodId: METHOD_ID, actions: ["Debit"] }) })).status, 404);
+    const transaction = await fetch(`${server.url}/payments/pay-00/transactions`, { method: "POST", headers: jsonHeaders, body: JSON.stringify({ methodId: "com.other", actions: ["Debit"] }) });
     assert.equal(transaction.status, 400);
     assert.deepEqual(await transaction.json(), { errors: [{ message: "Unknown method" }] });
+});
+
+test("a repeated PUT for a completed key is a resume: the same body, no new transaction", async () => {
+    const first = await (await startPayment(server, "pay-resume", "100.00")).text();
+    const second = await (await startPayment(server, "pay-resume", "100.00")).text();
+    assert.equal(second, first);
+    assert.match(first, /"processorsId": ?"proc-pay-resume"/);
+});
+
+test("a repeated transactions request answers the same transaction; a different body gets a new one", async () => {
+    await collectEvents((await startPayment(server, "pay-twice", "100.00")).body);
+    const body = JSON.stringify({ actions: ["Credit"], token: "tok-1", amount: "100.00", currencyCode: "SEK", methodId: METHOD_ID, reversalArgs: { originalTransactionId: "REF-000001", originalTimestamp: "2026-01-01T00:00:00.000Z" } });
+    const post = b => fetch(`${server.url}/payments/pay-twice/transactions`, { method: "POST", headers: jsonHeaders, body: b }).then(r => r.json());
+    const first = await post(body);
+    assert.deepEqual(await post(body), first);
+    const other = await post(JSON.stringify({ ...JSON.parse(body), amount: "50.00" }));
+    assert.notEqual(other.transactionId, first.transactionId);
+});
+
+test("a scenario-bound defect hits only the key that ends in its scenario id", async () => {
+    assert.deepEqual(DEFECTS, ["drop-token", "non-2xx-on-stream", ...Object.keys(DEFECT_SCENARIO)]);
+    assert.equal(DEFECT_SCENARIO["no-final-step"], "P9");
+    const defective = await startReferenceServer({ defect: "no-final-step" });
+    try {
+        assert.deepEqual((await collectEvents((await startPayment(defective, "pay-x-P9", "100.04")).body)).map(e => e.type), ["Wait"]);
+        assert.deepEqual((await collectEvents((await startPayment(defective, "pay-x-P1", "100.04")).body)).map(e => e.type), ["Wait", "Complete"]);
+    } finally {
+        await defective.close();
+    }
+    const refusing = await startReferenceServer({ defect: "non-2xx-on-stream" });
+    try {
+        const response = await startPayment(refusing, "pay-x-E2", "100.00", { methodId: "com.other" });
+        assert.equal(response.status, 400);
+        assert.deepEqual(await response.json(), { errors: [{ message: "Unknown method com.other" }] });
+    } finally {
+        await refusing.close();
+    }
 });
 
 test("a prefix is honored, and a path outside it is 404", async () => {

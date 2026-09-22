@@ -9,8 +9,10 @@
 // A `.03` payment waits WAIT_MS for the cancel call and completes when none arrives. A `.04`
 // payment waits WAIT_MS for the customer's phone (`POST /tap/{sessionId}`, the id travels in the
 // Wait step's `params`) and the phone taps by itself when the window closes. Set PIGGY_WAIT_MS to
-// play by hand. Set PORT to pick the port.
+// play by hand. Set PORT to pick the port. Set PIGGY_STATE to a file to keep the bank and the payments
+// across restarts (default: in memory); two samples with two files share nothing.
 import { createServer } from "node:http";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { createBank } from "./bank.mjs";
 
 export const METHOD_ID = "com.example.piggy";
@@ -60,15 +62,22 @@ function window_(ms) {
 /**
  * Starts the Piggy Bank integration. `url` is the base URL, path included, that CommerceOS points at.
  * `now` is the clock for every timestamp, `waitMs` the tap and cancel window, `log` the sink for
- * the one-line log of every CommerceOS callback.
+ * the one-line log of every CommerceOS callback. `stateFile` keeps the bank and the payments in a
+ * JSON file, written after every change and read back on start, so a restart resumes them.
  */
-export function startPiggyServer({ port = 0, now = () => new Date(), waitMs = 3000, log = () => {}, idPrefix } = {}) {
-    const bank = createBank({ now, ...(idPrefix !== undefined ? { idPrefix } : {}) });
-    const sessionsByKey = new Map(); // paymentKey -> sessionId
-    const resultsByKey = new Map(); // paymentKey -> the Complete result, replayed on a repeated PUT
+export function startPiggyServer({ port = 0, now = () => new Date(), waitMs = 3000, log = () => {}, idPrefix, stateFile } = {}) {
+    const saved = stateFile && existsSync(stateFile) ? JSON.parse(readFileSync(stateFile, "utf8")) : undefined;
+    const bank = createBank({ now, ...(idPrefix !== undefined ? { idPrefix } : {}), ...(saved ? { snapshot: saved.bank } : {}) });
+    const sessionsByKey = new Map(saved?.sessionsByKey); // paymentKey -> sessionId
+    const resultsByKey = new Map(saved?.resultsByKey); // paymentKey -> the Complete result, replayed on a repeated PUT
+    const transactionsByRequest = new Map(saved?.transactionsByRequest); // paymentKey + body -> the transaction, replayed on a repeated call
     const pendingCancels = new Map(); // cancellationToken -> release()
     let installation = null;
     const configByHash = new Map(); // X-EPI-Context-Config-Hash -> the configuration behind it
+    const save = () => {
+        if (!stateFile) return;
+        writeFileSync(stateFile, JSON.stringify({ bank: bank.snapshot(), sessionsByKey: [...sessionsByKey], resultsByKey: [...resultsByKey], transactionsByRequest: [...transactionsByRequest] }, null, 2));
+    };
 
     const json = (response, status, body) => {
         const text = body === undefined ? "" : JSON.stringify(body, null, 2);
@@ -118,6 +127,14 @@ export function startPiggyServer({ port = 0, now = () => new Date(), waitMs = 30
         }
     }
 
+    /** What is wrong with a PaymentInitDto, or undefined. Section 7: on the stream route a refusal is a Fail step, never a status. */
+    const refusal = dto => {
+        if (dto?.methodId !== METHOD_ID) return { code: "UnknownMethod", message: `Unknown method ${dto?.methodId}` };
+        if (cents(dto.amount) === null) return { code: "BadAmount", message: "Amount is not a decimal string" };
+        if (!["Payment", "Payout"].includes(dto.direction)) return { code: "BadDirection", message: "Direction must be Payment or Payout" };
+        return undefined;
+    };
+
     // Section 5: the payment stream. One session per payment key, and one final step per stream.
     // A repeated PUT for a key is a resume (reference section 11): a settled payment is replayed
     // with the same processorsId, a payment still in progress is refused, and a declined,
@@ -125,6 +142,8 @@ export function startPiggyServer({ port = 0, now = () => new Date(), waitMs = 30
     async function streamPayment(response, paymentKey, dto) {
         response.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
         const send = (type, data) => response.write(formatEvent(type, data));
+        const refused = refusal(dto);
+        if (refused) { send("Fail", { errors: [refused] }); return response.end(); }
         if (resultsByKey.has(paymentKey)) { send("Complete", { result: resultsByKey.get(paymentKey) }); return response.end(); }
         if (sessionsByKey.has(paymentKey) && bank.session(sessionsByKey.get(paymentKey)).state === "open") {
             send("Fail", { errors: [{ code: "InProgress", message: `Payment ${paymentKey} is still in progress` }] });
@@ -132,9 +151,12 @@ export function startPiggyServer({ port = 0, now = () => new Date(), waitMs = 30
         }
         const { sessionId } = bank.createSession({ amount: dto.amount, currencyCode: dto.currencyCode, methodId: dto.methodId, token: dto.token, specification: dto.specification });
         sessionsByKey.set(paymentKey, sessionId);
+        save();
+        const close = state => { bank.close(sessionId, state); save(); };
         const complete = actions => {
             const { methodId, amount, currencyCode } = dto;
             resultsByKey.set(paymentKey, { processorsId: sessionId, methodId, amount, currencyCode, transactions: [bank.settle(sessionId, actions)] });
+            save();
             send("Complete", { result: resultsByKey.get(paymentKey) });
         };
         const outcome = cents(dto.amount);
@@ -144,12 +166,12 @@ export function startPiggyServer({ port = 0, now = () => new Date(), waitMs = 30
 
         switch (outcome) {
             case "01":
-                bank.close(sessionId, "declined");
+                close("declined");
                 // The POS sentence for this reason takes two params: the balance and the requested amount.
                 send("Decline", { reason: "InsufficientFunds", params: ["0.00", dto.amount] });
                 break;
             case "02":
-                bank.close(sessionId, "failed");
+                close("failed");
                 send("Fail", { errors: [{ code: "PiggyJammed", message: "The coin slot is jammed (amount ends in .02)" }] });
                 break;
             case "03": {
@@ -161,7 +183,7 @@ export function startPiggyServer({ port = 0, now = () => new Date(), waitMs = 30
                 send("Wait", { message: "Waiting for the bank. Cancel from the till to stop." });
                 const cancelled = await cancel.promise;
                 pendingCancels.delete(paymentKey);
-                if (cancelled) { bank.close(sessionId, "cancelled"); send("Cancel"); } else complete(saleActions);
+                if (cancelled) { close("cancelled"); send("Cancel"); } else complete(saleActions);
                 break;
             }
             case "04": {
@@ -222,19 +244,21 @@ export function startPiggyServer({ port = 0, now = () => new Date(), waitMs = 30
         }
         // Section 5: the payment stream.
         if ((match = /^PUT \/payments\/([^/]+)$/.exec(route))) {
-            const dto = await readJson(request);
-            if (dto?.methodId !== METHOD_ID) return json(response, 400, errorBody(`Unknown method ${dto?.methodId}`));
-            if (cents(dto.amount) === null) return json(response, 400, errorBody("Amount is not a decimal string"));
-            if (!["Payment", "Payout"].includes(dto.direction)) return json(response, 400, errorBody("Direction must be Payment or Payout"));
-            return streamPayment(response, decodeURIComponent(match[1]), dto);
+            return streamPayment(response, decodeURIComponent(match[1]), await readJson(request));
         }
         // Section 6: capture, release and refund. A refund carries reversalArgs and credits the session.
+        // Section 11: CommerceOS does not retry, but a cashier may; the same request answers the same transaction.
         if ((match = /^POST \/payments\/([^/]+)\/transactions$/.exec(route))) {
             const dto = await readJson(request);
-            const sessionId = sessionsByKey.get(decodeURIComponent(match[1]));
-            if (!sessionId || bank.session(sessionId).state !== "settled") return json(response, 404, errorBody(`No completed payment ${match[1]}`));
+            const paymentKey = decodeURIComponent(match[1]);
+            const sessionId = sessionsByKey.get(paymentKey);
+            if (!sessionId || bank.session(sessionId).state !== "settled") return json(response, 404, errorBody(`No completed payment ${paymentKey}`));
             if (dto?.methodId !== METHOD_ID) return json(response, 400, errorBody(`Unknown method ${dto?.methodId}`));
+            const requestKey = `${paymentKey}\n${JSON.stringify(dto)}`;
+            if (transactionsByRequest.has(requestKey)) return json(response, 200, transactionsByRequest.get(requestKey));
             const transaction = { ...bank.record(sessionId, dto.reversalArgs ? ["Credit"] : dto.actions, dto.amount), ...(dto.specification ? { specification: dto.specification } : {}) };
+            transactionsByRequest.set(requestKey, transaction);
+            save();
             return json(response, 200, transaction);
         }
         // Section 6: cancel a Cancellable payment by its token. The stream then ends with Cancel.
@@ -274,6 +298,7 @@ export function startPiggyServer({ port = 0, now = () => new Date(), waitMs = 30
 // `node server.mjs` runs the bank on PORT (default 8787).
 if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
     const waitMs = Number(process.env.PIGGY_WAIT_MS ?? 3000);
-    const server = await startPiggyServer({ port: Number(process.env.PORT ?? 8787), waitMs, log: line => console.log(`[piggy] ${line}`) });
-    console.log(`Piggy Bank integration at ${server.url} (tap and cancel window ${waitMs} ms)`);
+    const stateFile = process.env.PIGGY_STATE || undefined;
+    const server = await startPiggyServer({ port: Number(process.env.PORT ?? 8787), waitMs, stateFile, log: line => console.log(`[piggy] ${line}`) });
+    console.log(`Piggy Bank integration at ${server.url} (tap and cancel window ${waitMs} ms${stateFile ? `, state in ${stateFile}` : ", state in memory"})`);
 }

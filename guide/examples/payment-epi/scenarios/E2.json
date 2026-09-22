@@ -1,13 +1,13 @@
 {
-    "id": "P6",
-    "title": "Decline with a reason",
-    "amount": "100.01",
+    "id": "E2",
+    "title": "Unknown methodId on the stream: a 200 stream with one Fail step, never a non-2xx",
+    "amount": "100.00",
     "steps": [
         {
             "call": "startPayment",
             "key": "{{paymentKey}}",
             "args": {
-                "methodId": "{{methodId}}",
+                "methodId": "com.epicheck.unknown",
                 "amount": "{{amount}}",
                 "currencyCode": "{{currencyCode}}",
                 "direction": "Payment",
@@ -19,11 +19,10 @@
             },
             "expect": {
                 "status": 200,
-                "schema": "StepDecline",
+                "schema": "StepFail",
                 "events": [
-                    "Decline"
-                ],
-                "translatedReason": true
+                    "Fail"
+                ]
             }
         }
     ]

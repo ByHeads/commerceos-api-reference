@@ -7,8 +7,8 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync, spawnSync } from "node:child_process";
 import { Readable } from "node:stream";
-import { startReferenceServer } from "./reference-server.mjs";
-import { run, parseArgs, resolvePlaceholders, ORDER } from "./run.mjs";
+import { startReferenceServer, DEFECT_SCENARIO } from "./reference-server.mjs";
+import { run, parseArgs, resolvePlaceholders, runIdFor, ORDER, STREAM_NON_2XX, CANCELLABLE_ALONE, TRANSLATED_DECLINE_REASONS } from "./run.mjs";
 import { validate } from "./validate.mjs";
 import { buildReport, reportJson, reportMarkdown, sortKeys } from "./report.mjs";
 
@@ -16,6 +16,8 @@ const here = dirname(fileURLToPath(import.meta.url));
 const schemaDoc = JSON.parse(readFileSync(join(here, "contract", "dto.schema.json"), "utf8"));
 const scratch = mkdtempSync(join(tmpdir(), "epi-check-"));
 const NOW = "2026-01-01T00:00:00Z";
+const RUN_ID = runIdFor(NOW);
+const byId = (result, id) => result.report.scenarios.find(s => s.id === id);
 
 test("validate: the JSON Schema subset", () => {
     const ok = { methodId: "m", amount: "100.00", currencyCode: "SEK", processorsId: "p", transactions: [] };
@@ -46,18 +48,32 @@ test("report: sorted keys, no timestamps, markdown rows", () => {
     const report = buildReport([
         { id: "L1", title: "Install", result: "pass", failures: [], calls: [{ method: "POST", path: "/install", status: 200, ms: 3 }] },
         { id: "P1", title: "Sale", result: "fail", failures: [{ step: "step 1", path: "x", message: "bad" }], calls: [] },
+        { id: "P6", title: "Decline", result: "pass", failures: [], warnings: [{ step: "step 1", path: "reason", message: "odd" }], calls: [] },
         { id: "H1", title: "Headers", result: "skip", failures: [], calls: [] },
     ]);
     const text = reportJson(report);
     assert.equal(text.includes("ms"), false);
     assert.deepEqual(Object.keys(JSON.parse(text)), ["scenarios", "summary"]);
-    assert.deepEqual(Object.keys(JSON.parse(text).scenarios[0]), ["calls", "failures", "id", "result", "title"]);
+    assert.deepEqual(Object.keys(JSON.parse(text).scenarios[0]), ["calls", "failures", "id", "result", "title", "warnings"]);
+    assert.deepEqual(JSON.parse(text).scenarios[0].warnings, []);
     assert.deepEqual(sortKeys({ b: [{ z: 1, a: 2 }], a: null }), { a: null, b: [{ a: 2, z: 1 }] });
     const md = reportMarkdown(report, { target: "reference" });
     assert.match(md, /^\| L1 \| pass \| Install \| POST \/install → 200 \|$/m);
     assert.match(md, /^\| P1 \| FAIL \| Sale \|  \|$/m);
-    assert.match(md, /1 pass, 1 fail, 1 skip/);
-    assert.match(md, /- step 1: `x` — bad/);
+    assert.match(md, /^\| P6 \| pass \(warn\) \| Decline \|  \|$/m);
+    assert.match(md, /2 pass, 1 fail, 1 skip, 1 with warnings/);
+    assert.match(md, /## Failures\n\n### P1 — Sale\n\n- step 1: `x` — bad/);
+    assert.match(md, /## Warnings\n\n### P6 — Decline\n\n- step 1: `reason` — odd/);
+    assert.doesNotMatch(reportMarkdown(buildReport([{ id: "L1", title: "Install", result: "pass", failures: [], calls: [] }])), /Warnings|with warnings/);
+});
+
+test("runIdFor: eight hex characters, the same for the same --now, random without one", () => {
+    assert.match(RUN_ID, /^[0-9a-f]{8}$/);
+    assert.equal(runIdFor(NOW), RUN_ID);
+    assert.notEqual(runIdFor("2026-01-02T00:00:00Z"), RUN_ID);
+    const random = runIdFor(undefined);
+    assert.match(random, /^[0-9a-f]{8}$/);
+    assert.notEqual(runIdFor(undefined), random);
 });
 
 test("parseArgs and placeholders", () => {
@@ -85,19 +101,28 @@ test("--reference passes every scenario, in the fixed order", async () => {
     assert.equal(meta.generatedAt, NOW);
     assert.match(meta.contractCommit, /^[0-9a-f]{40}$/);
     assert.equal(typeof meta.durationMs, "number");
-    // P7 shows the cancel call once, after the PUT that opened the stream.
-    const p7 = result.report.scenarios.find(s => s.id === "P7");
-    assert.deepEqual(p7.calls.map(c => `${c.method} ${c.path}`), ["PUT /payments/pay-P7", "POST /payments/pay-P7/cancel"]);
+    for (const scenario of result.report.scenarios) assert.deepEqual(scenario.warnings, [], scenario.id);
+    // P7 shows the cancel call once, after the PUT that opened the stream. Every key carries the run id.
+    const p7 = byId(result, "P7");
+    assert.deepEqual(p7.calls.map(c => `${c.method} ${c.path}`), [`PUT /payments/pay-${RUN_ID}-P7`, `POST /payments/pay-${RUN_ID}-P7/cancel`]);
+    // E1 posts to a key no stream ever used; E2 gets its Fail as a 200 stream; H1 runs against every target.
+    assert.deepEqual(byId(result, "E1").calls.map(c => `${c.method} ${c.path} ${c.status}`), [`POST /payments/pay-${RUN_ID}-E1/transactions 404`]);
+    assert.deepEqual(byId(result, "E2").calls.map(c => c.status), [200]);
+    assert.deepEqual(byId(result, "H1").calls.map(c => `${c.method} ${c.path} ${c.status}`), ["GET /methods 400"]);
+    assert.deepEqual(byId(result, "P12").calls.map(c => c.status), [200, 200, 200]);
 });
 
-test("two --reference runs produce byte-identical report.json", async () => {
+test("two --reference runs with the same --now produce byte-identical report.json; without --now the keys differ", async () => {
     const first = join(scratch, "ref-a");
     const second = join(scratch, "ref-b");
-    await run({ reference: true, out: first, timeout: 10000 });
+    await run({ reference: true, now: NOW, out: first, timeout: 10000 });
     await new Promise(resolve => setTimeout(resolve, 5));
-    await run({ reference: true, out: second, timeout: 10000 });
+    await run({ reference: true, now: NOW, out: second, timeout: 10000 });
     assert.equal(readFileSync(join(first, "report.json"), "utf8"), readFileSync(join(second, "report.json"), "utf8"));
     assert.equal(readFileSync(join(first, "report.md"), "utf8"), readFileSync(join(second, "report.md"), "utf8"));
+    const unpinned = await run({ reference: true, out: join(scratch, "ref-c"), timeout: 10000 });
+    assert.equal(unpinned.exitCode, 0);
+    assert.notEqual(byId(unpinned, "P1").calls[0].path, `/payments/pay-${RUN_ID}-P1`);
 });
 
 test("--reference-defect drop-token makes P1 fail on transactions[0].token", async () => {
@@ -107,7 +132,44 @@ test("--reference-defect drop-token makes P1 fail on transactions[0].token", asy
     assert.equal(p1.result, "fail");
     assert.ok(p1.failures.some(f => f.path.endsWith("transactions[0].token")), JSON.stringify(p1.failures));
     // Scenarios without a transaction are untouched by the defect.
-    for (const id of ["L1", "L2", "L3", "L4", "L5", "P6", "P7", "P8", "E1", "H1"]) assert.equal(result.report.scenarios.find(s => s.id === id).result, "pass", id);
+    for (const id of ["L1", "L2", "L3", "L4", "L5", "P6", "P7", "P8", "E1", "E2", "H1"]) assert.equal(byId(result, id).result, "pass", id);
+});
+
+// Each defect fails exactly the scenario it is bound to, with the message that names the contract fact.
+const DEFECT_MESSAGE = {
+    "no-final-step": [/the stream ended without a final step/],
+    "two-final-steps": [/exactly one final step, and it is the last event/],
+    "no-space-after-colon": [/one space after "data:"/],
+    "processorsId-reused": [new RegExp(`processorsId proc-pay-${RUN_ID}-P1 was already used by P1: CommerceOS refuses a reused processorsId`)],
+    "resume-new-transaction": [/expected the same transactionIds .*a resume answers the same transactions, never a second charge/],
+    "cancel-refuses": [/expected 2xx, got 409/],
+    "credit-refuses": [/expected 200, got 500/],
+    "credit-not-idempotent": [/the same request answers the same transaction, never a second one/],
+    "cancellable-without-wait": [new RegExp(CANCELLABLE_ALONE)],
+};
+for (const [defect, scenario] of Object.entries(DEFECT_SCENARIO)) {
+    test(`--reference-defect ${defect} fails ${scenario} and nothing else`, async () => {
+        const result = await run({ reference: true, referenceDefect: defect, now: NOW, out: join(scratch, `defect-${defect}`), timeout: 10000 });
+        assert.equal(result.exitCode, 1);
+        assert.deepEqual(result.report.scenarios.filter(s => s.result !== "pass").map(s => s.id), [scenario]);
+        const failed = byId(result, scenario);
+        for (const pattern of DEFECT_MESSAGE[defect]) assert.ok(failed.failures.some(f => pattern.test(f.message)), `${defect}: ${JSON.stringify(failed.failures)}`);
+    });
+}
+
+test("--reference-defect non-2xx-on-stream fails E2 with the stream-route message and nothing else", async () => {
+    const result = await run({ reference: true, referenceDefect: "non-2xx-on-stream", now: NOW, out: join(scratch, "defect-non-2xx"), timeout: 10000 });
+    assert.equal(result.exitCode, 1);
+    assert.deepEqual(result.report.scenarios.filter(s => s.result !== "pass").map(s => s.id), ["E2"]);
+    const e2 = byId(result, "E2");
+    assert.deepEqual(e2.calls.map(c => c.status), [400]);
+    assert.deepEqual(e2.failures.map(f => f.message).slice(0, 2), ["expected 200, got 400", STREAM_NON_2XX]);
+});
+
+test("the processorsId register is one per run: a fresh run may reuse the ids of the previous one", async () => {
+    // The reference server derives its ids from the keys, and the keys carry the run id, so two pinned runs
+    // answer the same ids. Neither run fails: the register does not outlive the run.
+    for (const out of ["register-a", "register-b"]) assert.equal((await run({ reference: true, now: NOW, out: join(scratch, out), timeout: 10000 })).exitCode, 0);
 });
 
 test("a profile overrides amounts, currency and method", async () => {
@@ -137,7 +199,13 @@ test("--base against a server that answers 500 everywhere fails L1 and still wri
         assert.equal(l1.result, "fail");
         assert.deepEqual(l1.failures.map(f => f.path), ["status"]);
         assert.match(l1.failures[0].message, /expected 2xx, got 500/);
-        assert.equal(result.report.scenarios.find(s => s.id === "H1").result, "skip");
+        // H1 runs against every target now; a 500 is not the 400 it expects.
+        const h1 = byId(result, "H1");
+        assert.equal(h1.result, "fail");
+        assert.match(h1.failures[0].message, /expected 400, got 500/);
+        // The stream route names the platform fact on top of the status mismatch.
+        const p1 = byId(result, "P1");
+        assert.deepEqual(p1.failures.map(f => f.message).slice(0, 2), ["expected 200, got 500", STREAM_NON_2XX]);
         assert.ok(existsSync(join(out, "report.json")));
         assert.match(readFileSync(join(out, "report.md"), "utf8"), /\| L1 \| FAIL \|/);
     } finally {
@@ -146,9 +214,10 @@ test("--base against a server that answers 500 everywhere fails L1 and still wri
     }
 });
 
-test("the status of a stream step is the PUT's, not a react sub-call's; a plain-call echo mismatch is reported once", async () => {
-    // A proxy in front of the reference server: cancel answers 201 (any 2xx passes), and one terminal
-    // comes back under another id (exactly one failure, on `terminalId`).
+test("the status of a stream step is the PUT's, not a react sub-call's; a plain-call echo mismatch is reported once; an untranslated reason warns", async () => {
+    // A proxy in front of the reference server: cancel answers 201 (any 2xx passes), one terminal
+    // comes back under another id (exactly one failure, on `terminalId`), and P6 declines with a
+    // reason the POS does not translate (a warning, not a failure).
     const upstream = await startReferenceServer({ now: () => new Date(NOW) });
     const proxy = createServer(async (request, response) => {
         const chunks = [];
@@ -160,6 +229,7 @@ test("the status of a stream step is the PUT's, not a react sub-call's; a plain-
         const responseHeaders = Object.fromEntries([...answer.headers].filter(([name]) => !["content-length", "transfer-encoding"].includes(name)));
         if (request.url.endsWith("/cancel")) { response.writeHead(201, responseHeaders); response.end(await answer.text()); return; }
         if (request.url.endsWith("/terminals/T-01")) { response.writeHead(200, responseHeaders); response.end((await answer.text()).replace('"T-01"', '"T-99"')); return; }
+        if (request.url.endsWith("-P6")) { response.writeHead(200, responseHeaders); response.end((await answer.text()).replace('"InsufficientFunds"', '"PiggyEmpty"')); return; }
         response.writeHead(answer.status, responseHeaders);
         Readable.fromWeb(answer.body).pipe(response);
     });
@@ -168,8 +238,13 @@ test("the status of a stream step is the PUT's, not a react sub-call's; a plain-
         const result = await run({ target: `http://127.0.0.1:${proxy.address().port}`, now: NOW, out: join(scratch, "proxy"), timeout: 10000 });
         const p7 = result.report.scenarios.find(s => s.id === "P7");
         assert.equal(p7.result, "pass", JSON.stringify(p7.failures));
-        const l5 = result.report.scenarios.find(s => s.id === "L5");
+        const l5 = byId(result, "L5");
         assert.deepEqual(l5.failures.map(f => f.path), ["terminalId"]);
+        const p6 = byId(result, "P6");
+        assert.equal(p6.result, "pass");
+        assert.deepEqual(p6.warnings.map(w => w.path), ["reason"]);
+        assert.match(p6.warnings[0].message, new RegExp(`"PiggyEmpty" is not one of the ${TRANSLATED_DECLINE_REASONS.length} reasons the POS translates`));
+        assert.match(readFileSync(join(scratch, "proxy", "report.md"), "utf8"), /\| P6 \| pass \(warn\) \|[\s\S]*## Warnings/);
     } finally {
         proxy.closeAllConnections();
         await new Promise(resolve => proxy.close(resolve));
@@ -180,7 +255,7 @@ test("the status of a stream step is the PUT's, not a react sub-call's; a plain-
 test("the CLI exits 0 on --reference and 2 on a bad argument", () => {
     const out = join(scratch, "cli");
     const stdout = execFileSync(process.execPath, [join(here, "run.mjs"), "--reference", "--now", NOW, "--out", out], { encoding: "utf8" });
-    assert.match(stdout, /16 pass, 0 fail, 0 skip/);
+    assert.match(stdout, /20 pass, 0 fail, 0 skip/);
     assert.match(stdout, /Written to /);
     const bad = spawnSync(process.execPath, [join(here, "run.mjs"), "--nope"], { encoding: "utf8" });
     assert.equal(bad.status, 2);

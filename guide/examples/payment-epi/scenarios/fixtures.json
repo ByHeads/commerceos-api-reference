@@ -2,8 +2,8 @@
     "currencyCode": "SEK",
     "locale": "sv-SE",
     "methodId": "com.epicheck.reference",
-    "token": "tok-{{id}}",
-    "paymentKey": "pay-{{id}}",
+    "token": "tok-{{runId}}-{{id}}",
+    "paymentKey": "pay-{{runId}}-{{id}}",
     "payer": {
         "type": "Person",
         "key": "person-0001",

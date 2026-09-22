@@ -1,24 +1,23 @@
 {
     "id": "E1",
-    "title": "Bad request: an unknown methodId yields a 4xx status with errors",
+    "title": "Transactions for a payment key that never completed: 404 with errors",
     "amount": "100.00",
     "steps": [
         {
-            "call": "startPayment",
+            "call": "transaction",
             "key": "{{paymentKey}}",
             "args": {
-                "methodId": "com.epicheck.unknown",
+                "actions": [
+                    "Debit"
+                ],
+                "token": "{{token}}",
                 "amount": "{{amount}}",
                 "currencyCode": "{{currencyCode}}",
-                "direction": "Payment",
-                "payer": "{{payer}}",
-                "payee": "{{payee}}",
-                "token": "{{token}}",
-                "locale": "{{locale}}",
+                "methodId": "{{methodId}}",
                 "specification": "{{specification}}"
             },
             "expect": {
-                "status": "4xx",
+                "status": 404,
                 "schema": "ErrorBody"
             }
         }

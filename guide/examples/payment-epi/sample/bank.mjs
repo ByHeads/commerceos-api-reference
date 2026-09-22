@@ -6,12 +6,22 @@
 // processorsId to be unique per payment method for all time, so a prefix that changes on every
 // start (the default) keeps a restarted bank from colliding with orders it created earlier.
 
-/** Creates a bank. `now` returns the Date used for every timestamp; `idPrefix` starts every id. */
-export function createBank({ now = () => new Date(), idPrefix = `PB-${Date.now().toString(36)}-` } = {}) {
-    let counter = 0;
+/**
+ * Creates a bank. `now` returns the Date used for every timestamp; `idPrefix` starts every id.
+ * `snapshot` restores a bank saved with `snapshot()`: the prefix and counter continue, so the ids
+ * stay unique across the restart; a session that was open when the snapshot was taken is lost with
+ * the process that held it, and becomes `failed`.
+ */
+export function createBank({ now = () => new Date(), idPrefix = `PB-${Date.now().toString(36)}-`, snapshot } = {}) {
+    const prefix = snapshot?.idPrefix ?? idPrefix;
+    let counter = snapshot?.counter ?? 0;
     const sessions = new Map();
-    const ledger = [];
-    const nextId = () => `${idPrefix}${++counter}`;
+    const ledger = [...(snapshot?.ledger ?? [])];
+    const nextId = () => `${prefix}${++counter}`;
+    for (const saved of snapshot?.sessions ?? []) {
+        const session = { ...saved, state: saved.state === "open" ? "failed" : saved.state, tapped: Promise.resolve(false), resolveTap: () => {} };
+        sessions.set(session.sessionId, session);
+    }
 
     function get(sessionId) {
         const session = sessions.get(sessionId);
@@ -42,6 +52,14 @@ export function createBank({ now = () => new Date(), idPrefix = `PB-${Date.now()
 
     return {
         ledger,
+
+        /** Everything a restart needs, as plain JSON: the id prefix and counter, the sessions, the ledger. */
+        snapshot: () => ({
+            idPrefix: prefix,
+            counter,
+            sessions: [...sessions.values()].map(({ tapped, resolveTap, ...session }) => session),
+            ledger,
+        }),
 
         /** Opens a session for one payment. `state` is `open` until it is settled or closed. */
         createSession({ amount, currencyCode, methodId, token, specification = [] }) {

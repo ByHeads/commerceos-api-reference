@@ -55,6 +55,8 @@ test("methods, terminals, terminal, transaction and cancel", async () => {
     assert.deepEqual(terminals.map(t => t.terminalId), ["T-01", "T-02"]);
     const one = await driver.terminal("T-02");
     assert.deepEqual(one, terminals[1]);
+    // A transactions call needs a completed key (reference section 6).
+    for await (const _ of driver.startPayment("pay-x", paymentInit("100.05"))) { /* drain */ }
     const transaction = await driver.transaction("pay-x", { actions: ["Debit"], token: "tok-1", amount: "100.05", currencyCode: "SEK", methodId: METHOD_ID });
     assert.deepEqual(transaction.actions, ["Debit"]);
     assert.match(transaction.transactionId, /^REF-/);
@@ -80,18 +82,22 @@ test("startPayment on a .03 payment yields Cancellable, and Cancel after driver.
             assert.deepEqual(await driver.cancel(step.cancellationToken, { isLocalTerminal: false }), {});
         }
     }
-    assert.deepEqual(steps.map(s => s.type), ["Cancellable", "Cancel"]);
+    assert.deepEqual(steps.map(s => s.type), ["Cancellable", "Wait", "Cancel"]);
 });
 
-test("a 400 throws EpiCheckError with status, path and the parsed errors", async () => {
-    const bad = { ...paymentInit("100.00"), methodId: "com.other" };
-    await assert.rejects(async () => { for await (const _ of driver.startPayment("pay-bad", bad)) { /* never */ } }, error => {
+test("a non-2xx throws EpiCheckError with status, path and the parsed errors", async () => {
+    await assert.rejects(driver.transaction("pay-nope", { actions: ["Debit"], token: "tok-1", amount: "1.00", currencyCode: "SEK", methodId: METHOD_ID }), error => {
         assert.ok(error instanceof EpiCheckError);
-        assert.equal(error.status, 400);
-        assert.equal(error.path, "/payments/pay-bad");
-        assert.deepEqual(error.errors, [{ message: "Unknown method" }]);
+        assert.equal(error.status, 404);
+        assert.equal(error.path, "/payments/pay-nope/transactions");
+        assert.deepEqual(error.errors, [{ message: "No completed payment pay-nope" }]);
         return true;
     });
+    // The stream route refuses nothing with a status: an unknown method is a 200 stream with a Fail step.
+    const bad = { ...paymentInit("100.00"), methodId: "com.other" };
+    const steps = [];
+    for await (const step of driver.startPayment("pay-bad", bad)) steps.push(step);
+    assert.deepEqual(steps.map(s => s.type), ["Fail"]);
     const strippingFetch = (url, init) => {
         const headers = Object.fromEntries(Object.entries(init.headers).filter(([name]) => !name.startsWith("X-EPI-")));
         return globalThis.fetch(url, { ...init, headers });
