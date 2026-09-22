@@ -29,6 +29,8 @@ export function createBank({ now = () => new Date(), idPrefix = `PB-${Date.now()
             currencyCode: session.currencyCode,
             methodId: session.methodId,
             token: session.token,
+            // The items this money is about: echoed, so the payment record in CommerceOS lists them.
+            specification: session.specification,
             timestamp: now().toISOString(),
             // What paid. A provider without card data names its brand as a Singleton: the receipt,
             // the back office and the sales reports then show "Piggy Bank" instead of nothing.
@@ -42,9 +44,9 @@ export function createBank({ now = () => new Date(), idPrefix = `PB-${Date.now()
         ledger,
 
         /** Opens a session for one payment. `state` is `open` until it is settled or closed. */
-        createSession({ amount, currencyCode, methodId, token }) {
+        createSession({ amount, currencyCode, methodId, token, specification = [] }) {
             const sessionId = nextId();
-            const session = { sessionId, amount, currencyCode, methodId, token, state: "open" };
+            const session = { sessionId, amount, currencyCode, methodId, token, specification, state: "open" };
             session.tapped = new Promise(resolve => { session.resolveTap = resolve; });
             sessions.set(sessionId, session);
             return { sessionId };

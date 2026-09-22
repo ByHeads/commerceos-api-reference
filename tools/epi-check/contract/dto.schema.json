@@ -200,7 +200,7 @@
         "amount": { "$ref": "#/$defs/DecimalDto", "description": "Always positive, also for a refund." },
         "currencyCode": { "type": "string", "description": "The payment currency." },
         "methodId": { "type": "string", "description": "The method of the payment." },
-        "specification": { "$ref": "#/$defs/SpecificationDto", "description": "The items this transaction is about. Their total amounts sum to amount." },
+        "specification": { "$ref": "#/$defs/SpecificationDto", "description": "The items this transaction is about. Echo the specification of the request (the payment's, or the transaction's): CommerceOS stores it verbatim as the rows of the payment record, and an omitted or empty list gives a record with no items." },
         "walletCode": { "type": "string", "description": "As in PaymentInitDto." },
         "isLocalTerminal": { "type": "boolean", "description": "As in PaymentInitDto." },
         "terminalDirectUrl": { "type": "string", "description": "As in PaymentInitDto." },

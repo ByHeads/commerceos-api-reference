@@ -29,7 +29,7 @@ test("settle records the first transaction, and record appends a Credit", () => 
     const sale = bank.settle(sessionId, ["Authorize", "Debit"]);
     const refund = bank.record(sessionId, ["Credit"], "4.00");
     assert.equal(bank.session(sessionId).state, "settled");
-    assert.deepEqual(sale, { ...init, transactionId: "PB-2", actions: ["Authorize", "Debit"], timestamp: "2026-01-01T00:00:00.000Z", means: { type: "Singleton", id: "Piggy Bank" } });
+    assert.deepEqual(sale, { ...init, transactionId: "PB-2", actions: ["Authorize", "Debit"], specification: [], timestamp: "2026-01-01T00:00:00.000Z", means: { type: "Singleton", id: "Piggy Bank" } });
     assert.deepEqual(refund.actions, ["Credit"]);
     assert.equal(refund.amount, "4.00");
     assert.equal(refund.token, "tok-1");

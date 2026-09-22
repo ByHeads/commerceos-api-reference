@@ -106,7 +106,7 @@ export function startPiggyServer({ port = 0, now = () => new Date(), waitMs = 30
             send("Fail", { errors: [{ code: "InProgress", message: `Payment ${paymentKey} is still in progress` }] });
             return response.end();
         }
-        const { sessionId } = bank.createSession({ amount: dto.amount, currencyCode: dto.currencyCode, methodId: dto.methodId, token: dto.token });
+        const { sessionId } = bank.createSession({ amount: dto.amount, currencyCode: dto.currencyCode, methodId: dto.methodId, token: dto.token, specification: dto.specification });
         sessionsByKey.set(paymentKey, sessionId);
         const complete = actions => {
             const { methodId, amount, currencyCode } = dto;
@@ -201,7 +201,7 @@ export function startPiggyServer({ port = 0, now = () => new Date(), waitMs = 30
             const sessionId = sessionsByKey.get(decodeURIComponent(match[1]));
             if (!sessionId || bank.session(sessionId).state !== "settled") return json(response, 404, errorBody(`No completed payment ${match[1]}`));
             if (dto?.methodId !== METHOD_ID) return json(response, 400, errorBody(`Unknown method ${dto?.methodId}`));
-            const transaction = bank.record(sessionId, dto.reversalArgs ? ["Credit"] : dto.actions, dto.amount);
+            const transaction = { ...bank.record(sessionId, dto.reversalArgs ? ["Credit"] : dto.actions, dto.amount), ...(dto.specification ? { specification: dto.specification } : {}) };
             return json(response, 200, transaction);
         }
         // Section 6: cancel a Cancellable payment by its token. The stream then ends with Cancel.

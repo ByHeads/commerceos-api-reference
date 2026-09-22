@@ -635,7 +635,7 @@ components:
           description: "The method of the payment."
         specification:
           "$ref": "#/components/schemas/SpecificationDto"
-          description: "The items this transaction is about. Their total amounts sum to amount."
+          description: "The items this transaction is about. Echo the specification of the request (the payment's, or the transaction's): CommerceOS stores it verbatim as the rows of the payment record, and an omitted or empty list gives a record with no items."
         walletCode:
           type: "string"
           description: "As in PaymentInitDto."

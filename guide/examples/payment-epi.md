@@ -179,7 +179,7 @@ if ((match = /^POST \/payments\/([^/]+)\/transactions$/.exec(route))) {
     const sessionId = sessionsByKey.get(decodeURIComponent(match[1]));
     if (!sessionId || bank.session(sessionId).state !== "settled") return json(response, 404, errorBody(`No completed payment ${match[1]}`));
     if (dto?.methodId !== METHOD_ID) return json(response, 400, errorBody(`Unknown method ${dto?.methodId}`));
-    const transaction = bank.record(sessionId, dto.reversalArgs ? ["Credit"] : dto.actions, dto.amount);
+    const transaction = { ...bank.record(sessionId, dto.reversalArgs ? ["Credit"] : dto.actions, dto.amount), ...(dto.specification ? { specification: dto.specification } : {}) };
     return json(response, 200, transaction);
 }
 ```

@@ -195,7 +195,9 @@ comment lines, and assumes one space after each colon. A stream holds zero or mo
 | `Fail` | final | `errors[]` | an error. The cashier sees `Payment failed: <text>` from `errors[0]` (section 7) |
 
 `audience` is `merchant`, `customer` or `all`. A `Complete` result echoes `methodId`, `amount` and
-`currencyCode`, and each transaction echoes the request `token`.
+`currencyCode`, and each transaction echoes the request `token` and `specification`. CommerceOS stores
+the transaction's `specification` verbatim as the item rows of the payment record; a transaction without
+it gives a record with no items in the back office.
 
 ## 6. Transactions, cancel, and reversal arguments
 
