@@ -9,7 +9,8 @@ const here = dirname(fileURLToPath(import.meta.url));
 const scenariosDir = join(here, "..", "..", "guide", "examples", "payment-epi", "scenarios");
 const schema = JSON.parse(readFileSync(join(here, "contract", "dto.schema.json"), "utf8"));
 const files = readdirSync(scenariosDir).filter(name => /^[A-Z]\d+\.json$/.test(name)).sort();
-const expected = ["E1", "E2", "H1", "L1", "L2", "L3", "L4", "L5", "P1", "P10", "P11", "P12", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9"];
+// C1, the CommerceOS-side scenario, has no file: cos.mjs runs it before these. There is no L1: install is administrator work.
+const expected = ["E1", "E2", "H1", "L2", "L3", "L4", "L5", "P1", "P10", "P11", "P12", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9"];
 
 function* steps(scenario) {
     for (const step of scenario.steps) {
@@ -45,7 +46,7 @@ test("the amounts follow the plan's scenario table", () => {
         return [scenario.id, scenario.amount];
     }));
     assert.deepEqual(amounts, {
-        L1: undefined, L2: undefined, L3: undefined, L4: undefined, L5: undefined, H1: undefined,
+        L2: undefined, L3: undefined, L4: undefined, L5: undefined, H1: undefined,
         P1: "100.00", P2: "100.05", P3: "100.05", P4: "100.00", P5: "50.00", P6: "100.01", P7: "100.03", P8: "100.02", P9: "100.04",
         P10: "100.00", P11: "50.00", P12: "100.00", E1: "100.00", E2: "100.00",
     });
@@ -79,6 +80,9 @@ test("every payment key and token carries the run id, so two runs never collide 
     const fixtures = JSON.parse(readFileSync(join(scenariosDir, "fixtures.json"), "utf8"));
     assert.equal(fixtures.paymentKey, "pay-{{runId}}-{{id}}");
     assert.equal(fixtures.token, "tok-{{runId}}-{{id}}");
+    // The method id, the install payload and the context come from CommerceOS at run time, never from a fixture.
+    for (const key of ["methodId", "install", "context"]) assert.equal(key in fixtures, false, key);
+    for (const file of files) assert.doesNotMatch(readFileSync(join(scenariosDir, file), "utf8"), /\{\{(cosBaseUrl|install|context)/, file);
 });
 
 test("every JSON example in the reference that names a fixture equals that fixture", () => {
@@ -87,9 +91,10 @@ test("every JSON example in the reference that names a fixture equals that fixtu
     let count = 0;
     for (const [, file, pointer, body] of reference.matchAll(pattern)) {
         let node = JSON.parse(readFileSync(join(scenariosDir, "..", file), "utf8"));
-        for (const part of (pointer ?? "").split("/").filter(Boolean)) node = Array.isArray(node) ? node[Number(part)] : node[part];
+        for (const part of (pointer ?? "").split("/").filter(Boolean)) node = Array.isArray(node) ? node[Number(part)] : node?.[part];
+        assert.notEqual(node, undefined, `reference.md quotes ${file}${pointer ?? ""}, which no longer exists: drop that fixture marker`);
         assert.deepEqual(JSON.parse(body), node, `${file}${pointer ?? ""} drifted from the reference`);
         count++;
     }
-    assert.ok(count >= 5, `found ${count} fixture examples`);
+    assert.ok(count >= 4, `found ${count} fixture examples`);
 });

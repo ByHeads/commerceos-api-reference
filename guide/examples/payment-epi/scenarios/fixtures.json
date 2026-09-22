@@ -1,7 +1,6 @@
 {
     "currencyCode": "SEK",
     "locale": "sv-SE",
-    "methodId": "com.epicheck.reference",
     "token": "tok-{{runId}}-{{id}}",
     "paymentKey": "pay-{{runId}}-{{id}}",
     "payer": {
@@ -56,22 +55,6 @@
             "currencyCode": "{{currencyCode}}"
         }
     ],
-    "install": {
-        "cosBaseUrl": "{{cosBaseUrl}}",
-        "tokenUrl": "{{cosBaseUrl}}/oauth2/v1/token",
-        "clientId": "epi-check",
-        "clientSecret": "epi-check-secret",
-        "scope": "me geo:read orders.sales:write orders.payments:write payment-records:write kv"
-    },
-    "context": {
-        "configId": "EPI1",
-        "configHash": "epi-check-config-hash-0001",
-        "debugInfo": {
-            "nodeName": "epi-check",
-            "baseUrl": "{{baseUrl}}",
-            "name": "epi-check"
-        }
-    },
     "cancel": {
         "isLocalTerminal": false
     }

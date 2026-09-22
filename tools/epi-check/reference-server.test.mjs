@@ -2,6 +2,7 @@ import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { startReferenceServer, METHOD_ID, DEFECTS, DEFECT_SCENARIO } from "./reference-server.mjs";
 import { collectEvents, parseEvents } from "./sse.mjs";
+import { startCosStandIn, CLIENT } from "../../guide/examples/payment-epi/sample/cos.mjs";
 
 const context = { "x-epi-context-config-id": "AB12", "x-epi-context-config-hash": "hash-1" };
 const jsonHeaders = { ...context, "content-type": "application/json", accept: "application/json" };
@@ -33,6 +34,28 @@ test("install stores the payload, uninstall clears it, both without headers", as
     const removed = await fetch(`${server.url}/uninstall`, { method: "POST" });
     assert.equal(removed.status, 200);
     assert.equal(server.installation, null);
+});
+
+test("once installed, test reads the configuration behind the context id through CommerceOS and compares the hash", async () => {
+    const lines = [];
+    const cos = await startCosStandIn({ configurationHash: "hash-1", log: line => lines.push(line) });
+    const own = await startReferenceServer();
+    try {
+        const call = hash => fetch(`${own.url}/test`, { method: "POST", headers: { ...jsonHeaders, "x-epi-context-config-hash": hash } }).then(r => r.json());
+        await fetch(`${own.url}/install`, { method: "POST", body: JSON.stringify({ cosBaseUrl: cos.url, tokenUrl: `${cos.url}/oauth2/v1/token`, ...CLIENT, scope: "kv" }) });
+        assert.equal(await call("hash-1"), true);
+        assert.deepEqual(lines, ["POST /oauth2/v1/token 200", "GET /api/v1/context/config/AB12 200"]);
+        assert.equal(await call("hash-2"), false, "the hash CommerceOS answers is not the one in the header");
+        await fetch(`${own.url}/install`, { method: "POST", body: JSON.stringify({ cosBaseUrl: cos.url, tokenUrl: `${cos.url}/oauth2/v1/token`, clientId: "nobody", clientSecret: "x", scope: "kv" }) });
+        assert.equal(await call("hash-1"), false, "no token, no configuration");
+        await fetch(`${own.url}/install`, { method: "POST", body: JSON.stringify({ cosBaseUrl: "http://127.0.0.1:1", tokenUrl: "http://127.0.0.1:1/oauth2/v1/token", ...CLIENT, scope: "kv" }) });
+        assert.equal(await call("hash-1"), false, "an unreachable CommerceOS");
+        await fetch(`${own.url}/uninstall`, { method: "POST" });
+        assert.equal(await call("hash-1"), true, "nothing to read before an install");
+    } finally {
+        await own.close();
+        await cos.close();
+    }
 });
 
 test("config-schema is a form description with members, no headers needed", async () => {

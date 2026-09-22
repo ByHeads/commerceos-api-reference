@@ -1,7 +1,7 @@
 // report.json (sorted keys, no wall-clock value), report.md (one row per scenario) and meta.json.
 // The self-test runs the tool twice with the same --now and compares report.json byte for byte, so
-// nothing time-dependent may enter it beyond the run id that --now pins. Durations and the run time
-// go to meta.json.
+// nothing time-dependent may enter it beyond the run id that --now pins. Durations, the run time and
+// what the run was pointed at go to meta.json.
 
 /** Deep-sorts object keys. Arrays keep their order. */
 export function sortKeys(value) {
@@ -17,6 +17,7 @@ export function sortKeys(value) {
  * `[{ id, title, result: "pass" | "fail" | "skip", failures: [{ step, path, message }], warnings: [same shape], calls: [{ method, path, status }] }]`.
  * A warning is something the cashier will notice but the contract allows; it never fails a scenario.
  * An outcome with `steps` (`[{ label, result }]`, the COS scenario) keeps them, one per sub-step.
+ * A skipped outcome carries `reason`: why it did not run (C1 failed).
  */
 export function buildReport(outcomes) {
     return sortKeys({
@@ -28,6 +29,7 @@ export function buildReport(outcomes) {
             warnings: (outcome.warnings ?? []).map(({ step, path, message }) => ({ step, path, message })),
             calls: outcome.calls.map(({ method, path, status }) => ({ method, path, status })),
             ...(outcome.steps ? { steps: outcome.steps.map(({ label, result }) => ({ label, result })) } : {}),
+            ...(outcome.reason !== undefined ? { reason: outcome.reason } : {}),
         })),
         summary: {
             pass: outcomes.filter(o => o.result === "pass").length,
@@ -41,8 +43,8 @@ export function reportJson(report) {
     return JSON.stringify(report, null, 2) + "\n";
 }
 
-export function buildMeta({ target, generatedAt, contractCommit, durationMs }) {
-    return sortKeys({ target, generatedAt, contractCommit, durationMs });
+export function buildMeta({ cosBaseUrl, integration, node, methodId, baseUrl, generatedAt, contractCommit, durationMs }) {
+    return sortKeys({ cosBaseUrl, integration, node, methodId, baseUrl, generatedAt, contractCommit, durationMs });
 }
 
 const marks = { pass: "pass", fail: "FAIL", skip: "skip" };
@@ -80,5 +82,10 @@ export function reportMarkdown(report, { target } = {}) {
     }
     listUnder(lines, "Failures", report.scenarios, "failures");
     listUnder(lines, "Warnings", report.scenarios, "warnings");
+    const skipped = report.scenarios.filter(scenario => scenario.result === "skip" && scenario.reason !== undefined);
+    if (skipped.length > 0) {
+        // Every skip of a run has the same reason: the gate that failed.
+        lines.push("", "## Skipped", "", `${skipped.map(scenario => scenario.id).join(", ")}: ${skipped[0].reason}`);
+    }
     return lines.join("\n") + "\n";
 }

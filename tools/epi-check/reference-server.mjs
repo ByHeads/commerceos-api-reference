@@ -17,6 +17,9 @@
 //   - a repeated PUT for a completed key is a resume: same processorsId, same transactions (section 11)
 //   - a repeated transactions call with the same body answers the same transaction (section 11)
 //   - Cancellable is followed by a Wait step, which is where the POS shows the cancel button (section 5)
+//   - once installed, /test reads the configuration behind the context id through CommerceOS with the
+//     installed client (section 8) and answers true only when the hash it reads is the one in the header;
+//     before an install there is nothing to read and it answers true, as the Mock does
 //
 // Deterministic: transaction ids come from a per-server counter, timestamps from the injected
 // clock, and the response bodies never carry a wall-clock value.
@@ -125,6 +128,23 @@ export function startReferenceServer({ port = 0, now = () => new Date("2026-01-0
         typeof request.headers["x-epi-context-config-id"] !== "string" ||
         typeof request.headers["x-epi-context-config-hash"] !== "string";
 
+    /** Section 8: a token from the install payload's client, then the configuration behind the context id. */
+    async function configurationMatches(request) {
+        if (!installation) return true;
+        try {
+            const form = new URLSearchParams({ grant_type: "client_credentials", client_id: installation.clientId, client_secret: installation.clientSecret, scope: installation.scope ?? "" });
+            const token = await fetch(installation.tokenUrl, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" }, body: form });
+            if (!token.ok) return false;
+            const { access_token } = await token.json();
+            const configId = request.headers["x-epi-context-config-id"];
+            const config = await fetch(`${installation.cosBaseUrl}/api/v1/context/config/${encodeURIComponent(configId)}`, { headers: { authorization: `Bearer ${access_token}`, accept: "application/json" } });
+            if (!config.ok) return false;
+            return (await config.json())?.configurationHash === request.headers["x-epi-context-config-hash"];
+        } catch {
+            return false;
+        }
+    }
+
     /** What is wrong with a PaymentInitDto, or undefined. Reported as a Fail step, never as a status. */
     const refusal = dto => {
         if (dto?.methodId !== METHOD_ID) return { code: "UnknownMethod", message: `Unknown method ${dto?.methodId}` };
@@ -191,7 +211,7 @@ export function startReferenceServer({ port = 0, now = () => new Date("2026-01-0
 
         if (contextMissing(request)) return json(response, 400, errorBody("Missing or invalid EPI context config ID or hash. Expected 'x-epi-context-config-id' and 'x-epi-context-config-hash' headers in request."));
 
-        if (route === "POST /test") return json(response, 200, true);
+        if (route === "POST /test") return json(response, 200, await configurationMatches(request));
         if (route === "GET /methods") {
             return json(response, 200, [{
                 methodId: METHOD_ID,

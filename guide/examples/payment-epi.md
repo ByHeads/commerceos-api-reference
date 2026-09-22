@@ -370,12 +370,11 @@ cashier pays out with your method from the pay screen reaches you as such a `Pay
 *Refund* action under the cart makes the refund transaction, see
 [four more flows](./payment-epi/flows.md) section 3.
 
-Heads runs the tool with a profile file that names your method id and, if your sandbox selects outcomes another way, which amount produces each outcome. Tell Heads both.
+Heads runs the tool through your CommerceOS against the installed integration. A profile file is needed only when your sandbox selects outcomes by other amounts, or when the method to test is not the first on your integration record. Tell Heads both.
 
 ## 7. Go live
 
-- [ ] Your endpoint passes [`epi-check`](../../tools/epi-check/README.md), every scenario. Run it yourself: `node tools/epi-check/run.mjs --base <your integration base url> --profile <your profile>`. The profile names your method id and the configuration your `/test` reads; without it every payment scenario fails. Run it against a short wait window: the tool times out a call after ten seconds. **Run it against a second instance of your integration, or a separate state file, never against the process that a CommerceOS installed:** the tool's own `install` replaces the stored client and `cosBaseUrl`. So give your server a
-switch for its port and its state file, and start the second instance with both.
+- [ ] Your endpoint passes [`epi-check`](../../tools/epi-check/README.md), every scenario, against the instance that your CommerceOS installed. Run it yourself: `node tools/epi-check/run.mjs --cos <cosBaseUrl> --key <apiKey> --integration <name>`. The tool reads your method, your configuration and your base URL from that CommerceOS, so nothing is installed twice. Give `--timeout` at least your longest wait window: the default is thirty seconds.
 - [ ] A contextful call without the three context headers gets a 4xx and an error body.
 - [ ] A request your integration cannot take on the stream route is a 200 stream with one `Fail` step, never a non-2xx: CommerceOS discards the body there (reference, section 7).
 - [ ] A repeated `PUT` for a completed `paymentKey` answers the same `processorsId` and the same transactions, and `processorsId` is unique for all time.

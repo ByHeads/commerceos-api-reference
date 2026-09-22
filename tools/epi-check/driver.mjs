@@ -30,7 +30,7 @@ function joinUrl(baseUrl, path) {
  * `context` is `{ configId, configHash, debugInfo: { nodeName, baseUrl, name } }`, the same
  * three values `fetchContextfulResponse` reads from the EpiConfiguration.
  */
-export function createDriver({ baseUrl, context, timeoutMs = 10000, fetch = globalThis.fetch }) {
+export function createDriver({ baseUrl, context, timeoutMs = 30000, fetch = globalThis.fetch }) {
     if (!baseUrl) throw new Error("createDriver needs a baseUrl");
     if (!context) throw new Error("createDriver needs a context");
     const log = [];

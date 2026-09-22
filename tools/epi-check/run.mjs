@@ -1,15 +1,16 @@
 #!/usr/bin/env node
-// The epi-check CLI. Runs every scenario in scenarios/ against a payment integration and writes
-// report.json, report.md and meta.json. Exit 0 only when every scenario passes.
+// The epi-check CLI. One mode: it tests the payment integration that a CommerceOS has installed,
+// through that CommerceOS. It reads the integration record, the test result per node and the context
+// of one configured node from the CommerceOS API (scenario C1), then runs every other scenario against
+// the integration's `baseUrl` with the real context headers, so the integration's `/test` reads its real
+// configuration through the real CommerceOS. It writes report.json, report.md and meta.json, and
+// exits 0 only when every scenario passes.
 //
-//   node tools/epi-check/run.mjs --base <yourEpiBaseUrl> --profile p.json
-//   node tools/epi-check/run.mjs --reference                       # self-test on the bundled server
-//   node tools/epi-check/run.mjs --cos https://<instance> --key <apiKey> --integration <name>
+//   node tools/epi-check/run.mjs --cos <cosBaseUrl> --key <apiKey> --integration <name>
+//                                [--node <nodeName>] [--profile <file>] [--out <dir>] [--now <iso>] [--timeout <ms>]
 //
-// Options: --base <baseUrl> | --reference | --cos <baseUrl>, --profile <file>, --out <dir>,
-// --now <iso>, --timeout <ms>, --reference-defect <name> (self-test only: prove the tool catches
-// a defect; the names are in reference-server.mjs). COS mode needs --key <apiKey> and
-// --integration <name>, and runs only scenario C1.
+// C1 gates the run: when it fails, the other scenarios are skipped with its reason. Nothing is created,
+// installed or configured on CommerceOS; install and configuration are administrator work.
 //
 // Every payment key and token of a run carries a run id (fixtures.json: pay-{{runId}}-{{id}}), because
 // an integration stores them and CommerceOS never sends a payment key twice for a new payment. The id
@@ -19,8 +20,6 @@ import { createHash, randomBytes } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createDriver, EpiCheckError, DRIVER_CALLS } from "./driver.mjs";
-import { startReferenceServer } from "./reference-server.mjs";
-import { startCosStandIn } from "../../guide/examples/payment-epi/sample/cos.mjs";
 import { createCosClient, runCosScenario } from "./cos.mjs";
 import { validate } from "./validate.mjs";
 import { deriveStatus, toMinor, scaleOf } from "./status.mjs";
@@ -32,7 +31,11 @@ const SCENARIOS_DIR = resolve(here, "..", "..", "guide", "examples", "payment-ep
 // The CommerceOS commit that contract/dto.schema.json and the scenarios were copied from.
 const CONTRACT_COMMIT = "e70578427aa3dcfecd73780b9d06043aa520da23";
 
-export const ORDER = ["L1", "L2", "L3", "L4", "L5", "P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10", "P11", "P12", "E1", "E2", "H1"];
+/** C1 first; the rest are the scenario files, run against the integration only after C1 passes. */
+export const ORDER = ["C1", "L2", "L3", "L4", "L5", "P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10", "P11", "P12", "E1", "E2", "H1"];
+const EPI_ORDER = ORDER.slice(1);
+
+export const ONE_MODE = "epi-check has one mode: it tests the integration that a CommerceOS has installed, through that CommerceOS. Give --cos <cosBaseUrl> --key <apiKey> --integration <name>.";
 
 /** Eight hex characters: from `--now` when given (deterministic), else random. */
 export function runIdFor(now) {
@@ -40,21 +43,20 @@ export function runIdFor(now) {
 }
 
 export function parseArgs(args) {
-    const options = { timeout: 10000 };
-    const valued = { "--base": "target", "--profile": "profile", "--out": "out", "--now": "now", "--timeout": "timeout", "--reference-defect": "referenceDefect", "--cos": "cos", "--key": "key", "--integration": "integration" };
+    const options = { timeout: 30000 };
+    const valued = { "--cos": "cos", "--key": "key", "--integration": "integration", "--node": "node", "--profile": "profile", "--out": "out", "--now": "now", "--timeout": "timeout" };
+    const removed = ["--base", "--reference", "--reference-defect"];
     for (let i = 0; i < args.length; i++) {
         const arg = args[i];
         if (arg === "--help") return { help: true };
-        if (arg === "--reference") { options.reference = true; continue; }
+        if (removed.includes(arg)) throw new Error(`${arg} is gone. ${ONE_MODE}`);
         if (!Object.hasOwn(valued, arg)) throw new Error(`Unknown argument: ${arg}`);
         if (args[i + 1] === undefined || args[i + 1].startsWith("--")) throw new Error(`Missing value for ${arg}`);
         options[valued[arg]] = args[++i];
     }
-    const modes = [options.target, options.reference, options.cos].filter(Boolean).length;
-    if (modes !== 1) throw new Error("Give exactly one of --base <baseUrl>, --reference or --cos <baseUrl>.");
-    if (options.referenceDefect && !options.reference) throw new Error("--reference-defect needs --reference.");
-    if (options.cos && (options.key === undefined || !options.integration)) throw new Error("--cos needs --key <apiKey> and --integration <name>.");
-    if (!options.cos && (options.key !== undefined || options.integration)) throw new Error("--key and --integration need --cos.");
+    for (const [flag, name] of [["--cos", "cos"], ["--key", "key"], ["--integration", "integration"]]) {
+        if (options[name] === undefined || (name !== "key" && options[name] === "")) throw new Error(`Missing ${flag}. ${ONE_MODE}`);
+    }
     options.timeout = Number(options.timeout);
     if (!Number.isFinite(options.timeout) || options.timeout <= 0) throw new Error("--timeout must be a positive number of milliseconds.");
     if (options.now !== undefined && Number.isNaN(Date.parse(options.now))) throw new Error("--now must be an ISO date.");
@@ -62,7 +64,7 @@ export function parseArgs(args) {
 }
 
 export function loadScenarios() {
-    return ORDER.map(id => JSON.parse(readFileSync(join(SCENARIOS_DIR, `${id}.json`), "utf8")));
+    return EPI_ORDER.map(id => JSON.parse(readFileSync(join(SCENARIOS_DIR, `${id}.json`), "utf8")));
 }
 
 export function loadFixtures() {
@@ -112,16 +114,15 @@ function splitAmount(amount) {
     return { half: format(half), remainder: format(total - half) };
 }
 
-function scenarioVars(scenario, fixtures, profile, baseUrl, cosBaseUrl, runId) {
+function scenarioVars(scenario, fixtures, profile, baseUrl, methodId, runId) {
     const amount = profile.amounts?.[scenario.id] ?? scenario.amount;
     const vars = {
         ...fixtures,
         id: scenario.id,
         runId,
         baseUrl,
-        cosBaseUrl,
         currencyCode: profile.currencyCode ?? fixtures.currencyCode,
-        methodId: profile.methodId ?? fixtures.methodId,
+        methodId,
         amount,
         ...(amount !== undefined ? splitAmount(amount) : {}),
     };
@@ -342,9 +343,9 @@ async function runStep(step, label, vars, context) {
  * Runs one scenario. `runId` goes into every payment key and token; `processorsIds` (a Map of
  * processorsId to scenario id) is shared by the whole run, so a reuse across scenarios is caught.
  */
-export async function runScenario(scenario, { driver, strippedDriver, schemaDoc, fixtures, profile, baseUrl, cosBaseUrl, runId, processorsIds = new Map() }) {
+export async function runScenario(scenario, { driver, strippedDriver, schemaDoc, fixtures, profile, baseUrl, methodId, runId, processorsIds = new Map() }) {
     const outcome = { id: scenario.id, title: scenario.title, result: "pass", failures: [], warnings: [], calls: [] };
-    const baseVars = scenarioVars(scenario, fixtures, profile, baseUrl, cosBaseUrl, runId);
+    const baseVars = scenarioVars(scenario, fixtures, profile, baseUrl, methodId, runId);
     const state = { amount: baseVars.amount, transactions: [], results: {} };
     const context = { driver, strippedDriver, schemaDoc, state, failures: outcome.failures, warnings: outcome.warnings, profile, scenarioId: scenario.id, processorsIds };
     const logStart = { driver: driver.log.length, stripped: strippedDriver.log.length };
@@ -377,13 +378,11 @@ function stripContextFetch(fetchImpl = globalThis.fetch) {
     };
 }
 
-function defaultOut(target, generatedAt) {
-    const date = generatedAt.slice(0, 10);
-    const host = target === "reference" ? "reference" : new URL(target).hostname;
-    return join(process.cwd(), "epi-check-reports", `${date}-${host}`);
+function defaultOut(cosBaseUrl, integration, generatedAt) {
+    return join(process.cwd(), "epi-check-reports", `${generatedAt.slice(0, 10)}-${new URL(cosBaseUrl).hostname}-${integration}`);
 }
 
-/** Runs every scenario and writes the three files. Returns `{ report, meta, outDir, exitCode }`. */
+/** Runs C1 and, when it passes, every scenario against the installed integration. Writes the three files. Returns `{ report, meta, outDir, exitCode }`. */
 export async function run(options) {
     const started = performance.now();
     const generatedAt = options.now ?? new Date().toISOString();
@@ -392,52 +391,36 @@ export async function run(options) {
     const fixtures = loadFixtures();
     const profile = options.profile ? JSON.parse(readFileSync(resolve(options.profile), "utf8")) : {};
     const scenarios = loadScenarios();
+    const outDir = resolve(options.out ?? defaultOut(options.cos, options.integration, generatedAt));
 
-    let server;
-    let baseUrl = options.target;
-    if (options.reference) {
-        const clock = options.now ? new Date(options.now) : undefined;
-        server = await startReferenceServer({ ...(clock ? { now: () => clock } : {}), defect: options.referenceDefect });
-        baseUrl = server.url;
-    }
-    // The CommerceOS side of the install payload: a stand-in that answers the token endpoint for the
-    // fixture's client, the configuration of the profile under the context hash of the fixture, and the
-    // key-value store. It makes L2 a real test of a /test that reads its configuration.
-    const standIn = options.cos ? null : await startCosStandIn({ clientId: fixtures.install.clientId, clientSecret: fixtures.install.clientSecret, configuration: profile.configuration ?? {}, configurationHash: fixtures.context.configHash });
-    const targetLabel = options.reference ? "reference" : (options.cos ?? options.target);
-    const outDir = resolve(options.out ?? defaultOut(targetLabel, generatedAt));
-
-    try {
-        const outcomes = [];
-        if (options.cos) {
-            // COS mode: the CommerceOS side only. The integration scenarios need a partner URL.
-            const client = createCosClient({ baseUrl: options.cos, key: options.key, timeoutMs: options.timeout });
-            const outcome = await runCosScenario({ client, integration: options.integration });
-            outcomes.push(outcome);
-        } else {
-            const context = resolvePlaceholders(fixtures.context, { baseUrl });
-            const driver = createDriver({ baseUrl, context, timeoutMs: options.timeout });
-            const strippedDriver = createDriver({ baseUrl, context, timeoutMs: options.timeout, fetch: stripContextFetch() });
-            const processorsIds = new Map();
-            for (const scenario of scenarios) {
-                const outcome = await runScenario(scenario, { driver, strippedDriver, schemaDoc, fixtures, profile, baseUrl, cosBaseUrl: standIn.url, runId, processorsIds });
-                outcomes.push(outcome);
-            }
+    const client = createCosClient({ baseUrl: options.cos, key: options.key, timeoutMs: options.timeout });
+    const c1 = await runCosScenario({ client, integration: options.integration, node: options.node });
+    const outcomes = [c1];
+    const baseUrl = c1.record?.baseUrl;
+    const methodId = profile.methodId ?? c1.record?.methods?.[0]?.identifiers?.methodId;
+    if (c1.result === "fail") {
+        const first = c1.failures[0];
+        const reason = `C1 failed at ${first.step}${first.path ? ` (${first.path})` : ""}: ${first.message}`;
+        for (const scenario of scenarios) outcomes.push({ id: scenario.id, title: scenario.title, result: "skip", reason, failures: [], warnings: [], calls: [] });
+    } else {
+        const driver = createDriver({ baseUrl, context: c1.context, timeoutMs: options.timeout });
+        const strippedDriver = createDriver({ baseUrl, context: c1.context, timeoutMs: options.timeout, fetch: stripContextFetch() });
+        const processorsIds = new Map();
+        for (const scenario of scenarios) {
+            outcomes.push(await runScenario(scenario, { driver, strippedDriver, schemaDoc, fixtures, profile, baseUrl, methodId, runId, processorsIds }));
         }
-        const report = buildReport(outcomes);
-        const meta = buildMeta({ target: targetLabel, generatedAt, contractCommit: CONTRACT_COMMIT, durationMs: Math.round(performance.now() - started) });
-        mkdirSync(outDir, { recursive: true });
-        writeFileSync(join(outDir, "report.json"), reportJson(report));
-        writeFileSync(join(outDir, "report.md"), reportMarkdown(report, { target: targetLabel }));
-        writeFileSync(join(outDir, "meta.json"), JSON.stringify(meta, null, 2) + "\n");
-        return { report, meta, outDir, exitCode: report.summary.fail === 0 ? 0 : 1 };
-    } finally {
-        await server?.close();
-        await standIn?.close();
     }
+    const report = buildReport(outcomes);
+    const target = `${options.integration} on ${options.cos}`;
+    const meta = buildMeta({ cosBaseUrl: options.cos, integration: options.integration, node: c1.node ?? options.node ?? null, methodId: methodId ?? null, baseUrl: baseUrl ?? null, generatedAt, contractCommit: CONTRACT_COMMIT, durationMs: Math.round(performance.now() - started) });
+    mkdirSync(outDir, { recursive: true });
+    writeFileSync(join(outDir, "report.json"), reportJson(report));
+    writeFileSync(join(outDir, "report.md"), reportMarkdown(report, { target }));
+    writeFileSync(join(outDir, "meta.json"), JSON.stringify(meta, null, 2) + "\n");
+    return { report, meta, outDir, target, exitCode: report.summary.fail === 0 ? 0 : 1 };
 }
 
-const usage = `Usage: node tools/epi-check/run.mjs (--base <baseUrl> | --reference | --cos <baseUrl> --key <apiKey> --integration <name>) [--profile <file>] [--out <dir>] [--now <iso>] [--timeout <ms>] [--reference-defect <name>]`;
+const usage = `Usage: node tools/epi-check/run.mjs --cos <cosBaseUrl> --key <apiKey> --integration <name> [--node <nodeName>] [--profile <file>] [--out <dir>] [--now <iso>] [--timeout <ms>]`;
 
 if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
     let options;
@@ -449,8 +432,8 @@ if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).
         process.exit(2);
     }
     if (options.help) { console.log(usage); process.exit(0); }
-    const { report, meta, outDir, exitCode } = await run(options);
-    process.stdout.write(reportMarkdown(report, { target: meta.target }));
+    const { report, target, outDir, exitCode } = await run(options);
+    process.stdout.write(reportMarkdown(report, { target }));
     console.log(`Written to ${outDir}`);
     process.exit(exitCode);
 }

@@ -1,13 +1,14 @@
 # Scenarios
 
 One JSON file per scenario of the conformance tool [`epi-check`](../../../../tools/epi-check/README.md), which runs them with
-`node tools/epi-check/run.mjs --base <your integration base url>` in the fixed order L1 to L5, P1 to P12, E1, E2, H1. The JSON examples in [`../reference.md`](../reference.md)
-quote these files, so a fixture and its example never drift apart.
+`node tools/epi-check/run.mjs --cos <cosBaseUrl> --key <apiKey> --integration <name>` in the fixed order C1, L2 to L5, P1 to P12, E1, E2, H1. C1 is the
+CommerceOS-side scenario and has no file: the tool's `cos.mjs` runs it first, and when it fails the others are skipped with its reason.
+The JSON examples in [`../reference.md`](../reference.md) quote these files, so a fixture and its example never drift apart.
 
 | Id | Proves |
 |---|---|
-| L1 | `POST /install` accepts the handshake payload |
-| L2 | `POST /test` answers `true` under the profile's configuration |
+| C1 | CommerceOS shows the integration as `Active` with a configured node and a method, its `test` reports `success` for every configured node, `assignedTerminals` answers 200 (the known 500 of platform defect D1 is a warning), and the EPI configuration of the node gives the context the other scenarios send |
+| L2 | `POST /test` answers `true` under the node's real configuration, read through the real CommerceOS |
 | L3 | `GET /config-schema` answers a form description with `members` |
 | L4 | `GET /methods` answers at least one method with a unique `methodId` |
 | L5 | `GET /terminals` answers a list, and each terminal is readable at `/terminals/{id}` |
@@ -26,6 +27,11 @@ quote these files, so a fixture and its example never drift apart.
 | E1 | `POST /transactions` for a key that never completed: 404 with an error body |
 | E2 | Unknown `methodId` on the stream: a 200 stream with one `Fail` step, never a non-2xx |
 | H1 | A contextful call without the context headers: 400 with an error body |
+
+There is no install scenario: install is administrator work, done once on CommerceOS, and C1 proves its
+result. The tool sends every scenario after C1 to the `baseUrl` on the integration record, with the context
+headers CommerceOS sends for the node: the `contextConfigId` of the node's EPI configuration, the
+`configurationHash` of the assignment, and the debug info `{ nodeName, baseUrl, name }`.
 
 **`debitSynchronously: true` on every till request.** A till sends the flag on every `PaymentInitDto`, Payment and
 Payout alike, and CommerceOS refuses a `Complete` under it whose transactions do not leave the order Debited
@@ -64,9 +70,9 @@ the run, a `processorsId` that a later scenario repeats fails that scenario: Com
 
 | Key | Meaning |
 |---|---|
-| `call` | A driver method: `install`, `uninstall`, `configSchema`, `test`, `methods`, `terminals`, `terminal`, `cancel`, `transaction`, `startPayment` |
+| `call` | A driver method: `configSchema`, `test`, `methods`, `terminals`, `terminal`, `cancel`, `transaction`, `startPayment`. The driver also has `install` and `uninstall`, the two calls CommerceOS makes at the administrator's request; no scenario sends them |
 | `key` | The first positional argument: the payment key, the cancellation token, or the terminal id |
-| `args` | The request body: a `PaymentInitDto`, `TransactionInitDto`, `CancelDto` or `InstallPayload`, built from `fixtures.json` |
+| `args` | The request body: a `PaymentInitDto`, `TransactionInitDto` or `CancelDto`, built from `fixtures.json` |
 | `forEach` | Repeat this step once per item of the named earlier step's result. `{{item.<field>}}` reads the item |
 | `react` | For `startPayment`: a nested step per event type. When that event arrives, the nested step runs before the stream continues. P7 cancels on `Cancellable` |
 | `stripContext` | Send the call without the three `X-EPI-*` headers (H1 only). Every integration must answer 400, so H1 runs against partners too |
@@ -101,9 +107,10 @@ inside a longer string is replaced by its text.
 | `{{runId}}` | Eight hex characters that change with every run, derived from `--now` when given (so a pinned run is reproducible) and random otherwise. Every payment key and token carries it, so a second run against the same integration never reuses a key it stored |
 | `{{amount}}` | The scenario amount, after the profile override |
 | `{{half}}`, `{{remainder}}` | Two parts that sum to `{{amount}}`, for the two specification items |
-| `{{token}}`, `{{paymentKey}}`, `{{methodId}}`, `{{currencyCode}}`, `{{locale}}`, `{{payer}}`, `{{payee}}`, `{{specification}}`, `{{install}}`, `{{cancel}}` | The fixture of that name, with `<runId>` and `<id>` filled in: the key is `pay-<runId>-<id>`, the token `tok-<runId>-<id>` |
-| `{{baseUrl}}` | The target base URL, for the debug header |
-| `{{cosBaseUrl}}` | The URL of the tool's CommerceOS stand-in, for the install payload |
+| `{{methodId}}` | The first method on the integration record in CommerceOS, or the profile's `methodId`. E2 keeps its own unknown id |
+| `{{currencyCode}}` | The fixture currency, or the profile's `currencyCode` |
+| `{{token}}`, `{{paymentKey}}`, `{{locale}}`, `{{payer}}`, `{{payee}}`, `{{specification}}`, `{{cancel}}` | The fixture of that name, with `<runId>` and `<id>` filled in: the key is `pay-<runId>-<id>`, the token `tok-<runId>-<id>` |
+| `{{baseUrl}}` | The integration's base URL from the record |
 | `{{event.<field>}}` | Inside `react`: a field of the event that fired |
 | `{{item.<field>}}` | Inside `forEach`: a field of the current item |
 | `{{lastTransaction.<field>}}` | A field of the last transaction the scenario collected |
@@ -111,26 +118,24 @@ inside a longer string is replaced by its text.
 
 ## Profile file
 
-Every partner runs the tool with a profile file, given with `--profile`. It overrides the fixtures,
-and `methodId` is the reason it is never omitted: the fixture id is not yours:
+Optional, given with `--profile`. The configuration your `/test` reads lives on CommerceOS, entered by
+the administrator, so the profile holds only what your sandbox needs on top of the fixtures:
 
 ```json
 {
-    "currencyCode": "EUR",
     "methodId": "com.partner.card",
-    "configuration": { "apiKey": "test-key", "environment": "TEST" },
     "amounts": { "P6": "10.01", "P8": "10.02" },
-    "terminalId": "TERM-1"
+    "terminalId": "TERM-1",
+    "currencyCode": "EUR"
 }
 ```
 
 | Key | Effect |
 |---|---|
-| `currencyCode` | Replaces the fixture currency in every request |
-| `methodId` | Replaces the fixture method id in every request except E2, which keeps its unknown id. Without it every payment scenario gets the `Fail` that only E2 expects |
-| `configuration` | What the tool's CommerceOS stand-in answers for `GET /v1/context/config/{configId}`: the values your `/test` reads and checks. Default `{}`, which makes L2 fail for a `/test` that checks anything |
-| `amounts` | Per scenario id, replaces `amount` |
+| `methodId` | Replaces the method id from the integration record in every request except E2, which keeps its unknown id. Needed only when the integration has several methods and the first one is not the one to test |
+| `amounts` | Per scenario id, replaces `amount`, for a sandbox that selects outcomes by other amounts than the tutorial's cents |
 | `terminalId` | Added to every `PaymentInitDto` and `CancelDto`, for a method that requires a terminal |
+| `currencyCode` | Replaces the fixture currency in every request |
 
 ## Adding a scenario
 

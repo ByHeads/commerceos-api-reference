@@ -53,9 +53,8 @@ The answer of `GET {baseUrl}/methods` for one method as the Piggy Bank sample se
     "supports": { "incoming": true, "outgoing": true, "reversal": true },
     "requires": { "terminal": false, "specification": false } } ]
 ```
-<!-- fixture: scenarios/fixtures.json#/install -->
 ```json
-{ "cosBaseUrl": "{{cosBaseUrl}}", "tokenUrl": "{{cosBaseUrl}}/oauth2/v1/token",
+{ "cosBaseUrl": "https://example.app.heads.com", "tokenUrl": "https://example.app.heads.com/oauth2/v1/token",
   "clientId": "epi-check", "clientSecret": "epi-check-secret", "scope": "me geo:read orders.sales:write orders.payments:write payment-records:write kv" }
 ```
 
@@ -110,11 +109,11 @@ Every contextful call carries three headers; CommerceOS always sends all three. 
 | `X-EPI-Context-Config-Hash` | a hash of the configuration values | cache key. A changed configuration has a new hash |
 | `X-EPI-Debug-Info` | JSON with `nodeName`, `baseUrl`, `name` | logging only |
 
-The conformance tool sends this context. `debugInfo` is the value of the third header:
-<!-- fixture: scenarios/fixtures.json#/context -->
+CommerceOS sends this context; the conformance tool reads the same values from the EPI configuration
+on your CommerceOS and sends them. `debugInfo` is the value of the third header:
 ```json
-{ "configId": "EPI1", "configHash": "epi-check-config-hash-0001",
-  "debugInfo": { "nodeName": "epi-check", "baseUrl": "{{baseUrl}}", "name": "epi-check" } }
+{ "configId": "v5EX", "configHash": "v5EXNSP",
+  "debugInfo": { "nodeName": "Shade AB", "baseUrl": "https://piggy.example.com/piggy", "name": "Piggy" } }
 ```
 
 
