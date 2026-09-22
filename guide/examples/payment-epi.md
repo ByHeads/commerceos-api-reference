@@ -284,7 +284,7 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/epi-configuratio
     "identifiers": {"com.myapp.configId": "company-piggy-config"},
     "integration": {"identifiers": {"key": "<integration key>"}},
     "node": {"identifiers": {"key": "<node key>"}},
-    "configuration": {"merchantId": "M-0001", "mode": "TEST"}
+    "configuration": {"merchantId": "M-0001", "environment": "TEST"}
   }'
 ```
 
@@ -314,9 +314,14 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/pos-profiles/pos
 ```
 
 **Before the first payment on a till.** Two more things are administrator work, and both block
-the first real payment. The browser that runs the till must be associated with a device that a
-POS terminal is assigned to: in the back office, open the device and press *Associate*. Then the
-cashier opens the till and starts it for the day. Only then does the pay screen list your method.
+the first real payment. First the device: in the back office, *Kassa* → *Enheter* (`/cos/devices`),
+open the device that a POS terminal is assigned to, and press *Associera*. That binds **the browser
+that presses it** to the device, so press it from the browser that will run the till, not from your
+own. Then the till: *Kassa* → *Kassa* (`/cos/pos/terminal`). The first visit asks for POS mode,
+*Aktivera POS-läge*, which ends the back-office session in that browser, and then asks the cashier to
+start the till for the day. To pay with your method: add an article, press *Payments*, then *Pay*
+(`F4`), type the amount before you pick a method, and pick yours from the list. Your method is in
+that list, not on a tile, until an administrator gives it one.
 
 **Terminals.** A payment method that requires a terminal reaches the POS through a chain of four
 records. The arrows show which record points at which.
@@ -342,7 +347,7 @@ amount to select the outcome. The sample follows the same table.
 
 | Cents | Outcome |
 |---|---|
-| `.00`, and every cents value not listed below | `Complete`, actions `["Authorize","Debit"]` |
+| `.00`, and every cents value not listed below | `Complete`, actions `["Authorize","Debit"]`. A `Payout` without `debitSynchronously` gets `["Authorize"]` alone, see below |
 | `.01` | `Decline`, reason `InsufficientFunds` |
 | `.02` | `Fail`, one error |
 | `.03` | `Cancellable`, then `Wait`, then `Cancel` after the cancel call. The `Wait` step puts the cancel button on the cashier's dialog. Without a cancel call, end the stream when your own window runs out: the sample completes |
@@ -361,12 +366,14 @@ Heads runs the tool with a profile file that names your method id and, if your s
 
 ## 7. Go live
 
-- [ ] Your endpoint passes [`epi-check`](../../tools/epi-check/README.md), every scenario. Run it yourself: `node tools/epi-check/run.mjs --base <your integration base url> --profile <your profile>`. The profile names your method id and the configuration your `/test` reads; without it ten of sixteen scenarios fail. Run it against a short wait window: the tool times out a call after ten seconds.
+- [ ] Your endpoint passes [`epi-check`](../../tools/epi-check/README.md), every scenario. Run it yourself: `node tools/epi-check/run.mjs --base <your integration base url> --profile <your profile>`. The profile names your method id and the configuration your `/test` reads; without it every payment scenario fails. Run it against a short wait window: the tool times out a call after ten seconds. **Run it against a second instance of your integration, or a separate state file, never against the process that a CommerceOS installed:** the tool's own `install` replaces the stored client and `cosBaseUrl`.
 - [ ] A contextful call without the three context headers gets a 4xx and an error body.
+- [ ] A request your integration cannot take on the stream route is a 200 stream with one `Fail` step, never a non-2xx: CommerceOS discards the body there (reference, section 7).
+- [ ] A repeated `PUT` for a completed `paymentKey` answers the same `processorsId` and the same transactions, and `processorsId` is unique for all time.
 - [ ] `POST /test` answers per node: it reads the configuration of the context id and checks it.
 - [ ] State lives in the CommerceOS key-value store or in your database, never only in memory.
 - [ ] `POST /payments/{paymentKey}/transactions` is idempotent: the same request (`paymentKey`, `token`, `actions`, `amount`) answers the same transaction, so a retry from your own infrastructure does not capture twice.
-- [ ] Every stream ends with exactly one final step, also on an exception.
+- [ ] Every stream ends with exactly one final step, also on an exception. A stream that closes without one shows the cashier nothing at all.
 - [ ] Every call to your provider has a timeout, and a timeout ends the stream with `Fail`.
 - [ ] You log the `X-EPI-Debug-Info` header on every contextful call.
 - [ ] The base URL is `https://`, and the endpoint is protected at the network level (section 3).

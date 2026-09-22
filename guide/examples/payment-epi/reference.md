@@ -82,6 +82,14 @@ your calls:
 | Customer friendly title and description | Not read by the POS |
 | Available in POS, and the POS profile | Both gate the button on the pay screen. `availableInPos` is yours; the profile's allowed methods are the administrator's |
 
+**What goes wrong at setup, and what the administrator sees.** A non-2xx from `POST /install`
+leaves the integration `Inactive` and shows `Install error: Could not install integration '<name>'.
+<status text>`; the error body is not read on this route. `configure` does not validate the
+`GET /methods` answer: two items with the same `methodId` write the same record twice and the last
+wins, and an item without `supports` stops the run after the items before it were written. `POST /test`
+must answer the JSON literal `true`; any other body, `"ok"` or `{}` for example, reads as a failed test
+with no message. An unknown id on `GET /terminals/{terminalId}` is answered with `404` and an error body.
+
 Two DTO flags have consequences the names do not show. `allows.fullAmountFinishesReceipt`: when the
 cashier tenders more than the balance with your method, the POS pays the change back through a
 second call to your integration, a `Payout` on the same method; set it only when `supports.outgoing`
@@ -165,6 +173,11 @@ is the key of the payment order that CommerceOS allocates before the call. The o
   "token": "{{token}}", "locale": "{{locale}}", "specification": "{{specification}}" }
 ```
 
+Some fields arrive empty from a till, and your integration must accept them: `redirectUrls` are all
+`https://heads.com`, a sale without a customer carries a `payer` of type `Person` with an empty
+`fullName`, `specification[].identifier` can be `""`, and `reversalArgs.terminalId` is `""` for a method
+that requires no terminal.
+
 `specification` lists what the payment is for, and the total amounts sum to `amount`:
 <!-- fixture: scenarios/fixtures.json#/specification -->
 ```json
@@ -194,6 +207,9 @@ unless the JSON carries its own `type`. A stream holds zero or more intermediate
 | `Decline` | final | `reason`, `params?` | a normal negative outcome. `reason` is a code such as `InsufficientFunds` |
 | `Cancel` | final | none | the payment was cancelled |
 | `Fail` | final | `errors[]` | an error. The cashier sees `Payment failed: <text>` from `errors[0]` (section 7) |
+
+The first final step wins: CommerceOS closes the stream on it and never reads a second one. A step
+whose `type` is not in the table is ignored, and the POS keeps waiting for the next step.
 
 `audience` is `merchant`, `customer` or `all`. A `Complete` result echoes `methodId`, `amount` and
 `currencyCode`, and each transaction echoes the request `token` and `specification`. CommerceOS stores
@@ -241,9 +257,14 @@ by every provider; and do not send `Wallet` unless CommerceOS holds the wallet's
 
 ## 7. Errors
 
-A failed call answers a non-2xx status with the body `{ "errors": [ ... ] }`. CommerceOS reads that body
-on every route except the stream, `PUT /payments/{paymentKey}`: there it discards the body and the
-cashier sees `Request failed: <status>.`, so report a payment error as a `Fail` step in a 200 stream. Each item has:
+One rule decides where an error goes. On every route except the stream, a failed call answers a
+non-2xx status with the body `{ "errors": [ ... ] }`, and CommerceOS reads it. On the stream,
+`PUT /payments/{paymentKey}`, CommerceOS discards the body of a non-2xx: the cashier sees the raw
+dialog `¿Error: Request failed: <status>.?`, the sale stays open, and the next attempt reuses the same
+`paymentKey` (verified on a till 2026-09-22). So a request that your integration cannot take on that
+route, an unknown `methodId` for example, is answered as a 200 stream with one `Fail` step. The
+conformance scenario `E2` checks it, and the tool fails any scenario in which the stream route
+answered a non-2xx. Each error item has:
 
 | Field | Required | Meaning |
 |---|---|---|
@@ -336,7 +357,7 @@ a released reservation `["Annulled"]`, a refunded sale `["Credited","Debited"]`.
 
 | `reason` | Cashier text in English |
 |---|---|
-| `InsufficientFunds` | `Payment declined: Insufficient funds. Available balance is {0}, requested amount is {1}.` Send two `params`. They are inserted as text, so write them as the cashier should read them, for example `"0.00 SEK"` |
+| `InsufficientFunds` | `Payment declined: Insufficient funds. Available balance is {0}, requested amount is {1}.` Send two `params`. They are inserted as text, so format them for the request's `locale`, for example `"0,00 SEK"` for `sv-SE` |
 | `CardNotActive` | `Payment declined: Card is not active.` |
 | `CardExpired` | `Payment declined: Card has expired.` |
 | `CardNotFound` | `Payment declined: Card not found.` |
@@ -369,7 +390,8 @@ The cents of the amount select the outcome: [Build a payment integration](../pay
 | Situation | What CommerceOS does | What you must do |
 |---|---|---|
 | The stream sends no step for a long time | Sets no timeout of its own. The HTTP runtime closes a stream with no bytes after about five minutes. That limit is the runtime's, not a contract value | Send a final step within minutes, or a `Wait` step at intervals while you wait for the provider |
-| The stream drops before a final step | Shows the cashier the transport error in a dialog. The payment order is not marked failed. On the cashier's next attempt with direction `Payment`: no order yet, same `paymentKey` again; an order `Debited` for the tender amount, attached without a new call; an order `Debited` for another amount, attached and the cashier told to tender the rest; a non-debited order, a fresh key | Treat a second `PUT` with a known `paymentKey` as a resume: answer the same `processorsId` and the same transactions, never a second charge |
+| The stream closes cleanly with no final step | Shows nothing. No dialog, no payment line, the sale stays open. Verified on a till 2026-09-22 | Never close a stream without a final step. On an exception, send `Fail` first |
+| The connection drops before a final step | Shows the raw dialog `¿TypeError: terminated?`. The payment order is not marked failed. On the cashier's next attempt with direction `Payment`: no order yet, same `paymentKey` again; an order `Debited` for the tender amount, attached without a new call; an order `Debited` for another amount, attached and the cashier told to tender the rest; a non-debited order, a fresh key | Treat a second `PUT` with a known `paymentKey` as a resume: answer the same `processorsId` and the same transactions, never a second charge. The conformance scenario `P10` checks it |
 | A stream call or a transactions call fails (network error, non-2xx) | Makes no retry. The cashier sees the error and starts the payment again by hand. Data after a final step is ignored | Make every call idempotent on its request: the same `paymentKey`, `token`, `actions` and `amount` answer the same transaction. Send exactly one final step, then close |
 | A repeated `records` item in `PATCH /v1/payment-orders/{key}` (same `transactionId.id` on the same order) | A repeat of the identical record is a no-op. A record that reuses the id with any field changed is refused | Repeat a callback with the same body, or not at all. Give every distinct transaction its own id |
 | A `records` item after the order is `Debited` | Has no state guard. A late `Debit` or `Authorize` beyond the remaining amount answers 400 (`Amount must agree with designated instance.`, or with a `token`, `Designated instance must be a subset of available instance.`). A `Credit` up to the debited amount is accepted and adds `Credited` | Post the completion once. Do not post a `Debit` for a sale that the stream already completed |

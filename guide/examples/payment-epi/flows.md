@@ -88,6 +88,12 @@ for the negative balance starts a **new payment** instead: `PUT /payments/{key}`
 like a sale, with `["Authorize","Debit"]`. The reference, section 6, gives the rule that chooses
 between the two.
 
+On the till, the *Refund* action is the button under the cart that replaces *Pay* once the cart holds
+a return of a receipt that your method paid: *Kvitto*, open the receipt, *Returnera allt*, pick a
+reason, *Skapa*, then the button reads `Återbetalning <your method> / −<amount>`. A non-2xx on the
+transactions call shows `<code>: <message>` from your error body verbatim: unlike a `Fail` step, no
+code is translated on this route.
+
 ## 4. Asynchronous completion
 
 ```mermaid
@@ -136,6 +142,10 @@ Captures from a manned till with Piggy Bank installed: one line of 15.00, paid i
 | Symptom | Cause | Fix |
 |---|---|---|
 | The cashier sees `Payment failed: <text>` | A `Fail` step. Only `errors[0]` is shown, as `message` or the translation of its `code` | Put the sentence for the cashier in `errors[0].message` |
+| The cashier sees `¿Error: Request failed: <status>.?` | Your integration answered a non-2xx on the stream route. CommerceOS discards the body there | Answer a 200 stream with one `Fail` step (reference, section 7) |
+| The cashier sees nothing after picking your method, and the sale stays open | The stream closed with no final step | End every stream with a final step, also on an exception |
+| The cashier sees `¿TypeError: terminated?` | The connection dropped before a final step | Keep the connection open until the final step, and send a `Wait` step at intervals while you wait |
+| After every closed receipt: `Utskriftskonfigurationen är inte komplett.` (the printing configuration is incomplete) | The terminal has no receipt printer. A local test environment, not your integration | Ignore it, or give the terminal a printer |
 | The cashier sees a raw transport error, not one of the payment texts | The stream dropped before a final step, or the call answered a non-2xx without an error body | End every stream with a final step, also on an exception. Answer an error body (reference, section 7) on a non-2xx |
 | The cashier sees `Payment declined: MyCode` in English on a Swedish till | The `reason` is not in the translated list | Use a code from reference, section 9, or accept the generic text |
 | The waiting dialog never ends | The stream sent no final step | Give every provider call a timeout, and end the stream with `Fail` on it |
