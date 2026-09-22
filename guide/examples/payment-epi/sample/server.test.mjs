@@ -45,6 +45,28 @@ test("a .04 payment records its session in the key-value store with a bearer tok
     }
 });
 
+test("POST /test reads the configuration through the context id, caches it by hash, and checks it", async () => {
+    const lines = [];
+    const cos = await startCosStandIn({ clientId: "c", clientSecret: "s", configuration: { merchantId: "M-1", mode: "TEST" }, configurationHash: "h", log: line => lines.push(line) });
+    const bad = await startCosStandIn({ clientId: "c", clientSecret: "s", configuration: { merchantId: "", mode: "LIVE" }, configurationHash: "h2" });
+    const piggy = await startPiggyServer({ idPrefix: "PB-", now: clock });
+    try {
+        const install = { tokenUrl: `${cos.url}/oauth2/v1/token`, clientId: "c", clientSecret: "s", scope: "me" };
+        assert.equal((await fetch(`${piggy.url}/test`, { method: "POST", headers: context })).status, 400, "not installed");
+        await fetch(`${piggy.url}/install`, { method: "POST", headers: context, body: JSON.stringify({ ...install, cosBaseUrl: cos.url }) });
+        assert.equal(await (await fetch(`${piggy.url}/test`, { method: "POST", headers: context })).json(), true);
+        assert.equal(await (await fetch(`${piggy.url}/test`, { method: "POST", headers: context })).json(), true);
+        assert.equal(lines.filter(line => line.startsWith("GET /api/v1/context/config/EPI1")).length, 1, "the second call is served from the hash cache");
+        await fetch(`${piggy.url}/install`, { method: "POST", headers: context, body: JSON.stringify({ ...install, cosBaseUrl: bad.url, tokenUrl: `${bad.url}/oauth2/v1/token` }) });
+        const headers = { ...context, "X-EPI-Context-Config-Hash": "h2" };
+        assert.equal(await (await fetch(`${piggy.url}/test`, { method: "POST", headers })).json(), false, "an empty merchantId fails the node");
+    } finally {
+        await piggy.close();
+        await cos.close();
+        await bad.close();
+    }
+});
+
 test("a .03 payment ends with Cancel after the cancel call, and the bank keeps no money", async () => {
     const piggy = await startPiggyServer({ idPrefix: "PB-", now: clock, waitMs: 2000 });
     try {

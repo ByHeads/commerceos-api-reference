@@ -27,7 +27,8 @@ CommerceOS requires a provider's payment id to be unique per method for all time
 The bank records a waiting `.04` session in the CommerceOS key-value store (reference, section 8).
 Without CommerceOS that write fails, and the server logs `kv pay-... not written`. `--cos` starts
 `cos.mjs` inside the play script and installs the bank against it: a token endpoint, the configuration
-behind a context id, the key-value store, and `PATCH /api/v1/payment-orders/{key}`, all in memory.
+behind a context id (`merchantId` and `mode`, which the bank's `/test` reads back and checks), the key-value
+store, and `PATCH /api/v1/payment-orders/{key}`, all in memory.
 Every call shows as a `[cos]` line in the play output. For an integration of your own: `node play.mjs 10.04 --base <your integration base url> --cos`
 plays CommerceOS against it, and `node cos.mjs` runs the stand-in alone on port 8790 (`COS_PORT` to change): `cosBaseUrl` `http://localhost:8790`, `tokenUrl` `http://localhost:8790/oauth2/v1/token`, client `play` / `play-secret`.
 

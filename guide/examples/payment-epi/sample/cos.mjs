@@ -35,10 +35,11 @@ function readBody(request) {
 }
 
 /**
- * Starts the stand-in. `clientId` and `clientSecret` are the OAuth2 client of the install payload.
+ * Starts the stand-in. `clientId` and `clientSecret` are the OAuth2 client of the install payload;
+ * `configuration` and `configurationHash` are what GET /api/v1/context/config/{id} answers for every id.
  * Returns `{ url, kv, close }`: `kv` maps "container/key" to the stored JSON.
  */
-export function startCosStandIn({ port = 0, clientId = CLIENT.clientId, clientSecret = CLIENT.clientSecret, log = () => {} } = {}) {
+export function startCosStandIn({ port = 0, clientId = CLIENT.clientId, clientSecret = CLIENT.clientSecret, configuration = CONFIG.configuration, configurationHash = CONFIG.configurationHash, log = () => {} } = {}) {
     const tokens = new Set();
     const kv = new Map();
     const orders = new Map();
@@ -66,7 +67,7 @@ export function startCosStandIn({ port = 0, clientId = CLIENT.clientId, clientSe
             } else if (!tokens.has(/^Bearer (.+)$/.exec(request.headers.authorization ?? "")?.[1])) {
                 answer(401, { errors: [{ message: "A bearer token from POST /oauth2/v1/token is required" }] });
             } else if (/^GET \/api\/v1\/context\/config\/[^/]+$/.test(route)) {
-                answer(200, CONFIG);
+                answer(200, { configuration, configurationHash });
             } else if ((match = /^(GET|PUT|DELETE) \/api\/v1\/kv\/([^/]+)\/([^/]+)$/.exec(route))) {
                 const id = `${match[2]}/${decodeURIComponent(match[3])}`;
                 if (match[1] === "PUT") { kv.set(id, JSON.parse(text)); answer(200, kv.get(id)); }

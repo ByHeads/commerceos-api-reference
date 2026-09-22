@@ -17,10 +17,11 @@ reports pass or fail per scenario. It ships with a reference server, so it tests
 The header scenario `H1` strips the headers on purpose, so it runs only against the bundled
 reference server and is skipped against your integration. Expect 15 pass, 0 fail, 1 skip.
 
-The tool is not a CommerceOS. The install payload of `L1` names a CommerceOS that does not answer
-during the run, so `GET /v1/context/config/{configId}` cannot be read. `L2` expects `POST /test`
-to answer `true`: a `/test` that must read its configuration first cannot pass `L2` against the
-tool alone. Tell Heads, and they run that check against a real environment.
+The tool also plays the CommerceOS side. The install payload of `L1` points at a stand-in that the tool
+starts for the run: it answers the token endpoint for the fixture's client, serves the configuration of
+the profile's `configuration` key (default `{}`) as `GET /v1/context/config/{configId}` under the context
+hash of the fixture, and keeps a key-value store. So `L2` tests a `/test` that reads its configuration:
+give the tool the values your schema needs, or `L2` reports the `false` your integration answers.
 
 ## Run it against your integration
 
@@ -41,8 +42,8 @@ it reads the installed integration through the API and checks that it is `Active
 
 The cents of the amount select the outcome, see the tutorial
 [section 6](../../guide/examples/payment-epi.md#6-test-amounts). If your sandbox selects outcomes another way, give the tool a profile with `--profile partner.json`:
-it names your method id, replaces amounts per scenario, and adds a terminal id. The keys and an
-example are in [scenarios/README.md](../../guide/examples/payment-epi/scenarios/README.md) § Profile file.
+it names your method id, the configuration your `/test` expects to read, amounts per scenario, and a
+terminal id. The keys and an example are in [scenarios/README.md](../../guide/examples/payment-epi/scenarios/README.md) § Profile file.
 
 ## How to read the report
 

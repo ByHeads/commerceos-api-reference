@@ -14,6 +14,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createDriver, EpiCheckError, DRIVER_CALLS } from "./driver.mjs";
 import { startReferenceServer } from "./reference-server.mjs";
+import { startCosStandIn } from "../../guide/examples/payment-epi/sample/cos.mjs";
 import { createCosClient, runCosScenario } from "./cos.mjs";
 import { validate } from "./validate.mjs";
 import { deriveStatus, toMinor, scaleOf } from "./status.mjs";
@@ -100,12 +101,13 @@ function splitAmount(amount) {
     return { half: format(half), remainder: format(total - half) };
 }
 
-function scenarioVars(scenario, fixtures, profile, baseUrl) {
+function scenarioVars(scenario, fixtures, profile, baseUrl, cosBaseUrl) {
     const amount = profile.amounts?.[scenario.id] ?? scenario.amount;
     const vars = {
         ...fixtures,
         id: scenario.id,
         baseUrl,
+        cosBaseUrl,
         currencyCode: profile.currencyCode ?? fixtures.currencyCode,
         methodId: profile.methodId ?? fixtures.methodId,
         amount,
@@ -248,10 +250,10 @@ async function runStep(step, label, vars, context) {
     checkStep({ step, label, expect: step.expect ?? {}, status, subject, events, args, key, transactionsOfStep, state, schemaDoc, fail });
 }
 
-export async function runScenario(scenario, { driver, strippedDriver, schemaDoc, fixtures, profile, baseUrl, reference }) {
+export async function runScenario(scenario, { driver, strippedDriver, schemaDoc, fixtures, profile, baseUrl, cosBaseUrl, reference }) {
     const outcome = { id: scenario.id, title: scenario.title, result: "pass", failures: [], calls: [] };
     if (scenario.referenceOnly && !reference) { outcome.result = "skip"; return outcome; }
-    const baseVars = scenarioVars(scenario, fixtures, profile, baseUrl);
+    const baseVars = scenarioVars(scenario, fixtures, profile, baseUrl, cosBaseUrl);
     const state = { amount: baseVars.amount, transactions: [], results: {} };
     const context = { driver, strippedDriver, schemaDoc, state, failures: outcome.failures, profile };
     const logStart = { driver: driver.log.length, stripped: strippedDriver.log.length };
@@ -306,6 +308,10 @@ export async function run(options) {
         server = await startReferenceServer({ ...(clock ? { now: () => clock } : {}), defect: options.referenceDefect });
         baseUrl = server.url;
     }
+    // The CommerceOS side of the install payload: a stand-in that answers the token endpoint for the
+    // fixture's client, the configuration of the profile under the context hash of the fixture, and the
+    // key-value store. It makes L2 a real test of a /test that reads its configuration.
+    const standIn = options.cos ? null : await startCosStandIn({ clientId: fixtures.install.clientId, clientSecret: fixtures.install.clientSecret, configuration: profile.configuration ?? {}, configurationHash: fixtures.context.configHash });
     const targetLabel = options.reference ? "reference" : (options.cos ?? options.target);
     const outDir = resolve(options.out ?? defaultOut(targetLabel, generatedAt));
 
@@ -321,7 +327,7 @@ export async function run(options) {
             const driver = createDriver({ baseUrl, context, timeoutMs: options.timeout });
             const strippedDriver = createDriver({ baseUrl, context, timeoutMs: options.timeout, fetch: stripContextFetch() });
             for (const scenario of scenarios) {
-                const outcome = await runScenario(scenario, { driver, strippedDriver, schemaDoc, fixtures, profile, baseUrl, reference: Boolean(options.reference) });
+                const outcome = await runScenario(scenario, { driver, strippedDriver, schemaDoc, fixtures, profile, baseUrl, cosBaseUrl: standIn.url, reference: Boolean(options.reference) });
                 outcomes.push(outcome);
             }
         }
@@ -334,6 +340,7 @@ export async function run(options) {
         return { report, meta, outDir, exitCode: report.summary.fail === 0 ? 0 : 1 };
     } finally {
         await server?.close();
+        await standIn?.close();
     }
 }
 

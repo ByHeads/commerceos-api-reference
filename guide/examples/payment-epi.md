@@ -92,18 +92,28 @@ curl -X POST http://127.0.0.1:8787/piggy/tap/PB-mucmciak-3
 ```
 
 The server log adds `kv pay-... not written`: the bank records the waiting session in the CommerceOS
-key-value store, and no CommerceOS runs on your machine. `--cos` starts a stand-in for that side, and
-every call to it shows as a `[cos]` line:
+key-value store, and no CommerceOS runs on your machine. `--cos` starts a stand-in for that side. It
+answers the token endpoint, the configuration behind a context id and the key-value store, and every
+call to it shows as a `[cos]` line:
 
 ```bash
 node play.mjs 10.04 --cos
-# → Wait {"message":"Waiting for the customer's phone","params":["PB-mucmciak-5"]}
 # [cos] POST /oauth2/v1/token 200
-# [cos] PUT /api/v1/kv/com.example.piggy/pay-1790078210519 200
+# [cos] GET /api/v1/context/config/EPI1 200
+# Test: true
+# Method com.example.piggy (Piggy Bank)
+# [cos] POST /oauth2/v1/token 200
+# → Wait {"message":"Waiting for the customer's phone","params":["PB-mucmppuu-1"]}
+#   tap:    curl -X POST http://127.0.0.1:8787/piggy/tap/PB-mucmppuu-1
+# [cos] PUT /api/v1/kv/com.example.piggy/pay-1790078826817 200
 # → Complete {...}
 # [cos] POST /oauth2/v1/token 200
-# [cos] PUT /api/v1/kv/com.example.piggy/pay-1790078210519 200
+# [cos] PUT /api/v1/kv/com.example.piggy/pay-1790078826817 200
 ```
+
+The first three lines are the configuration round trip: the bank fetches a token with the client it
+received at install, reads the configuration behind the context id, checks it against its own
+`config-schema`, and answers `true` to `/test`.
 
 ## 3. What you build
 
@@ -147,9 +157,9 @@ identifies the caller. Protect the endpoint at the network level. How you do tha
 | File | Role |
 |---|---|
 | `sample/bank.mjs` | the in-memory bank: sessions, a ledger, and `tap(sessionId)` for the customer's phone |
-| `sample/server.mjs` | the integration: the ten routes, the header check, the stream, transactions and cancel |
+| `sample/server.mjs` | the integration: the ten routes, the header check, the configuration read behind `/test`, the stream, transactions and cancel |
 | `sample/play.mjs` | the CommerceOS side: install, methods, one payment, every step printed |
-| `sample/cos.mjs` | a stand-in for the calls back: token, configuration, key-value store, payment-order completion |
+| `sample/cos.mjs` | a stand-in for the calls back: token, the configuration behind a context id, key-value store, payment-order completion |
 
 The header check. Every route below this line is contextful, so one test covers them all.
 
@@ -158,6 +168,28 @@ The header check. Every route below this line is contextful, so one test covers 
 if (typeof request.headers["x-epi-context-config-id"] !== "string") {
     return json(response, 400, errorBody("Missing X-EPI-Context-Config-Id header"));
 }
+```
+
+The configuration round trip. `GET /config-schema` declares two fields, `merchantId` and `mode`. An
+administrator fills them in, and `POST /test` reads them back through the context id and checks them.
+The same helper serves a payment route that needs the merchant id.
+
+```js
+async function readConfig(request) {
+    const id = request.headers["x-epi-context-config-id"];
+    const hash = request.headers["x-epi-context-config-hash"];
+    if (hash && configByHash.has(hash)) return configByHash.get(hash);
+    const response = await fetch(cosApi(`/context/config/${encodeURIComponent(id)}`), { headers: { authorization: await bearer(), accept: "application/json" }, signal: AbortSignal.timeout(2000) });
+    if (!response.ok) throw new Error(`config ${response.status}`);
+    const { configuration = {}, configurationHash } = await response.json();
+    configByHash.set(configurationHash ?? hash, configuration);
+    return configuration;
+}
+// ...
+const configProblems = configuration => [
+    ...(typeof configuration.merchantId === "string" && configuration.merchantId !== "" ? [] : ["merchantId is missing"]),
+    ...(["TEST", "LIVE"].includes(configuration.mode) ? [] : ["mode must be TEST or LIVE"]),
+];
 ```
 
 One step written to the stream: one `event:` line, one `data:` line, a blank line. The response stays open until the final step.

@@ -68,6 +68,7 @@ export function startPiggyServer({ port = 0, now = () => new Date(), waitMs = 30
     const resultsByKey = new Map(); // paymentKey -> the Complete result, replayed on a repeated PUT
     const pendingCancels = new Map(); // cancellationToken -> release()
     let installation = null;
+    const configByHash = new Map(); // X-EPI-Context-Config-Hash -> the configuration behind it
 
     const json = (response, status, body) => {
         const text = body === undefined ? "" : JSON.stringify(body, null, 2);
@@ -75,22 +76,45 @@ export function startPiggyServer({ port = 0, now = () => new Date(), waitMs = 30
         response.end(text);
     };
 
-    // Section 8: a client-credentials token from the install payload, then a key-value write.
-    // The write records the waiting session under the payment key. A failure is logged only.
+    // Section 8: a client-credentials token from the install payload, for every call back to CommerceOS.
+    async function bearer() {
+        const { tokenUrl, clientId, clientSecret, scope } = installation;
+        const form = new URLSearchParams({ grant_type: "client_credentials", client_id: clientId, client_secret: clientSecret, scope });
+        const response = await fetch(tokenUrl, { method: "POST", body: form, signal: AbortSignal.timeout(2000) });
+        if (!response.ok) throw new Error(`token ${response.status}`);
+        return `Bearer ${(await response.json()).access_token}`;
+    }
+
+    const cosApi = path => `${installation.cosBaseUrl.replace(/\/+$/, "")}/api/v1${path}`;
+
+    // Section 4: the configuration an administrator saved for the node of this call, read through the
+    // context id and cached by the context hash, which changes whenever the administrator saves.
+    async function readConfig(request) {
+        const id = request.headers["x-epi-context-config-id"];
+        const hash = request.headers["x-epi-context-config-hash"];
+        if (hash && configByHash.has(hash)) return configByHash.get(hash);
+        const response = await fetch(cosApi(`/context/config/${encodeURIComponent(id)}`), { headers: { authorization: await bearer(), accept: "application/json" }, signal: AbortSignal.timeout(2000) });
+        if (!response.ok) throw new Error(`config ${response.status}`);
+        const { configuration = {}, configurationHash } = await response.json();
+        configByHash.set(configurationHash ?? hash, configuration);
+        return configuration;
+    }
+
+    /** The checks behind POST /test: the fields of CONFIG_SCHEMA, as an administrator typed them. */
+    const configProblems = configuration => [
+        ...(typeof configuration.merchantId === "string" && configuration.merchantId !== "" ? [] : ["merchantId is missing"]),
+        ...(["TEST", "LIVE"].includes(configuration.mode) ? [] : ["mode must be TEST or LIVE"]),
+    ];
+
+    // Section 8: a key-value write that records the waiting session under the payment key. A failure is logged only.
     async function writeState(paymentKey, state) {
         if (!installation?.cosBaseUrl) return;
-        const { cosBaseUrl, tokenUrl, clientId, clientSecret, scope } = installation;
         try {
-            const form = new URLSearchParams({ grant_type: "client_credentials", client_id: clientId, client_secret: clientSecret, scope });
-            const tokenResponse = await fetch(tokenUrl, { method: "POST", body: form, signal: AbortSignal.timeout(2000) });
-            if (!tokenResponse.ok) throw new Error(`token ${tokenResponse.status}`);
-            const { access_token: token } = await tokenResponse.json();
-            const url = `${cosBaseUrl.replace(/\/+$/, "")}/api/v1/kv/${KV_CONTAINER}/${encodeURIComponent(paymentKey)}`;
-            const headers = { authorization: `Bearer ${token}`, "content-type": "application/json", accept: "application/json" };
-            const response = await fetch(url, { method: "PUT", headers, body: JSON.stringify(state), signal: AbortSignal.timeout(2000) });
+            const headers = { authorization: await bearer(), "content-type": "application/json", accept: "application/json" };
+            const response = await fetch(cosApi(`/kv/${KV_CONTAINER}/${encodeURIComponent(paymentKey)}`), { method: "PUT", headers, body: JSON.stringify(state), signal: AbortSignal.timeout(2000) });
             log(`kv ${paymentKey} ${response.status}`);
         } catch (error) {
-            log(`kv ${paymentKey} not written: ${error.message} from ${tokenUrl}`);
+            log(`kv ${paymentKey} not written: ${error.message} from ${installation.tokenUrl}`);
         }
     }
 
@@ -179,8 +203,17 @@ export function startPiggyServer({ port = 0, now = () => new Date(), waitMs = 30
             return json(response, 400, errorBody("Missing X-EPI-Context-Config-Id header"));
         }
 
-        // Section 2, contextful calls.
-        if (route === "POST /test") return json(response, 200, true);
+        // Sections 2 and 4: test reads the configuration behind the context id and checks it against
+        // CONFIG_SCHEMA. false is a legitimate answer: the administrator sees "fail" for this node.
+        if (route === "POST /test") {
+            if (!installation?.cosBaseUrl) return json(response, 400, errorBody("Not installed: no CommerceOS to read the configuration from"));
+            let configuration;
+            try { configuration = await readConfig(request); } catch (error) { return json(response, 400, errorBody(`Cannot read the configuration: ${error.message}`)); }
+            const problems = configProblems(configuration);
+            log(`test ${request.headers["x-epi-context-config-id"]}: ${problems.length ? problems.join(", ") : `ok, merchant ${configuration.merchantId} in ${configuration.mode}`}`);
+            return json(response, 200, problems.length === 0);
+        }
+        // Section 2, the other contextful calls.
         if (route === "GET /methods") return json(response, 200, [METHOD]);
         if (route === "GET /terminals") return json(response, 200, TERMINALS);
         if ((match = /^GET \/terminals\/([^/]+)$/.exec(route))) {

@@ -64,6 +64,7 @@ inside a longer string is replaced by its text.
 | `{{half}}`, `{{remainder}}` | Two parts that sum to `{{amount}}`, for the two specification items |
 | `{{token}}`, `{{paymentKey}}`, `{{methodId}}`, `{{currencyCode}}`, `{{locale}}`, `{{payer}}`, `{{payee}}`, `{{specification}}`, `{{install}}`, `{{cancel}}` | The fixture of that name, with `<id>` filled in |
 | `{{baseUrl}}` | The target base URL, for the debug header |
+| `{{cosBaseUrl}}` | The URL of the tool's CommerceOS stand-in, for the install payload |
 | `{{event.<field>}}` | Inside `react`: a field of the event that fired |
 | `{{item.<field>}}` | Inside `forEach`: a field of the current item |
 | `{{lastTransaction.<field>}}` | A field of the last transaction the scenario collected |
@@ -77,6 +78,7 @@ the fixtures:
 {
     "currencyCode": "EUR",
     "methodId": "com.partner.card",
+    "configuration": { "apiKey": "test-key", "environment": "TEST" },
     "amounts": { "P6": "10.01", "P8": "10.02" },
     "terminalId": "TERM-1"
 }
@@ -86,6 +88,7 @@ the fixtures:
 |---|---|
 | `currencyCode` | Replaces the fixture currency in every request |
 | `methodId` | Replaces the fixture method id in every request except E1, which keeps its unknown id |
+| `configuration` | What the tool's CommerceOS stand-in answers for `GET /v1/context/config/{configId}`: the values your `/test` reads and checks. Default `{}` |
 | `amounts` | Per scenario id, replaces `amount` |
 | `terminalId` | Added to every `PaymentInitDto` and `CancelDto`, for a method that requires a terminal |
 

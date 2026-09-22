@@ -57,8 +57,8 @@
         }
     ],
     "install": {
-        "cosBaseUrl": "http://localhost:5000",
-        "tokenUrl": "http://localhost:5000/oauth2/v1/token",
+        "cosBaseUrl": "{{cosBaseUrl}}",
+        "tokenUrl": "{{cosBaseUrl}}/oauth2/v1/token",
         "clientId": "epi-check",
         "clientSecret": "epi-check-secret",
         "scope": "me geo:read orders.sales:write orders.payments:write payment-records:write kv"

@@ -55,7 +55,7 @@ The answer of `GET {baseUrl}/methods` for one method as the Piggy Bank sample se
 ```
 <!-- fixture: scenarios/fixtures.json#/install -->
 ```json
-{ "cosBaseUrl": "http://localhost:5000", "tokenUrl": "http://localhost:5000/oauth2/v1/token",
+{ "cosBaseUrl": "{{cosBaseUrl}}", "tokenUrl": "{{cosBaseUrl}}/oauth2/v1/token",
   "clientId": "epi-check", "clientSecret": "epi-check-secret", "scope": "me geo:read orders.sales:write orders.payments:write payment-records:write kv" }
 ```
 
@@ -148,7 +148,10 @@ needs no configuration: the Mock integration that Heads hosts does exactly that.
 **What happens with the values.** They are stored as an *EPI configuration* on the organization node,
 as a plain object keyed like `members`. Read them back per section 8, cache by
 `X-EPI-Context-Config-Hash`, and validate them in `POST /test`: that is the administrator's check
-that the configuration works against your provider.
+that the configuration works against your provider. The Piggy Bank sample does exactly this: its
+`/test` reads the configuration through the context id, caches it by hash, and answers `false` when
+`merchantId` is empty or `mode` is not `TEST` or `LIVE`. The conformance tool plays the CommerceOS
+side of that read, serving the configuration named in its profile.
 
 ## 5. The payment stream
 

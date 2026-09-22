@@ -64,7 +64,9 @@ Rules:
 2. The single payment method has the id \`${METHOD_ID}\` and requires no terminal. Answer an empty
    terminal list.
 3. Follow the test amounts of the tutorial (the cents of the amount select the outcome). Heads
-   runs their conformance tool against your endpoint; that tool is your acceptance test.
+   runs their conformance tool against your endpoint; that tool is your acceptance test. The tool
+   also plays the CommerceOS side: the install payload it sends points at a stand-in that answers
+   the token endpoint, the configuration behind the context id, and the key-value store.
 4. Do not invent behavior that the documents do not state. When the documents leave something
    open or contradict each other, choose the reading that makes the conformance scenarios pass,
    and write the question down.

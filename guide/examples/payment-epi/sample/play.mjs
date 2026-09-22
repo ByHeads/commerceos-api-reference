@@ -5,8 +5,8 @@
 //   node play.mjs <amount> [--base http://localhost:8787/piggy] [--payout] [--cos]
 //
 // `--cos` starts the CommerceOS stand-in of cos.mjs in-process and installs the bank against it,
-// so that the bank's calls back (the key-value store, section 8) land somewhere and show in the
-// output as `[cos]` lines. Exit 0 when the stream ends with a final step, 1 on a transport error.
+// so that the bank's calls back (the configuration read behind /test, the key-value store; section 8)
+// land somewhere and show in the output as `[cos]` lines. Exit 0 when the stream ends with a final step, 1 on a transport error.
 import { startCosStandIn, CLIENT } from "./cos.mjs";
 
 const DEFAULT_BASE = "http://localhost:8787/piggy";
@@ -90,6 +90,8 @@ async function playAgainst({ amount, base, payout, print, install, standIn }) {
     };
 
     await call("POST", "/install", install, false);
+    // With the stand-in up, the bank can read its configuration back: the round trip of sections 2 and 4.
+    if (standIn) print(`Test: ${await (await call("POST", "/test")).json()}`);
     const [method] = await (await call("GET", "/methods")).json();
     print(`Method ${method.methodId} (${method.name})`);
 

@@ -64,6 +64,8 @@ test("play 10.04 --cos: the bank writes its session to the stand-in's key-value 
     try {
         const final = await play({ amount: "10.04", base: piggy.url, print: line => lines.push(line), cos: true });
         assert.equal(final.type, "Complete");
+        assert.ok(lines.includes("Test: true"), lines.join("\n"));
+        assert.ok(lines.includes("[cos] GET /api/v1/context/config/EPI1 200"), lines.join("\n"));
         assert.ok(lines.includes("[cos] POST /oauth2/v1/token 200"), lines.join("\n"));
         assert.ok(lines.some(line => /^\[cos\] PUT \/api\/v1\/kv\/com\.example\.piggy\/pay-\d+ 200$/.test(line)), lines.join("\n"));
         assert.equal(lines.filter(line => line.startsWith("[cos] PUT")).length, 2, "waiting, then settled");
