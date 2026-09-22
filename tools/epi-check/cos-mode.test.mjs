@@ -111,6 +111,7 @@ test("C1 passes with a D1 warning when assignedTerminals answers the known 500, 
     assert.deepEqual(outcome.failures, []);
     assert.deepEqual(outcome.steps.map(s => s.result), ["pass", "pass", "pass"]);
     assert.deepEqual(outcome.warnings, [{ step: "step 3 assignedTerminals", path: "D1", message: `${D1_WARNING} — details: TypeError: this.sourceIterator.next is not a function` }]);
+    assert.equal(outcome.title, "CommerceOS side: Active, test success per node, assignedTerminals 500, known defect D1, warning");
     // Heads owns D1; a 500 with another cause is the partner's problem, or a new defect.
     const crashed = await runCosScenario({ client: createCosClient({ baseUrl, key: KEY, timeoutMs: 2000 }), integration: "Crashed" });
     assert.equal(crashed.result, "fail");
@@ -159,7 +160,7 @@ test("run --cos writes report.json and report.md with C1 and its sub-steps throu
     const broken = await run({ cos: baseUrl, key: KEY, integration: "Broken", now: NOW, out: join(scratch, "cos-broken"), timeout: 2000 });
     assert.equal(broken.exitCode, 0, "D1 is a warning, so the run exits 0");
     const brokenMd = readFileSync(join(scratch, "cos-broken", "report.md"), "utf8");
-    assert.match(brokenMd, /\| C1 \| pass \(warn\) \|/);
+    assert.match(brokenMd, /\| C1 \| pass \(warn\) \| CommerceOS side: Active, test success per node, assignedTerminals 500, known defect D1, warning \|/);
     assert.match(brokenMd, /1 pass, 0 fail, 0 skip, 1 with warnings/);
     assert.match(brokenMd, /## Warnings\n\n### C1 — .*\n\n- step 3 assignedTerminals: `D1` — known platform defect D1: assignedTerminals answers 500 on every instance; Heads owns the fix — details: TypeError: this.sourceIterator.next is not a function/);
     assert.ok(existsSync(join(scratch, "cos-broken", "report.json")));

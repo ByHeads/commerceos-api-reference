@@ -149,6 +149,20 @@ test(".04 waits, then completes", async () => {
     assert.deepEqual(events[1].result.transactions[0].actions, ["Authorize", "Debit"]);
 });
 
+test("debitSynchronously captures whatever the cents say: .05 gives Authorize and Debit under the flag", async () => {
+    const flagged = await collectEvents((await startPayment(server, "pay-05-flag", "100.05", { debitSynchronously: true })).body);
+    assert.deepEqual(flagged[0].result.transactions[0].actions, ["Authorize", "Debit"]);
+    const defective = await startReferenceServer({ defect: "authorize-only-under-flag" });
+    try {
+        const p1 = await collectEvents((await startPayment(defective, "pay-x-P1", "100.00", { debitSynchronously: true })).body);
+        assert.deepEqual(p1[0].result.transactions[0].actions, ["Authorize"]);
+        const other = await collectEvents((await startPayment(defective, "pay-x-P4", "100.00", { debitSynchronously: true })).body);
+        assert.deepEqual(other[0].result.transactions[0].actions, ["Authorize", "Debit"]);
+    } finally {
+        await defective.close();
+    }
+});
+
 test("Payout gives Authorize only, or Authorize and Debit with debitSynchronously", async () => {
     const plain = await collectEvents((await startPayment(server, "pay-out", "50.00", { direction: "Payout" })).body);
     assert.deepEqual(plain[0].result.transactions[0].actions, ["Authorize"]);

@@ -464,7 +464,7 @@ components:
           description: "What the payment is for. The total amounts sum to amount."
         debitSynchronously:
           const: true
-          description: "Present and true when a payout must be captured in the same call: answer actions Authorize and Debit instead of Authorize alone."
+          description: "Present and true when the money must move in this call, Payment and Payout alike. A till sends it on every request. A Complete under it must capture: actions Authorize and Debit, or a Debit transaction. CommerceOS refuses an Authorize-only Complete under the flag, and the cashier sees an error. Absent only on API-driven flows that reserve first and capture later through the transactions route."
         redirectUrls:
           type: "object"
           properties:

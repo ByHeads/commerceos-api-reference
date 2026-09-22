@@ -65,6 +65,16 @@ test("the amounts follow the plan's scenario table", () => {
     assert.equal(read("P6").steps[0].expect.translatedReason, true);
 });
 
+test("every Payment stream carries debitSynchronously: true as a till does, except the two reservation-flow scenarios and the Authorize-only Payout", () => {
+    const flagged = {};
+    for (const file of files) {
+        const scenario = JSON.parse(readFileSync(join(scenariosDir, file), "utf8"));
+        for (const step of scenario.steps) if (step.call === "startPayment") flagged[scenario.id] ??= step.args.debitSynchronously === true;
+    }
+    assert.deepEqual(flagged, { P1: true, P2: false, P3: false, P4: true, P5: false, P6: true, P7: true, P8: true, P9: true, P10: true, P11: true, P12: true, E2: false });
+    for (const id of ["P2", "P3"]) assert.match(JSON.parse(readFileSync(join(scenariosDir, `${id}.json`), "utf8")).title, /^Two-step sale without debitSynchronously: /);
+});
+
 test("every payment key and token carries the run id, so two runs never collide at the integration", () => {
     const fixtures = JSON.parse(readFileSync(join(scenariosDir, "fixtures.json"), "utf8"));
     assert.equal(fixtures.paymentKey, "pay-{{runId}}-{{id}}");

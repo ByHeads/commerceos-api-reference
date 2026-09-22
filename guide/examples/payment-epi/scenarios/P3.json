@@ -1,6 +1,6 @@
 {
     "id": "P3",
-    "title": "Authorize, then release with Annul",
+    "title": "Two-step sale without debitSynchronously: Authorize, then release with Annul",
     "amount": "100.05",
     "steps": [
         {

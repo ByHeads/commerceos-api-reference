@@ -12,8 +12,8 @@ quote these files, so a fixture and its example never drift apart.
 | L4 | `GET /methods` answers at least one method with a unique `methodId` |
 | L5 | `GET /terminals` answers a list, and each terminal is readable at `/terminals/{id}` |
 | P1 | One-step sale: `Complete` with `["Authorize","Debit"]` |
-| P2 | Two-step sale: `Authorize`, then `Debit` through `POST /transactions` |
-| P3 | `Authorize`, then release with `Annul` |
+| P2 | Two-step sale without `debitSynchronously`: `Authorize`, then `Debit` through `POST /transactions` |
+| P3 | Two-step sale without `debitSynchronously`: `Authorize`, then release with `Annul` |
 | P4 | Sale, then refund with `Credit` and `reversalArgs` |
 | P5 | Payout: `Complete` with `["Authorize"]` |
 | P6 | Decline with a reason. A reason outside the ten the POS translates is a warning |
@@ -21,17 +21,26 @@ quote these files, so a fixture and its example never drift apart.
 | P8 | `Fail` with errors |
 | P9 | `Wait`, then `Complete` |
 | P10 | Resume: the identical `PUT` for a completed key answers the same `processorsId` and transactions, no new charge |
-| P11 | Payout with `debitSynchronously: true`, as every till sends it: `["Authorize","Debit"]` |
+| P11 | Payout with `debitSynchronously: true`: `["Authorize","Debit"]` |
 | P12 | Refund twice: the identical `Credit` request answers the same transaction |
 | E1 | `POST /transactions` for a key that never completed: 404 with an error body |
 | E2 | Unknown `methodId` on the stream: a 200 stream with one `Fail` step, never a non-2xx |
 | H1 | A contextful call without the context headers: 400 with an error body |
 
-Three checks run on every stream whatever the scenario expects: the stream holds exactly one final step and it is
+**`debitSynchronously: true` on every till request.** A till sends the flag on every `PaymentInitDto`, Payment and
+Payout alike, and CommerceOS refuses a `Complete` under it whose transactions do not leave the order Debited
+(`PaymentMethod.ts:343-349`, "Payment was requested to be synchronously debited, but it was not."). So every
+Payment scenario that starts a stream sends the flag, as P11 does for a Payout, and the tool checks that the
+`Complete` captured: a `Debit` action, in the same transaction as `Authorize` or in a separate one. The two
+exceptions are P2 and P3, the only Payment scenarios without the flag: they cover the API-driven reservation
+flow, `Authorize` first and `Debit` or `Annul` later through the transactions route, which a till never
+starts. P5 is the Authorize-only Payout, also without the flag.
+
+Four checks run on every stream whatever the scenario expects: the stream holds exactly one final step and it is
 the last event; a non-2xx status fails, because CommerceOS discards the body on this route and the cashier sees
-nothing; and a `Cancellable` step is followed by a `Wait` or `ShowImage` step before the final step, because that
-is where the POS shows the cancel button. Across the run, a `processorsId` that a later scenario repeats fails
-that scenario: CommerceOS refuses a reused id.
+nothing; a `Cancellable` step is followed by a `Wait` or `ShowImage` step before the final step, because that
+is where the POS shows the cancel button; and a `Complete` under `debitSynchronously: true` captured. Across
+the run, a `processorsId` that a later scenario repeats fails that scenario: CommerceOS refuses a reused id.
 
 ## File shape
 

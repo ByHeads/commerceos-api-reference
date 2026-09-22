@@ -1,6 +1,6 @@
 {
     "id": "P2",
-    "title": "Two-step sale: Authorize, then Debit through POST /transactions",
+    "title": "Two-step sale without debitSynchronously: Authorize, then Debit through POST /transactions",
     "amount": "100.05",
     "steps": [
         {

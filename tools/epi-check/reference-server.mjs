@@ -6,7 +6,9 @@
 // The cents of `amount` select the outcome (README, *Amount convention*):
 //   .00 Complete ["Authorize","Debit"]   .01 Decline   .02 Fail
 //   .03 Cancellable, Wait, then Cancel   .04 Wait, then Complete   .05 Complete ["Authorize"]
-// Direction "Payout" gives ["Authorize"] unless `debitSynchronously` is true (Mock lines 60-66).
+// Direction "Payout" gives ["Authorize"], and `debitSynchronously: true` (what a till sends on every
+// request) gives ["Authorize","Debit"] whatever the cents or the direction say: CommerceOS refuses a
+// Complete under that flag that leaves the order anything but Debited (Mock lines 60-66).
 //
 // Contract facts it honors beyond the outcomes:
 //   - a request it cannot take (unknown methodId, a non-decimal amount) is a 200 stream with one Fail
@@ -53,6 +55,7 @@ export const DEFECT_SCENARIO = {
     "credit-refuses": "P4",             // the Credit answers 500 with a body
     "credit-not-idempotent": "P12",     // the repeated Credit gets a new transactionId
     "cancellable-without-wait": "P7",   // no Wait after Cancellable
+    "authorize-only-under-flag": "P1",  // ["Authorize"] although the request carried debitSynchronously: true
 };
 /** `drop-token` omits `token` from every transaction; `non-2xx-on-stream` answers an unknown method with 400 (E2). */
 export const DEFECTS = ["drop-token", "non-2xx-on-stream", ...Object.keys(DEFECT_SCENARIO)];
@@ -137,9 +140,9 @@ export function startReferenceServer({ port = 0, now = () => new Date("2026-01-0
         // Section 11: a completed key is resumed, never charged again.
         if (results.has(key) && !defective("resume-new-transaction", key)) { send("Complete", { result: results.get(key) }); return response.end(); }
 
-        const completeActions = dto.direction === "Payout"
-            ? (dto.debitSynchronously ? ["Authorize", "Debit"] : ["Authorize"])
-            : (cents(dto.amount) === "05" ? ["Authorize"] : ["Authorize", "Debit"]);
+        const completeActions = defective("authorize-only-under-flag", key) ? ["Authorize"]
+            : dto.debitSynchronously ? ["Authorize", "Debit"]
+            : (dto.direction === "Payout" || cents(dto.amount) === "05" ? ["Authorize"] : ["Authorize", "Debit"]);
         const complete = () => {
             const result = paymentResult(key, dto, completeActions);
             results.set(key, result);

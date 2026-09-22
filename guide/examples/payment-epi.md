@@ -301,7 +301,7 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/epi-configurati
 curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/payment-integrations/name=Piggy/test" \
   -H "Content-Type: application/json" \
   -d 'true'
-# → { "integrationName": "Piggy", "configurationTests": { "Our Company": "success" } }
+# → { "integrationName": "Piggy", "configurationTests": { "Shade AB": "success" } }
 ```
 
 ```bash
@@ -315,12 +315,12 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/pos-profiles/pos
 
 **Before the first payment on a till.** Two more things are administrator work, and both block
 the first real payment. First the device: in the back office, *Kassa* → *Enheter* (`/cos/devices`),
-pick the store in the organization tree that the page shows first, open the device that a POS
+pick the store if the page asks for an organization first, open the device that a POS
 terminal is assigned to, and press *Associera*. The button then reads *Avassociera*: that is success.
 It binds **the browser that pressed it** to the device, so press it from the browser that will run
 the till, not from your own. Then the till: *Kassa* → *Kassa* (`/cos/pos/terminal`). The first visit asks for POS mode,
-*Aktivera POS-läge*, which ends the back-office session in that browser, and then asks the cashier to
-start the till for the day. To pay with your method: add an article, press *Payments*, then *Pay*
+*Aktivera POS-läge*, which ends the back-office session in that browser; after the login it can ask
+for the organization (*Välj organisation*), and then asks the cashier to start the till for the day. To pay with your method: add an article, press *Payments*, then *Pay*
 (`F4`), type the amount before you pick a method, and pick yours from the list. Your method is in
 that list, not on a tile, until an administrator gives it one. A `Decline`, `Fail` or `Cancel`
 closes the pay screen, so the next attempt starts again from *Pay*; `Wait` and `Complete` keep the
@@ -353,13 +353,15 @@ amount to select the outcome. The sample follows the same table.
 | `.00`, and every cents value not listed below | `Complete`, actions `["Authorize","Debit"]`. A `Payout` without `debitSynchronously` gets `["Authorize"]` alone, see below |
 | `.01` | `Decline`, reason `InsufficientFunds` |
 | `.02` | `Fail`, one error |
-| `.03` | `Cancellable`, then `Wait`, then `Cancel` after the cancel call. The `Wait` step puts the cancel button on the cashier's dialog. Without a cancel call, end the stream when your own window runs out: the sample completes |
-| `.04` | exactly `Wait`, then `Complete`. No `Create` step: the tool checks the step list as given |
-| `.05` | `Complete`, actions `["Authorize"]` only |
+| `.03` | `Cancellable`, then `Wait`, then `Cancel` after the cancel call. The `Wait` step puts the cancel button on the cashier's dialog. Without a cancel call, end the stream when your own window runs out: the sample completes, and a `Decline` with reason `Timeout` is as valid |
+| `.04` | `Wait`, then `Complete`. No `Create` step. Repeated `Wait` steps to keep the stream open are fine: the tool ignores a `Wait` it did not list |
+| `.05` | `Complete`, actions `["Authorize"]` only, when the request carries no `debitSynchronously`. Under the flag, `.05` captures like `.00`: a till never sees a reservation |
 
-On a till every request carries `debitSynchronously: true`, `Payment` and `Payout` alike, so a
-`Payout` that completes on a till answers `["Authorize","Debit"]`: the money leaves in the same
-call. Only a `Payout` request without `debitSynchronously` gets `["Authorize"]` alone. Answer the
+On a till every request carries `debitSynchronously: true`, `Payment` and `Payout` alike, and a
+`Complete` under the flag must capture: CommerceOS refuses `["Authorize"]` alone there, and the
+cashier sees an error instead of a payment line. So a `Payout` that completes on a till answers
+`["Authorize","Debit"]`: the money leaves in the same call. Only a request without
+`debitSynchronously`, which a till never sends, gets `["Authorize"]` alone. Answer the
 `amount` of a `Payout` positive: CommerceOS stores and shows it negative. A return that the
 cashier pays out with your method from the pay screen reaches you as such a `Payout`. Only the
 *Refund* action under the cart makes the refund transaction, see

@@ -4,7 +4,9 @@
 // The cents of `amount` select the outcome (tutorial section 6):
 //   .00 Complete ["Authorize","Debit"]   .01 Decline   .02 Fail
 //   .03 Cancellable, then Cancel         .04 Wait, then Complete   .05 Complete ["Authorize"]
-// Direction "Payout" gives ["Authorize"] unless `debitSynchronously` is true.
+// Direction "Payout" gives ["Authorize"]. A till sends `debitSynchronously: true` on every request, and
+// CommerceOS refuses a Complete under that flag that does not capture: it gives ["Authorize","Debit"]
+// whatever the cents or the direction say.
 //
 // A `.03` payment waits WAIT_MS for the cancel call and completes when none arrives. A `.04`
 // payment waits WAIT_MS for the customer's phone (`POST /tap/{sessionId}`, the id travels in the
@@ -160,9 +162,9 @@ export function startPiggyServer({ port = 0, now = () => new Date(), waitMs = 30
             send("Complete", { result: resultsByKey.get(paymentKey) });
         };
         const outcome = cents(dto.amount);
-        const saleActions = dto.direction === "Payout"
-            ? (dto.debitSynchronously ? ["Authorize", "Debit"] : ["Authorize"])
-            : (outcome === "05" ? ["Authorize"] : ["Authorize", "Debit"]);
+        const saleActions = dto.debitSynchronously
+            ? ["Authorize", "Debit"]
+            : (dto.direction === "Payout" || outcome === "05" ? ["Authorize"] : ["Authorize", "Debit"]);
 
         switch (outcome) {
             case "01":

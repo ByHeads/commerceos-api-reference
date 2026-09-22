@@ -9,7 +9,7 @@ reports pass or fail per scenario. It ships with a reference server, so it tests
 | Area | Passes when |
 |---|---|
 | Lifecycle | `POST /install` accepts the handshake. `POST /test` returns `true`. `GET /config-schema` returns a form description with `members`. `GET /methods` returns at least one method with a unique `methodId`. `GET /terminals` returns a list, and each terminal is readable at `/terminals/{id}` |
-| Payment stream | `PUT /payments/{key}` answers a 200 `text/event-stream`, with zero or more intermediate steps and exactly one final step, which is the last event. A `Complete` result echoes `methodId`, `amount` and `currencyCode`, and each transaction echoes the request `token` and carries only known actions. A Payout with `debitSynchronously: true`, as every till sends it, completes with `["Authorize","Debit"]` |
+| Payment stream | `PUT /payments/{key}` answers a 200 `text/event-stream`, with zero or more intermediate steps and exactly one final step, which is the last event. A `Complete` result echoes `methodId`, `amount` and `currencyCode`, and each transaction echoes the request `token` and carries only known actions. Every request from a till carries `debitSynchronously: true`, so every Payment scenario but the two reservation-flow ones (P2, P3) sends it, and a `Complete` under it must capture, with a `Debit` action; CommerceOS refuses the answer otherwise. A Payout under it completes with `["Authorize","Debit"]` |
 | Resume and repeats | The identical `PUT` for a completed key answers the same `processorsId` and the same transactions, no new charge. The identical `Credit` request answers the same transaction. A `processorsId` that a later scenario repeats fails it: CommerceOS refuses a reused id |
 | Transactions | `POST /payments/{key}/transactions` for capture, release and refund returns a transaction with `transactionId` and `timestamp`. The order status derived from all transactions equals the expected set. For a key that never completed it answers 404 with an error body |
 | Cancel | After a `Cancellable` step, a `Wait` or `ShowImage` step follows (the POS shows the cancel button there; `Cancellable` alone shows nothing), `POST /payments/{cancellationToken}/cancel` returns 2xx and the stream ends with `Cancel` |
@@ -50,7 +50,8 @@ in one terminal, then in another run
 The profile names the sample's method id, see the next section.
 `--reference` runs the twenty scenarios against the bundled server instead, and exits 0.
 `--reference-defect <name>` switches one defect on in that server, to see what the tool reports for it;
-the names are listed in `reference-server.mjs`.
+the names are listed in `reference-server.mjs` (for example `authorize-only-under-flag`: P1 answers
+`["Authorize"]` although the request carried `debitSynchronously: true`).
 `--timeout <ms>` bounds every call (default 10000). A `Wait` window longer than that fails `P9`, the
 wait-then-complete scenario, with `This operation was aborted`: run your integration with a short
 window while the tool runs, or raise the timeout. `--out <dir>` chooses the report folder.

@@ -109,7 +109,11 @@ export async function runCosScenario({ client, integration }) {
                 return;
             }
             const details = typeof body?.details === "string" ? body.details : undefined;
-            if (status === D1_STATUS && details !== undefined && D1_DETAILS.test(details)) { warn(label, "D1", `${D1_WARNING} — details: ${details}`); return; }
+            if (status === D1_STATUS && details !== undefined && D1_DETAILS.test(details)) {
+                warn(label, "D1", `${D1_WARNING} — details: ${details}`);
+                outcome.title = COS_SCENARIO.title.replace(/assignedTerminals 200$/, `assignedTerminals ${status}, known defect D1, warning`);
+                return;
+            }
             fail(label, "status", `expected 200, got ${status}${details !== undefined ? ` — details: ${details}` : describe(body)}`);
         }],
     ];

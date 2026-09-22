@@ -139,6 +139,8 @@ export const TRANSLATED_DECLINE_REASONS = ["InsufficientFunds", "CardNotActive",
 /** On the stream route CommerceOS never reads a non-2xx body: the error escapes the POS task and the cashier sees no dialog (reference section 7). */
 export const STREAM_NON_2XX = "CommerceOS discards the body of a non-2xx on this route and shows the cashier nothing: answer a 200 stream with a Fail step";
 export const CANCELLABLE_ALONE = "the POS shows the cancel button on the Wait or ShowImage step after Cancellable; Cancellable alone shows nothing";
+/** A till sends `debitSynchronously: true` on every request, Payment and Payout alike, and CommerceOS refuses a Complete under it whose transactions do not leave the order Debited (PaymentMethod.ts:343-349). */
+export const NOT_CAPTURED_UNDER_FLAG = "the request carried debitSynchronously: true and the Complete did not capture: CommerceOS refuses this answer and the cashier sees an error";
 
 function statusMatches(expected, actual) {
     if (typeof expected === "number") return expected === actual;
@@ -197,6 +199,10 @@ function checkStep({ step, label, expect, status, subject, previous, events, arg
         const types = events.map(e => e.type).filter(type => type !== "Wait" || expect.events?.includes("Wait"));
         if (expect.events && !sameJson(types, expect.events)) fail(label, "events", `expected [${expect.events.join(", ")}], got [${events.map(e => e.type).join(", ")}]`);
         checkStream({ label, events, fail });
+        if (args?.debitSynchronously === true && subject?.type === "Complete") {
+            const captured = (Array.isArray(subject.result?.transactions) ? subject.result.transactions : []).some(t => Array.isArray(t?.actions) && t.actions.includes("Debit"));
+            if (!captured) fail(label, "result.transactions", NOT_CAPTURED_UNDER_FLAG);
+        }
     }
 
     if (expect.schema) {

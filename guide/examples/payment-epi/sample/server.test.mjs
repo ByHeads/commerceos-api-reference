@@ -116,6 +116,20 @@ test("a request the bank cannot take is a 200 stream with one Fail step, because
     }
 });
 
+test("debitSynchronously: true, as a till sends it, captures on every amount and direction", async () => {
+    const piggy = await startPiggyServer({ idPrefix: "PB-", now: clock });
+    try {
+        for (const [key, dto] of [["pay-f05", { ...init("10.05"), debitSynchronously: true }], ["pay-fout", { ...init("10.00"), direction: "Payout", debitSynchronously: true }]]) {
+            const [complete] = await events(await fetch(`${piggy.url}/payments/${key}`, { method: "PUT", headers: context, body: JSON.stringify(dto) }));
+            assert.deepEqual(complete.result.transactions[0].actions, ["Authorize", "Debit"], key);
+        }
+        const [plain] = await events(await fetch(`${piggy.url}/payments/pay-05`, { method: "PUT", headers: context, body: JSON.stringify(init("10.05")) }));
+        assert.deepEqual(plain.result.transactions[0].actions, ["Authorize"], "without the flag .05 still reserves only");
+    } finally {
+        await piggy.close();
+    }
+});
+
 test("the identical transactions request answers the same transaction, and a different one gets a new id", async () => {
     const piggy = await startPiggyServer({ idPrefix: "PB-", now: clock });
     try {

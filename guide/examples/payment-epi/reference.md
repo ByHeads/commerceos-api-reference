@@ -88,9 +88,10 @@ leaves the integration `Inactive` and shows `Install error: Could not install in
 `GET /methods` answer: two items with the same `methodId` write the same record twice and the last
 wins, and an item without `supports` stops the run after the items before it were written. `POST /test`
 must answer the JSON literal `true`; any other body, `"ok"` or `{}` for example, reads as a failed test
-with no message. When the test cannot run at all, because the configuration read from CommerceOS
+with no message. Whenever the test fails for a reason you can name, an invalid value or a configuration read that
 failed for example, answer a non-2xx with an error body: the administrator then sees
-`<code>: <message>` next to the failed status, and `false` shows nothing. An unknown id on `GET /terminals/{terminalId}` is answered with `404` and an error body.
+`<code>: <message>` next to the failed status. `false` shows nothing, so use it only when you have
+nothing to say. An unknown id on `GET /terminals/{terminalId}` is answered with `404` and an error body.
 
 Two DTO flags have consequences the names do not show. `allows.fullAmountFinishesReceipt`: when the
 cashier tenders more than the balance with your method, the POS pays the change back through a
@@ -171,9 +172,16 @@ is the key of the payment order that CommerceOS allocates before the call. The o
 <!-- fixture: scenarios/P1.json#/steps/0/args -->
 ```json
 { "methodId": "{{methodId}}", "amount": "{{amount}}", "currencyCode": "{{currencyCode}}",
-  "direction": "Payment", "payer": "{{payer}}", "payee": "{{payee}}",
+  "direction": "Payment",
+  "debitSynchronously": true, "payer": "{{payer}}", "payee": "{{payee}}",
   "token": "{{token}}", "locale": "{{locale}}", "specification": "{{specification}}" }
 ```
+
+`debitSynchronously: true` is on every request a till sends, `Payment` and `Payout` alike. A
+`Complete` under it must capture: `["Authorize","Debit"]` in one transaction, or a `Debit`
+transaction after the `Authorize`. CommerceOS refuses an Authorize-only `Complete` under the flag,
+so never answer a reservation on a till. The request carries no flag only on API-driven flows that
+reserve first and capture later through the transactions route (scenarios `P2`, `P3`).
 
 Some fields arrive empty from a till, and your integration must accept them: `redirectUrls` are all
 `https://heads.com`, a sale without a customer carries a `payer` of type `Person` with an empty
@@ -396,6 +404,7 @@ The cents of the amount select the outcome: [Build a payment integration](../pay
 |---|---|---|
 | The stream sends no step for a long time | Sets no timeout of its own. The HTTP runtime closes a stream with no bytes after about five minutes. That limit is the runtime's, not a contract value | Send a final step within minutes, or a `Wait` step at intervals while you wait for the provider |
 | The stream closes cleanly with no final step | Shows nothing. No dialog, no payment line, the sale stays open. Verified on a till 2026-09-22 | Never close a stream without a final step. On an exception, send `Fail` first |
+| A `Complete` that CommerceOS refuses (an Authorize-only answer under `debitSynchronously`, or a transaction it cannot record) | The raw dialog `¿Error: Payment was requested to be synchronously debited, but it was not.?`, no payment order, and the next attempt reuses the same `paymentKey`, so a resume repeats the refused answer and the cashier is stuck. A platform fix that turns this into a `Fail` step is proposed; with it the next attempt is a new key | Never send such a `Complete`. The tool refuses a non-capturing `Complete` under the flag |
 | The connection drops before a final step | Shows the raw dialog `¿TypeError: terminated?`. The payment order is not marked failed. On the cashier's next attempt with direction `Payment`: no order yet, same `paymentKey` again; an order `Debited` for the tender amount, attached without a new call; an order `Debited` for another amount, attached and the cashier told to tender the rest; a non-debited order, a fresh key | Treat a second `PUT` with a known `paymentKey` as a resume: answer the same `processorsId` and the same transactions, never a second charge. The conformance scenario `P10` checks it |
 | A stream call or a transactions call fails (network error, non-2xx) | Makes no retry. The cashier sees the error and starts the payment again by hand. Data after a final step is ignored | Make every call idempotent on its request: the same `paymentKey`, `token`, `actions` and `amount` answer the same transaction. Send exactly one final step, then close |
 | A repeated `records` item in `PATCH /v1/payment-orders/{key}` (same `transactionId.id` on the same order) | A repeat of the identical record is a no-op. A record that reuses the id with any field changed is refused | Repeat a callback with the same body, or not at all. Give every distinct transaction its own id |

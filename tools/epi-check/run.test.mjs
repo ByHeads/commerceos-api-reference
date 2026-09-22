@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { execFileSync, spawnSync } from "node:child_process";
 import { Readable } from "node:stream";
 import { startReferenceServer, DEFECT_SCENARIO } from "./reference-server.mjs";
-import { run, parseArgs, resolvePlaceholders, runIdFor, ORDER, STREAM_NON_2XX, CANCELLABLE_ALONE, TRANSLATED_DECLINE_REASONS } from "./run.mjs";
+import { run, parseArgs, resolvePlaceholders, runIdFor, ORDER, STREAM_NON_2XX, CANCELLABLE_ALONE, NOT_CAPTURED_UNDER_FLAG, TRANSLATED_DECLINE_REASONS } from "./run.mjs";
 import { validate } from "./validate.mjs";
 import { buildReport, reportJson, reportMarkdown, sortKeys } from "./report.mjs";
 
@@ -146,6 +146,7 @@ const DEFECT_MESSAGE = {
     "credit-refuses": [/expected 200, got 500/],
     "credit-not-idempotent": [/the same request answers the same transaction, never a second one/],
     "cancellable-without-wait": [new RegExp(CANCELLABLE_ALONE)],
+    "authorize-only-under-flag": [new RegExp(NOT_CAPTURED_UNDER_FLAG), /expected \[Authorize, Debit\], got \[Authorize\]/],
 };
 for (const [defect, scenario] of Object.entries(DEFECT_SCENARIO)) {
     test(`--reference-defect ${defect} fails ${scenario} and nothing else`, async () => {
