@@ -11,7 +11,7 @@
 import { createServer } from "node:http";
 
 export const CLIENT = { clientId: "play", clientSecret: "play-secret" };
-const CONFIG = { configuration: { merchantId: "M-0001", mode: "TEST" }, configurationHash: "cos-sim-1" };
+const CONFIG = { configuration: { merchantId: "M-0001", environment: "TEST" }, configurationHash: "cos-sim-1" };
 
 /** Reference section 9: the status flags of an order, derived from the actions of its records. */
 export function orderStatus(records) {

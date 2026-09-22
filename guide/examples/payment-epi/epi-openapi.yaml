@@ -461,7 +461,7 @@ components:
           description: "The cashier's locale, for example sv-SE. Use it for texts that you return."
         specification:
           "$ref": "#/components/schemas/SpecificationDto"
-          description: "What the payment is for. The total amounts sum to amount."
+          description: "What the payment is for. For a Payment the total amounts sum to amount. A Payout from the pay screen carries an empty array."
         debitSynchronously:
           const: true
           description: "Present and true when the money must move in this call, Payment and Payout alike. A till sends it on every request. A Complete under it must capture: actions Authorize and Debit, or a Debit transaction. CommerceOS refuses an Authorize-only Complete under the flag, and the cashier sees an error. Absent only on API-driven flows that reserve first and capture later through the transactions route."

@@ -131,7 +131,7 @@ test("the CommerceOS document: one scope per operation, the token route on its o
     const token = cos.paths["/oauth2/v1/token"].post;
     assert.deepEqual(token.security, []);
     assert.ok(token.requestBody.content["application/x-www-form-urlencoded"]);
-    assert.equal(token.servers[0].url, "{tokenUrl}");
+    assert.equal(token.servers[0].url, "{oauth2Origin}");
     const scopes = Object.keys(cos.components.securitySchemes.oauth2.flows.clientCredentials.scopes);
     for (const [path, methods] of Object.entries(cos.paths)) for (const [method, operation] of Object.entries(methods)) {
         if (path === "/oauth2/v1/token") continue;

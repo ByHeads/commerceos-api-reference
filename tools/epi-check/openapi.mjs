@@ -52,7 +52,7 @@ const EPI_ROUTES = [
 /** What the integration calls on CommerceOS, with the OAuth2 scope each call needs. */
 const COS_ROUTES = [
     { method: "post", path: "/oauth2/v1/token", tag: "Token", summary: "A client-credentials token", scope: null,
-      servers: [{ url: "{tokenUrl}", variables: { tokenUrl: { default: "https://example.app.heads.com/oauth2/v1/token", description: "tokenUrl from the install payload, complete. The path below is already part of it" } } }],
+      servers: [{ url: "{oauth2Origin}", variables: { oauth2Origin: { default: "https://example.app.heads.com", description: "The origin of tokenUrl from the install payload: tokenUrl is this origin plus the path below. Call tokenUrl as the install payload gives it" } } }],
       form: "TokenRequest", response: "TokenResponse",
       when: "Before the first call and after expires_in seconds. Send the form with grant_type client_credentials and the client from the install payload." },
     { method: "get", path: "/v1/context/config/{configId}", tag: "Configuration", summary: "The configuration behind a context id", scope: "me", response: "ContextConfig",

@@ -23,11 +23,11 @@ paths:
       summary: "A client-credentials token"
       description: "Before the first call and after expires_in seconds. Send the form with grant_type client_credentials and the client from the install payload."
       servers:
-        - url: "{tokenUrl}"
+        - url: "{oauth2Origin}"
           variables:
-            tokenUrl:
-              default: "https://example.app.heads.com/oauth2/v1/token"
-              description: "tokenUrl from the install payload, complete. The path below is already part of it"
+            oauth2Origin:
+              default: "https://example.app.heads.com"
+              description: "The origin of tokenUrl from the install payload: tokenUrl is this origin plus the path below. Call tokenUrl as the install payload gives it"
       requestBody:
         required: true
         content:

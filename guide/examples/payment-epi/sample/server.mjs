@@ -31,7 +31,7 @@ const TERMINALS = [
     { terminalId: "PB-T1", methodId: METHOD_ID, name: "Piggy Bank terminal 1" },
     { terminalId: "PB-T2", methodId: METHOD_ID, name: "Piggy Bank terminal 2" },
 ];
-const CONFIG_SCHEMA = { title: "Piggy Bank", members: { merchantId: { type: "string" }, mode: { type: "'TEST' or 'LIVE'" } } };
+const CONFIG_SCHEMA = { title: "Piggy Bank", members: { merchantId: { type: "string" }, environment: { type: "'TEST' or 'LIVE'" } } };
 
 const errorBody = message => ({ errors: [{ message }] });
 
@@ -114,7 +114,7 @@ export function startPiggyServer({ port = 0, now = () => new Date(), waitMs = 30
     /** The checks behind POST /test: the fields of CONFIG_SCHEMA, as an administrator typed them. */
     const configProblems = configuration => [
         ...(typeof configuration.merchantId === "string" && configuration.merchantId !== "" ? [] : ["merchantId is missing"]),
-        ...(["TEST", "LIVE"].includes(configuration.mode) ? [] : ["mode must be TEST or LIVE"]),
+        ...(["TEST", "LIVE"].includes(configuration.environment) ? [] : ["environment must be TEST or LIVE"]),
     ];
 
     // Section 8: a key-value write that records the waiting session under the payment key. A failure is logged only.
@@ -228,14 +228,16 @@ export function startPiggyServer({ port = 0, now = () => new Date(), waitMs = 30
         }
 
         // Sections 2 and 4: test reads the configuration behind the context id and checks it against
-        // CONFIG_SCHEMA. false is a legitimate answer: the administrator sees "fail" for this node.
+        // CONFIG_SCHEMA. A named problem goes back as an error body, so the administrator reads it
+        // next to the failed status; a bare false would show nothing.
         if (route === "POST /test") {
             if (!installation?.cosBaseUrl) return json(response, 400, errorBody("Not installed: no CommerceOS to read the configuration from"));
             let configuration;
             try { configuration = await readConfig(request); } catch (error) { return json(response, 400, errorBody(`Cannot read the configuration: ${error.message}`)); }
             const problems = configProblems(configuration);
-            log(`test ${request.headers["x-epi-context-config-id"]}: ${problems.length ? problems.join(", ") : `ok, merchant ${configuration.merchantId} in ${configuration.mode}`}`);
-            return json(response, 200, problems.length === 0);
+            log(`test ${request.headers["x-epi-context-config-id"]}: ${problems.length ? problems.join(", ") : `ok, merchant ${configuration.merchantId} in ${configuration.environment}`}`);
+            if (problems.length) return json(response, 422, errorBody(`Configuration is not usable: ${problems.join(", ")}`));
+            return json(response, 200, true);
         }
         // Section 2, the other contextful calls.
         if (route === "GET /methods") return json(response, 200, [METHOD]);

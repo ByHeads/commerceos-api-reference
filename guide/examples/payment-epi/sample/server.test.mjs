@@ -50,8 +50,8 @@ test("a .04 payment records its session in the key-value store with a bearer tok
 
 test("POST /test reads the configuration through the context id, caches it by hash, and checks it", async () => {
     const lines = [];
-    const cos = await startCosStandIn({ clientId: "c", clientSecret: "s", configuration: { merchantId: "M-1", mode: "TEST" }, configurationHash: "h", log: line => lines.push(line) });
-    const bad = await startCosStandIn({ clientId: "c", clientSecret: "s", configuration: { merchantId: "", mode: "LIVE" }, configurationHash: "h2" });
+    const cos = await startCosStandIn({ clientId: "c", clientSecret: "s", configuration: { merchantId: "M-1", environment: "TEST" }, configurationHash: "h", log: line => lines.push(line) });
+    const bad = await startCosStandIn({ clientId: "c", clientSecret: "s", configuration: { merchantId: "", environment: "LIVE" }, configurationHash: "h2" });
     const piggy = await startPiggyServer({ idPrefix: "PB-", now: clock });
     try {
         const install = { tokenUrl: `${cos.url}/oauth2/v1/token`, clientId: "c", clientSecret: "s", scope: "me" };
@@ -62,7 +62,9 @@ test("POST /test reads the configuration through the context id, caches it by ha
         assert.equal(lines.filter(line => line.startsWith("GET /api/v1/context/config/EPI1")).length, 1, "the second call is served from the hash cache");
         await fetch(`${piggy.url}/install`, { method: "POST", headers: context, body: JSON.stringify({ ...install, cosBaseUrl: bad.url, tokenUrl: `${bad.url}/oauth2/v1/token` }) });
         const headers = { ...context, "X-EPI-Context-Config-Hash": "h2" };
-        assert.equal(await (await fetch(`${piggy.url}/test`, { method: "POST", headers })).json(), false, "an empty merchantId fails the node");
+        const failed = await fetch(`${piggy.url}/test`, { method: "POST", headers });
+        assert.equal(failed.status, 422, "an empty merchantId fails the node");
+        assert.match((await failed.json()).errors[0].message, /merchantId/, "and the administrator reads why");
     } finally {
         await piggy.close();
         await cos.close();

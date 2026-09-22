@@ -1,4 +1,4 @@
 {
     "methodId": "com.example.piggy",
-    "configuration": { "merchantId": "M-0001", "mode": "TEST" }
+    "configuration": { "merchantId": "M-0001", "environment": "TEST" }
 }

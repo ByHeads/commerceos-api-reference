@@ -29,7 +29,7 @@ quote these files, so a fixture and its example never drift apart.
 
 **`debitSynchronously: true` on every till request.** A till sends the flag on every `PaymentInitDto`, Payment and
 Payout alike, and CommerceOS refuses a `Complete` under it whose transactions do not leave the order Debited
-(`PaymentMethod.ts:343-349`, "Payment was requested to be synchronously debited, but it was not."). So every
+(the error "Payment was requested to be synchronously debited, but it was not."). So every
 Payment scenario that starts a stream sends the flag, as P11 does for a Payout, and the tool checks that the
 `Complete` captured: a `Debit` action, in the same transaction as `Authorize` or in a separate one. The two
 exceptions are P2 and P3, the only Payment scenarios without the flag: they cover the API-driven reservation

@@ -246,10 +246,11 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/payment-integrat
 #    without it, because install hands this client to your integration: it is the only
 #    credential that your integration gets. The agent is the integration's database key:
 #   curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/payment-integrations/name=Piggy/identifiers/key"
+#   (the answer is a JSON string with its quotes: paste the 32 characters between them)
 curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/users" \
   -H "Content-Type: application/json" \
   -d '{
-    "identifiers": {"com.myapp.userId": "user-piggy-integration"},
+    "identifiers": {"com.myapp.userId": "user-piggy-integration"},  # any com.<your namespace>.<name> identifier; no registration
     "agent": {"identifiers": {"key": "<integration key>"}},
     "oauth2Clients": [{
       "identifiers": {"clientID": "piggy-integration-client"},
@@ -274,6 +275,7 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/payment-integra
 ```bash
 # 4) Create the EPI configuration on an organization node. Both references need database keys:
 #   curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/payment-integrations/name=Piggy/identifiers/key"
+#   (the answer is a JSON string with its quotes: paste the 32 characters between them)
 #   curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/companies/com.heads.seedID=ourcompany/identifiers/key"
 # The configuration object holds the fields that your /config-schema describes. The answer
 # carries contextConfigId, a four-character id that CommerceOS generates: it is the value of
@@ -319,10 +321,11 @@ pick the store if the page asks for an organization first, open the device that 
 terminal is assigned to, and press *Associera*. The button then reads *Avassociera*: that is success.
 It binds **the browser that pressed it** to the device, so press it from the browser that will run
 the till, not from your own. Then the till: *Kassa* → *Kassa* (`/cos/pos/terminal`). The first visit asks for POS mode,
-*Aktivera POS-läge*, which ends the back-office session in that browser; after the login it can ask
-for the organization (*Välj organisation*), and then asks the cashier to start the till for the day. To pay with your method: add an article, press *Payments*, then *Pay*
-(`F4`), type the amount before you pick a method, and pick yours from the list. Your method is in
-that list, not on a tile, until an administrator gives it one. A `Decline`, `Fail` or `Cancel`
+*Aktivera POS-läge*. It can end the back-office session in that browser; if it does, log in again
+and pick the organization if asked (*Välj organisation*). Then the cashier starts the till for the day. To pay with your method: add an article, press *Payments*, then *Pay*
+(`F4`), type the amount before you pick a method, and pick yours: it is a text tile in the grid of
+methods, next to the logo tiles, and missing from the *Payments* shortcut panel until an
+administrator adds it there. A `Decline`, `Fail` or `Cancel`
 closes the pay screen, so the next attempt starts again from *Pay*; `Wait` and `Complete` keep the
 sale on screen with the remaining balance.
 
@@ -346,7 +349,7 @@ on the payment integration does not list terminals: it lists the organization no
 ## 6. Test amounts
 
 The conformance tool `epi-check` that Heads runs against your endpoint expects the cents of the
-amount to select the outcome. The sample follows the same table.
+amount to select the outcome, for a `Payment` and a `Payout` alike. The sample follows the same table.
 
 | Cents | Outcome |
 |---|---|

@@ -160,8 +160,8 @@ needs no configuration: the Mock integration that Heads hosts does exactly that.
 as a plain object keyed like `members`. Read them back per section 8, cache by
 `X-EPI-Context-Config-Hash`, and validate them in `POST /test`: that is the administrator's check
 that the configuration works against your provider. The Piggy Bank sample does exactly this: its
-`/test` reads the configuration through the context id, caches it by hash, and answers `false` when
-`merchantId` is empty or `mode` is not `TEST` or `LIVE`. The conformance tool plays the CommerceOS
+`/test` reads the configuration through the context id, caches it by hash, and answers `422` with an error body that
+names the problem when `merchantId` is empty or `environment` is not `TEST` or `LIVE`. The conformance tool plays the CommerceOS
 side of that read, serving the configuration named in its profile.
 
 ## 5. The payment stream
@@ -182,6 +182,11 @@ is the key of the payment order that CommerceOS allocates before the call. The o
 transaction after the `Authorize`. CommerceOS refuses an Authorize-only `Complete` under the flag,
 so never answer a reservation on a till. The request carries no flag only on API-driven flows that
 reserve first and capture later through the transactions route (scenarios `P2`, `P3`).
+
+`token` names the currency instance of the request. CommerceOS makes a new one for every distinct
+request, so two partial refunds of the same amount on one order carry two different tokens; only
+a retry of the same request repeats the token. That is what makes the idempotency key of section
+11 safe.
 
 Some fields arrive empty from a till, and your integration must accept them: `redirectUrls` are all
 `https://heads.com`, a sale without a customer carries a `payer` of type `Person` with an empty
