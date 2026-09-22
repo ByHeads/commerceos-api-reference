@@ -30,6 +30,9 @@ export function createBank({ now = () => new Date(), idPrefix = `PB-${Date.now()
             methodId: session.methodId,
             token: session.token,
             timestamp: now().toISOString(),
+            // What paid. A provider without card data names its brand as a Singleton: the receipt,
+            // the back office and the sales reports then show "Piggy Bank" instead of nothing.
+            means: { type: "Singleton", id: "Piggy Bank" },
         };
         ledger.push(transaction);
         return transaction;

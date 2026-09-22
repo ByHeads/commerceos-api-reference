@@ -196,6 +196,15 @@ The four fields of `CancelDto` carry the local-terminal context, so that a provi
 { "isLocalTerminal": false }
 ```
 
+**`means`: what paid.** Set it on every transaction you return. The receipt prints it instead of the
+method name, the back office shows it in the *Payment means* column, and the sales reports group by
+it. Without it the receipt falls back to the method name, the column stays hidden and the reports
+bucket the payment under `--`. A card terminal sends `{ "type": "Card", "scheme": "Visa", "maskedPan": "************1234" }`.
+A provider without card data sends its brand as a singleton, the same id on every transaction,
+written as the cashier should read it: `{ "type": "Singleton", "id": "Piggy Bank" }`. Do not send
+`Card` without a real card: CommerceOS creates a card record per transaction, and a `token` joins an
+index shared by every provider. Do not send `Wallet` unless CommerceOS holds the wallet's balance.
+
 ## 7. Errors
 
 A failed call answers a non-2xx status with the body `{ "errors": [ ... ] }`. Each item has:

@@ -303,11 +303,11 @@ components:
           description: "Singleton."
         id:
           type: "string"
-          description: "The id of the means."
+          description: "A stable id of the brand or method, for example Piggy Bank. The same id on every transaction of that brand. CommerceOS shows it as the text, first letter capitalized, so write it as the cashier should read it."
       required:
         - "type"
         - "id"
-      description: "A means with one instance, for example an invoice or a cash payment."
+      description: "A means with no per-customer identity, reusable across transactions: a brand or a method, for example swish, vipps, an invoice, or your provider's name. The right choice for a provider without card data."
     WalletPaymentMeansDto:
       type: "object"
       properties:
@@ -504,6 +504,7 @@ components:
           "$ref": "#/components/schemas/SpecificationDto"
         means:
           "$ref": "#/components/schemas/PaymentMeansDto"
+          description: "As in TransactionDto: the means of the original transaction."
         rawData:
           type: "object"
           description: "Any JSON object."

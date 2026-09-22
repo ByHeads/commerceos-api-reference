@@ -211,7 +211,7 @@
           "description": "Your id of the transaction, unique within the method. CommerceOS ignores a later record with a transactionId it already holds, so a repeated completion is safe."
         },
         "timestamp": { "type": "string", "description": "When it happened, ISO 8601." },
-        "means": { "$ref": "#/$defs/PaymentMeansDto", "description": "What paid: a card, a wallet or a singleton such as an invoice." },
+        "means": { "$ref": "#/$defs/PaymentMeansDto", "description": "What paid. Set it: the receipt prints it instead of the method name, the back office shows it in the Payment means column, and the sales reports group by it; without it those show the method name, nothing, and --. A card terminal sends Card with scheme and maskedPan. A provider without card data sends Singleton with its brand as id. Wallet is only for a wallet that CommerceOS itself holds the balance of." },
         "consumerPrintout": { "type": "string", "description": "Receipt text for the customer copy, from the provider." },
         "merchantPrintout": { "type": "string", "description": "Receipt text for the merchant copy, from the provider." },
         "rawData": { "type": "object", "description": "Any JSON object. Stored as is, never read by CommerceOS." }
@@ -283,10 +283,10 @@
       "type": "object",
       "properties": {
         "type": { "const": "Singleton", "description": "Singleton." },
-        "id": { "type": "string", "description": "The id of the means." }
+        "id": { "type": "string", "description": "A stable id of the brand or method, for example Piggy Bank. The same id on every transaction of that brand. CommerceOS shows it as the text, first letter capitalized, so write it as the cashier should read it." }
       },
       "required": ["type", "id"],
-      "description": "A means with one instance, for example an invoice or a cash payment."
+      "description": "A means with no per-customer identity, reusable across transactions: a brand or a method, for example swish, vipps, an invoice, or your provider's name. The right choice for a provider without card data."
     },
     "WalletPaymentMeansDto": {
       "type": "object",
@@ -665,7 +665,7 @@
         },
         "token": { "type": "string", "description": "The token of the payment. Without it CommerceOS takes the available money for the first action." },
         "specification": { "$ref": "#/$defs/SpecificationDto" },
-        "means": { "$ref": "#/$defs/PaymentMeansDto" },
+        "means": { "$ref": "#/$defs/PaymentMeansDto", "description": "As in TransactionDto: the means of the original transaction." },
         "rawData": { "type": "object", "description": "Any JSON object." },
         "consumerPrintout": { "type": "string", "description": "Receipt text for the customer copy." },
         "merchantPrintout": { "type": "string", "description": "Receipt text for the merchant copy." }
