@@ -13,7 +13,9 @@ node play.mjs 10.00             # in a second terminal: install, read the method
 node play.mjs 10.04             # a payment that waits for the customer's phone
 node play.mjs 10.04 --cos       # the same, with the CommerceOS stand-in started in-process
 ```
-The cents of the amount select the outcome. Every other amount completes.
+The cents of the amount select the outcome. Every other amount completes. Every transaction names the
+brand as its payment means, and every id carries a per-start prefix, because CommerceOS requires a
+provider's payment id to be unique per method for all time.
 
 | Amount | What the bank does |
 |---|---|

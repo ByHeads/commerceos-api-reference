@@ -4,7 +4,7 @@
   "title": "Payment EPI contract",
   "description": "Every DTO and every SSE step of the CommerceOS payment EPI, and the CommerceOS API types that a payment integration calls back, copied from CommerceOS at the contract commit named in run.mjs. tools/epi-check/openapi.mjs renders this file into two OpenAPI 3.1 documents.",
   "$defs": {
-    "DecimalDto": { "type": "string", "pattern": "^-?\\d+(\\.\\d+)?$", "description": "A decimal number as a string, for example \"100.00\". Never a JSON number." },
+    "DecimalDto": { "type": "string", "pattern": "^-?\\d+(\\.\\d+)?$", "description": "A decimal number as a string, never a JSON number. CommerceOS sends a whole amount without decimals (\"15\", not \"15.00\") and a fraction as typed (\"10.04\"); accept both and compare numerically. Answer in either form." },
     "PaymentDirection": { "type": "string", "enum": ["Payment", "Payout"], "description": "Payment: the customer pays. Payout: the customer is paid." },
     "PaymentDeclineReason": {
       "type": "string",

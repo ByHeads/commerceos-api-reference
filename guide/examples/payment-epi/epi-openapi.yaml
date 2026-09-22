@@ -298,7 +298,7 @@ components:
     DecimalDto:
       type: "string"
       pattern: "^-?\\d+(\\.\\d+)?$"
-      description: "A decimal number as a string, for example \"100.00\". Never a JSON number."
+      description: "A decimal number as a string, never a JSON number. CommerceOS sends a whole amount without decimals (\"15\", not \"15.00\") and a fraction as typed (\"10.04\"); accept both and compare numerically. Answer in either form."
     PaymentDirection:
       type: "string"
       enum:

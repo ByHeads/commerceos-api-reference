@@ -369,7 +369,7 @@ The cents of the amount select the outcome: [Build a payment integration](../pay
 
 Every DTO, every step of the stream and every CommerceOS-side type is defined with a description
 per field in the two OpenAPI documents named at the top of this page. `?` in this page marks an
-optional field. A decimal is a string such as `"100.00"`. A timestamp is ISO 8601. To read the
+optional field. A decimal is a string, never a JSON number; CommerceOS sends a whole amount as `"15"`, not `"15.00"`, so compare numerically. A timestamp is ISO 8601. To read the
 documents as pages, open them in any OpenAPI viewer, for example
 `npx @redocly/cli preview-docs guide/examples/payment-epi/epi-openapi.yaml`. To start from code,
 generate a server stub from `epi-openapi.yaml` and a client from `commerceos-openapi.yaml` with

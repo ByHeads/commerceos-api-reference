@@ -62,7 +62,7 @@ methods, and starts one payment. It prints every step of the stream.
 ```bash
 node play.mjs 10.00
 # Method com.example.piggy (Piggy Bank)
-# → Complete {"result":{"processorsId":"PB-mfx2k1-1","methodId":"com.example.piggy","amount":"10.00","currencyCode":"SEK","transactions":[{"transactionId":"PB-mfx2k1-2","actions":["Authorize","Debit"],"amount":"10.00","currencyCode":"SEK","methodId":"com.example.piggy","token":"tok-10.00","timestamp":"2026-09-18T20:13:28.756Z"}]}}
+# → Complete {"result":{"processorsId":"PB-mfx2k1-1","methodId":"com.example.piggy","amount":"10.00","currencyCode":"SEK","transactions":[{"transactionId":"PB-mfx2k1-2","actions":["Authorize","Debit"],"amount":"10.00","currencyCode":"SEK","methodId":"com.example.piggy","token":"tok-10.00","timestamp":"2026-09-18T20:13:28.756Z","means":{"type":"Singleton","id":"Piggy Bank"}}]}}
 # transactionId  actions          amount  currencyCode  token      timestamp
 # -------------  ---------------  ------  ------------  ---------  ------------------------
 # PB-mfx2k1-2    Authorize+Debit  10.00   SEK           tok-10.00  2026-09-18T20:13:28.756Z
@@ -84,7 +84,7 @@ prefix that changes on each start, because CommerceOS requires a `processorsId` 
 
 ```bash
 curl -X POST http://localhost:8787/piggy/tap/PB-mfx2k1-3
-# → Complete {"result":{"processorsId":"PB-mfx2k1-3","methodId":"com.example.piggy","amount":"10.04","currencyCode":"SEK","transactions":[{"transactionId":"PB-mfx2k1-4","actions":["Authorize","Debit"],"amount":"10.04","currencyCode":"SEK","methodId":"com.example.piggy","token":"tok-10.04","timestamp":"2026-09-18T20:13:30.317Z"}]}}
+# → Complete {"result":{"processorsId":"PB-mfx2k1-3","methodId":"com.example.piggy","amount":"10.04","currencyCode":"SEK","transactions":[{"transactionId":"PB-mfx2k1-4","actions":["Authorize","Debit"],"amount":"10.04","currencyCode":"SEK","methodId":"com.example.piggy","token":"tok-10.04","timestamp":"2026-09-18T20:13:30.317Z","means":{"type":"Singleton","id":"Piggy Bank"}}]}}
 # transactionId  actions          amount  currencyCode  token      timestamp
 # -------------  ---------------  ------  ------------  ---------  ------------------------
 # PB-mfx2k1-4    Authorize+Debit  10.04   SEK           tok-10.04  2026-09-18T20:13:30.317Z
