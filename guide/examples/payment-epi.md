@@ -327,9 +327,11 @@ It binds **the browser that pressed it** to the device, so press it from the bro
 the till, not from your own. Then the till: *Kassa* → *Kassa* (`/cos/pos/terminal`). The first visit asks for POS mode,
 *Aktivera POS-läge*. It can end the back-office session in that browser; if it does, log in again
 and pick the organization if asked (*Välj organisation*). Then the cashier starts the till for the day. To pay with your method: add an article, press *Payments*, then *Pay*
-(`F4`), type the amount before you pick a method, and pick yours. Picking the method starts the
+(`F4`). Do not press the large button under the cart, *Mockbetalning*: it pays the whole balance
+at once with the seeded test method, not yours. On *Pay*, type the amount before you pick a method, and pick yours. Picking the method starts the
 payment at once, with no confirm step, so check the amount in the field first: it opens with the
-whole balance, in the till's own number format (`10,04` on a Swedish till). Your method is a text tile in the grid of
+whole balance, in the till's own number format (`799` for a whole amount, `10,04` with öre, on a
+Swedish till). Your method is a text tile in the grid of
 methods, next to the logo tiles, and missing from the *Payments* shortcut panel until an
 administrator adds it there. A `Decline`, `Fail` or `Cancel`
 closes the pay screen, so the next attempt starts again from *Pay*. `Wait` keeps the pay screen open. A

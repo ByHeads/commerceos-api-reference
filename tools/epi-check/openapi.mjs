@@ -46,7 +46,7 @@ const EPI_ROUTES = [
     { method: "post", path: "/payments/{paymentKey}/transactions", tag: "Payment", contextful: true, summary: "Capture, release or refund", request: "TransactionInitDto", response: "TransactionDto",
       when: "The cashier captures a reservation, releases it, or refunds a completed sale. CommerceOS adds one payment record from the answer. It calls once and does not retry. Make the route idempotent on its request: the same paymentKey, token, actions and amount answer the same transaction. A key whose stream did not end in Complete has no payment: answer 404 with an error body." },
     { method: "post", path: "/payments/{cancellationToken}/cancel", tag: "Payment", contextful: true, summary: "Cancel a payment that sent a Cancellable step", request: "CancelDto", response: "none",
-      when: "The cashier presses Cancel on the waiting dialog, after your stream sent Cancellable and then Wait. CommerceOS calls once, in parallel with the open stream. Answer 2xx, then end the stream with a Cancel step: the final step closes the payment, not this call. A non-2xx shows 'Cancel failed: <message>' and leaves the stream running." },
+      when: "The cashier presses Cancel on the waiting dialog, after your stream sent Cancellable and then Wait. CommerceOS calls once, in parallel with the open stream. Answer 2xx, then end the stream with a Cancel step: the final step closes the payment, not this call. A non-2xx shows 'Cancel failed: <code>: <message>' from your error body (without '<code>: ' when the error has no code) and leaves the stream running." },
 ];
 
 /** What the integration calls on CommerceOS, with the OAuth2 scope each call needs. */

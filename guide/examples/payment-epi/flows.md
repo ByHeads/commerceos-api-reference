@@ -92,8 +92,8 @@ like a sale, with `["Authorize","Debit"]`. The reference, section 6, gives the r
 between the two.
 
 On the till, the *Refund* action is the button under the cart that replaces *Pay* once the cart holds
-a return of a receipt that your method paid: *Kvitto*, open the receipt, *Returnera allt*, pick a
-reason, *Skapa*, then the button reads `Återbetalning <your method> / −<amount>`. A non-2xx on the
+a return of a receipt that your method paid: *Kvitto*, then *Returnera allt* on the receipt's own row (there is no need to open it), pick a
+reason in the *Orsak* list, *Skapa*, then the button reads `Återbetalning <your method> / −<amount>`. A non-2xx on the
 transactions call shows `<code>: <message>` from your error body verbatim: unlike a `Fail` step, no
 code is translated on this route.
 
