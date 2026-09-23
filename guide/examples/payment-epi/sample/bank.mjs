@@ -47,6 +47,7 @@ export function createBank({ now = () => new Date(), idPrefix = `PB-${Date.now()
             means: { type: "Singleton", id: "Piggy Bank" },
         };
         ledger.push(transaction);
+        session.transactionIds = [...(session.transactionIds ?? []), transaction.transactionId];
         return transaction;
     }
 
@@ -92,6 +93,18 @@ export function createBank({ now = () => new Date(), idPrefix = `PB-${Date.now()
 
         /** A later move on settled money: `Debit` captures, `Annul` releases, `Credit` refunds. */
         record: (sessionId, actions, amount) => post(sessionId, actions, amount),
+
+        /**
+         * The money that `action` can still move on the session, in cents: a `Credit` refunds debited
+         * money that is not refunded yet; a `Debit` or an `Annul` uses reserved money that is not
+         * captured or released yet.
+         */
+        left(sessionId, action) {
+            const ids = new Set(get(sessionId).transactionIds ?? []);
+            const sum = name => ledger.filter(t => ids.has(t.transactionId) && t.actions.includes(name))
+                .reduce((total, t) => total + Math.round(Number(t.amount) * 100), 0);
+            return action === "Credit" ? sum("Debit") - sum("Credit") : sum("Authorize") - sum("Debit") - sum("Annul");
+        },
 
         /** Closes a session without money moving, for example `declined` or `cancelled`. */
         close(sessionId, state) { get(sessionId).state = state; },

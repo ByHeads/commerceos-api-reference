@@ -121,7 +121,7 @@
         "specification": { "$ref": "#/$defs/SpecificationDto", "description": "What the payment is for. For a Payment the total amounts sum to amount. A Payout from the pay screen carries an empty array." },
         "debitSynchronously": {
           "const": true,
-          "description": "Present and true when the money must move in this call, Payment and Payout alike. A till sends it on every request. A Complete under it must capture: actions Authorize and Debit, or a Debit transaction. CommerceOS refuses an Authorize-only Complete under the flag, and the cashier sees an error. Absent only on API-driven flows that reserve first and capture later through the transactions route."
+          "description": "Present and true when the money must move in this call, Payment and Payout alike. A till sends it on every request. A Complete under it must capture: actions Authorize and Debit, or a Debit transaction. CommerceOS refuses an Authorize-only Complete under the flag, and the cashier sees an error. The till is today the only caller, so the flag is always present. The contract also allows a request without it that reserves first and captures or releases later through the transactions route; no CommerceOS flow uses that path today."
         },
         "redirectUrls": {
           "type": "object",
@@ -193,7 +193,7 @@
         "reversalArgs": { "$ref": "#/$defs/ReversalDto", "description": "Present on a refund: the original transaction to reverse." }
       },
       "required": ["actions", "token", "amount", "currencyCode", "methodId"],
-      "description": "The body of POST /payments/{paymentKey}/transactions: a capture (Debit), a release (Annul) or a refund (Credit) on a payment that completed. CommerceOS makes the call once and does not retry."
+      "description": "The body of POST /payments/{paymentKey}/transactions: today only a refund (Credit) from a till; the contract also allows a capture (Debit) or a release (Annul) of a reservation, on a payment that completed. CommerceOS makes the call once and does not retry."
     },
     "TransactionDto": {
       "type": "object",

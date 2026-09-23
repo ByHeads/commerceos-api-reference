@@ -76,7 +76,7 @@ paths:
       tags:
         - "Lifecycle"
       summary: "Test the configuration of the context"
-      description: "The administrator runs the test method on the integration: one call per configured node. Read the configuration behind the context id, check it against your provider, and answer true. false, an empty body or a non-2xx counts as fail for that node."
+      description: "The administrator runs the test method on the integration: one call per configured node. Read the configuration behind the context id, check it against your provider, and answer true. false, an empty body or a non-2xx counts as fail for that node. When you can name the reason, answer a non-2xx with an error body: the administrator sees '<code>: <message>' next to the failed status. false shows no reason."
       parameters:
         - "$ref": "#/components/parameters/ConfigId"
         - "$ref": "#/components/parameters/ConfigHash"
@@ -211,7 +211,7 @@ paths:
       tags:
         - "Payment"
       summary: "Capture, release or refund"
-      description: "The cashier captures a reservation, releases it, or refunds a completed sale. CommerceOS adds one payment record from the answer. It calls once and does not retry. Treat every call as a new transaction: CommerceOS never retries this call, and two equal partial refunds of one line arrive with the same token and body, so answering the second with the first would refund the customer once instead of twice. Refuse a call for more than the payment has left. A key whose stream did not end in Complete has no payment: answer 404 with an error body."
+      description: "Today CommerceOS calls this route only for a refund from a till: actions [Credit] with reversalArgs, one call per refunded payment. The contract also allows a capture (Debit) or a release (Annul) of a reservation; no CommerceOS flow sends those today. CommerceOS adds one payment record from the answer. It calls once and does not retry. Treat every call as a new transaction: CommerceOS never retries this call, and two equal partial refunds of one line arrive with the same token and body, so answering the second with the first would refund the customer once instead of twice. Refuse a call for more than the payment has left: answer a non-2xx with an error body. Every non-2xx status is handled the same way. The cashier sees '<code>: <message>' from the first error as a red alert, and the refund is not recorded. A body without errors shows 'Payment failed: Error: Request failed: <status>.' instead. A key whose stream did not end in Complete has no payment: answer 404 with an error body."
       parameters:
         - name: "paymentKey"
           in: "path"
@@ -464,7 +464,7 @@ components:
           description: "What the payment is for. For a Payment the total amounts sum to amount. A Payout from the pay screen carries an empty array."
         debitSynchronously:
           const: true
-          description: "Present and true when the money must move in this call, Payment and Payout alike. A till sends it on every request. A Complete under it must capture: actions Authorize and Debit, or a Debit transaction. CommerceOS refuses an Authorize-only Complete under the flag, and the cashier sees an error. Absent only on API-driven flows that reserve first and capture later through the transactions route."
+          description: "Present and true when the money must move in this call, Payment and Payout alike. A till sends it on every request. A Complete under it must capture: actions Authorize and Debit, or a Debit transaction. CommerceOS refuses an Authorize-only Complete under the flag, and the cashier sees an error. The till is today the only caller, so the flag is always present. The contract also allows a request without it that reserves first and captures or releases later through the transactions route; no CommerceOS flow uses that path today."
         redirectUrls:
           type: "object"
           properties:
@@ -606,7 +606,7 @@ components:
         - "amount"
         - "currencyCode"
         - "methodId"
-      description: "The body of POST /payments/{paymentKey}/transactions: a capture (Debit), a release (Annul) or a refund (Credit) on a payment that completed. CommerceOS makes the call once and does not retry."
+      description: "The body of POST /payments/{paymentKey}/transactions: today only a refund (Credit) from a till; the contract also allows a capture (Debit) or a release (Annul) of a reservation, on a payment that completed. CommerceOS makes the call once and does not retry."
     TransactionDto:
       type: "object"
       properties:

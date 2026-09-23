@@ -136,7 +136,7 @@ makes back. Generate a server stub from the first and a client from the second w
 | `GET /terminals` | contextful | the terminals that this configuration knows, `TerminalDto[]` |
 | `GET /terminals/{terminalId}` | contextful | one `TerminalDto` |
 | `PUT /payments/{paymentKey}` | contextful | a stream of steps that ends in `Complete`, `Decline`, `Cancel` or `Fail` |
-| `POST /payments/{paymentKey}/transactions` | contextful | one `TransactionDto`: a capture, a release or a refund |
+| `POST /payments/{paymentKey}/transactions` | contextful | one `TransactionDto`. Today only a till refund (`Credit`) calls it. The contract also allows a capture or a release |
 | `POST /payments/{cancellationToken}/cancel` | contextful | any 2xx. The stream then ends with `Cancel` |
 
 Calls go in two directions, and each direction has its own authentication.
@@ -394,7 +394,7 @@ Heads certifies your installed integration with the tool in `--cos` mode, throug
 - [ ] A repeated `PUT` for a completed `paymentKey` answers the same `processorsId` and the same transactions, and `processorsId` is unique for all time.
 - [ ] `POST /test` answers per node: it reads the configuration of the context id and checks it.
 - [ ] State lives in the CommerceOS key-value store or in your database, never only in memory.
-- [ ] `POST /payments/{paymentKey}/transactions` treats every call as a new transaction. CommerceOS never retries it, and two equal partial refunds of one line arrive with the same token and body: both must be paid. Refuse a call that asks for more than the payment has left.
+- [ ] `POST /payments/{paymentKey}/transactions` treats every call as a new transaction. CommerceOS never retries it, and two equal partial refunds of one line arrive with the same token and body: both must be paid. Refuse a call that asks for more than the payment has left, with a non-2xx and an error body: the cashier sees `<code>: <message>`.
 - [ ] Every stream ends with exactly one final step, also on an exception. A stream that closes without one shows the cashier nothing at all.
 - [ ] Every call to your provider has a timeout, and a timeout ends the stream with `Fail`.
 - [ ] You log the `X-EPI-Debug-Info` header on every contextful call.

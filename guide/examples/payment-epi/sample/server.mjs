@@ -33,7 +33,7 @@ const TERMINALS = [
 ];
 const CONFIG_SCHEMA = { title: "Piggy Bank", members: { merchantId: { type: "string" }, environment: { type: "'TEST' or 'LIVE'" } } };
 
-const errorBody = message => ({ errors: [{ message }] });
+const errorBody = (message, code) => ({ errors: [{ ...(code ? { code } : {}), message }] });
 
 /** The two cents digits of a decimal string, or null when the string is not a decimal. */
 export function cents(amount) {
@@ -258,7 +258,11 @@ export function startPiggyServer({ port = 0, now = () => new Date(), waitMs = 30
             const sessionId = sessionsByKey.get(paymentKey);
             if (!sessionId || bank.session(sessionId).state !== "settled") return json(response, 404, errorBody(`No completed payment ${paymentKey}`));
             if (dto?.methodId !== METHOD_ID) return json(response, 400, errorBody(`Unknown method ${dto?.methodId}`));
-            const transaction = { ...bank.record(sessionId, dto.reversalArgs ? ["Credit"] : dto.actions, dto.amount), ...(dto.specification ? { specification: dto.specification } : {}) };
+            const actions = dto.reversalArgs ? ["Credit"] : dto.actions;
+            // Refuse more than the payment has left. The cashier sees "<code>: <message>" from this body.
+            const left = bank.left(sessionId, actions.includes("Credit") ? "Credit" : "Debit");
+            if (Math.round(Number(dto.amount) * 100) > left) return json(response, 422, errorBody(`${dto.amount} is more than the ${(left / 100).toFixed(2)} left on payment ${paymentKey}`, "AmountExceeded"));
+            const transaction = { ...bank.record(sessionId, actions, dto.amount), ...(dto.specification ? { specification: dto.specification } : {}) };
             save();
             return json(response, 200, transaction);
         }

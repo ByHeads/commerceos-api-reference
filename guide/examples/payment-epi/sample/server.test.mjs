@@ -142,6 +142,11 @@ test("two identical partial refunds are two refunds: CommerceOS never retries, a
         const second = await post(credit);
         assert.notEqual(second.transactionId, first.transactionId);
         assert.equal(piggy.bank.ledger.length, 3, "the sale and two refunds");
+        // 2.00 is left. A third refund of 4.00 is refused with an error body the cashier sees.
+        const refused = await fetch(`${piggy.url}/payments/pay-refund/transactions`, { method: "POST", headers: context, body: JSON.stringify(credit) });
+        assert.equal(refused.status, 422);
+        assert.equal((await refused.json()).errors[0].code, "AmountExceeded");
+        assert.equal(piggy.bank.ledger.length, 3, "a refused refund moves no money");
     } finally {
         await piggy.close();
     }

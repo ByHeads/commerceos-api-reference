@@ -38,9 +38,9 @@ Payout alike, and CommerceOS refuses a `Complete` under it whose transactions do
 (the error "Payment was requested to be synchronously debited, but it was not."). So every
 Payment scenario that starts a stream sends the flag, as P11 does for a Payout, and the tool checks that the
 `Complete` captured: a `Debit` action, in the same transaction as `Authorize` or in a separate one. The two
-exceptions are P2 and P3, the only Payment scenarios without the flag: they cover the API-driven reservation
-flow, `Authorize` first and `Debit` or `Annul` later through the transactions route, which a till never
-starts. P5 is the Authorize-only Payout, also without the flag.
+exceptions are P2 and P3, the only Payment scenarios without the flag: they cover the reservation path of the
+contract, `Authorize` first and `Debit` or `Annul` later through the transactions route. No CommerceOS
+flow uses that path today: a till always sends the flag. P5 is the Authorize-only Payout, also without the flag.
 
 Four checks run on every stream whatever the scenario expects: the stream holds exactly one final step and it is
 the last event; a non-2xx status fails, because CommerceOS discards the body on this route and the cashier sees
