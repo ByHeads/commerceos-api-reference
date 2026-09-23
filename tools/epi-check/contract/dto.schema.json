@@ -32,7 +32,7 @@
         }
       },
       "required": ["cosBaseUrl", "tokenUrl", "clientId", "clientSecret", "scope"],
-      "description": "The body of POST /install. It is the only credential that your integration receives: the OAuth2 client of the integration's user in CommerceOS, for the calls back to CommerceOS (see the CommerceOS-side document). A second install sends the same client again."
+      "description": "The body of POST /install. It is the only credential that your integration receives: the OAuth2 client of the integration's user in CommerceOS, for the calls back to CommerceOS (see the CommerceOS-side document). A second install usually sends the same client again, and it can carry a new one: always store the client that the latest install sent."
     },
     "MethodDto": {
       "type": "object",

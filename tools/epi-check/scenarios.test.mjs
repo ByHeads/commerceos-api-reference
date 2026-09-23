@@ -55,12 +55,14 @@ test("the amounts follow the plan's scenario table", () => {
     assert.equal("referenceOnly" in read("H1"), false);
     assert.equal(read("P5").steps[0].args.direction, "Payout");
     assert.deepEqual([read("P11").steps[0].args.direction, read("P11").steps[0].args.debitSynchronously], ["Payout", true]);
-    // The repeats: P10 sends the identical PUT twice, P12 the identical Credit twice.
+    // The repeats: P10 sends the identical PUT twice (a resume); P12 the identical partial Credit twice (two refunds).
     const p10 = read("P10"), p12 = read("P12");
     assert.deepEqual(p10.steps[1].args, p10.steps[0].args);
     assert.equal(p10.steps[1].expect.idempotent, true);
     assert.deepEqual(p12.steps[2].args, p12.steps[1].args);
-    assert.equal(p12.steps[2].expect.idempotent, true);
+    assert.equal(p12.steps[1].args.amount, "40.00", "a partial refund, so that two of them fit in the sale");
+    assert.equal(p12.steps[2].expect.distinct, true);
+    assert.equal("idempotent" in p12.steps[2].expect, false);
     assert.equal(read("E2").steps[0].args.methodId, "com.epicheck.unknown");
     assert.equal(read("E1").steps[0].call, "transaction");
     assert.equal(read("P6").steps[0].expect.translatedReason, true);

@@ -38,7 +38,7 @@ CommerceOS calls these endpoints outside a payment. *Bare* calls carry no contex
 
 | Call | Headers | Request body | Response | When |
 |---|---|---|---|---|
-| `POST {baseUrl}/install` | bare | install payload, below | any 2xx | the `install` action on the integration. On success the status becomes `Active`. A later install can carry a different client: store the new one and drop any cached token |
+| `POST {baseUrl}/install` | bare | install payload, below | any 2xx | the `install` action on the integration. On success the status becomes `Active`. A later install usually sends the same client again, and it can carry a new one: always store the client it sends, and drop any cached token |
 | `POST {baseUrl}/uninstall` | bare | empty | any 2xx. A failure is logged and ignored | the `uninstall` action. The status becomes `Inactive` |
 | `GET {baseUrl}/config-schema` | bare | none | form description, section 4 | an administrator opens the configuration form |
 | `POST {baseUrl}/test` | contextful | none | JSON `true` | the `test` method, once per configured node |
@@ -183,17 +183,21 @@ transaction after the `Authorize`. CommerceOS refuses an Authorize-only `Complet
 so never answer a reservation on a till. The request carries no flag only on API-driven flows that
 reserve first and capture later through the transactions route (scenarios `P2`, `P3`).
 
-`token` names the currency instance of the request. CommerceOS makes a new one for every distinct
-request, so two partial refunds of the same amount on one order carry two different tokens; only
-a retry of the same request repeats the token. That is what makes the idempotency key of section
-11 safe. In that key, compare `actions` as a set: the order of the array carries no meaning.
+`token` names a set of the payment's money, not a request. A refund's token names part of the money
+that the original payment debited, and CommerceOS picks that part the same way each time. So two
+partial refunds of the same amount on the same line carry the same token and an identical body.
+CommerceOS never retries a transactions call (section 11), so treat every call as a new
+transaction: never answer a second call with the first call's transaction, or the customer is
+refunded once instead of twice. Refuse a call that asks for more than the payment has left.
 
 Some fields arrive empty from a till, and your integration must accept them: `redirectUrls` are all
 `https://heads.com`, a sale without a customer carries a `payer` of type `Person` with an empty
 `fullName`, `specification[].identifier` can be `""`, and `reversalArgs.terminalId` is `""` for a method
 that requires no terminal.
 
-`specification` lists what the payment is for, and the total amounts sum to `amount`:
+`specification` lists what the payment is for, and the total amounts sum to `amount`. When a tender
+pays only part of a line, that line's `quantity` is prorated and fractional, for example `"0.012565"`
+for 10.04 of a 799.00 line: read it as a decimal, never as an integer.
 <!-- fixture: scenarios/fixtures.json#/specification -->
 ```json
 [
@@ -411,7 +415,7 @@ The cents of the amount select the outcome: [Build a payment integration](../pay
 | The stream closes cleanly with no final step | Shows nothing. No dialog, no payment line, the sale stays open. Verified on a till 2026-09-22 | Never close a stream without a final step. On an exception, send `Fail` first |
 | A `Complete` that CommerceOS refuses (an Authorize-only answer under `debitSynchronously`, or a transaction it cannot record) | The raw dialog `¿Error: Payment was requested to be synchronously debited, but it was not.?`, no payment order, and the next attempt reuses the same `paymentKey`, so a resume repeats the refused answer and the cashier is stuck. A platform fix that turns this into a `Fail` step is proposed; with it the next attempt is a new key | Never send such a `Complete`. The tool refuses a non-capturing `Complete` under the flag |
 | The connection drops before a final step | Shows the raw dialog `¿TypeError: terminated?`. The payment order is not marked failed. On the cashier's next attempt with direction `Payment`: no order yet, same `paymentKey` again; an order `Debited` for the tender amount, attached without a new call; an order `Debited` for another amount, attached and the cashier told to tender the rest; a non-debited order, a fresh key | Treat a second `PUT` with a known `paymentKey` as a resume: answer the same `processorsId` and the same transactions, never a second charge. The conformance scenario `P10` checks it. When the session behind the key still waits for the customer, continue that session on the new stream, with `Wait` steps, and never open a second session |
-| A stream call or a transactions call fails (network error, non-2xx) | Makes no retry. The cashier sees the error and starts the payment again by hand. Data after a final step is ignored | Make every call idempotent on its request: the same `paymentKey`, `token`, `actions` and `amount` answer the same transaction. Send exactly one final step, then close |
+| A stream call or a transactions call fails (network error, non-2xx) | Makes no retry. The cashier sees the error and starts the payment again by hand. Data after a final step is ignored | On the stream route, treat a second `PUT` with a known `paymentKey` as a resume (see below). On the transactions route, treat every call as new: CommerceOS never retries it, and two equal partial refunds arrive identical (section 6). Send exactly one final step, then close |
 | A repeated `records` item in `PATCH /v1/payment-orders/{key}` (same `transactionId.id` on the same order) | A repeat of the identical record is a no-op. A record that reuses the id with any field changed is refused | Repeat a callback with the same body, or not at all. Give every distinct transaction its own id |
 | A `records` item after the order is `Debited` | Has no state guard. A late `Debit` or `Authorize` beyond the remaining amount answers 400 (`Amount must agree with designated instance.`, or with a `token`, `Designated instance must be a subset of available instance.`). A `Credit` up to the debited amount is accepted and adds `Credited` | Post the completion once. Do not post a `Debit` for a sale that the stream already completed |
 | A `Complete` whose `processorsId` equals that of an earlier payment order of the same method | Refuses it. The cashier sees `Error: Payment order '<id>' already exists.` and no payment record is created | Make `processorsId` unique per method for all time. A counter that restarts with your process collides with the orders it created before the restart |

@@ -119,7 +119,9 @@ received at install, reads the configuration behind the context id, checks it ag
 
 Ten routes under one base URL. CommerceOS holds that base URL on a *payment integration* record
 and appends a fixed path per call. A *bare* call carries no context headers. A *contextful* call
-carries the three context headers of the reference, section 3. Reject one that arrives without them.
+carries the three context headers of the reference, section 3. Reject one that arrives without them
+with a 400, on every contextful route including the stream route: CommerceOS always sends them, so
+only a caller that is not CommerceOS reaches that answer.
 The contract is two OpenAPI 3.1 documents: [`epi-openapi.yaml`](./payment-epi/epi-openapi.yaml) for these ten routes, with every field described and
 each operation saying when CommerceOS calls it, and [`commerceos-openapi.yaml`](./payment-epi/commerceos-openapi.yaml) for the calls your integration
 makes back. Generate a server stub from the first and a client from the second with your OpenAPI generator.
@@ -146,7 +148,8 @@ body of `POST /install`. Store them. Your integration gets a client-credentials 
 `tokenUrl` and sends it as a bearer token on every call to CommerceOS. The client is limited to
 what an integration needs: the configuration behind a context id, a key-value store for your own
 state, and payment orders and payment records, for example to complete a payment that ends
-asynchronously (reference, section 8). A second install sends the same client again.
+asynchronously (reference, section 8). A second install usually sends the same client again, and it
+can carry a new one: always store the client that the latest install sent.
 
 **CommerceOS calls your integration without a credential.** CommerceOS calls your integration for
 everything in the table. The three context headers identify the configuration, and nothing
@@ -328,7 +331,8 @@ the till, not from your own. Then the till: *Kassa* → *Kassa* (`/cos/pos/termi
 *Aktivera POS-läge*. It can end the back-office session in that browser; if it does, log in again
 and pick the organization if asked (*Välj organisation*). Then the cashier starts the till for the day. To pay with your method: add an article, press *Payments*, then *Pay*
 (`F4`). Do not press the large button under the cart, *Mockbetalning*: it pays the whole balance
-at once with the seeded test method, not yours. On *Pay*, type the amount before you pick a method, and pick yours. Picking the method starts the
+at once with the seeded test method, not yours. On *Pay*, type the amount before you pick a method (a script must send real keystrokes: a value set
+without them shows in the field, but the till ignores it and charges the whole balance), and pick yours. Picking the method starts the
 payment at once, with no confirm step, so check the amount in the field first: it opens with the
 whole balance, in the till's own number format (`799` for a whole amount, `10,04` with öre, on a
 Swedish till). Your method is a text tile in the grid of
@@ -390,7 +394,7 @@ Heads certifies your installed integration with the tool in `--cos` mode, throug
 - [ ] A repeated `PUT` for a completed `paymentKey` answers the same `processorsId` and the same transactions, and `processorsId` is unique for all time.
 - [ ] `POST /test` answers per node: it reads the configuration of the context id and checks it.
 - [ ] State lives in the CommerceOS key-value store or in your database, never only in memory.
-- [ ] `POST /payments/{paymentKey}/transactions` is idempotent: the same request (`paymentKey`, `token`, `actions`, `amount`) answers the same transaction, so a retry from your own infrastructure does not capture twice.
+- [ ] `POST /payments/{paymentKey}/transactions` treats every call as a new transaction. CommerceOS never retries it, and two equal partial refunds of one line arrive with the same token and body: both must be paid. Refuse a call that asks for more than the payment has left.
 - [ ] Every stream ends with exactly one final step, also on an exception. A stream that closes without one shows the cashier nothing at all.
 - [ ] Every call to your provider has a timeout, and a timeout ends the stream with `Fail`.
 - [ ] You log the `X-EPI-Debug-Info` header on every contextful call.

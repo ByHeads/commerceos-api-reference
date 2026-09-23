@@ -23,7 +23,7 @@ The JSON examples in [`../reference.md`](../reference.md) quote these files, so 
 | P9 | `Wait`, then `Complete` |
 | P10 | Resume: the identical `PUT` for a completed key answers the same `processorsId` and transactions, no new charge |
 | P11 | Payout with `debitSynchronously: true`: `["Authorize","Debit"]` |
-| P12 | Refund twice: the identical `Credit` request answers the same transaction |
+| P12 | Refund twice: two identical partial `Credit` requests (40.00 each, same token) are two refunds, each with its own `transactionId` |
 | E1 | `POST /transactions` for a key that never completed: 404 with an error body |
 | E2 | Unknown `methodId` on the stream: a 200 stream with one `Fail` step, never a non-2xx |
 | H1 | A contextful call without the context headers: 400 with an error body |
@@ -93,7 +93,8 @@ the run, a `processorsId` that a later scenario repeats fails that scenario: Com
 | `actions` | Per transaction, in order: the exact `actions` array |
 | `echo` | Field names that must equal the request. Checked on the response, on `result`, and on every transaction |
 | `derivedStatus` | The sorted status set (reference section 9), computed over every transaction the scenario collected so far, with `amount` as the limit |
-| `idempotent` | The step repeats the scenario's previous call of the same kind with the same body (reference section 11). For `startPayment` the final `Complete` carries the same `result.processorsId` and the same set of `transactionId`s as the earlier one: a resume, never a second charge (P10). For `transaction` the `transactionId` is the earlier one (P12). The answer is not collected a second time |
+| `idempotent` | The step repeats the scenario's previous call of the same kind with the same body (reference section 11). For `startPayment` the final `Complete` carries the same `result.processorsId` and the same set of `transactionId`s as the earlier one: a resume, never a second charge (P10). Used for `startPayment` only. The answer is not collected a second time |
+| `distinct` | The step repeats the scenario's previous `transaction` with the same body, and it is a second transaction: its `transactionId` differs from the earlier one (P12, reference section 6) |
 | `translatedReason` | For a `Decline` final step: a `reason` outside the ten codes the POS translates (reference section 9) adds a warning to the scenario, not a failure. The report shows `pass (warn)` and lists it under *Warnings* (P6) |
 
 ## Placeholders

@@ -132,16 +132,16 @@ test("debitSynchronously: true, as a till sends it, captures on every amount and
     }
 });
 
-test("the identical transactions request answers the same transaction, and a different one gets a new id", async () => {
+test("two identical partial refunds are two refunds: CommerceOS never retries, and both carry the same token", async () => {
     const piggy = await startPiggyServer({ idPrefix: "PB-", now: clock });
     try {
         const [sale] = await events(await fetch(`${piggy.url}/payments/pay-refund`, { method: "PUT", headers: context, body: JSON.stringify(init("10.00")) }));
-        const credit = { actions: ["Credit"], token: "tok-1", amount: "10.00", currencyCode: "SEK", methodId: METHOD_ID, reversalArgs: { originalTransactionId: sale.result.transactions[0].transactionId, originalTimestamp: sale.result.transactions[0].timestamp } };
+        const credit = { actions: ["Credit"], token: "tok-1", amount: "4.00", currencyCode: "SEK", methodId: METHOD_ID, reversalArgs: { originalTransactionId: sale.result.transactions[0].transactionId, originalTimestamp: sale.result.transactions[0].timestamp } };
         const post = body => fetch(`${piggy.url}/payments/pay-refund/transactions`, { method: "POST", headers: context, body: JSON.stringify(body) }).then(r => r.json());
         const first = await post(credit);
-        assert.deepEqual(await post(credit), first);
-        assert.equal(piggy.bank.ledger.length, 2, "the sale and one refund");
-        assert.notEqual((await post({ ...credit, amount: "5.00" })).transactionId, first.transactionId);
+        const second = await post(credit);
+        assert.notEqual(second.transactionId, first.transactionId);
+        assert.equal(piggy.bank.ledger.length, 3, "the sale and two refunds");
     } finally {
         await piggy.close();
     }

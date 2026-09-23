@@ -72,13 +72,12 @@ export function startPiggyServer({ port = 0, now = () => new Date(), waitMs = 30
     const bank = createBank({ now, ...(idPrefix !== undefined ? { idPrefix } : {}), ...(saved ? { snapshot: saved.bank } : {}) });
     const sessionsByKey = new Map(saved?.sessionsByKey); // paymentKey -> sessionId
     const resultsByKey = new Map(saved?.resultsByKey); // paymentKey -> the Complete result, replayed on a repeated PUT
-    const transactionsByRequest = new Map(saved?.transactionsByRequest); // paymentKey + body -> the transaction, replayed on a repeated call
     const pendingCancels = new Map(); // cancellationToken -> release()
     let installation = null;
     const configByHash = new Map(); // X-EPI-Context-Config-Hash -> the configuration behind it
     const save = () => {
         if (!stateFile) return;
-        writeFileSync(stateFile, JSON.stringify({ bank: bank.snapshot(), sessionsByKey: [...sessionsByKey], resultsByKey: [...resultsByKey], transactionsByRequest: [...transactionsByRequest] }, null, 2));
+        writeFileSync(stateFile, JSON.stringify({ bank: bank.snapshot(), sessionsByKey: [...sessionsByKey], resultsByKey: [...resultsByKey] }, null, 2));
     };
 
     const json = (response, status, body) => {
@@ -251,17 +250,15 @@ export function startPiggyServer({ port = 0, now = () => new Date(), waitMs = 30
             return streamPayment(response, decodeURIComponent(match[1]), await readJson(request));
         }
         // Section 6: capture, release and refund. A refund carries reversalArgs and credits the session.
-        // Section 11: CommerceOS does not retry, but a cashier may; the same request answers the same transaction.
+        // Section 6: CommerceOS never retries this call, so every call is a new transaction. Two equal partial
+        // refunds of one line arrive with the same token and body, and both are paid.
         if ((match = /^POST \/payments\/([^/]+)\/transactions$/.exec(route))) {
             const dto = await readJson(request);
             const paymentKey = decodeURIComponent(match[1]);
             const sessionId = sessionsByKey.get(paymentKey);
             if (!sessionId || bank.session(sessionId).state !== "settled") return json(response, 404, errorBody(`No completed payment ${paymentKey}`));
             if (dto?.methodId !== METHOD_ID) return json(response, 400, errorBody(`Unknown method ${dto?.methodId}`));
-            const requestKey = `${paymentKey}\n${JSON.stringify(dto)}`;
-            if (transactionsByRequest.has(requestKey)) return json(response, 200, transactionsByRequest.get(requestKey));
             const transaction = { ...bank.record(sessionId, dto.reversalArgs ? ["Credit"] : dto.actions, dto.amount), ...(dto.specification ? { specification: dto.specification } : {}) };
-            transactionsByRequest.set(requestKey, transaction);
             save();
             return json(response, 200, transaction);
         }

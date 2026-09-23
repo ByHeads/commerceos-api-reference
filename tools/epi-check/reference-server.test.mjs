@@ -235,14 +235,21 @@ test("a repeated PUT for a completed key is a resume: the same body, no new tran
     assert.match(first, /"processorsId": ?"proc-pay-resume"/);
 });
 
-test("a repeated transactions request answers the same transaction; a different body gets a new one", async () => {
+test("two identical transactions requests are two transactions; only the credit-deduplicated defect replays", async () => {
     await collectEvents((await startPayment(server, "pay-twice", "100.00")).body);
     const body = JSON.stringify({ actions: ["Credit"], token: "tok-1", amount: "100.00", currencyCode: "SEK", methodId: METHOD_ID, reversalArgs: { originalTransactionId: "REF-000001", originalTimestamp: "2026-01-01T00:00:00.000Z" } });
     const post = b => fetch(`${server.url}/payments/pay-twice/transactions`, { method: "POST", headers: jsonHeaders, body: b }).then(r => r.json());
     const first = await post(body);
-    assert.deepEqual(await post(body), first);
-    const other = await post(JSON.stringify({ ...JSON.parse(body), amount: "50.00" }));
-    assert.notEqual(other.transactionId, first.transactionId);
+    assert.notEqual((await post(body)).transactionId, first.transactionId);
+    const deduplicating = await startReferenceServer({ defect: "credit-deduplicated" });
+    try {
+        await collectEvents((await startPayment(deduplicating, "pay-x-P12", "100.00")).body);
+        const again = b => fetch(`${deduplicating.url}/payments/pay-x-P12/transactions`, { method: "POST", headers: jsonHeaders, body: b }).then(r => r.json());
+        const once = await again(body);
+        assert.deepEqual(await again(body), once);
+    } finally {
+        await deduplicating.close();
+    }
 });
 
 test("a scenario-bound defect hits only the key that ends in its scenario id", async () => {

@@ -161,6 +161,7 @@ export const TRANSLATED_DECLINE_REASONS = ["InsufficientFunds", "CardNotActive",
 export const STREAM_NON_2XX = "CommerceOS discards the body of a non-2xx on this route and shows the cashier nothing: answer a 200 stream with a Fail step";
 export const CANCELLABLE_ALONE = "the POS shows the cancel button on the Wait or ShowImage step after Cancellable; Cancellable alone shows nothing";
 /** A till sends `debitSynchronously: true` on every request, Payment and Payout alike, and CommerceOS refuses a Complete under it whose transactions do not leave the order Debited (PaymentMethod.ts:343-349). */
+export const DEDUPLICATED_REFUND = "a second identical Credit answered the first refund again: CommerceOS never retries a transactions call, and two equal partial refunds of one line carry the same token, so every call is a new refund and the customer must be paid twice";
 export const NOT_CAPTURED_UNDER_FLAG = "the request carried debitSynchronously: true and the Complete did not capture: CommerceOS refuses this answer and the cashier sees an error";
 
 function statusMatches(expected, actual) {
@@ -205,6 +206,16 @@ function checkIdempotent({ step, label, subject, previous, fail }) {
     }
     if (!previous || typeof previous !== "object") { fail(label, "", "idempotent needs an earlier transaction in the scenario to compare with"); return; }
     if (!sameJson(subject?.transactionId, previous.transactionId)) fail(label, "transactionId", `expected ${JSON.stringify(previous.transactionId)} again, got ${JSON.stringify(subject?.transactionId)}: the same request answers the same transaction, never a second one`);
+}
+
+/**
+ * `expect.distinct` (reference section 6): the step repeats the scenario's previous transaction with an identical
+ * body, and it is a second refund, not a retry. CommerceOS never retries a transactions call, and two equal partial
+ * refunds of one line carry the same token, so the answer must be a new transaction.
+ */
+function checkDistinct({ label, subject, previous, fail }) {
+    if (!previous || typeof previous !== "object") { fail(label, "", "distinct needs an earlier transaction in the scenario to compare with"); return; }
+    if (subject?.transactionId != null && sameJson(subject.transactionId, previous.transactionId)) fail(label, "transactionId", DEDUPLICATED_REFUND);
 }
 
 /**
@@ -287,6 +298,7 @@ function checkStep({ step, label, expect, status, subject, previous, events, arg
     }
 
     if (expect.idempotent) checkIdempotent({ step, label, subject, previous, fail });
+    if (expect.distinct) checkDistinct({ label, subject, previous, fail });
 
     // A reason outside the translated set is not a contract breach: the cashier reads the raw code.
     if (expect.translatedReason && subject?.type === "Decline" && !TRANSLATED_DECLINE_REASONS.includes(subject.reason)) {

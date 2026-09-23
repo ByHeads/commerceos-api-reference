@@ -29,7 +29,7 @@ export function defectMessages(RUN_ID) {
         "resume-new-transaction": [/expected the same transactionIds .*a resume answers the same transactions, never a second charge/],
         "cancel-refuses": [/expected 2xx, got 409/],
         "credit-refuses": [/expected 200, got 500/],
-        "credit-not-idempotent": [/the same request answers the same transaction, never a second one/],
+        "credit-deduplicated": [/a second identical Credit answered the first refund again/],
         "cancellable-without-wait": [new RegExp(CANCELLABLE_ALONE)],
         "authorize-only-under-flag": [new RegExp(NOT_CAPTURED_UNDER_FLAG), /expected \[Authorize, Debit\], got \[Authorize\]/],
     };

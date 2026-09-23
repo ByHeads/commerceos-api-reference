@@ -56,7 +56,7 @@ export const DEFECT_SCENARIO = {
     "resume-new-transaction": "P10",    // the repeated PUT mints a new transaction
     "cancel-refuses": "P7",             // the cancel call answers 409 with a body
     "credit-refuses": "P4",             // the Credit answers 500 with a body
-    "credit-not-idempotent": "P12",     // the repeated Credit gets a new transactionId
+    "credit-deduplicated": "P12",       // the second identical Credit answers the first refund again
     "cancellable-without-wait": "P7",   // no Wait after Cancellable
     "authorize-only-under-flag": "P1",  // ["Authorize"] although the request carried debitSynchronously: true
 };
@@ -81,7 +81,7 @@ export function startReferenceServer({ port = 0, now = () => new Date("2026-01-0
     let firstProcessorsId;
     const pendingCancels = new Map();
     const results = new Map();               // paymentKey -> the Complete result, replayed on a repeated PUT
-    const transactionsByRequest = new Map(); // paymentKey + body -> the transaction, replayed on a repeated call
+    const transactionsByRequest = new Map(); // paymentKey + body -> the transaction, replayed only by the credit-deduplicated defect
 
     const defective = (name, key) => defect === name && scenarioOf(key) === DEFECT_SCENARIO[name];
     const nextTransactionId = () => `REF-${String(++counter).padStart(6, "0")}`;
@@ -240,9 +240,10 @@ export function startReferenceServer({ port = 0, now = () => new Date("2026-01-0
             if (!results.has(key)) return json(response, 404, errorBody(`No completed payment ${key}`));
             if (dto?.methodId !== METHOD_ID) return json(response, 400, errorBody("Unknown method"));
             if (defective("credit-refuses", key) && dto.actions?.includes("Credit")) return json(response, 500, errorBody("Credit refused"));
-            // Section 11: the same request answers the same transaction.
+            // Section 6: CommerceOS never retries this call, so every call is a new transaction. The defect
+            // deduplicates by request, which pays a second equal partial refund with the first one.
             const requestKey = `${key}\n${JSON.stringify(dto)}`;
-            if (transactionsByRequest.has(requestKey) && !defective("credit-not-idempotent", key)) return json(response, 200, transactionsByRequest.get(requestKey));
+            if (defective("credit-deduplicated", key) && transactionsByRequest.has(requestKey)) return json(response, 200, transactionsByRequest.get(requestKey));
             const result = transaction(dto, dto.actions);
             transactionsByRequest.set(requestKey, result);
             return json(response, 200, result);

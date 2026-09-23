@@ -1,6 +1,6 @@
 {
     "id": "P12",
-    "title": "Refund twice: the identical Credit request answers the same transaction",
+    "title": "Refund twice: two identical partial Credit requests are two refunds",
     "amount": "100.00",
     "steps": [
         {
@@ -49,10 +49,9 @@
                     "Credit"
                 ],
                 "token": "{{token}}",
-                "amount": "{{amount}}",
+                "amount": "40.00",
                 "currencyCode": "{{currencyCode}}",
                 "methodId": "{{methodId}}",
-                "specification": "{{specification}}",
                 "reversalArgs": {
                     "originalTransactionId": "{{transactions.0.transactionId}}",
                     "originalTimestamp": "{{transactions.0.timestamp}}"
@@ -86,10 +85,9 @@
                     "Credit"
                 ],
                 "token": "{{token}}",
-                "amount": "{{amount}}",
+                "amount": "40.00",
                 "currencyCode": "{{currencyCode}}",
                 "methodId": "{{methodId}}",
-                "specification": "{{specification}}",
                 "reversalArgs": {
                     "originalTransactionId": "{{transactions.0.transactionId}}",
                     "originalTimestamp": "{{transactions.0.timestamp}}"
@@ -98,7 +96,18 @@
             "expect": {
                 "status": 200,
                 "schema": "TransactionDto",
-                "idempotent": true,
+                "actions": [
+                    [
+                        "Credit"
+                    ]
+                ],
+                "echo": [
+                    "methodId",
+                    "amount",
+                    "currencyCode",
+                    "token"
+                ],
+                "distinct": true,
                 "derivedStatus": [
                     "Credited",
                     "Debited"

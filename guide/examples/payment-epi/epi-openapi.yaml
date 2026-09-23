@@ -211,7 +211,7 @@ paths:
       tags:
         - "Payment"
       summary: "Capture, release or refund"
-      description: "The cashier captures a reservation, releases it, or refunds a completed sale. CommerceOS adds one payment record from the answer. It calls once and does not retry. Make the route idempotent on its request: the same paymentKey, token, actions and amount answer the same transaction. A key whose stream did not end in Complete has no payment: answer 404 with an error body."
+      description: "The cashier captures a reservation, releases it, or refunds a completed sale. CommerceOS adds one payment record from the answer. It calls once and does not retry. Treat every call as a new transaction: CommerceOS never retries this call, and two equal partial refunds of one line arrive with the same token and body, so answering the second with the first would refund the customer once instead of twice. Refuse a call for more than the payment has left. A key whose stream did not end in Complete has no payment: answer 404 with an error body."
       parameters:
         - name: "paymentKey"
           in: "path"
@@ -338,7 +338,7 @@ components:
         - "clientId"
         - "clientSecret"
         - "scope"
-      description: "The body of POST /install. It is the only credential that your integration receives: the OAuth2 client of the integration's user in CommerceOS, for the calls back to CommerceOS (see the CommerceOS-side document). A second install sends the same client again."
+      description: "The body of POST /install. It is the only credential that your integration receives: the OAuth2 client of the integration's user in CommerceOS, for the calls back to CommerceOS (see the CommerceOS-side document). A second install usually sends the same client again, and it can carry a new one: always store the client that the latest install sent."
     MethodDto:
       type: "object"
       properties:
