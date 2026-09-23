@@ -285,7 +285,7 @@ components:
       required: true
       schema:
         type: "string"
-      description: "A hash of the configuration values. A changed configuration has a new hash, so it is your cache key."
+      description: "The configuration id followed by three characters of a hash of the configuration values, for example tWBlI--. A changed configuration has a new value, so it is your cache key."
     DebugInfo:
       name: "X-EPI-Debug-Info"
       in: "header"

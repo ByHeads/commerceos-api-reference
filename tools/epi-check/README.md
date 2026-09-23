@@ -32,7 +32,9 @@ The scenario list with what each one proves is in
 fails, the other nineteen are skipped with its reason and the run exits 1. Every payment key and token of
 a run carries a run id (`pay-<runId>-P1`), so running the tool twice against the same integration never
 repeats a key that your integration stored; `--now <iso>` pins the id, and two pinned runs against the
-same integration state write byte-identical reports.
+same integration state write byte-identical reports. The tool does not delete anything: a `--cos` run
+leaves the key-value entries that your integration wrote for its scenario keys, one per payment
+scenario. Delete them, or let your integration expire them.
 
 ## Run it against a CommerceOS (`--cos`)
 

@@ -330,8 +330,9 @@ and pick the organization if asked (*Välj organisation*). Then the cashier star
 (`F4`), type the amount before you pick a method, and pick yours: it is a text tile in the grid of
 methods, next to the logo tiles, and missing from the *Payments* shortcut panel until an
 administrator adds it there. A `Decline`, `Fail` or `Cancel`
-closes the pay screen, so the next attempt starts again from *Pay*; `Wait` and `Complete` keep the
-sale on screen with the remaining balance.
+closes the pay screen, so the next attempt starts again from *Pay*. `Wait` keeps the pay screen open. A
+`Complete` closes it and adds a payment line to the sale, so a second tender also starts again from
+*Pay*, with the remaining balance.
 
 **Terminals.** A payment method that requires a terminal reaches the POS through a chain of four
 records. The arrows show which record points at which.

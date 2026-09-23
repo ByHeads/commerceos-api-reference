@@ -140,7 +140,7 @@ export function buildDocument(schemaDoc = loadSchema()) {
     const header = (name, description) => ({ name, in: "header", required: true, schema: { type: "string" }, description });
     const parameters = {
         ConfigId: header("X-EPI-Context-Config-Id", "The four-character id of the EPI configuration that this call runs under. Look the values up with GET /v1/context/config/{configId} on CommerceOS."),
-        ConfigHash: header("X-EPI-Context-Config-Hash", "A hash of the configuration values. A changed configuration has a new hash, so it is your cache key."),
+        ConfigHash: header("X-EPI-Context-Config-Hash", "The configuration id followed by three characters of a hash of the configuration values, for example tWBlI--. A changed configuration has a new value, so it is your cache key."),
         DebugInfo: header("X-EPI-Debug-Info", "JSON with nodeName, baseUrl and name. Logging only. CommerceOS always sends all three headers; check at least X-EPI-Context-Config-Id."),
     };
     const schemas = reachable(schemaDoc.$defs, { paths, parameters, extra: ["ErrorBody", "PaymentStep"].map(ref) });

@@ -38,7 +38,7 @@ CommerceOS calls these endpoints outside a payment. *Bare* calls carry no contex
 
 | Call | Headers | Request body | Response | When |
 |---|---|---|---|---|
-| `POST {baseUrl}/install` | bare | install payload, below | any 2xx | the `install` action on the integration. On success the status becomes `Active` |
+| `POST {baseUrl}/install` | bare | install payload, below | any 2xx | the `install` action on the integration. On success the status becomes `Active`. A later install can carry a different client: store the new one and drop any cached token |
 | `POST {baseUrl}/uninstall` | bare | empty | any 2xx. A failure is logged and ignored | the `uninstall` action. The status becomes `Inactive` |
 | `GET {baseUrl}/config-schema` | bare | none | form description, section 4 | an administrator opens the configuration form |
 | `POST {baseUrl}/test` | contextful | none | JSON `true` | the `test` method, once per configured node |
@@ -107,7 +107,7 @@ Every contextful call carries three headers; CommerceOS always sends all three. 
 | Header | Value | Use |
 |---|---|---|
 | `X-EPI-Context-Config-Id` | the four-character id of the configuration | look the configuration up (section 4) |
-| `X-EPI-Context-Config-Hash` | a hash of the configuration values | cache key. A changed configuration has a new hash |
+| `X-EPI-Context-Config-Hash` | the configuration id followed by three characters of a hash of the configuration values, for example `tWBlI--` | cache key. A changed configuration has a new value |
 | `X-EPI-Debug-Info` | JSON with `nodeName`, `baseUrl`, `name` | logging only. `nodeName` is the node of the call, for example the store of the till. The configuration can sit on a parent of that node |
 
 CommerceOS sends this context; the conformance tool reads the same values from the EPI configuration
@@ -307,7 +307,7 @@ the client.
 |---|---|---|
 | `POST {tokenUrl}` | — | client-credentials token. Cache it until `expires_in` |
 | `GET /v1/context/config/{configId}` | `me` | the configuration for a context id (section 4) |
-| `GET`, `PUT`, `DELETE /v1/kv/{container}/{key}` | `kv` | a key-value store for your own state. `container` is a namespaced key such as `com.example.payments`. There is no route that lists the keys of a container: keep your own index if you need one |
+| `GET`, `PUT`, `DELETE /v1/kv/{container}/{key}` | `kv` | a key-value store for your own state. `container` is a namespaced key such as `com.example.payments`. No route lists the keys of a container: `GET /v1/kv/{container}` answers 200 with an empty `kvp set`, whatever it holds. Keep your own index if you need one |
 | `PATCH /v1/payment-orders/{paymentKey}` with `{ "records": [ ... ] }` | `orders.payments:write` | complete an asynchronous payment, for example from a callback of your provider |
 
 ```bash
