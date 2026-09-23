@@ -1,16 +1,20 @@
 #!/usr/bin/env node
-// The epi-check CLI. One mode: it tests the payment integration that a CommerceOS has installed,
-// through that CommerceOS. It reads the integration record, the test result per node and the context
-// of one configured node from the CommerceOS API (scenario C1), then runs every other scenario against
-// the integration's `baseUrl` with the real context headers, so the integration's `/test` reads its real
-// configuration through the real CommerceOS. It writes report.json, report.md and meta.json, and
-// exits 0 only when every scenario passes.
+// The epi-check CLI. It tests a payment integration through a CommerceOS: it reads the integration record,
+// the test result per node and the context of one configured node from the CommerceOS API (scenario C1),
+// then runs every other scenario against the integration's `baseUrl` with the real context headers, so the
+// integration's `/test` reads its configuration through that CommerceOS. It writes report.json, report.md and
+// meta.json, and exits 0 only when every scenario passes.
 //
 //   node tools/epi-check/run.mjs --cos <cosBaseUrl> --key <apiKey> --integration <name>
 //                                [--node <nodeName>] [--profile <file>] [--out <dir>] [--now <iso>] [--timeout <ms>]
+//   node tools/epi-check/run.mjs --local <integrationBaseUrl> [--profile <file>] [--out <dir>] [--now <iso>] [--timeout <ms>]
 //
-// C1 gates the run: when it fails, the other scenarios are skipped with its reason. Nothing is created,
-// installed or configured on CommerceOS; install and configuration are administrator work.
+// `--cos` certifies the instance a CommerceOS installed; nothing on either side is created or changed.
+// `--local` is for a laptop with no CommerceOS: it starts a stand-in CommerceOS (cos-stub.mjs), which plays the
+// administrator against the integration (install with its own client, a configuration on node `Local` from the
+// profile, the method records), and then runs exactly as `--cos <stand-in> --key <key> --integration Local`.
+// One scenario path; the stand-in is only where the CommerceOS answers come from. C1 gates the run: when it
+// fails, the other scenarios are skipped with its reason.
 //
 // Every payment key and token of a run carries a run id (fixtures.json: pay-{{runId}}-{{id}}), because
 // an integration stores them and CommerceOS never sends a payment key twice for a new payment. The id
@@ -21,6 +25,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createDriver, EpiCheckError, DRIVER_CALLS } from "./driver.mjs";
 import { createCosClient, runCosScenario } from "./cos.mjs";
+import { startLocalCos, LOCAL_TITLE } from "./cos-stub.mjs";
 import { validate } from "./validate.mjs";
 import { deriveStatus, toMinor, scaleOf } from "./status.mjs";
 import { buildReport, buildMeta, reportJson, reportMarkdown } from "./report.mjs";
@@ -35,7 +40,7 @@ const CONTRACT_COMMIT = "e70578427aa3dcfecd73780b9d06043aa520da23";
 export const ORDER = ["C1", "L2", "L3", "L4", "L5", "P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10", "P11", "P12", "E1", "E2", "H1"];
 const EPI_ORDER = ORDER.slice(1);
 
-export const ONE_MODE = "epi-check has one mode: it tests the integration that a CommerceOS has installed, through that CommerceOS. Give --cos <cosBaseUrl> --key <apiKey> --integration <name>.";
+export const MODES = "epi-check tests an integration through a CommerceOS: --cos <cosBaseUrl> --key <apiKey> --integration <name> for the instance a CommerceOS installed, or --local <integrationBaseUrl> for a laptop instance against a stand-in.";
 
 /** Eight hex characters: from `--now` when given (deterministic), else random. */
 export function runIdFor(now) {
@@ -44,23 +49,38 @@ export function runIdFor(now) {
 
 export function parseArgs(args) {
     const options = { timeout: 30000 };
-    const valued = { "--cos": "cos", "--key": "key", "--integration": "integration", "--node": "node", "--profile": "profile", "--out": "out", "--now": "now", "--timeout": "timeout" };
+    const valued = { "--cos": "cos", "--local": "local", "--key": "key", "--integration": "integration", "--node": "node", "--profile": "profile", "--out": "out", "--now": "now", "--timeout": "timeout" };
     const removed = ["--base", "--reference", "--reference-defect"];
     for (let i = 0; i < args.length; i++) {
         const arg = args[i];
         if (arg === "--help") return { help: true };
-        if (removed.includes(arg)) throw new Error(`${arg} is gone. ${ONE_MODE}`);
+        if (removed.includes(arg)) throw new Error(`${arg} is gone. ${MODES}`);
         if (!Object.hasOwn(valued, arg)) throw new Error(`Unknown argument: ${arg}`);
         if (args[i + 1] === undefined || args[i + 1].startsWith("--")) throw new Error(`Missing value for ${arg}`);
         options[valued[arg]] = args[++i];
     }
-    for (const [flag, name] of [["--cos", "cos"], ["--key", "key"], ["--integration", "integration"]]) {
-        if (options[name] === undefined || (name !== "key" && options[name] === "")) throw new Error(`Missing ${flag}. ${ONE_MODE}`);
+    if (options.cos !== undefined && options.local !== undefined) throw new Error(`--cos and --local exclude each other. ${MODES}`);
+    if (options.local !== undefined) {
+        if (options.local === "") throw new Error(`Missing value for --local. ${MODES}`);
+        for (const [flag, name] of [["--key", "key"], ["--integration", "integration"], ["--node", "node"]]) {
+            if (options[name] !== undefined) throw new Error(`${flag} is for --cos: in local mode the stand-in names the integration and its node itself.`);
+        }
+    } else {
+        for (const [flag, name] of [["--cos", "cos"], ["--key", "key"], ["--integration", "integration"]]) {
+            if (options[name] === undefined || (name !== "key" && options[name] === "")) throw new Error(`Missing ${flag}. ${MODES}`);
+        }
     }
     options.timeout = Number(options.timeout);
     if (!Number.isFinite(options.timeout) || options.timeout <= 0) throw new Error("--timeout must be a positive number of milliseconds.");
     if (options.now !== undefined && Number.isNaN(Date.parse(options.now))) throw new Error("--now must be an ISO date.");
     return options;
+}
+
+/** A profile carries `configuration` only in local mode: with --cos the configuration lives on CommerceOS. */
+export function loadProfile(file, { local }) {
+    const profile = file ? JSON.parse(readFileSync(resolve(file), "utf8")) : {};
+    if (!local && Object.hasOwn(profile, "configuration")) throw new Error(`${file} carries "configuration", which only --local uses: with --cos the configuration lives on CommerceOS, entered by the administrator on the node. Remove the key.`);
+    return profile;
 }
 
 export function loadScenarios() {
@@ -378,23 +398,38 @@ function stripContextFetch(fetchImpl = globalThis.fetch) {
     };
 }
 
-function defaultOut(cosBaseUrl, integration, generatedAt) {
-    return join(process.cwd(), "epi-check-reports", `${generatedAt.slice(0, 10)}-${new URL(cosBaseUrl).hostname}-${integration}`);
+function defaultOut(options, generatedAt) {
+    const name = options.local !== undefined ? `local-${new URL(options.local).hostname}` : `${new URL(options.cos).hostname}-${options.integration}`;
+    return join(process.cwd(), "epi-check-reports", `${generatedAt.slice(0, 10)}-${name}`);
 }
 
-/** Runs C1 and, when it passes, every scenario against the installed integration. Writes the three files. Returns `{ report, meta, outDir, exitCode }`. */
+/**
+ * Runs C1 and, when it passes, every scenario against the integration. Writes the three files.
+ * Returns `{ report, meta, outDir, target, exitCode }`. With `options.local` it starts the stand-in first and
+ * runs the same path against it.
+ */
 export async function run(options) {
+    const profile = loadProfile(options.profile, { local: options.local !== undefined });
+    if (options.local === undefined) return runThrough(options, profile, { mode: "cos" });
+    const standIn = await startLocalCos({ baseUrl: options.local, configuration: profile.configuration ?? {}, timeoutMs: options.timeout });
+    try {
+        return await runThrough({ ...options, cos: standIn.url, key: standIn.key, integration: standIn.integration }, profile, { mode: "local", title: LOCAL_TITLE, target: `local stand-in, ${options.local}` });
+    } finally {
+        await standIn.close();
+    }
+}
+
+async function runThrough(options, profile, { mode, title, target = `${options.integration} on ${options.cos}` }) {
     const started = performance.now();
     const generatedAt = options.now ?? new Date().toISOString();
     const runId = runIdFor(options.now);
     const schemaDoc = JSON.parse(readFileSync(join(here, "contract", "dto.schema.json"), "utf8"));
     const fixtures = loadFixtures();
-    const profile = options.profile ? JSON.parse(readFileSync(resolve(options.profile), "utf8")) : {};
     const scenarios = loadScenarios();
-    const outDir = resolve(options.out ?? defaultOut(options.cos, options.integration, generatedAt));
+    const outDir = resolve(options.out ?? defaultOut(options, generatedAt));
 
     const client = createCosClient({ baseUrl: options.cos, key: options.key, timeoutMs: options.timeout });
-    const c1 = await runCosScenario({ client, integration: options.integration, node: options.node });
+    const c1 = await runCosScenario({ client, integration: options.integration, node: options.node, ...(title ? { title } : {}) });
     const outcomes = [c1];
     const baseUrl = c1.record?.baseUrl;
     const methodId = profile.methodId ?? c1.record?.methods?.[0]?.identifiers?.methodId;
@@ -410,9 +445,8 @@ export async function run(options) {
             outcomes.push(await runScenario(scenario, { driver, strippedDriver, schemaDoc, fixtures, profile, baseUrl, methodId, runId, processorsIds }));
         }
     }
-    const report = buildReport(outcomes);
-    const target = `${options.integration} on ${options.cos}`;
-    const meta = buildMeta({ cosBaseUrl: options.cos, integration: options.integration, node: c1.node ?? options.node ?? null, methodId: methodId ?? null, baseUrl: baseUrl ?? null, generatedAt, contractCommit: CONTRACT_COMMIT, durationMs: Math.round(performance.now() - started) });
+    const report = buildReport(outcomes, { mode });
+    const meta = buildMeta({ mode, cosBaseUrl: options.cos, integration: options.integration, node: c1.node ?? options.node ?? null, methodId: methodId ?? null, baseUrl: baseUrl ?? null, generatedAt, contractCommit: CONTRACT_COMMIT, durationMs: Math.round(performance.now() - started) });
     mkdirSync(outDir, { recursive: true });
     writeFileSync(join(outDir, "report.json"), reportJson(report));
     writeFileSync(join(outDir, "report.md"), reportMarkdown(report, { target }));
@@ -420,7 +454,7 @@ export async function run(options) {
     return { report, meta, outDir, target, exitCode: report.summary.fail === 0 ? 0 : 1 };
 }
 
-const usage = `Usage: node tools/epi-check/run.mjs --cos <cosBaseUrl> --key <apiKey> --integration <name> [--node <nodeName>] [--profile <file>] [--out <dir>] [--now <iso>] [--timeout <ms>]`;
+const usage = `Usage: node tools/epi-check/run.mjs --cos <cosBaseUrl> --key <apiKey> --integration <name> [--node <nodeName>] [--profile <file>] [--out <dir>] [--now <iso>] [--timeout <ms>]\n       node tools/epi-check/run.mjs --local <integrationBaseUrl> [--profile <file>] [--out <dir>] [--now <iso>] [--timeout <ms>]`;
 
 if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
     let options;
@@ -432,7 +466,9 @@ if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).
         process.exit(2);
     }
     if (options.help) { console.log(usage); process.exit(0); }
-    const { report, target, outDir, exitCode } = await run(options);
+    let result;
+    try { result = await run(options); } catch (error) { console.error(error.message); process.exit(2); }
+    const { report, target, outDir, exitCode } = result;
     process.stdout.write(reportMarkdown(report, { target }));
     console.log(`Written to ${outDir}`);
     process.exit(exitCode);

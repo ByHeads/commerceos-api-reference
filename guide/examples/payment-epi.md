@@ -370,11 +370,11 @@ cashier pays out with your method from the pay screen reaches you as such a `Pay
 *Refund* action under the cart makes the refund transaction, see
 [four more flows](./payment-epi/flows.md) section 3.
 
-Heads runs the tool through your CommerceOS against the installed integration. A profile file is needed only when your sandbox selects outcomes by other amounts, or when the method to test is not the first on your integration record. Tell Heads both.
+Heads certifies your installed integration with the tool in `--cos` mode, through the CommerceOS. A profile file is needed only when your sandbox selects outcomes by other amounts, or when the method to test is not the first on your integration record. Tell Heads both.
 
 ## 7. Go live
 
-- [ ] Your endpoint passes [`epi-check`](../../tools/epi-check/README.md), every scenario, against the instance that your CommerceOS installed. Run it yourself: `node tools/epi-check/run.mjs --cos <cosBaseUrl> --key <apiKey> --integration <name>`. The tool reads your method, your configuration and your base URL from that CommerceOS, so nothing is installed twice. Give `--timeout` at least your longest wait window: the default is thirty seconds.
+- [ ] Your endpoint passes [`epi-check`](../../tools/epi-check/README.md), every scenario. While you build, run it on your laptop: `node tools/epi-check/run.mjs --local <your integration base url> --profile <your profile>`, with the values your `/test` checks under `configuration`. Local mode starts a stand-in CommerceOS and installs your integration on it, so point it at a laptop instance, never at the one a CommerceOS installed. Heads certifies with `--cos <cosBaseUrl> --key <apiKey> --integration <name>` against the installed instance. Give `--timeout` at least your longest wait window: the default is thirty seconds.
 - [ ] A contextful call without the three context headers gets a 4xx and an error body.
 - [ ] A request your integration cannot take on the stream route is a 200 stream with one `Fail` step, never a non-2xx: CommerceOS discards the body there (reference, section 7).
 - [ ] A repeated `PUT` for a completed `paymentKey` answers the same `processorsId` and the same transactions, and `processorsId` is unique for all time.

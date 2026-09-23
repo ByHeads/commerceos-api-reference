@@ -19,8 +19,9 @@ export function sortKeys(value) {
  * An outcome with `steps` (`[{ label, result }]`, the COS scenario) keeps them, one per sub-step.
  * A skipped outcome carries `reason`: why it did not run (C1 failed).
  */
-export function buildReport(outcomes) {
+export function buildReport(outcomes, { mode } = {}) {
     return sortKeys({
+        ...(mode !== undefined ? { mode } : {}),
         scenarios: outcomes.map(outcome => ({
             id: outcome.id,
             title: outcome.title,
@@ -43,9 +44,12 @@ export function reportJson(report) {
     return JSON.stringify(report, null, 2) + "\n";
 }
 
-export function buildMeta({ cosBaseUrl, integration, node, methodId, baseUrl, generatedAt, contractCommit, durationMs }) {
-    return sortKeys({ cosBaseUrl, integration, node, methodId, baseUrl, generatedAt, contractCommit, durationMs });
+export function buildMeta({ mode, cosBaseUrl, integration, node, methodId, baseUrl, generatedAt, contractCommit, durationMs }) {
+    return sortKeys({ mode, cosBaseUrl, integration, node, methodId, baseUrl, generatedAt, contractCommit, durationMs });
 }
+
+/** The first line of every local report. */
+export const LOCAL_NOTICE = "Local run against a stand-in CommerceOS: this is not a certification. Heads certifies with --cos against the installed instance.";
 
 const marks = { pass: "pass", fail: "FAIL", skip: "skip" };
 const mark = scenario => (scenario.result === "pass" && scenario.warnings?.length > 0 ? "pass (warn)" : marks[scenario.result]);
@@ -64,6 +68,7 @@ function listUnder(lines, heading, scenarios, field) {
 /** One table row per scenario, failures and warnings listed under the table. */
 export function reportMarkdown(report, { target } = {}) {
     const lines = [];
+    if (report.mode === "local") lines.push(LOCAL_NOTICE, "");
     lines.push(`# epi-check report${target ? ` — ${target}` : ""}`, "");
     lines.push("| Id | Result | Scenario | Calls |", "|---|---|---|---|");
     for (const scenario of report.scenarios) {

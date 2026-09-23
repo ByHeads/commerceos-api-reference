@@ -11,8 +11,9 @@ import { execFile, spawnSync } from "node:child_process";
 import { promisify } from "node:util";
 import { Readable } from "node:stream";
 import { DEFECT_SCENARIO, METHOD_ID } from "./reference-server.mjs";
-import { startLab, startCosStub, CLIENT } from "./cos-stub.mjs";
-import { run, parseArgs, resolvePlaceholders, runIdFor, ORDER, ONE_MODE, STREAM_NON_2XX, CANCELLABLE_ALONE, NOT_CAPTURED_UNDER_FLAG, TRANSLATED_DECLINE_REASONS } from "./run.mjs";
+import { startCosStub, CLIENT } from "./cos-stub.mjs";
+import { startLab, defectMessages } from "./test-lab.mjs";
+import { run, parseArgs, resolvePlaceholders, runIdFor, ORDER, MODES, STREAM_NON_2XX, CANCELLABLE_ALONE, NOT_CAPTURED_UNDER_FLAG, TRANSLATED_DECLINE_REASONS } from "./run.mjs";
 import { validate } from "./validate.mjs";
 import { buildReport, buildMeta, reportJson, reportMarkdown, sortKeys } from "./report.mjs";
 
@@ -81,8 +82,8 @@ test("report: sorted keys, no timestamps, markdown rows, the skip reason, the me
     assert.match(md, /## Warnings\n\n### P6 — Decline\n\n- step 1: `reason` — odd/);
     assert.match(md, /## Skipped\n\nH1: C1 failed at step 1 integration \(status\): expected "Active", got "Inactive"\n$/);
     assert.doesNotMatch(reportMarkdown(buildReport([{ id: "C1", title: "x", result: "pass", failures: [], calls: [] }])), /Warnings|with warnings|Skipped/);
-    const meta = buildMeta({ cosBaseUrl: "http://cos", integration: "X", node: "Shade AB", methodId: "m", baseUrl: "http://epi", generatedAt: NOW, contractCommit: "c", durationMs: 1 });
-    assert.deepEqual(Object.keys(meta), ["baseUrl", "contractCommit", "cosBaseUrl", "durationMs", "generatedAt", "integration", "methodId", "node"]);
+    const meta = buildMeta({ mode: "cos", cosBaseUrl: "http://cos", integration: "X", node: "Shade AB", methodId: "m", baseUrl: "http://epi", generatedAt: NOW, contractCommit: "c", durationMs: 1 });
+    assert.deepEqual(Object.keys(meta), ["baseUrl", "contractCommit", "cosBaseUrl", "durationMs", "generatedAt", "integration", "methodId", "mode", "node"]);
 });
 
 test("runIdFor: eight hex characters, the same for the same --now, random without one", () => {
@@ -94,14 +95,14 @@ test("runIdFor: eight hex characters, the same for the same --now, random withou
     assert.notEqual(runIdFor(undefined), random);
 });
 
-test("parseArgs: the one mode needs --cos, --key and --integration; the removed flags name it; placeholders", () => {
+test("parseArgs: --cos needs --key and --integration; the removed flags name the two modes; placeholders", () => {
     assert.deepEqual(parseArgs(["--cos", "http://localhost:5000", "--key", "k", "--integration", "X", "--now", NOW]), { cos: "http://localhost:5000", key: "k", integration: "X", now: NOW, timeout: 30000 });
     assert.equal(parseArgs(["--cos", "http://x", "--key", "", "--integration", "X", "--timeout", "500", "--node", "Shade AB"]).node, "Shade AB");
     assert.equal(parseArgs(["--cos", "http://x", "--key", "", "--integration", "X", "--timeout", "500"]).timeout, 500);
-    assert.throws(() => parseArgs([]), /Missing --cos\. epi-check has one mode/);
-    assert.throws(() => parseArgs(["--cos", "http://x"]), /Missing --key\. epi-check has one mode/);
-    assert.throws(() => parseArgs(["--cos", "http://x", "--key", "k"]), /Missing --integration\. epi-check has one mode/);
-    for (const flag of ["--base", "--reference", "--reference-defect"]) assert.throws(() => parseArgs([flag, "x", "--cos", "http://x", "--key", "k", "--integration", "X"]), new RegExp(`${flag} is gone\\. ${ONE_MODE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
+    assert.throws(() => parseArgs([]), /Missing --cos\. epi-check tests an integration through a CommerceOS/);
+    assert.throws(() => parseArgs(["--cos", "http://x"]), /Missing --key\. epi-check tests an integration through a CommerceOS/);
+    assert.throws(() => parseArgs(["--cos", "http://x", "--key", "k"]), /Missing --integration\. epi-check tests an integration through a CommerceOS/);
+    for (const flag of ["--base", "--reference", "--reference-defect"]) assert.throws(() => parseArgs([flag, "x", "--cos", "http://x", "--key", "k", "--integration", "X"]), new RegExp(`${flag} is gone\\. ${MODES.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
     assert.throws(() => parseArgs(["--cos", "http://x", "--key", "k", "--integration", "X", "--bogus"]), /Unknown argument/);
     assert.throws(() => parseArgs(["--cos", "http://x", "--key", "k", "--integration", "X", "--now", "yesterday"]), /ISO date/);
     const vars = { id: "P1", amount: "100.05", token: "tok-{{id}}", payer: { key: "k" } };
@@ -120,7 +121,10 @@ test("a healthy reference integration through the stub passes every scenario, C1
         for (const scenario of result.report.scenarios) assert.deepEqual(scenario.warnings, [], scenario.id);
         for (const name of ["report.json", "report.md", "meta.json"]) assert.ok(existsSync(join(out, name)), name);
         const meta = JSON.parse(readFileSync(join(out, "meta.json"), "utf8"));
+        assert.equal(meta.mode, "cos");
         assert.equal(meta.cosBaseUrl, lab.cos);
+        assert.equal(result.report.mode, "cos");
+        assert.doesNotMatch(readFileSync(join(out, "report.md"), "utf8"), /not a certification/);
         assert.equal(meta.integration, "Reference");
         assert.equal(meta.node, "Shade AB");
         assert.equal(meta.methodId, METHOD_ID);
@@ -167,18 +171,7 @@ test("two runs with the same --now produce byte-identical reports; a second run 
 });
 
 // Each defect fails exactly the scenario it is bound to, with the message that names the contract fact.
-const DEFECT_MESSAGE = {
-    "no-final-step": [/the stream ended without a final step/],
-    "two-final-steps": [/exactly one final step, and it is the last event/],
-    "no-space-after-colon": [/one space after "data:"/],
-    "processorsId-reused": [new RegExp(`processorsId proc-pay-${RUN_ID}-P1 was already used by P1: CommerceOS refuses a reused processorsId`)],
-    "resume-new-transaction": [/expected the same transactionIds .*a resume answers the same transactions, never a second charge/],
-    "cancel-refuses": [/expected 2xx, got 409/],
-    "credit-refuses": [/expected 200, got 500/],
-    "credit-not-idempotent": [/the same request answers the same transaction, never a second one/],
-    "cancellable-without-wait": [new RegExp(CANCELLABLE_ALONE)],
-    "authorize-only-under-flag": [new RegExp(NOT_CAPTURED_UNDER_FLAG), /expected \[Authorize, Debit\], got \[Authorize\]/],
-};
+const DEFECT_MESSAGE = defectMessages(RUN_ID);
 for (const [defect, scenario] of Object.entries(DEFECT_SCENARIO)) {
     test(`defect ${defect} fails ${scenario} and nothing else`, async () => {
         await withLab({ defect }, async lab => {
@@ -409,7 +402,7 @@ test("the status of a stream step is the PUT's, not a react sub-call's; a plain-
     });
 });
 
-test("the CLI runs the one mode end to end, exits 0, and exits 2 on a removed flag or a bad argument", async () => {
+test("the CLI runs --cos end to end, exits 0, and exits 2 on a removed flag or a bad argument", async () => {
     await withLab({}, async lab => {
         const out = join(scratch, "cli");
         // Asynchronous, so the lab in this process can answer the child.
@@ -419,7 +412,7 @@ test("the CLI runs the one mode end to end, exits 0, and exits 2 on a removed fl
     });
     const gone = spawnSync(process.execPath, [join(here, "run.mjs"), "--base", "http://x"], { encoding: "utf8" });
     assert.equal(gone.status, 2);
-    assert.match(gone.stderr, /--base is gone\. epi-check has one mode: it tests the integration that a CommerceOS has installed, through that CommerceOS\./);
+    assert.match(gone.stderr, /--base is gone\. epi-check tests an integration through a CommerceOS: --cos .* or --local <integrationBaseUrl>/);
     const bad = spawnSync(process.execPath, [join(here, "run.mjs"), "--nope"], { encoding: "utf8" });
     assert.equal(bad.status, 2);
     assert.match(bad.stderr, /Unknown argument/);

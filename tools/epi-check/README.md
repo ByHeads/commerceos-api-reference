@@ -1,11 +1,16 @@
 # epi-check
 
-A dependency-free Node 22 tool that tests the payment integration a CommerceOS has installed, through
-that CommerceOS. It reads the integration from the CommerceOS API, checks the CommerceOS side, then
-calls the integration at the `baseUrl` the record names, with the context headers CommerceOS sends for
-one configured node, and runs the same scenarios that Heads runs before an integration goes live. It
-reports pass or fail per scenario. Nothing on the CommerceOS or the integration is created, installed or
-configured by the tool: install and configuration are administrator work, and the tool tests the result.
+A dependency-free Node 22 tool that tests a payment integration through a CommerceOS. It reads the
+integration from the CommerceOS API, checks the CommerceOS side, then calls the integration at the
+`baseUrl` the record names, with the context headers CommerceOS sends for one configured node, and runs
+the same scenarios that Heads runs before an integration goes live. It reports pass or fail per scenario.
+It has two modes and one scenario path:
+
+| Mode | For | What is the CommerceOS |
+|---|---|---|
+| `--cos` | certification: Heads, or a partner with access to a Heads instance | the real CommerceOS that installed the integration. The tool creates, installs and configures nothing |
+| `--local` | a partner building on a laptop with no CommerceOS | a stand-in the tool starts. It plays the administrator: installs the integration with its own client, saves the profile's configuration on a node `Local`, reads the methods. Then the run is exactly the `--cos` run against the stand-in |
+
 The contract it checks: [Payment EPI reference](../../guide/examples/payment-epi/reference.md).
 
 ## What it proves
@@ -29,7 +34,7 @@ a run carries a run id (`pay-<runId>-P1`), so running the tool twice against the
 repeats a key that your integration stored; `--now <iso>` pins the id, and two pinned runs against the
 same integration state write byte-identical reports.
 
-## Run it
+## Run it against a CommerceOS (`--cos`)
 
 ```
 node tools/epi-check/run.mjs --cos https://<instance>.app.heads.com --key <apiKey> --integration <name>
@@ -51,6 +56,29 @@ set up and no install payload from the tool: the integration keeps the client an
 administrator's install gave it, and `L2` proves that its `/test` reads the configuration the administrator
 entered, through the CommerceOS that holds it.
 
+## Run it on a laptop (`--local`)
+
+```
+node tools/epi-check/run.mjs --local http://127.0.0.1:8787/piggy --profile partner.json
+```
+
+`--local` takes the integration's base URL. `--key`, `--integration` and `--node` are refused with it,
+and it excludes `--cos`. The stand-in sends `POST /install` with its own token URL and a generated
+client, creates an EPI configuration on node `Local` with the profile's `configuration` (default `{}`),
+a context id and a hash, and reads `GET /methods` under that context to create the method records. If
+the install fails, C1 fails with the install error and the rest is skipped. `report.md` opens with the
+line "Local run against a stand-in CommerceOS: this is not a certification. Heads certifies with --cos
+against the installed instance.", and the C1 row reads "Local stand-in: …".
+
+**Point `--local` at a laptop instance, never at the instance that a CommerceOS installed.** The
+stand-in's install replaces the client and `cosBaseUrl` that the integration stored, and every call back
+to the real CommerceOS fails after the run. Certification does not need that instance twice: `--cos`
+tests it without installing anything.
+
+Try it against the Piggy Bank sample: start `node guide/examples/payment-epi/sample/server.mjs`, then
+run `--local http://127.0.0.1:8787/piggy` with a profile holding
+`{ "configuration": { "merchantId": "M-0001", "environment": "TEST" } }`: 20 pass, twice in a row.
+
 `--timeout <ms>` bounds every call (default 30000). A `Wait` window longer than that fails `P9`, the
 wait-then-complete scenario, with `This operation was aborted`: give it at least your longest wait window. `--out <dir>` chooses the report folder, default
 `./epi-check-reports/<date>-<cos host>-<integration>/`. `--profile <file>` is described below.
@@ -61,12 +89,14 @@ the step is a real one, and it closes the gate.
 
 ## The profile file
 
-Optional. The configuration lives on CommerceOS, entered by the administrator, so the profile holds only
-what the integration's sandbox needs on top: `methodId` when the integration has several methods and the
-first on the record is not the one to test; `amounts` when the sandbox selects outcomes by other amounts
-than the cents of the tutorial's [section 6](../../guide/examples/payment-epi.md#6-test-amounts);
+Optional. What the integration's sandbox needs on top of the fixtures: `methodId` when the integration
+has several methods and the first one is not the one to test; `amounts` when the sandbox selects outcomes
+by other amounts than the cents of the tutorial's [section 6](../../guide/examples/payment-epi.md#6-test-amounts);
 `terminalId` for a method that requires a terminal; `currencyCode` for a sandbox that does not take SEK.
-The keys and an example are in [scenarios/README.md](../../guide/examples/payment-epi/scenarios/README.md) § Profile file.
+In local mode also `configuration`, the values the stand-in saves on node `Local` and your `/test` reads.
+With `--cos` a profile that carries `configuration` is refused: there the configuration lives on
+CommerceOS, entered by the administrator. The keys and an example are in
+[scenarios/README.md](../../guide/examples/payment-epi/scenarios/README.md) § Profile file.
 
 ## How to read the report
 
@@ -80,36 +110,32 @@ goes to `--out`:
 | File | Holds |
 |---|---|
 | `report.md` | The printed table |
-| `report.json` | Per scenario: `id`, `title`, `result`, `failures`, `warnings`, `calls`; C1 also `steps`, a skipped scenario also `reason`. Two runs with the same `--now` are byte-identical |
-| `meta.json` | `cosBaseUrl`, `integration`, `node`, `methodId`, `baseUrl`, `generatedAt`, `contractCommit`, `durationMs` |
+| `report.json` | `mode` (`cos` or `local`), and per scenario: `id`, `title`, `result`, `failures`, `warnings`, `calls`; C1 also `steps`, a skipped scenario also `reason`. Two runs with the same `--now` are byte-identical |
+| `meta.json` | `mode`, `cosBaseUrl` (the stand-in's URL in local mode), `integration`, `node`, `methodId`, `baseUrl`, `generatedAt`, `contractCommit`, `durationMs` |
 
 Send `report.md` to Heads with a question about a failure. The `path` column names the field.
 
 ## The documentation trial
 
 The acceptance test of the documents themselves: can a coding agent build a payment integration
-from the published documents alone, connect it to a CommerceOS the way the tutorial says, and does
-the tool pass it?
+from the published documents alone, and does the tool pass it?
 
 ```
-node tools/epi-check/trial.mjs --cos http://localhost:5000 --key <apiKey> --attempts 3
+node tools/epi-check/trial.mjs --attempts 3
 ```
 
 The trial stages the tutorial, the reference, the flows, the two OpenAPI documents and the
 scenarios into an empty folder, without the Piggy Bank sample or this tool's source, and asks the
 agent for a do-nothing integration in Python on the standard library, method `com.example.trial`,
-installed and configured on the given CommerceOS by the agent itself, per the tutorial's section 5.
-The agent writes the integration's name to `INTEGRATION.txt`; after each attempt the harness makes
-sure the integration answers on its port, runs the tool through the CommerceOS, and hands the report
-back as `FEEDBACK.md`. The agent also writes `NOTES.md`: what the documents left unclear and what it
-assumed. Read that file after every run; each line is a documentation fix or a question for Heads.
-The run needs the `claude` CLI, Python 3, and a CommerceOS on this machine (it calls the integration
-at `127.0.0.1`). It costs a few dollars per attempt and writes everything under
-`epi-check-reports/trial-<date>/`. The integration the agent created stays on the CommerceOS:
-uninstall it by hand when it is no longer wanted. Run the trial after any change to the documents
-that a partner reads. Result on 2026-09-22, with the earlier harness that started the integration
-itself and the sixteen scenarios of that day: pass on the first attempt, 15 of 15 runnable
-scenarios, 404 lines of Python, fifteen notes, of which twelve became document fixes in the same change.
+with a configuration of `merchantId` and `environment`. After each attempt it starts the integration,
+runs the tool in local mode against it with `merchantId` `TRIAL-0001` and `environment` `TEST`, and
+hands the report back as `FEEDBACK.md`. The agent also writes `NOTES.md`: what the documents left
+unclear and what it assumed. Read that file after every run; each line is a documentation fix or a
+question for Heads. The run needs the `claude` CLI and Python 3, no CommerceOS, costs a few dollars
+per attempt, and writes everything under `epi-check-reports/trial-<date>/`. Run it after any change
+to the documents that a partner reads. Result on 2026-09-22, on the sixteen scenarios of that day:
+pass on the first attempt, 15 of 15 runnable scenarios, 404 lines of Python, fifteen notes, of which
+twelve became document fixes in the same change.
 
 ## Test the tool itself
 
@@ -117,15 +143,18 @@ scenarios, 404 lines of Python, fifteen notes, of which twelve became document f
 node --test 'tools/epi-check/*.test.mjs'
 ```
 
-The tests play CommerceOS with a stub (`cos-stub.mjs`, test code only): the four API routes the tool
-reads, under Basic auth, plus what an installed integration calls back (the token endpoint, the
-configuration behind a context id, the key-value store), answered by the sample's stand-in behind it.
-The installed integration is the reference server (`reference-server.mjs`), a complete integration on
-`node:http` with switchable defects; once installed it reads its configuration through the CommerceOS
-it was installed on, so `L2` is real in the self-test too. The tests prove that a healthy reference
-integration gives 20 pass, that each defect fails exactly its scenario, that a failed C1 skips the
-rest with the reason, that D1 warns and exits 0, that `--node` and the profile's `methodId` pick what
-they name, and that the removed flags are refused with a message that names the one mode.
+The tests use the same stand-in as local mode (`cos-stub.mjs`): the four API routes the tool reads,
+under Basic auth, plus what an installed integration calls back (the token endpoint, the configuration
+behind a context id, the key-value store), answered by the sample's `cos.mjs` behind it, which the tool
+imports rather than copies so the sample folder stays self-contained. The installed integration is the
+reference server (`reference-server.mjs`), a complete integration on `node:http` with switchable
+defects; installed, it reads its configuration through the CommerceOS that installed it, so `L2` is real
+in the self-test too. `test-lab.mjs` installs it on a stand-in with canned records for the `--cos` tests;
+`local-mode.test.mjs` runs `--local` against it and against the Piggy Bank sample. The tests prove that
+a healthy reference integration gives 20 pass in both modes and the sample 20 pass twice in local mode,
+that each defect fails exactly its scenario in both modes, that a failed C1 or a refused install skips
+the rest with the reason, that D1 warns and exits 0, that `--node` and the profile's `methodId` pick what
+they name, and that the flag rules hold.
 
 The scenarios live in `guide/examples/payment-epi/scenarios/`, one JSON file each, next to the
 reference that quotes them. `run.mjs` names the folder in one constant.

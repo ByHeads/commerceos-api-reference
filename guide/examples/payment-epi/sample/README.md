@@ -38,6 +38,7 @@ plays CommerceOS against it, and `node cos.mjs` runs the stand-in alone on port 
 node --test '*.test.mjs'
 ```
 The sample passes the `epi-check` conformance suite that Heads runs against every partner integration.
-Install it on a CommerceOS with the seven steps of the tutorial, then from the repository root
-`node tools/epi-check/run.mjs --cos <cosBaseUrl> --key <apiKey> --integration Piggy` gives 20 pass, 0 fail,
-0 skip, twice in a row without a restart. `PIGGY_STATE=<file>` keeps the bank's state on disk across restarts.
+From the repository root, `node tools/epi-check/run.mjs --local http://127.0.0.1:8787/piggy --profile p.json`,
+with `p.json` holding `{ "configuration": { "merchantId": "M-0001", "environment": "TEST" } }`, gives 20 pass,
+0 fail, 0 skip, twice in a row without a restart. Installed on a CommerceOS with the tutorial's seven steps,
+`--cos <cosBaseUrl> --key <apiKey> --integration Piggy` gives the same. `PIGGY_STATE=<file>` keeps the bank's state on disk across restarts.

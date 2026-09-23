@@ -1,7 +1,7 @@
 # Scenarios
 
 One JSON file per scenario of the conformance tool [`epi-check`](../../../../tools/epi-check/README.md), which runs them with
-`node tools/epi-check/run.mjs --cos <cosBaseUrl> --key <apiKey> --integration <name>` in the fixed order C1, L2 to L5, P1 to P12, E1, E2, H1. C1 is the
+`node tools/epi-check/run.mjs --cos <cosBaseUrl> --key <apiKey> --integration <name>` (or `--local <integrationBaseUrl>` on a laptop) in the fixed order C1, L2 to L5, P1 to P12, E1, E2, H1. C1 is the
 CommerceOS-side scenario and has no file: the tool's `cos.mjs` runs it first, and when it fails the others are skipped with its reason.
 The JSON examples in [`../reference.md`](../reference.md) quote these files, so a fixture and its example never drift apart.
 
@@ -29,7 +29,7 @@ The JSON examples in [`../reference.md`](../reference.md) quote these files, so 
 | H1 | A contextful call without the context headers: 400 with an error body |
 
 There is no install scenario: install is administrator work, done once on CommerceOS, and C1 proves its
-result. The tool sends every scenario after C1 to the `baseUrl` on the integration record, with the context
+result. In local mode the tool's stand-in CommerceOS does that work before C1, and a failed install fails C1. The tool sends every scenario after C1 to the `baseUrl` on the integration record, with the context
 headers CommerceOS sends for the node: the `contextConfigId` of the node's EPI configuration, the
 `configurationHash` of the assignment, and the debug info `{ nodeName, baseUrl, name }`.
 
@@ -118,15 +118,15 @@ inside a longer string is replaced by its text.
 
 ## Profile file
 
-Optional, given with `--profile`. The configuration your `/test` reads lives on CommerceOS, entered by
-the administrator, so the profile holds only what your sandbox needs on top of the fixtures:
+Optional, given with `--profile`. It holds what your sandbox needs on top of the fixtures:
 
 ```json
 {
     "methodId": "com.partner.card",
     "amounts": { "P6": "10.01", "P8": "10.02" },
     "terminalId": "TERM-1",
-    "currencyCode": "EUR"
+    "currencyCode": "EUR",
+    "configuration": { "merchantId": "M-0001", "environment": "TEST" }
 }
 ```
 
@@ -136,6 +136,7 @@ the administrator, so the profile holds only what your sandbox needs on top of t
 | `amounts` | Per scenario id, replaces `amount`, for a sandbox that selects outcomes by other amounts than the tutorial's cents |
 | `terminalId` | Added to every `PaymentInitDto` and `CancelDto`, for a method that requires a terminal |
 | `currencyCode` | Replaces the fixture currency in every request |
+| `configuration` | Local mode only: the values the stand-in saves on node `Local`, which your `/test` reads. Default `{}`. With `--cos` the tool refuses a profile that carries it: the configuration lives on CommerceOS, entered by the administrator |
 
 ## Adding a scenario
 

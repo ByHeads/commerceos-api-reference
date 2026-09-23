@@ -89,9 +89,10 @@ const isArray = value => Array.isArray(value);
  * integration as CommerceOS answered it), `node` (the name of the configured node the run uses) and
  * `context` (`{ configId, configHash, debugInfo }`, what the driver sends in the three X-EPI headers).
  * `node` names the configured node to use; without it the first configuration on the record is used.
+ * `title` replaces the row title (local mode says it checked a stand-in).
  */
-export async function runCosScenario({ client, integration, node }) {
-    const outcome = { id: COS_SCENARIO.id, title: COS_SCENARIO.title, result: "pass", failures: [], warnings: [], calls: [], steps: [] };
+export async function runCosScenario({ client, integration, node, title = COS_SCENARIO.title }) {
+    const outcome = { id: COS_SCENARIO.id, title, result: "pass", failures: [], warnings: [], calls: [], steps: [] };
     const fail = (step, path, message) => outcome.failures.push({ step, path, message });
     const warn = (step, path, message) => outcome.warnings.push({ step, path, message });
     const subSteps = [
