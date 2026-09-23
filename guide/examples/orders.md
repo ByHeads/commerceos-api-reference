@@ -827,6 +827,80 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/trade-orders" \
 
 ---
 
+## Orders Placed at the Till: Collect in Store and Ship to Customer
+
+> **Availability:** `deliveryAddresses` on an order line is v26.1.10 and later; the order function's store lists are v26.1.11 and later. The rest is long-standing.
+
+A cashier's "Add to order" turns cart lines into a customer order that is **collected in a store** or **shipped to the customer**, from a store the cashier picks, **paid now** or **paid later**. It is an ordinary trade order; the delivery mode is on the **line**, in `deliveryAddresses` (`[]` = collected in the line's `seller` store; one address = shipped there), and the order-level `deliveryAddresses` is a union that cannot tell the two apart. See [Working with Orders → Orders Placed at the Till](../../reference/working-with/orders.md#orders-placed-at-the-till-collect-in-store-and-ship-to-customer).
+
+```bash
+# Every completed till order (and every API-created order) has an order number; the till's open carts do not
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/trade-orders~where(identifiers/suppliersId)~take(50)"
+
+# One order by its number
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/trade-orders/suppliersId=1000000"
+
+# The line members that say how each line is delivered and by which store — non-essential, so name them
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/trade-orders/suppliersId=1000000~just(status,reservedUntil,deliveryAddresses,items~just(identifiers/key,deliveryAddresses,seller~just(name,identifiers/key),statusDetails))"
+# {"status":["Reserved"],"reservedUntil":null,
+#  "deliveryAddresses":[{"line1":"Alsta Björklunda 7", ...}],          <- the customer's address on file (union)
+#  "items":[{"identifiers":"4f24…","deliveryAddresses":[],            <- [] = collected in the seller store
+#            "seller":{"name":"Shade Stockholm","identifiers":"4b47…"},
+#            "statusDetails":[{"quantity":"1","status":"Reserved"}]}]}
+
+# Same members through the items collection, or on the line itself
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/trade-orders/suppliersId=1000000/items?fields=all"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/trade-order-items/4f2407ec3b07ff2a2f424434818ebc73~with(seller,buyer,deliveryAddresses,statusDetails)"
+
+# Everything an integration needs to route till orders, in one call - classify each line in the client
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/trade-orders~where(identifiers/suppliersId)~just(identifiers/suppliersId,status,balanceAmount,items~just(product/name,quantity,statusDetails,seller~just(identifiers/key,name),deliveryAddresses))~take(50)"
+
+# Orders a given store has to hand over or ship - identifier directly under sellers/, not sellers/identifiers/
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/trade-orders~where(sellers/com.heads.seedID=store-stockholm)~take(50)"
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/trade-orders/find" \
+  -H "Content-Type: application/json" \
+  -d '{"seller": {"identifiers": {"com.heads.seedID": "store-stockholm"}}}'
+
+# Awaiting pickup: pay later, not yet handed over
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/trade-orders~where(status=~Reserved)~take(50)"
+
+# Incremental polling, carts filtered out (a cart is a New order without a number)
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/trade-orders/after/2026-09-23T16:00:00Z~where(identifiers/suppliersId)~take(100)"
+
+# Collect from ship, server-side: nested per-line filters (the flat items/deliveryAddresses… forms match nothing)
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/trade-orders~where(items~where(deliveryAddresses~first/line1)~count)~take(50)"    # at least one shipped line
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/trade-orders~where(items~where(!deliveryAddresses~first/line1)~count)~take(50)"   # at least one collected line
+
+# A pay-now order: the prepayment receipt books a zero sale and carries the payment
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/receipts~first~just(identifiers,totalAmount,items~just(product/name,totalAmount,orderItems~just(identifiers/key)),payments~just(amount),orders~just(identifiers/suppliersId,status))"
+# {"identifiers":{"receiptID":"GPG00000000001"},"totalAmount":"0",
+#  "items":[{"product":"Apple AirPods med Lightning (3.gen)","totalAmount":"0","orderItems":[{"identifiers":"fdcf…"}]}],
+#  "payments":[{"amount":"2190"}],"orders":[{"identifiers":"1000001","status":["Committed"]}]}
+
+# Ship to customer: after the goods have left the seller store, fulfil the order (no shipment order is raised)
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/trade-orders/suppliersId=1000001/actions" \
+  -H "Content-Type: application/json" \
+  -d '{"tryFulfill": true}'
+
+# Set a line's delivery mode through the API while it is New or Reserved: [] = collect in store, one address = ship
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/trade-order-items/4f2407ec3b07ff2a2f424434818ebc73" \
+  -H "Content-Type: application/json" \
+  -d '{"deliveryAddresses": []}'
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/trade-order-items/4f2407ec3b07ff2a2f424434818ebc73" \
+  -H "Content-Type: application/json" \
+  -d '{"deliveryAddresses": [{"line1": "Testgatan 1", "postalCode": "11122", "cityName": "Stockholm", "countryCode": "SE"}]}'
+# Two addresses: 400 "A trade order item supports at most one delivery address."  Once Committed: 200, unchanged.
+```
+
+**What the till does afterwards:**
+- **Collect in store** — the customer picks up at the line's `seller` store; the till takes the remaining payment, the order goes `Fulfilled`, a second receipt with the full amount is written, the picking order disappears from the order. Nothing for the integration to write; do not `tryFulfill` it from the API.
+- **Ship to customer** — the integration ships from the `seller` store to `deliveryAddresses[0]` on the line and sends `tryFulfill`. On v26.1.12 and earlier `createShipment` + `release` is the alternative; v26.2.1 and later books a delivery.
+- **Cancel** — `tryCancel` on a `Reserved` (pay-later) till order is a `200` that changes nothing; the till cancels it, and the order then reads `Unreserved`.
+
+The stores the cashier may pick and the labels the tile applies are configured on the tile's order function — see [POS → The order function](pos.md#the-order-function-collect-in-store-and-ship-to-customer).
+
+---
+
 ## Notes
 
 - **sellers required**: Every trade order must have `sellers` — this determines where stock is picked from
@@ -838,6 +912,7 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/trade-orders" \
 - **Shipments**: `POST /v1/shipment-orders` returns an identifier shell with the body dropped. On v26.1.12 and earlier the trade order action `{"createShipment": true}` creates one from the approved order; v26.2.1 and later has no `createShipment`. `tryFulfill` never creates one. `release` is the only write a shipment order takes
 - **Purchasing**: Receiving against a purchase order and returning to a supplier are separate documents — see [Working with Purchasing](../../reference/working-with/purchasing.md)
 - **createPayment requires currency**: The `createPayment` action requires a `currency` field; omitting it throws "Currency not found."
+- **Till orders**: the delivery mode of an order placed at the till is on the line's `deliveryAddresses` (`[]` = collect in the line's `seller` store, one address = ship there), never on the order-level list, which is a union. The till's open carts are `New` orders without a `suppliersId` — filter with `~where(identifiers/suppliersId)`
 - **Payment methods**: Use `methodId` from `/v1/payment-methods` (e.g., `methodId: "com.heads.cash"`, `methodId: "com.heads.card"`)
 - **Click-and-collect**: Use `POST /v1/trade-orders` with `reservedUntil` for in-store pickup orders. The system reserves stock, creates a picking order, and schedules automatic release.
 - **reservedUntil**: Must be a future ISO 8601 timestamp. Available at both order level and item level. Reservation expires automatically via a scheduled task.

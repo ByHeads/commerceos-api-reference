@@ -717,6 +717,8 @@ It is a `trade order item[]`, **read-only**, and not included by default — req
 
 The receipt-level `orders` is effectively the union across every line, so it cannot tell you *which* line came from *which* order. That distinction matters on any receipt that mixes ordered and walk-in items, or that settles lines from more than one order — a common shape once click-and-collect and in-store pickup are in play. Reach for `orderItems` whenever the attribution has to be per line.
 
+> **A prepayment receipt books a zero sale.** When a cashier places a customer order and takes the payment up front, the receipt names the order line in `orderItems` and carries the full amount in `payments`, but its `totalAmount` and the line's `totalAmount` are `"0"`: it documents the advance, not a sale. The sale is on the receipt written when the goods are handed over (collect in store), which carries the full `totalAmount` and points at the same order line. See [Working with Orders → Orders Placed at the Till](working-with/orders.md#orders-placed-at-the-till-collect-in-store-and-ship-to-customer).
+
 ### Cardinality and empty results
 
 `orderItems` is always an array, and it is frequently **empty**:

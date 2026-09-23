@@ -1677,7 +1677,7 @@ GET /v1/prices~where(currency/identifiers/currencyCode=SEK)~take(100)     # matc
 GET /v1/prices~where(currency/currencyCode=SEK)~take(100)                 # 200 []
 ```
 
-Measured on `/v1/prices`, `/v1/trade-orders`, `/v1/products` and `/v1/stock-places`: `buyers/…`, `sellers/…`, `products/…` and `categories/…` match with the identifier directly under the name and return `[]` with `identifiers/`; the single references `currency`, `customer` and `owner` match with `identifiers/` and return `[]` without it; every dotted spelling returns `[]`. An empty result from a filter through a relation is therefore not proof that nothing matches — check which of the two forms the relation takes before trusting it.
+Measured on `/v1/prices`, `/v1/trade-orders`, `/v1/products` and `/v1/stock-places`: `buyers/…`, `sellers/…`, `products/…` and `categories/…` match with the identifier directly under the name and return `[]` with `identifiers/`; the single references `currency`, `customer` and `owner` match with `identifiers/` and return `[]` without it; every dotted spelling returns `[]`. An empty result from a filter through a relation is therefore not proof that nothing matches — check which of the two forms the relation takes before trusting it. On a trade order the filter is on the order-level `sellers` only; there is no line-level seller filter (see [gotcha 60](#60-sellersid-filters-on-a-trade-order-take-the-identifier-directly-and-there-is-no-line-level-seller-filter)).
 
 Related: [Prices → Customer Groups as Buyers](working-with/prices.md#customer-groups-as-buyers-price-lists), [Operators → `~where`](operators-catalog.md#wherepredicates).
 
@@ -1694,6 +1694,97 @@ GET /v1/stock-places/{key}~with(entries)                    # physicalQuantity s
 ```
 
 Related: [Orders → Where Shipment Orders Come From](working-with/orders.md#where-shipment-orders-come-from), [Stock → Where Shipment Orders Come From](working-with/stock.md#where-shipment-orders-come-from), [Stock → Shipment Timing](working-with/stock.md#shipment-timing).
+
+---
+
+## 58. The Order-Level `deliveryAddresses` Is a Union, Not the Delivery Mode
+
+A trade order's `deliveryAddresses` reads the order's own delivery address together with every address set on a line. The order's own address is the customer's address on file, so an order the till placed as **collect in store** lists an address at order level while its only line reads `[]`. The delivery mode is on the **line**: `deliveryAddresses: []` on an item means it is collected in the item's `seller` store; one address means it ships there.
+
+```bash
+# WRONG - the order-level list is a union; an address here does not mean "ship"
+GET /v1/trade-orders/suppliersId=1000000~just(deliveryAddresses)
+# [{"line1": "Alsta Björklunda 7", ...}]           <- the customer's address on file
+
+# RIGHT - read the line; the members are non-essential, so name them
+GET /v1/trade-orders/suppliersId=1000000~just(items~just(deliveryAddresses,seller~just(name)))
+# [{"deliveryAddresses": [], "seller": {"name": "Shade Stockholm"}}]   <- collected in Shade Stockholm
+```
+
+Measured on a collect-in-store and a ship-to-customer order from the same till: both list one address at order level; only the shipped one carries it on the line. Same on an API-created order after a line's `deliveryAddresses` is set: the order-level list then reads two addresses. v26.1.10 and later, when a line got its own `deliveryAddresses`.
+
+Related: [Orders → Orders Placed at the Till](working-with/orders.md#orders-placed-at-the-till-collect-in-store-and-ship-to-customer), [Orders → Order Addresses](working-with/orders.md#order-addresses).
+
+---
+
+## 59. Every Open POS Cart Is a `New` Trade Order Without a Number
+
+Each open cart at a till owns a draft trade order, and it is served like any other: by `/v1/trade-orders`, by `/v1/trade-orders/after/…` and by `~where(status=~New)`. It reads `status ["New"]`, no `suppliersId`, `items []` (or the lines still in the cart), `timestamp` = when the cart was opened, `totalAmount "0"`. A poller that treats every `New` order as "order received" acts on carts. With one till in use, a test system listed two of them beside its numbered orders.
+
+Filter on the order number. Every completed till order has one, and so does every order created through the API — even one still `New` — so the filter drops carts and nothing else:
+
+```bash
+# RIGHT
+GET /v1/trade-orders~where(identifiers/suppliersId)~take(50)
+GET /v1/trade-orders/after/2026-09-23T16:00:00Z~where(identifiers/suppliersId)~take(100)
+
+# The carts themselves
+GET /v1/trade-orders~where(!identifiers/suppliersId)~take(50)
+
+# NOT what you want
+GET /v1/trade-orders~where(status!=New)~take(50)    # also hides API-created orders that are still New
+GET /v1/trade-orders~where(suppliersId)~take(50)    # matches everything - the member is under identifiers/
+GET /v1/trade-orders~where(items~count)~take(50)    # a cart with lines in it has items
+```
+
+Related: [Orders → Finding and polling till orders](working-with/orders.md#finding-and-polling-till-orders), [Orders integration → Status Mapping](integration-templates/orders-integration.md#status-mapping-to-external-system).
+
+---
+
+## 60. `sellers/<id>=` Filters on a Trade Order Take the Identifier Directly, and There Is No Line-Level Seller Filter
+
+The store that has to hand over or ship a trade order is on each line's `seller`, and the order-level `sellers` is the set of those. The only filter is the order-level one, and it takes the form [gotcha 56](#56-a-filter-through-an-array-relation-takes-the-identifier-directly-under-the-relation-name) describes for array relations — the identifier directly under `sellers/`:
+
+```bash
+# RIGHT
+GET /v1/trade-orders~where(sellers/com.example.storeId=STORE-001)~take(50)
+GET /v1/trade-orders~where(sellers/key=4b47ad1b1f1fd5cb9d59283b11ee2c7f)~take(50)
+POST /v1/trade-orders/find   {"seller": {"identifiers": {"key": "4b47ad1b1f1fd5cb9d59283b11ee2c7f"}}}
+
+# WRONG - 200 [] with nothing matched
+GET /v1/trade-orders~where(sellers/identifiers/com.example.storeId=STORE-001)~take(50)
+GET /v1/trade-orders~where(items/seller/com.example.storeId=STORE-001)~take(50)      # no line-level form
+```
+
+Measured on three till orders for one store: the two `sellers/` forms and the finder return all three; the `identifiers/` form and the `items/seller/` form return `[]`. Where lines went to different stores, filter on `sellers/` and read each line's `seller` from the result.
+
+Related: [Orders → Finding and polling till orders](working-with/orders.md#finding-and-polling-till-orders).
+
+---
+
+## 61. Flat `items/deliveryAddresses…` Filters Match Nothing (or Everything When Negated)
+
+To find trade orders by how their lines are delivered, filter **through** the lines with a nested `~where` or reach one line with `~first`. A flat path through `items/deliveryAddresses` looks like a filter, answers `200`, and matches nothing — or, negated, every order:
+
+```bash
+# RIGHT - at least one line shipped to the customer / collected in store
+GET /v1/trade-orders~where(items~where(deliveryAddresses~first/line1)~count)~take(50)
+GET /v1/trade-orders~where(items~where(!deliveryAddresses~first/line1)~count)~take(50)
+
+# RIGHT for single-line orders - combine with the order-number filter, or ~count=1 matches carts too
+GET /v1/trade-orders~where(identifiers/suppliersId,items~first/deliveryAddresses~count=0)~take(50)
+GET /v1/trade-orders~where(identifiers/suppliersId,items~first/deliveryAddresses~count=1)~take(50)
+
+# WRONG
+GET /v1/trade-orders~where(items/deliveryAddresses~count=0)           # 200 []
+GET /v1/trade-orders~where(items/deliveryAddresses/count=0)           # 200 []
+GET /v1/trade-orders~where(items/deliveryAddresses~first/line1)       # 200 []
+GET /v1/trade-orders~where(!items/deliveryAddresses~first/line1)      # every order, carts included
+```
+
+Measured on three till orders (two collected, one shipped): the nested forms split them correctly; every flat form returned `[]` or all of them. For anything but a quick count, project `items~just(deliveryAddresses,seller,statusDetails)` and classify each line in the client.
+
+Related: [Orders → Finding and polling till orders](working-with/orders.md#finding-and-polling-till-orders), [gotcha 3](#3-reverse-and-any-dont-exist).
 
 ---
 

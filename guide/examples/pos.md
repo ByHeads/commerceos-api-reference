@@ -93,6 +93,8 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/pos-functions/pos
 #   - "add product function" → product
 #   - "park function" / "get parked function" → cartVisibility
 #   - "manual return function" → returnReason
+#   - "order function" → defaultLabels, pickableLabels, allowAllApplicableLabels,
+#       shipToCustomerStores, collectInStoreStores, shipToCustomerCurrentStore, collectInStoreCurrentStore
 curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/pos-functions" \
   -H "Content-Type: application/json" \
   -d '{
@@ -175,6 +177,53 @@ GET /v1/pos-functions/posFunctionId=void-sale/name       # 200  "Void Sale"
 ```
 
 > **A `404` on a leaf means "no such member"; a `200 null` does not.** The four members a subtype narrows — `cartVisibility`, `reason`, `returnReason` and `paymentMethod` — are declared on every function and carried by one subtype each, so on a function that is not that subtype they answer `200 null` rather than `404`. Reading `null` there tells you this function does not carry the member; reading `404` tells you nothing does. (`DELETE` distinguishes neither — it never answers `404`, so it is not a probe; see [What a `DELETE` reports](../../reference/overview.md#what-a-delete-reports).)
+
+### The order function: collect in store and ship to customer
+
+> **Availability:** the four store members (`shipToCustomerStores`, `collectInStoreStores`, `shipToCustomerCurrentStore`, `collectInStoreCurrentStore`) are v26.1.11 and later. The three label members are long-standing.
+
+The "Add to order" tile invokes a function of subtype `order function`. It is what lets a cashier turn cart lines into a customer order — collected in a store or shipped to the customer, paid now or later — and its members decide which stores the cashier may order from and which labels the order gets. What the resulting order looks like through the API is in [Working with Orders → Orders Placed at the Till](../../reference/working-with/orders.md#orders-placed-at-the-till-collect-in-store-and-ship-to-customer).
+
+```bash
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/pos-functions/posFunctionId=order-default?fields=all"
+```
+
+```json
+{ "@type": "order function",
+  "identifiers": { "key": "26f71cddd749734de579a3ff7809f0e1", "posFunctionId": "order-default" },
+  "requiredPermissions": [],
+  "defaultLabels": [], "pickableLabels": [], "allowAllApplicableLabels": false,
+  "shipToCustomerStores": [], "collectInStoreStores": [],
+  "shipToCustomerCurrentStore": false, "collectInStoreCurrentStore": false }
+```
+
+| Member | What it does |
+|---|---|
+| `shipToCustomerStores`, `collectInStoreStores` | The stores the cashier may order from under that delivery mode. Empty = every store in the till's company, with the till's own store preselected. One store listed = preselected outright |
+| `shipToCustomerCurrentStore`, `collectInStoreCurrentStore` | `true` admits the till's own store beside the listed ones; with nothing listed it is then the only choice. This is how a chain confines pickups to the ordering store while shipping from a central warehouse |
+| `defaultLabels` | Applied to every order the tile creates — where an e-commerce integration that syncs only labelled orders gets its label |
+| `pickableLabels` | Offered to the cashier to pick from |
+| `allowAllApplicableLabels` | Offers every label applicable to trade orders instead of only `pickableLabels` |
+
+The tile can also be locked to one delivery mode or one payment mode; those two settings are **not** exposed through the API.
+
+```bash
+# Add stores - a plain array ADDS to the list, it does not replace it
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/pos-functions/posFunctionId=order-default" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "collectInStoreStores": [{"identifiers": {"com.heads.seedID": "store-gothenburg"}}],
+    "shipToCustomerStores": [{"identifiers": {"com.heads.seedID": "store-gothenburg"}}],
+    "collectInStoreCurrentStore": true
+  }'
+
+# Remove a store - an empty array is a no-op (200, list unchanged); use remove
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/pos-functions/posFunctionId=order-default" \
+  -H "Content-Type: application/json" \
+  -d '{"collectInStoreStores": {"remove": [{"identifiers": {"com.heads.seedID": "store-gothenburg"}}]}}'
+```
+
+With `collectInStoreStores` = one other store and `collectInStoreCurrentStore: true`, the store picker on a till offers exactly that store and the till's own, the till's own preselected.
 
 ### The subtype vocabulary is per deployment
 

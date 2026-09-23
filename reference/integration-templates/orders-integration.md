@@ -777,8 +777,12 @@ PUT /v1/sync-webhooks/com.acme.sync-id=order-status-push
 | CommerceOS Status | Webshop Status | Customer Message |
 |-------------------|----------------|------------------|
 | New | pending | Order received |
+| Reserved | confirmed | Order confirmed, awaiting pickup (placed at the till, pay later) |
 | Committed | confirmed | Order confirmed, preparing |
 | Cancelled | cancelled | Order cancelled |
+| Unreserved | cancelled | Order cancelled (at the till) |
+
+Two of those rows come from the till rather than from the API. A customer order the cashier places with **pay later** is `Reserved` — no expiry, no payment yet, `balanceAmount` negative — until the customer collects it at the line's `seller` store, when the till takes the payment and the order goes `Fulfilled`. The same order cancelled at the till reads `Unreserved`, not `Cancelled`; `tryCancel` from the API leaves a `Reserved` order untouched. Read the delivery mode off each line's `deliveryAddresses` (`[]` = collect in store, one address = ship to customer), and only `tryFulfill` the shipped ones. Every open cart at a till is also a `New` order, without a `suppliersId` — filter with `~where(identifiers/suppliersId)` before mapping `New` to "pending". See [Working with Orders → Orders Placed at the Till](../working-with/orders.md#orders-placed-at-the-till-collect-in-store-and-ship-to-customer).
 
 **Shipment-Based Status Mapping:**
 

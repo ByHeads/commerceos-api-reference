@@ -272,6 +272,7 @@ An unknown value for either policy is a coercion `400`. The trade relationship c
 | Field | Type | Description |
 |-------|------|-------------|
 | `unitAmountExclVat` | decimal | Manual unit price excluding VAT (see [Manual Unit Amounts](#manual-unit-amounts)) |
+| `deliveryAddresses` | Address[] (at most one) | Where this line ships to. `[]` means the line is collected in the `seller` store; one address means it ships there. Inherits the order's delivery address unless set. Writable on `PATCH /v1/trade-order-items/{key}` while the line is `New` or `Reserved`; ignored once `Committed`; two addresses answer `400`. Non-essential — see [Orders placed at the till](#orders-placed-at-the-till-collect-in-store-and-ship-to-customer). v26.1.10 and later |
 
 ### Order Item Fields (Read-Only)
 
@@ -284,6 +285,11 @@ An unknown value for either policy is a coercion `400`. The trade relationship c
 | `classification` | string | `Goods`, `Services`, or `Shipping` |
 | `discountable` | boolean | Whether item accepts discounts |
 | `statusDetails` | array | One row per phase the line is split across — `quantity` and `status` (see [Per-Line Status Breakdown](#per-line-status-breakdown-statusdetails)) |
+| `seller` | agent reference | The store that sells and hands over this line. On an order placed at the till it is the store the cashier picked. The order-level `sellers` is the set of the lines' sellers |
+| `buyer` | agent reference | The customer, per line |
+| `reservedUntil` | datetime or null | When this line's reservation expires. `null` on a pay-later order placed at the till — that reservation does not expire, unlike an API click-and-collect order's |
+
+> **`seller`, `buyer`, `deliveryAddresses` and `reservedUntil` are non-essential on a line.** None of them is in the order's `items` in the default form, with `?fields=all` on the order, or with `~with(items)`. Ask for them by name: `~with(items~with(seller,buyer,deliveryAddresses,statusDetails))`, a `~just(items~just(…))` projection, `GET /v1/trade-orders/{id}/items?fields=all`, or the line itself on `/v1/trade-order-items/{key}`.
 
 ---
 
@@ -455,6 +461,210 @@ POST /v1/trade-orders~click-and-collect
 > **Note:** `reservedUntil` must be a future ISO 8601 timestamp. If stock cannot be reserved, the API returns 400: `"Could not reserve order. Ensure the associated product instances are available in stock."` Item-level `reservedUntil` is also supported for per-item reservation expiry.
 
 See the [Orders examples guide](../../guide/examples/orders.md#click-and-collect-orders) for the full workflow including configuration and notification templates.
+
+### Orders Placed at the Till: Collect in Store and Ship to Customer
+
+> **Availability:** `deliveryAddresses` on an order line is v26.1.10 and later; the store lists on the order function are v26.1.11 and later. Orders placed at the till, and the rest of what this section reads, are long-standing.
+
+A cashier can turn the lines in a cart into a customer order with the till's "Add to order" tile. The cashier picks a **delivery mode** — collect in store or ship to the customer — the **store** the goods come from, and a **payment mode** — pay now or pay later. The result is an ordinary trade order on `/v1/trade-orders`, so an order-management, warehouse or e-commerce integration reads it like any other. What differs is how you recognise one, how you tell the two delivery modes apart, which store hands the goods over, and what the till does to the order afterwards.
+
+This is a different thing from the [click-and-collect order](#click-and-collect-order) above, which an integration **creates** through the API with `reservedUntil`. A till order is created by the till, has no expiry, and is finished either at the till or by the integration, depending on its delivery mode.
+
+#### What the till writes
+
+- `identifiers.suppliersId` — the order number, assigned when the cart is completed. The till shows it as "Order #1000000". Every completed till order has one, and so does every order created through the API; the only orders without one are the till's open carts (see [Finding and polling till orders](#finding-and-polling-till-orders)).
+- `createdBy` — the cashier. `customer`, `buyers` and `relationship` — the customer attached to the cart. `supplier` — the company.
+- `sellers` — the set of stores the cashier picked. Each line's own `seller` is the store that sells and hands over *that* line.
+- `deliveryAddresses` **on each line** — `[]` for a collect-in-store line, the one address the cashier picked (prefilled from the customer's delivery or main address) for a ship-to-customer line.
+- `labels` — whatever the tile's configuration applies by default plus what the cashier picked. Nothing configured, no labels. See [Configuring the "Add to order" tile](../../guide/examples/pos.md#the-order-function-collect-in-store-and-ship-to-customer).
+- `reservedUntil` — `null`, on the order and on every line. A pay-later till order does not expire.
+
+#### The delivery mode is on the line, not on the order
+
+Read `deliveryAddresses` on the **item**. `[]` means the line is collected in its `seller` store; one address means it ships from the `seller` store to that address. The four members that matter are non-essential on a line, so name them:
+
+```bash
+GET /v1/trade-orders/suppliersId=1000000~just(status,reservedUntil,deliveryAddresses,items~just(identifiers/key,deliveryAddresses,seller~just(name,identifiers/key)))
+```
+
+A collect-in-store line:
+
+```json
+{
+  "status": ["Reserved"],
+  "reservedUntil": null,
+  "deliveryAddresses": [
+    { "line1": "Alsta Björklunda 7", "postalCode": "75592", "cityName": "Uppsala", "regionName": "Uppsala", "countryCode": "SE" }
+  ],
+  "items": [
+    { "identifiers": "4f2407ec3b07ff2a2f424434818ebc73", "deliveryAddresses": [], "seller": { "name": "Shade Stockholm", "identifiers": "4b47ad1b1f1fd5cb9d59283b11ee2c7f" } }
+  ]
+}
+```
+
+A ship-to-customer line:
+
+```json
+{
+  "status": ["Committed"],
+  "deliveryAddresses": [ { "line1": "Centralgatan 16", "postalCode": "52151", "cityName": "Floby", "regionName": "Västra Götaland", "countryCode": "SE" } ],
+  "items": [
+    { "deliveryAddresses": [ { "line1": "Centralgatan 16", "postalCode": "52151", "cityName": "Floby", "regionName": "Västra Götaland", "countryCode": "SE" } ],
+      "seller": { "name": "Shade Stockholm" } }
+  ]
+}
+```
+
+**The order-level `deliveryAddresses` cannot tell them apart.** It is the union of the order's own delivery address and every line's address, and the order's own address is the customer's address on file. So the collect-in-store order above lists an address at order level while its only line reads `[]`. See [gotcha 58](../common-gotchas.md#58-the-order-level-deliveryaddresses-is-a-union-not-the-delivery-mode).
+
+The line's `deliveryAddresses` is writable through the API as well, on `PATCH /v1/trade-order-items/{key}`, while the line is `New` or `Reserved`: `[]` marks it collected in store, one address makes it a shipped line, two addresses answer `400` with `"A trade order item supports at most one delivery address."` Once the line is `Committed` the write is a `200` that changes nothing. On an order created through the API, a line that has not been set inherits the order's delivery address.
+
+#### Which store hands the goods over
+
+The line's `seller`. The order-level `sellers` is the set of the lines' sellers — one store for a typical till order, but the cashier can send lines to different stores in separate confirmations, so treat `sellers` as a set and read the line. The picking order the till raises names the same store as its `issuer`.
+
+#### What the order looks like right after the cart is completed
+
+| | Pay later | Pay now |
+|---|---|---|
+| `status` | `["Reserved"]`; line `statusDetails` `[{"quantity": "1", "status": "Reserved"}]` | `["Committed"]`; line `statusDetails` Committed |
+| `payments` | `[]` | One payment order, `status ["Debited"]`, `limitAmount` = the line total, `payer` the customer, `payee` the seller store |
+| `balanceAmount` | Negative: the amount still owed (`"-2990"` on a `"2990"` order) | `"0"` |
+| `records` | One trade record, action `Reserve` | One trade record, action `Commit` |
+| `pickingOrders` | One, `status ["New"]`, `issuer` the seller store, its item's `source` and `destination` the store's stock place | Same — the till raises a picking order for **both** delivery modes |
+| `shipments` | `[]` | `[]` |
+| Stock level at the seller store | `reservedQuantity` up by the line quantity | Unchanged — see [What happens next](#what-happens-next-per-delivery-mode) |
+| POS slip | One, `slipKind "order"`, action `Reserve` with the product name and quantity, `paymentRecords []`. No receipt | No slip. One receipt, for the prepayment |
+
+Read `payments` and `balanceAmount` for whether an order is paid; do not infer it from `status`. A `Committed` order with `payments: []` and a negative `balanceAmount` is unpaid.
+
+**The prepayment receipt books no sale.** On a pay-now order the till writes a receipt whose line names the order line it settles (`orderItems`), whose `payments` carries the full amount — and whose `totalAmount`, and the line's `totalAmount`, are `"0"`:
+
+```bash
+GET /v1/receipts~first~just(identifiers,totalAmount,items~just(product/name,quantity,totalAmount,orderItems~just(identifiers/key)),payments~just(method~just(identifiers/methodId),amount),orders~just(identifiers/suppliersId,status))
+```
+
+```json
+{ "identifiers": { "receiptID": "GPG00000000001" }, "totalAmount": "0",
+  "items": [ { "product": "Apple AirPods med Lightning (3.gen)", "quantity": "1", "totalAmount": "0",
+               "orderItems": [ { "identifiers": "fdcf43b6b2156edf4753d13ea9ab2d86" } ] } ],
+  "payments": [ { "method": "com.heads.mock", "amount": "2190" } ],
+  "orders": [ { "identifiers": "1000001", "status": ["Committed"] } ] }
+```
+
+It documents the advance, not a sale. A receipts reader that books `totalAmount` as revenue and `payments` as cash sees a zero sale with an unexplained payment; match the payment to the order through `orders` or the line's `orderItems` instead. See [Receipts → Item-to-Order Navigation](../receipts.md#item-to-order-navigation-the-orderitems-member). On a Norwegian profile the prepayment is documented on a `prepayment` slip and the hand-over on a `delivery-note` slip instead of on receipts.
+
+#### What happens next, per delivery mode
+
+**Collect in store — the till finishes it.** The customer comes to the line's `seller` store, the cashier opens the order by number, customer or scan and hands it over; the till only offers the hand-over at a till whose store is the line's `seller`. The remaining amount is paid in that sale. Afterwards the order reads:
+
+- `status ["Fulfilled"]`, line `statusDetails` Fulfilled, `balanceAmount "0"`.
+- `payments`: one payment order for the full amount, `Debited`.
+- `records`: a second trade record whose line carries three actions in this order — `Unreserve`, `Commit`, `Fulfill`.
+- `pickingOrders []` — the picking order is gone once the line is fulfilled. `shipments []`.
+- A second receipt, this one with the full `totalAmount`, its line's `orderItems` pointing at the order line and `orders` at the order, now `Fulfilled`. **This is the receipt to count as the sale.**
+- Stock level at the seller store: `totalQuantity` down by the line quantity, `reservedQuantity` back down.
+- No new POS slip.
+
+There is nothing for the integration to write. Do not send `tryFulfill` to a collect-in-store order from the API; the till is what hands the goods over, and what `tryFulfill` does to such an order has not been measured.
+
+**Ship to customer — the warehouse or the integration finishes it.** Ship from the line's `seller` store to the line's `deliveryAddresses[0]`, then tell CommerceOS the goods left:
+
+```bash
+PATCH /v1/trade-orders/suppliersId=1000001/actions
+{"tryFulfill": true}
+```
+
+`200 {"@type": "trade order actions"}`. Read back: `status ["Fulfilled"]`, line Fulfilled, `balanceAmount "0"`, a second trade record with one `Fulfill` action, `pickingOrders []`, `shipments []` — `tryFulfill` raises no shipment order (see [Where Shipment Orders Come From](#where-shipment-orders-come-from)). What `tryFulfill` books against the seller's stock level for a line the till created is being confirmed; read the product's `stockLevels` at the seller store after fulfilment rather than assuming it moved, and count the units out with a stock adjustment if it did not.
+
+On v26.1.12 and earlier, `{"createShipment": true}` followed by `release` on the shipment order is the alternative; v26.2.1 and later books a delivery instead. Both are described under [Where Shipment Orders Come From](#where-shipment-orders-come-from); neither has been measured on a till-created order.
+
+#### Cancelling a till order
+
+| Who | Order state | Result |
+|---|---|---|
+| API `{"tryCancel": true}` | `Reserved` (pay later, not picked up) | `200`, **nothing changes** — the order stays `Reserved` and the reservation is kept, as the [`tryCancel` preconditions](#cancel-order-trycancel) say |
+| Till, cancel the order or a line | `Reserved` | `status ["Unreserved"]`, line `statusDetails` Unreserved, a second trade record with one `Unreserve` action, a POS slip (`slipKind "order"`, action `Unreserve`), the reservation released from the stock level, `balanceAmount "0"` while `totalAmount` stays |
+| API `{"tryCancel": true}` | `Committed`, paid now, not yet shipped | Not measured. A wholly `Committed` order is cancelled; what happens to the prepayment's `Debited` payment order through the API has not been checked. Do not assume a refund |
+| Till | `Committed`, paid now | On v26.1.11 the till refuses: "Cannot cancel an order with a prepaid amount." From v26.1.12 the till cancels with a refund, referenced to the original payment where the method supports it and otherwise paid out, documented on a receipt (Sweden) or a `prepayment-refund` slip (Norway) |
+
+`Unreserved` is the status of a pay-later till order cancelled at the till. Map it to "cancelled" in an external system, alongside `Cancelled` — see [the orders integration template](../integration-templates/orders-integration.md#status-mapping-to-external-system).
+
+#### Finding and polling till orders
+
+**By the store that has to hand over or ship.** The identifier goes directly under `sellers/`, not under `sellers/identifiers/` ([gotcha 56](../common-gotchas.md#56-a-filter-through-an-array-relation-takes-the-identifier-directly-under-the-relation-name)), and there is no line-level seller filter:
+
+```bash
+GET /v1/trade-orders~where(sellers/com.example.storeId=STORE-001)              # matches
+GET /v1/trade-orders~where(sellers/key=4b47ad1b1f1fd5cb9d59283b11ee2c7f)       # matches
+GET /v1/trade-orders~where(sellers/identifiers/com.example.storeId=STORE-001)  # 200 []
+GET /v1/trade-orders~where(items/seller/com.example.storeId=STORE-001)         # 200 [] — no line-level form
+
+# The finder form, with a modifiedTag for polling
+POST /v1/trade-orders/find
+{"seller": {"identifiers": {"key": "4b47ad1b1f1fd5cb9d59283b11ee2c7f"}}}
+```
+
+**Awaiting pickup** — pay later, not yet handed over — is `~where(status=~Reserved)`. **Incremental polling** is `/after/{timestamp}` (last modification, the default) or `/after(create)/{timestamp}` (placement); those are the only two modes, and a `/after(status)/…` is a `404` — see [Time-relative queries](../../guide/examples/orders.md#time-relative-queries).
+
+**Every open cart at a till is a `New` trade order without a number.** It is served by `/v1/trade-orders`, by `/after/…` and by `~where(status=~New)`: `status ["New"]`, no `suppliersId`, `items []` (or the lines still in the cart), `timestamp` = when the cart was opened, `totalAmount "0"`. A poller that treats every `New` order as "order received" acts on carts. Filter on the order number, which every completed till order and every API-created order has:
+
+```bash
+GET /v1/trade-orders~where(identifiers/suppliersId)~take(50)
+GET /v1/trade-orders/after/2026-09-23T16:00:00Z~where(identifiers/suppliersId)~take(50)
+
+# The carts themselves
+GET /v1/trade-orders~where(!identifiers/suppliersId)~take(50)
+```
+
+`~where(status!=New)` also hides them, but hides API-created orders that are still `New` too. `~where(suppliersId)` matches everything, and `~where(items~count)` does not help either — a cart with lines in it has items. See [gotcha 59](../common-gotchas.md#59-every-open-pos-cart-is-a-new-trade-order-without-a-number).
+
+**Collect from ship, server-side.** Per line, with a nested filter; the flat spellings look like filters and are not:
+
+```bash
+# At least one line shipped to the customer
+GET /v1/trade-orders~where(items~where(deliveryAddresses~first/line1)~count)~take(50)
+# At least one line collected in store
+GET /v1/trade-orders~where(items~where(!deliveryAddresses~first/line1)~count)~take(50)
+# Single-line orders, by the first line — combine with the order-number filter, or the ~count=1 form matches carts too
+GET /v1/trade-orders~where(identifiers/suppliersId,items~first/deliveryAddresses~count=0)~take(50)
+GET /v1/trade-orders~where(identifiers/suppliersId,items~first/deliveryAddresses~count=1)~take(50)
+
+# These are not filters
+GET /v1/trade-orders~where(items/deliveryAddresses~count=0)            # 200 []
+GET /v1/trade-orders~where(items/deliveryAddresses~first/line1)        # 200 []
+GET /v1/trade-orders~where(!items/deliveryAddresses~first/line1)       # every order
+```
+
+For anything but a quick count, project the lines and classify each in the client — this one call gives everything an integration needs to route a till order:
+
+```bash
+GET /v1/trade-orders~where(identifiers/suppliersId)~just(identifiers/suppliersId,status,items~just(product/name,quantity,statusDetails,seller~just(identifiers/key,name),deliveryAddresses))~take(50)
+```
+
+```json
+[
+  { "identifiers": "1000000", "status": ["Fulfilled"],
+    "items": [ { "product": "Apple AirPods Pro (2.gen)", "quantity": "1",
+                 "statusDetails": [ { "quantity": "1", "status": "Fulfilled" } ],
+                 "seller": { "identifiers": "4b47ad1b1f1fd5cb9d59283b11ee2c7f", "name": "Shade Stockholm" },
+                 "deliveryAddresses": [] } ] },
+  { "identifiers": "1000001", "status": ["Fulfilled"],
+    "items": [ { "product": "Apple AirPods med Lightning (3.gen)", "quantity": "1",
+                 "statusDetails": [ { "quantity": "1", "status": "Fulfilled" } ],
+                 "seller": { "identifiers": "4b47ad1b1f1fd5cb9d59283b11ee2c7f", "name": "Shade Stockholm" },
+                 "deliveryAddresses": [ { "line1": "Centralgatan 16", "postalCode": "52151", "cityName": "Floby", "regionName": "Västra Götaland", "countryCode": "SE" } ] } ] },
+  { "identifiers": "1000002", "status": ["Unreserved"],
+    "items": [ { "product": "Apple AirPods Pro (2.gen)", "quantity": "1",
+                 "statusDetails": [ { "quantity": "1", "status": "Unreserved" } ],
+                 "seller": { "identifiers": "4b47ad1b1f1fd5cb9d59283b11ee2c7f", "name": "Shade Stockholm" },
+                 "deliveryAddresses": [] } ] }
+]
+```
+
+See [gotcha 61](../common-gotchas.md#61-flat-itemsdeliveryaddresses-filters-match-nothing-or-everything-when-negated) for the flat forms.
+
+The stores a cashier can pick from, and the labels the tile applies, are configured on the tile's order function — see [The order function](../../guide/examples/pos.md#the-order-function-collect-in-store-and-ship-to-customer). The curl form of everything above is in the [Orders examples guide](../../guide/examples/orders.md#orders-placed-at-the-till-collect-in-store-and-ship-to-customer).
 
 ### Idempotent Order Creation (PUT)
 
@@ -711,8 +921,10 @@ Quantity: 3
 unitAmountInclVat = 199.00
 totalAmount (item) = 199.00 × 3 = 597.00
 totalAmount (order) = 597.00
-balanceAmount = 597.00 (before payments)
+balanceAmount = -597.00 (Committed or Reserved, before payments)
 ```
+
+`balanceAmount` is what is still owed, and it is **negative** while unpaid: `0` on a `New` order, `-597.00` once the lines are reserved or committed and nothing has been paid, `0` again once the payments cover the total. A cancelled or unreserved order reads `0` while its `totalAmount` stays.
 
 ### Fetching Amounts
 
@@ -965,7 +1177,7 @@ PATCH /v1/trade-orders/com.example.orderId=ORD-001/actions
 
 **Preconditions:**
 - Order must have status `Committed` (only committed orders can be cancelled via this action)
-- Orders in `New` or `Reserved` status cannot be cancelled with this action
+- Orders in `New` or `Reserved` status cannot be cancelled with this action — that includes a pay-later order placed at the till, which is `Reserved` until it is picked up; the till cancels it (see [Cancelling a till order](#cancelling-a-till-order))
 - Orders in `Fulfilled` status cannot be cancelled (use return flow instead)
 - A **partly fulfilled** order (`["Committed", "Fulfilled"]`) is not cancelled either: the action answers `200` and changes nothing. To close the open remainder of a partly received purchase order, set `underdeliveryPolicy: "Cancel"` and approve a short delivery — see [Working with Purchasing → Cancelling, and Closing the Rest of a Partly Received Order](purchasing.md#cancelling-and-closing-the-rest-of-a-partly-received-order)
 
@@ -1251,6 +1463,8 @@ Orders have separate address collections for invoicing and delivery.
 |------|---------|------------|
 | `deliveryAddresses` | Where to ship | Customer's home/office |
 | `invoiceAddresses` | Where to bill | Customer's billing address |
+
+> **The order-level `deliveryAddresses` is a union.** It reads the order's own delivery address together with every address set on a line, so it does not say where any particular line goes. On an order placed at the till a collect-in-store line reads `deliveryAddresses: []` while the order still lists the customer's address on file. Read the line — see [Orders placed at the till](#orders-placed-at-the-till-collect-in-store-and-ship-to-customer) and [gotcha 58](../common-gotchas.md#58-the-order-level-deliveryaddresses-is-a-union-not-the-delivery-mode).
 
 ### Get Addresses
 
@@ -1558,6 +1772,7 @@ PATCH /v1/trade-orders/com.example.orderId=ORD-001/actions
 | Get payments | GET | `/v1/trade-orders/{id}/payments` | List payments |
 | Get shipments | GET | `/v1/trade-orders/{id}/shipments` | List shipments |
 | Get addresses | GET | `/v1/trade-orders/{id}/deliveryAddresses` | Delivery addresses |
+| Set a line's delivery address | PATCH | `/v1/trade-order-items/{key}` | `{"deliveryAddresses": []}` or one address, while `New`/`Reserved` |
 | Get labels | GET | `/v1/trade-orders/{id}/labels` | Order labels |
 | Assign label | POST | `/v1/trade-orders/{id}/labels` | Add label to order |
 | Remove label | DELETE | `/v1/trade-orders/{id}/labels/{labelId}` | Remove label from order |
