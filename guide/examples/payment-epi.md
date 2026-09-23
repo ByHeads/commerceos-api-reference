@@ -247,10 +247,11 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/payment-integrat
 #    credential that your integration gets. The agent is the integration's database key:
 #   curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/payment-integrations/name=Piggy/identifiers/key"
 #   (the answer is a JSON string with its quotes: paste the 32 characters between them)
+# The user identifier can be any com.<your namespace>.<name> identifier. It needs no registration.
 curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/users" \
   -H "Content-Type: application/json" \
   -d '{
-    "identifiers": {"com.myapp.userId": "user-piggy-integration"},  # any com.<your namespace>.<name> identifier; no registration
+    "identifiers": {"com.myapp.userId": "user-piggy-integration"},
     "agent": {"identifiers": {"key": "<integration key>"}},
     "oauth2Clients": [{
       "identifiers": {"clientID": "piggy-integration-client"},
@@ -375,7 +376,7 @@ Heads certifies your installed integration with the tool in `--cos` mode, throug
 ## 7. Go live
 
 - [ ] Your endpoint passes [`epi-check`](../../tools/epi-check/README.md), every scenario. While you build, run it on your laptop: `node tools/epi-check/run.mjs --local <your integration base url> --profile <your profile>`, with the values your `/test` checks under `configuration`. Local mode starts a stand-in CommerceOS and installs your integration on it, so point it at a laptop instance, never at the one a CommerceOS installed. Heads certifies with `--cos <cosBaseUrl> --key <apiKey> --integration <name>` against the installed instance. Give `--timeout` at least your longest wait window: the default is thirty seconds.
-- [ ] A contextful call without the three context headers gets a 4xx and an error body.
+- [ ] A contextful call without the three context headers gets a 400 and an error body.
 - [ ] A request your integration cannot take on the stream route is a 200 stream with one `Fail` step, never a non-2xx: CommerceOS discards the body there (reference, section 7).
 - [ ] A repeated `PUT` for a completed `paymentKey` answers the same `processorsId` and the same transactions, and `processorsId` is unique for all time.
 - [ ] `POST /test` answers per node: it reads the configuration of the context id and checks it.

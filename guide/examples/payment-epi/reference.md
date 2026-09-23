@@ -59,7 +59,8 @@ The answer of `GET {baseUrl}/methods` for one method as the Piggy Bank sample se
 ```
 
 `scope` is the space-separated scope list of the OAuth2 client, as CommerceOS holds it. A client that
-the back office creates for an integration has `me geo:read orders.sales:write orders.payments:write payment-records:write kv`.
+the back office creates for an integration has `me geo:read orders.sales:write orders.payments:write payment-records:write kv`. The order of the scopes in
+the string is not fixed: read it as a set.
 Send it, or the subset section 8 names, as `scope` in the token request. The `test` method on the API answers
 `{ integrationName, configurationTests: { "<node name>": "success" | "fail" } }`. A non-2xx or a thrown error is `fail`.
 
@@ -101,7 +102,7 @@ the three until Heads adds it. Ask Heads if your method should count as one of t
 
 ## 3. Context headers
 
-Every contextful call carries three headers; CommerceOS always sends all three. Check at least `X-EPI-Context-Config-Id` and reject a call without it with a 4xx and an error body (section 7). CommerceOS finds the EPI configuration for the organization node of the call, and a configuration on a parent node applies to the nodes below it.
+Every contextful call carries three headers; CommerceOS always sends all three. Check at least `X-EPI-Context-Config-Id` and reject a call without it with a 400 and an error body (section 7). CommerceOS finds the EPI configuration for the organization node of the call, and a configuration on a parent node applies to the nodes below it.
 
 | Header | Value | Use |
 |---|---|---|
@@ -185,7 +186,7 @@ reserve first and capture later through the transactions route (scenarios `P2`, 
 `token` names the currency instance of the request. CommerceOS makes a new one for every distinct
 request, so two partial refunds of the same amount on one order carry two different tokens; only
 a retry of the same request repeats the token. That is what makes the idempotency key of section
-11 safe.
+11 safe. In that key, compare `actions` as a set: the order of the array carries no meaning.
 
 Some fields arrive empty from a till, and your integration must accept them: `redirectUrls` are all
 `https://heads.com`, a sale without a customer carries a `payer` of type `Person` with an empty

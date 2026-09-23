@@ -32,7 +32,9 @@ test("the key-value store round-trips a value and the configuration answers the 
         assert.equal((await fetch(url, { method: "PUT", headers, body: JSON.stringify({ state: "pending" }) })).status, 200);
         assert.deepEqual(await (await fetch(url, { headers })).json(), { state: "pending" });
         assert.equal((await fetch(url, { method: "DELETE", headers })).status, 200);
-        assert.equal((await fetch(url, { headers })).status, 404);
+        const missing = await fetch(url, { headers });
+        assert.equal(missing.status, 200, "like CommerceOS, a missing entry is not a 404");
+        assert.equal(await missing.json(), null);
         const malformed = await fetch(url, { method: "PUT", headers, body: "not json" });
         assert.equal(malformed.status, 400, "a malformed body is answered, not thrown");
         assert.match((await malformed.json()).errors[0].message, /JSON/);

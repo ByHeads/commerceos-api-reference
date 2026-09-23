@@ -71,9 +71,9 @@ export function startCosStandIn({ port = 0, clientId = CLIENT.clientId, clientSe
             } else if ((match = /^(GET|PUT|DELETE) \/api\/v1\/kv\/([^/]+)\/([^/]+)$/.exec(route))) {
                 const id = `${match[2]}/${decodeURIComponent(match[3])}`;
                 if (match[1] === "PUT") { kv.set(id, JSON.parse(text)); answer(200, kv.get(id)); }
-                else if (match[1] === "DELETE") answer(kv.delete(id) ? 200 : 404, {});
-                else if (kv.has(id)) answer(200, kv.get(id));
-                else answer(404, { errors: [{ message: `No value ${id}` }] });
+                else if (match[1] === "DELETE") { kv.delete(id); answer(200, {}); }
+                // Like CommerceOS: a missing entry answers 200 with null, not 404.
+                else answer(200, kv.has(id) ? kv.get(id) : null);
             } else if ((match = /^PATCH \/api\/v1\/payment-orders\/([^/]+)$/.exec(route))) {
                 const key = decodeURIComponent(match[1]);
                 const records = orders.get(key) ?? [];
