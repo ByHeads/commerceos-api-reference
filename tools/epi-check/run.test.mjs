@@ -13,7 +13,7 @@ import { Readable } from "node:stream";
 import { DEFECT_SCENARIO, METHOD_ID } from "./reference-server.mjs";
 import { startCosStub, CLIENT } from "./cos-stub.mjs";
 import { startLab, defectMessages } from "./test-lab.mjs";
-import { run, parseArgs, resolvePlaceholders, runIdFor, ORDER, MODES, STREAM_NON_2XX, CANCELLABLE_ALONE, NOT_CAPTURED_UNDER_FLAG, TRANSLATED_DECLINE_REASONS } from "./run.mjs";
+import { run, parseArgs, resolvePlaceholders, runIdFor, ORDER, MODES, STREAM_NON_2XX, CANCELLABLE_ALONE, NOT_CAPTURED_UNDER_FLAG, TRANSLATED_DECLINE_REASONS, comparableTypes } from "./run.mjs";
 import { validate } from "./validate.mjs";
 import { buildReport, buildMeta, reportJson, reportMarkdown, sortKeys } from "./report.mjs";
 
@@ -419,3 +419,12 @@ test("the CLI runs --cos end to end, exits 0, and exits 2 on a removed flag or a
 });
 
 test.after(() => rmSync(scratch, { recursive: true, force: true }));
+
+test("a run of keep-alive Wait steps counts as one Wait, and Wait is ignored where not expected", () => {
+    const steps = types => types.map(type => ({ type }));
+    assert.deepEqual(comparableTypes(steps(["Wait", "Wait", "Wait", "Complete"]), ["Wait", "Complete"]), ["Wait", "Complete"]);
+    assert.deepEqual(comparableTypes(steps(["Cancellable", "Wait", "Wait", "Cancel"]), ["Cancellable", "Wait", "Cancel"]), ["Cancellable", "Wait", "Cancel"]);
+    assert.deepEqual(comparableTypes(steps(["Complete"]), ["Wait", "Complete"]), ["Complete"], "a missing Wait still fails the expectation");
+    assert.deepEqual(comparableTypes(steps(["Wait", "Complete"]), ["Complete"]), ["Complete"]);
+    assert.deepEqual(comparableTypes(steps(["Wait", "Create", "Wait", "Complete"]), ["Wait", "Create", "Wait", "Complete"]), ["Wait", "Create", "Wait", "Complete"]);
+});

@@ -248,6 +248,8 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/payment-integrat
 #   curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/payment-integrations/name=Piggy/identifiers/key"
 #   (the answer is a JSON string with its quotes: paste the 32 characters between them)
 # The user identifier can be any com.<your namespace>.<name> identifier. It needs no registration.
+# The client node below uses the seed identifier of the Heads sample data. On your own CommerceOS,
+# write {"key": "<company node key>"} instead, the same key as in step 4.
 curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/users" \
   -H "Content-Type: application/json" \
   -d '{
@@ -279,7 +281,8 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/payment-integra
 #   (the answer is a JSON string with its quotes: paste the 32 characters between them)
 #   curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/companies/com.heads.seedID=ourcompany/identifiers/key"
 # The configuration object holds the fields that your /config-schema describes. The answer
-# carries contextConfigId, a four-character id that CommerceOS generates: it is the value of
+# carries identifiers.contextConfigId (the top-level contextConfigId field reads null), a
+# four-character id that CommerceOS generates: it is the value of
 # X-EPI-Context-Config-Id on every later contextful call for this node.
 curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/epi-configurations" \
   -H "Content-Type: application/json" \
@@ -357,8 +360,8 @@ amount to select the outcome, for a `Payment` and a `Payout` alike. The sample f
 | `.00`, and every cents value not listed below | `Complete`, actions `["Authorize","Debit"]`. A `Payout` without `debitSynchronously` gets `["Authorize"]` alone, see below |
 | `.01` | `Decline`, reason `InsufficientFunds` |
 | `.02` | `Fail`, one error |
-| `.03` | `Cancellable`, then `Wait`, then `Cancel` after the cancel call. The `Wait` step puts the cancel button on the cashier's dialog. Without a cancel call, end the stream when your own window runs out: the sample completes, and a `Decline` with reason `Timeout` is as valid |
-| `.04` | `Wait`, then `Complete`. No `Create` step. Repeated `Wait` steps to keep the stream open are fine: the tool ignores a `Wait` it did not list |
+| `.03` | `Cancellable`, then `Wait`, then `Cancel` after the cancel call. The `Wait` step puts the cancel button on the cashier's dialog. Without a cancel call, end the stream when your own window runs out: the sample completes, and a `Decline` with reason `Timeout` is as valid. For a till, prefer the `Decline`: a customer who walked away is then not charged |
+| `.04` | `Wait`, then `Complete`. No `Create` step. Repeated `Wait` steps to keep the stream open are fine: the tool ignores a `Wait` it did not list, and counts a run of `Wait` steps as one |
 | `.05` | `Complete`, actions `["Authorize"]` only, when the request carries no `debitSynchronously`. Under the flag, `.05` captures like `.00`: a till never sees a reservation |
 
 On a till every request carries `debitSynchronously: true`, `Payment` and `Payout` alike, and a

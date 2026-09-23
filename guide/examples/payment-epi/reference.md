@@ -108,7 +108,7 @@ Every contextful call carries three headers; CommerceOS always sends all three. 
 |---|---|---|
 | `X-EPI-Context-Config-Id` | the four-character id of the configuration | look the configuration up (section 4) |
 | `X-EPI-Context-Config-Hash` | a hash of the configuration values | cache key. A changed configuration has a new hash |
-| `X-EPI-Debug-Info` | JSON with `nodeName`, `baseUrl`, `name` | logging only |
+| `X-EPI-Debug-Info` | JSON with `nodeName`, `baseUrl`, `name` | logging only. `nodeName` is the node of the call, for example the store of the till. The configuration can sit on a parent of that node |
 
 CommerceOS sends this context; the conformance tool reads the same values from the EPI configuration
 on your CommerceOS and sends them. `debugInfo` is the value of the third header:
@@ -307,7 +307,7 @@ the client.
 |---|---|---|
 | `POST {tokenUrl}` | — | client-credentials token. Cache it until `expires_in` |
 | `GET /v1/context/config/{configId}` | `me` | the configuration for a context id (section 4) |
-| `GET`, `PUT`, `DELETE /v1/kv/{container}/{key}` | `kv` | a key-value store for your own state. `container` is a namespaced key such as `com.example.payments` |
+| `GET`, `PUT`, `DELETE /v1/kv/{container}/{key}` | `kv` | a key-value store for your own state. `container` is a namespaced key such as `com.example.payments`. There is no route that lists the keys of a container: keep your own index if you need one |
 | `PATCH /v1/payment-orders/{paymentKey}` with `{ "records": [ ... ] }` | `orders.payments:write` | complete an asynchronous payment, for example from a callback of your provider |
 
 ```bash
@@ -410,7 +410,7 @@ The cents of the amount select the outcome: [Build a payment integration](../pay
 | The stream sends no step for a long time | Sets no timeout of its own. The HTTP runtime closes a stream with no bytes after about five minutes. That limit is the runtime's, not a contract value | Send a final step within minutes, or a `Wait` step at intervals while you wait for the provider |
 | The stream closes cleanly with no final step | Shows nothing. No dialog, no payment line, the sale stays open. Verified on a till 2026-09-22 | Never close a stream without a final step. On an exception, send `Fail` first |
 | A `Complete` that CommerceOS refuses (an Authorize-only answer under `debitSynchronously`, or a transaction it cannot record) | The raw dialog `¿Error: Payment was requested to be synchronously debited, but it was not.?`, no payment order, and the next attempt reuses the same `paymentKey`, so a resume repeats the refused answer and the cashier is stuck. A platform fix that turns this into a `Fail` step is proposed; with it the next attempt is a new key | Never send such a `Complete`. The tool refuses a non-capturing `Complete` under the flag |
-| The connection drops before a final step | Shows the raw dialog `¿TypeError: terminated?`. The payment order is not marked failed. On the cashier's next attempt with direction `Payment`: no order yet, same `paymentKey` again; an order `Debited` for the tender amount, attached without a new call; an order `Debited` for another amount, attached and the cashier told to tender the rest; a non-debited order, a fresh key | Treat a second `PUT` with a known `paymentKey` as a resume: answer the same `processorsId` and the same transactions, never a second charge. The conformance scenario `P10` checks it |
+| The connection drops before a final step | Shows the raw dialog `¿TypeError: terminated?`. The payment order is not marked failed. On the cashier's next attempt with direction `Payment`: no order yet, same `paymentKey` again; an order `Debited` for the tender amount, attached without a new call; an order `Debited` for another amount, attached and the cashier told to tender the rest; a non-debited order, a fresh key | Treat a second `PUT` with a known `paymentKey` as a resume: answer the same `processorsId` and the same transactions, never a second charge. The conformance scenario `P10` checks it. When the session behind the key still waits for the customer, continue that session on the new stream, with `Wait` steps, and never open a second session |
 | A stream call or a transactions call fails (network error, non-2xx) | Makes no retry. The cashier sees the error and starts the payment again by hand. Data after a final step is ignored | Make every call idempotent on its request: the same `paymentKey`, `token`, `actions` and `amount` answer the same transaction. Send exactly one final step, then close |
 | A repeated `records` item in `PATCH /v1/payment-orders/{key}` (same `transactionId.id` on the same order) | A repeat of the identical record is a no-op. A record that reuses the id with any field changed is refused | Repeat a callback with the same body, or not at all. Give every distinct transaction its own id |
 | A `records` item after the order is `Debited` | Has no state guard. A late `Debit` or `Authorize` beyond the remaining amount answers 400 (`Amount must agree with designated instance.`, or with a `token`, `Designated instance must be a subset of available instance.`). A `Credit` up to the debited amount is accepted and adds `Credited` | Post the completion once. Do not post a `Debit` for a sale that the stream already completed |

@@ -207,6 +207,21 @@ function checkIdempotent({ step, label, subject, previous, fail }) {
     if (!sameJson(subject?.transactionId, previous.transactionId)) fail(label, "transactionId", `expected ${JSON.stringify(previous.transactionId)} again, got ${JSON.stringify(subject?.transactionId)}: the same request answers the same transaction, never a second one`);
 }
 
+/**
+ * The step types of a stream, as the expectation compares them. A Wait step is the integration's
+ * choice (contract section 5): where the expectation names no Wait, every Wait is dropped; where it
+ * names one, a run of repeated Wait steps counts as one, because a keep-alive Wait is allowed.
+ */
+export function comparableTypes(events, expected) {
+    const namesWait = expected?.includes("Wait");
+    const types = [];
+    for (const { type } of events) {
+        if (type === "Wait" && (!namesWait || types.at(-1) === "Wait")) continue;
+        types.push(type);
+    }
+    return types;
+}
+
 function checkStep({ step, label, expect, status, subject, previous, events, args, key, transactionsOfStep, state, schemaDoc, fail, warn }) {
     if (expect.status !== undefined && !statusMatches(expect.status, status)) fail(label, "status", `expected ${expect.status}, got ${status}`);
     if (isStream(step) && status !== 0 && !is2xx(status)) fail(label, "status", STREAM_NON_2XX);
@@ -215,10 +230,7 @@ function checkStep({ step, label, expect, status, subject, previous, events, arg
         events.forEach((event, index) => {
             for (const error of validate(schemaDoc, "PaymentStep", event)) fail(label, `events[${index}]${error.path ? "." + error.path : ""}`, error.message);
         });
-        // A Wait step between the expected steps is the integration's choice (contract section 5), so the
-        // comparison ignores Wait unless the expectation names it.
-        const types = events.map(e => e.type).filter(type => type !== "Wait" || expect.events?.includes("Wait"));
-        if (expect.events && !sameJson(types, expect.events)) fail(label, "events", `expected [${expect.events.join(", ")}], got [${events.map(e => e.type).join(", ")}]`);
+        if (expect.events && !sameJson(comparableTypes(events, expect.events), expect.events)) fail(label, "events", `expected [${expect.events.join(", ")}], got [${events.map(e => e.type).join(", ")}]`);
         checkStream({ label, events, fail });
         if (args?.debitSynchronously === true && subject?.type === "Complete") {
             const captured = (Array.isArray(subject.result?.transactions) ? subject.result.transactions : []).some(t => Array.isArray(t?.actions) && t.actions.includes("Debit"));
