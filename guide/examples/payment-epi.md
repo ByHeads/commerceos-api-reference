@@ -329,8 +329,8 @@ terminal is assigned to, and press *Associera*. The button then reads *Avassocie
 It binds **the browser that pressed it** to the device, so press it from the browser that will run
 the till, not from your own. Then the till: *Kassa* → *Kassa* (`/cos/pos/terminal`). The first visit asks for POS mode,
 *Aktivera POS-läge*. It can end the back-office session in that browser; if it does, log in again
-and pick the organization if asked (*Välj organisation*). Then the cashier starts the till for the day. To pay with your method: add an article, press *Payments*, then *Pay*
-(`F4`). Do not press the large button under the cart, *Mockbetalning*: it pays the whole balance
+and pick the organization if asked (*Välj organisation*). Then the cashier starts the till for the day (the *Starta kassa* dialog, button *Start*). To pay with your method: add an article (on the
+local seed, search `Shirt`), press *Payments*, then *Pay* (`F4`). A script that drives the till must press `F4`: a click on the tile does not always open the pay screen. Do not press the large button under the cart, *Mockbetalning*: it pays the whole balance
 at once with the seeded test method, not yours. On *Pay*, type the amount before you pick a method (a script must send real keystrokes: a value set
 without them shows in the field, but the till ignores it and charges the whole balance), and pick yours. Picking the method starts the
 payment at once, with no confirm step, so check the amount in the field first: it opens with the
@@ -338,7 +338,8 @@ whole balance, in the till's own number format (`799` for a whole amount, `10,04
 Swedish till). Your method is a text tile in the grid of
 methods, next to the logo tiles, and missing from the *Payments* shortcut panel until an
 administrator adds it there. A `Decline`, `Fail` or `Cancel`
-closes the pay screen, so the next attempt starts again from *Pay*. `Wait` keeps the pay screen open. A
+closes the pay screen and shows the message with an *OK* button. The cashier presses *OK*, and the next attempt starts again from *Pay*.
+On a Swedish till, the cancel button of a `Cancellable` payment reads *Avbryt*. `Wait` keeps the pay screen open. A
 `Complete` closes it and adds a payment line to the sale, so a second tender also starts again from
 *Pay*, with the remaining balance.
 
