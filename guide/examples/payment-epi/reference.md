@@ -142,7 +142,7 @@ the CommerceOS API: an object with `title`, `description` and `members`, where e
 | Write | Meaning | The administrator gets |
 |---|---|---|
 | `string`, `number`, `boolean` | a scalar | a text field, a number field, a checkbox |
-| `'TEST' or 'LIVE'` | one of the quoted values. Two or more, joined by ` or ` | a text field whose placeholder lists the values. The value is checked on save |
+| `'TEST' or 'LIVE'` | one of the quoted values. Two or more, joined by ` or ` (the back office reads every quoted value, so `|` and `,` also work) | a text field whose placeholder lists the values. The value is checked on save |
 | `object` with `members` | a nested group of fields | the nested fields, as a group |
 | `object` without `members`, `string[]`, `number[]`, `object[]` | free-form JSON | a JSON text editor |
 | any of the above plus a trailing `?` | optional. Without `?` a field is required, and the form shows *Required* until it has a value | |
@@ -231,7 +231,7 @@ unless the JSON carries its own `type`. A stream holds zero or more intermediate
 | `ShowImage` | intermediate | `url`, `audience?` | show an image, for example a QR code |
 | `VisitPage` | intermediate | `url`, `audience?` | open a web page |
 | `RenderView` | intermediate | `path`, `config`, `audience?` | render a view |
-| `Complete` | final | `result: PaymentDto`, `issuedWalletKey?` | success. CommerceOS creates one payment record per `result.transactions[]` item. Amounts are positive for both directions: CommerceOS stores and shows a `Payout` amount negative |
+| `Complete` | final | `result: PaymentDto` | success. A wallet that the payment issued, a new gift card for example, goes in `result.issuedWalletKey`. CommerceOS ignores an `issuedWalletKey` beside `result`. CommerceOS creates one payment record per `result.transactions[]` item. Amounts are positive for both directions: CommerceOS stores and shows a `Payout` amount negative |
 | `Decline` | final | `reason`, `params?` | a normal negative outcome. `reason` is a code such as `InsufficientFunds` |
 | `Cancel` | final | none | the payment was cancelled |
 | `Fail` | final | `errors[]` | an error. The cashier sees `Payment failed: <text>` from `errors[0]` (section 7) |

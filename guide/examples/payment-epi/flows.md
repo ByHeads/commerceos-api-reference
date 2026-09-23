@@ -18,7 +18,7 @@ sequenceDiagram
     Integration->>Bank: Open a session: insufficient funds
     Integration-->>CommerceOS: stream step Decline (reason InsufficientFunds, params)
     CommerceOS-->>POS: Declined
-    POS-->>Cashier: "Payment declined: Insufficient funds. Available balance is 0.00, requested amount is 10.01."
+    POS-->>Cashier: "Payment declined: Insufficient funds. Available balance is SEK 0.00, requested amount is SEK 10.01."
 ```
 
 A `Decline` is a normal negative outcome, not an error. The POS shows one sentence in the cashier's
@@ -134,7 +134,7 @@ Captures from a manned till with Piggy Bank installed: one line of 15.00, paid i
 
 | Step | Capture |
 |---|---|
-| `Decline` (`10.01`) | ![Payment declined: Insufficient funds. Available balance is 0.00, requested amount is 10.01.](./images/pos-decline.png) |
+| `Decline` (`10.01`) | ![Payment declined: Insufficient funds. Available balance is 0.00, requested amount is 10.01.](./images/pos-decline.png) The sample sent the amounts unformatted when this capture was made. It now formats them for the locale, so an `en-US` till shows `SEK 0.00` and `SEK 10.01`. |
 | `Fail` (`10.02`) | ![Payment failed: The coin slot is jammed (amount ends in .02)](./images/pos-fail.png) |
 | `Cancellable` then `Wait` (`10.03`) | ![Waiting for the bank. Cancel from the till to stop. With the Cancel button](./images/pos-cancellable.png) |
 | `Cancel`, after the cashier pressed Cancel | ![Payment cancelled.](./images/pos-cancel.png) |

@@ -489,7 +489,7 @@
         "params": {
           "type": "array",
           "items": { "type": "string" },
-          "description": "Fill {0}, {1} of that sentence. InsufficientFunds needs two."
+          "description": "Fill {0}, {1} of that sentence. InsufficientFunds needs two. The POS inserts them as text, so format amounts for the request's locale, for example 0,00 kr for sv-SE."
         }
       },
       "required": ["type", "reason"],
@@ -544,7 +544,7 @@
       "description": "Any step of the payment stream. On the wire each step is one SSE message: a line 'event: <type>', a line 'data: <JSON>', a blank line. Write exactly one space after each colon: CommerceOS strips a fixed number of characters. It adds type from the event line unless the data JSON carries its own type, which wins. Messages are split at a blank line, several data lines are joined with a newline, and id:, retry: and comment lines are ignored."
     },
     "LocalizableString": {
-      "description": "A string, or a map from locale to string, for example {\"en-US\": \"The API key\", \"sv-SE\": \"API-nyckeln\"}. The back office picks the exact locale, then any key of the same language, then en-US, then en, then the first value.",
+      "description": "A string, or a map from locale to string, for example {\"en-US\": \"The API key\", \"sv-SE\": \"API-nyckeln\"}. The back office picks the exact locale, then any key of the same language, then en-US, then the first value. An empty string counts as missing.",
       "oneOf": [
         { "type": "string" },
         {

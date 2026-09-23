@@ -17,6 +17,9 @@ import { createServer } from "node:http";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { createBank } from "./bank.mjs";
 
+export const money = (amount, { locale, currencyCode }) =>
+    new Intl.NumberFormat(locale || "en-US", { style: "currency", currency: currencyCode }).format(Number(amount));
+
 export const METHOD_ID = "com.example.piggy";
 export const BASE_PATH = "/piggy";
 export const KV_CONTAINER = "com.example.piggy";
@@ -169,7 +172,8 @@ export function startPiggyServer({ port = 0, now = () => new Date(), waitMs = 30
             case "01":
                 close("declined");
                 // The POS sentence for this reason takes two params: the balance and the requested amount.
-                send("Decline", { reason: "InsufficientFunds", params: ["0.00", dto.amount] });
+                // The POS inserts them as text, so format them for the cashier's locale ("0,00 kr" for sv-SE).
+                send("Decline", { reason: "InsufficientFunds", params: [money("0", dto), money(dto.amount, dto)] });
                 break;
             case "02":
                 close("failed");

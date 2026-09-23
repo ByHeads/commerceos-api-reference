@@ -136,7 +136,7 @@ test(".05 completes with Authorize only", async () => {
 
 test(".01 declines with InsufficientFunds", async () => {
     const events = await collectEvents((await startPayment(server, "pay-01", "100.01")).body);
-    assert.deepEqual(events, [{ type: "Decline", reason: "InsufficientFunds", params: ["0.00", "100.01"] }]);
+    assert.deepEqual(events, [{ type: "Decline", reason: "InsufficientFunds", params: ["0,00\u00a0kr", "100,01\u00a0kr"] }]);
 });
 
 test(".02 fails with one error", async () => {

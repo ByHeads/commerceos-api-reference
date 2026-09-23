@@ -25,7 +25,7 @@
 // clock, and the response bodies never carry a wall-clock value.
 import { createServer } from "node:http";
 import { formatEvent } from "./sse.mjs";
-import { cents } from "../../guide/examples/payment-epi/sample/server.mjs";
+import { cents, money } from "../../guide/examples/payment-epi/sample/server.mjs";
 
 export const METHOD_ID = "com.epicheck.reference";
 export const CANCEL_WAIT_MS = 2000;
@@ -172,7 +172,7 @@ export function startReferenceServer({ port = 0, now = () => new Date("2026-01-0
 
         switch (cents(dto.amount)) {
             case "01":
-                send("Decline", { reason: "InsufficientFunds", params: ["0.00", dto.amount] });
+                send("Decline", { reason: "InsufficientFunds", params: [money("0", dto), money(dto.amount, dto)] });
                 break;
             case "02":
                 send("Fail", { errors: [{ code: "ScriptedFailure", message: "Scripted failure for amount ending in .02" }] });
