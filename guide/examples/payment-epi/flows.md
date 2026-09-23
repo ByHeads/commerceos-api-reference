@@ -80,7 +80,8 @@ A refund is one `TransactionInitDto` with `actions: ["Credit"]` and `reversalArg
 original transaction and its timestamp (reference, section 6). `amount` is positive. Answer a
 `TransactionDto` with your own `transactionId`, and CommerceOS adds one payment record to the same order, so its status gains `Credited`.
 The *Refund* button first opens a confirmation dialog that lists your method once per payment line of
-the receipt, and one confirmation makes one Credit call per payment order on that receipt, each with
+the receipt, each with an amount that the cashier can change, so a `Credit` for part of a payment can
+reach you, and one confirmation makes one Credit call per payment order on that receipt, each with
 its own `reversalArgs`. CommerceOS makes each call once and does not retry: a non-2xx with an error body shows your `<code>: <message>` as the dialog text, and the cashier starts the refund again by hand.
 
 This flow runs only from the *Refund* action under the cart, and only for a method with

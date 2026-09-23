@@ -214,7 +214,7 @@ unless the JSON carries its own `type`. A stream holds zero or more intermediate
 |---|---|---|---|
 | `Create` | intermediate | `result: PaymentDto` | a session exists at the provider. More steps follow |
 | `Cancellable` | intermediate | `cancellationToken` | CommerceOS can now cancel (section 6). Send a `Wait` or `ShowImage` step after it: the cancel button sits on that dialog, and `Cancellable` alone shows nothing |
-| `Wait` | intermediate | `message?`, `element?`, `translationKey?`, `params?` | show a waiting message |
+| `Wait` | intermediate | `message?`, `element?`, `translationKey?`, `params?` | show a waiting message. Use `message`, written in the request's `locale`: the documents publish no list of POS translation keys |
 | `ShowImage` | intermediate | `url`, `audience?` | show an image, for example a QR code |
 | `VisitPage` | intermediate | `url`, `audience?` | open a web page |
 | `RenderView` | intermediate | `path`, `config`, `audience?` | render a view |
@@ -375,7 +375,7 @@ a released reservation `["Annulled"]`, a refunded sale `["Credited","Debited"]`.
 
 | `reason` | Cashier text in English |
 |---|---|
-| `InsufficientFunds` | `Payment declined: Insufficient funds. Available balance is {0}, requested amount is {1}.` Send two `params`. They are inserted as text, so format them for the request's `locale`, for example `"0,00 SEK"` for `sv-SE` |
+| `InsufficientFunds` | `Payment declined: Insufficient funds. Available balance is {0}, requested amount is {1}.` Send two `params`. They are inserted as text, so format them for the request's `locale`, for example `"0,00 kr"` for `sv-SE`, as `Intl.NumberFormat` writes it |
 | `CardNotActive` | `Payment declined: Card is not active.` |
 | `CardExpired` | `Payment declined: Card has expired.` |
 | `CardNotFound` | `Payment declined: Card not found.` |
@@ -407,7 +407,7 @@ The cents of the amount select the outcome: [Build a payment integration](../pay
 
 | Situation | What CommerceOS does | What you must do |
 |---|---|---|
-| The stream sends no step for a long time | Sets no timeout of its own. The HTTP runtime closes a stream with no bytes after about five minutes. That limit is the runtime's, not a contract value | Send a final step within minutes, or a `Wait` step at intervals while you wait for the provider |
+| The stream sends no step for a long time | Sets no timeout of its own. The HTTP runtime closes a stream with no bytes after about five minutes. That limit is the runtime's, not a contract value | Send a final step within minutes, or a `Wait` step at intervals while you wait for the provider. Every twenty to thirty seconds is well inside the limit |
 | The stream closes cleanly with no final step | Shows nothing. No dialog, no payment line, the sale stays open. Verified on a till 2026-09-22 | Never close a stream without a final step. On an exception, send `Fail` first |
 | A `Complete` that CommerceOS refuses (an Authorize-only answer under `debitSynchronously`, or a transaction it cannot record) | The raw dialog `¿Error: Payment was requested to be synchronously debited, but it was not.?`, no payment order, and the next attempt reuses the same `paymentKey`, so a resume repeats the refused answer and the cashier is stuck. A platform fix that turns this into a `Fail` step is proposed; with it the next attempt is a new key | Never send such a `Complete`. The tool refuses a non-capturing `Complete` under the flag |
 | The connection drops before a final step | Shows the raw dialog `¿TypeError: terminated?`. The payment order is not marked failed. On the cashier's next attempt with direction `Payment`: no order yet, same `paymentKey` again; an order `Debited` for the tender amount, attached without a new call; an order `Debited` for another amount, attached and the cashier told to tender the rest; a non-debited order, a fresh key | Treat a second `PUT` with a known `paymentKey` as a resume: answer the same `processorsId` and the same transactions, never a second charge. The conformance scenario `P10` checks it. When the session behind the key still waits for the customer, continue that session on the new stream, with `Wait` steps, and never open a second session |

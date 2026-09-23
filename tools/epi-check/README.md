@@ -26,7 +26,7 @@ The contract it checks: [Payment EPI reference](../../guide/examples/payment-epi
 | Errors | A bad request on any route but the stream yields a non-2xx status with `{ "errors": [ { "message": ... } ] }`. On the stream route a request the integration cannot take, for example an unknown `methodId`, is a 200 stream with one `Fail` step: CommerceOS discards the body of a non-2xx there and the cashier sees nothing |
 | Headers | A contextful call without the `X-EPI-*` headers answers 400 with an error body |
 
-Expect 20 pass, 0 fail, 0 skip: C1, the CommerceOS-side scenario, then nineteen against the integration.
+Expect 20 pass, 0 fail, 0 skip (a `--cos` run adds "1 with warnings" while the `assignedTerminals` defect below lasts): C1, the CommerceOS-side scenario, then nineteen against the integration.
 The scenario list with what each one proves is in
 [scenarios/README.md](../../guide/examples/payment-epi/scenarios/README.md). C1 gates the run: when it
 fails, the other nineteen are skipped with its reason and the run exits 1. Every payment key and token of

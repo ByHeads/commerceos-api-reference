@@ -992,7 +992,7 @@ components:
           description: "A POS element to show instead of a plain message."
         translationKey:
           type: "string"
-          description: "A POS translation key to show instead of message."
+          description: "A POS translation key to show instead of message. No list of keys is published: use message, written in the request's locale."
         params:
           type: "array"
           items:

@@ -430,7 +430,7 @@
         "type": { "const": "Wait", "description": "Wait." },
         "message": { "type": "string", "description": "The text for the cashier." },
         "element": { "type": "string", "description": "A POS element to show instead of a plain message." },
-        "translationKey": { "type": "string", "description": "A POS translation key to show instead of message." },
+        "translationKey": { "type": "string", "description": "A POS translation key to show instead of message. No list of keys is published: use message, written in the request's locale." },
         "params": {
           "type": "array",
           "items": { "type": "string" },
@@ -607,7 +607,7 @@
       "properties": {
         "access_token": { "type": "string", "description": "Send it as Authorization: Bearer <access_token>." },
         "token_type": { "type": "string", "description": "Bearer." },
-        "expires_in": { "type": "integer", "description": "Lifetime in seconds, 3600 today. Read it rather than assuming it." },
+        "expires_in": { "type": "integer", "description": "Lifetime in seconds, about 3600 today (3599 seen). Read it rather than assuming it." },
         "scope": { "type": "string", "description": "The granted scopes, space-separated." }
       },
       "required": ["access_token", "expires_in"]

@@ -281,7 +281,7 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/payment-integra
 #   (the answer is a JSON string with its quotes: paste the 32 characters between them)
 #   curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/companies/com.heads.seedID=ourcompany/identifiers/key"
 # The configuration object holds the fields that your /config-schema describes. The answer
-# carries identifiers.contextConfigId (the top-level contextConfigId field reads null), a
+# carries identifiers.contextConfigId (a top-level contextConfigId is null or absent), a
 # four-character id that CommerceOS generates: it is the value of
 # X-EPI-Context-Config-Id on every later contextful call for this node.
 curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/epi-configurations" \
@@ -327,7 +327,9 @@ It binds **the browser that pressed it** to the device, so press it from the bro
 the till, not from your own. Then the till: *Kassa* → *Kassa* (`/cos/pos/terminal`). The first visit asks for POS mode,
 *Aktivera POS-läge*. It can end the back-office session in that browser; if it does, log in again
 and pick the organization if asked (*Välj organisation*). Then the cashier starts the till for the day. To pay with your method: add an article, press *Payments*, then *Pay*
-(`F4`), type the amount before you pick a method, and pick yours: it is a text tile in the grid of
+(`F4`), type the amount before you pick a method, and pick yours. Picking the method starts the
+payment at once, with no confirm step, so check the amount in the field first: it opens with the
+whole balance, in the till's own number format (`10,04` on a Swedish till). Your method is a text tile in the grid of
 methods, next to the logo tiles, and missing from the *Payments* shortcut panel until an
 administrator adds it there. A `Decline`, `Fail` or `Cancel`
 closes the pay screen, so the next attempt starts again from *Pay*. `Wait` keeps the pay screen open. A
@@ -361,8 +363,9 @@ amount to select the outcome, for a `Payment` and a `Payout` alike. The sample f
 | `.00`, and every cents value not listed below | `Complete`, actions `["Authorize","Debit"]`. A `Payout` without `debitSynchronously` gets `["Authorize"]` alone, see below |
 | `.01` | `Decline`, reason `InsufficientFunds` |
 | `.02` | `Fail`, one error |
-| `.03` | `Cancellable`, then `Wait`, then `Cancel` after the cancel call. The `Wait` step puts the cancel button on the cashier's dialog. Without a cancel call, end the stream when your own window runs out: the sample completes, and a `Decline` with reason `Timeout` is as valid. For a till, prefer the `Decline`: a customer who walked away is then not charged |
-| `.04` | `Wait`, then `Complete`. No `Create` step. Repeated `Wait` steps to keep the stream open are fine: the tool ignores a `Wait` it did not list, and counts a run of `Wait` steps as one |
+| `.03` | `Cancellable`, then `Wait`, then `Cancel` after the cancel call. The `Wait` step puts the cancel button on the cashier's dialog. Without a cancel call, end the stream when your own window runs out. Keep the window under the tool's `--timeout`
+(thirty seconds by default), or raise the timeout: the sample completes, and a `Decline` with reason `Timeout` is as valid. For a till, prefer the `Decline`: a customer who walked away is then not charged |
+| `.04` | `Wait`, then `Complete`. No `Create` step. Repeated `Wait` steps to keep the stream open are fine: the tool ignores a `Wait` it did not list, and counts a run of `Wait` steps as one. In a test, let the session complete by itself after a short delay, as the sample does, so that no one has to tap |
 | `.05` | `Complete`, actions `["Authorize"]` only, when the request carries no `debitSynchronously`. Under the flag, `.05` captures like `.00`: a till never sees a reservation |
 
 On a till every request carries `debitSynchronously: true`, `Payment` and `Payout` alike, and a

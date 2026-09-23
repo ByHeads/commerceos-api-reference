@@ -258,7 +258,7 @@ components:
           description: "Bearer."
         expires_in:
           type: "integer"
-          description: "Lifetime in seconds, 3600 today. Read it rather than assuming it."
+          description: "Lifetime in seconds, about 3600 today (3599 seen). Read it rather than assuming it."
         scope:
           type: "string"
           description: "The granted scopes, space-separated."
