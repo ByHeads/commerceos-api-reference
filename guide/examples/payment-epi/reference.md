@@ -246,7 +246,7 @@ it gives a record with no items in the back office.
 
 ## 6. Transactions, cancel, and reversal arguments
 
-A `paymentKey` whose stream ended in `Decline`, `Cancel` or `Fail` has no payment order: treat a new `PUT` for it as a new payment, and answer a transactions call for it with `404` and an error body. An administrator who reads `GET /v1/payment-orders/key=<key>` for such a key gets `200` with the body `null`, the same as for an unknown key, never a 404.
+A `paymentKey` whose stream ended in `Decline`, `Cancel` or `Fail` has no payment order: treat a new `PUT` for it as a new payment, and answer a transactions call for it with `404` and an error body. An administrator who reads `GET /v1/payment-orders/key=<key>` for such a key gets `200` with the body `null`, the same as for any unknown key of 32 characters, never a 404. A key of another length fails to parse and answers `404 not found`, so the tool's own keys (`pay-<runId>-P1`) read as 404. CommerceOS never sends such a key.
 
 **When a refund reaches this route.** The POS makes the `Credit` call only from the *Refund*
 action under the cart, on a return whose original sale your method paid, and only when your method

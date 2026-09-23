@@ -34,7 +34,8 @@ a run carries a run id (`pay-<runId>-P1`), so running the tool twice against the
 repeats a key that your integration stored; `--now <iso>` pins the id, and two pinned runs against the
 same integration state write byte-identical reports. The tool does not delete anything: a `--cos` run
 leaves the key-value entries that your integration wrote for its scenario keys, one per payment
-scenario. Delete them, or let your integration expire them.
+scenario. Delete them, or let your integration expire them. The tool calls your integration directly, so a
+run creates no payment order, payment record or receipt on the CommerceOS.
 
 ## Run it against a CommerceOS (`--cos`)
 
