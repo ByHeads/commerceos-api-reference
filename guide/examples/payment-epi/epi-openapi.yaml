@@ -21,7 +21,7 @@ paths:
       tags:
         - "Lifecycle"
       summary: "Install: receive the OAuth2 client for the calls back to CommerceOS"
-      description: "A Heads administrator runs the install action on the payment integration record. Store the body: it is the only credential your integration gets. The request carries no Content-Type header, so parse the body unconditionally. On any 2xx the integration becomes Active."
+      description: "A Heads administrator runs the install action on the payment integration record. Store the body: it is the only credential your integration gets. The request carries Content-Type text/plain;charset=UTF-8, not application/json, so parse the body as JSON whatever the header says. On any 2xx the integration becomes Active."
       requestBody:
         required: true
         content:

@@ -28,7 +28,7 @@ const STEPS = "Create, Cancellable, Wait, ShowImage, VisitPage, RenderView (inte
  */
 const EPI_ROUTES = [
     { method: "post", path: "/install", tag: "Lifecycle", contextful: false, summary: "Install: receive the OAuth2 client for the calls back to CommerceOS", request: "InstallPayload", response: "none",
-      when: "A Heads administrator runs the install action on the payment integration record. Store the body: it is the only credential your integration gets. The request carries no Content-Type header, so parse the body unconditionally. On any 2xx the integration becomes Active." },
+      when: "A Heads administrator runs the install action on the payment integration record. Store the body: it is the only credential your integration gets. The request carries Content-Type text/plain;charset=UTF-8, not application/json, so parse the body as JSON whatever the header says. On any 2xx the integration becomes Active." },
     { method: "post", path: "/uninstall", tag: "Lifecycle", contextful: false, summary: "Uninstall: the integration becomes Inactive", response: "none",
       when: "The administrator runs the uninstall action. Forget the stored client. A failure is logged and ignored." },
     { method: "get", path: "/config-schema", tag: "Lifecycle", contextful: false, summary: "The form that an administrator fills in per organization node", response: "ConfigSchema",

@@ -38,7 +38,7 @@ CommerceOS calls these endpoints outside a payment. *Bare* calls carry no contex
 
 | Call | Headers | Request body | Response | When |
 |---|---|---|---|---|
-| `POST {baseUrl}/install` | bare | install payload, below | any 2xx | the `install` action on the integration. On success the status becomes `Active`. A later install usually sends the same client again, and it can carry a new one: always store the client it sends, and drop any cached token |
+| `POST {baseUrl}/install` | bare | install payload, below, sent as `text/plain;charset=UTF-8`: parse it as JSON whatever the header says | any 2xx | the `install` action on the integration. On success the status becomes `Active`. A later install usually sends the same client again, and it can carry a new one: always store the client it sends, and drop any cached token |
 | `POST {baseUrl}/uninstall` | bare | empty | any 2xx. A failure is logged and ignored | the `uninstall` action. The status becomes `Inactive` |
 | `GET {baseUrl}/config-schema` | bare | none | form description, section 4 | an administrator opens the configuration form |
 | `POST {baseUrl}/test` | contextful | none | JSON `true` | the `test` method, once per configured node |
@@ -410,7 +410,7 @@ a released reservation `["Annulled"]`, a refunded sale `["Credited","Debited"]`.
 refused), `UnavailableDevice` (Terminal is unavailable), `UnavailableService` (Payment service is
 unavailable), `UnreachableHost` (Cannot reach the payment service), `WrongPIN` (Incorrect PIN
 entered), `NoResponse` (No response from the terminal), `TerminalRequired` (A payment terminal is
-required), `UnknownState` (An unknown error occurred). Any other code shows `message`.
+required), `UnknownState` (An unknown error occurred). Any other code shows `message` verbatim, after a prefix in the till's language, so write `message` in the request's `locale`, as for `Wait`.
 
 ## 10. Test amounts
 
