@@ -1,0 +1,13 @@
+{
+    "id": "L2",
+    "title": "Test: POST /test returns true under a configuration",
+    "steps": [
+        {
+            "call": "test",
+            "expect": {
+                "status": 200,
+                "equals": true
+            }
+        }
+    ]
+}

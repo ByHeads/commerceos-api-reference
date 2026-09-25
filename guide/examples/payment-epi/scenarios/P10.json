@@ -1,0 +1,72 @@
+{
+    "id": "P10",
+    "title": "Resume: a repeated PUT for a completed key answers the same processorsId and transactions",
+    "amount": "100.00",
+    "steps": [
+        {
+            "call": "startPayment",
+            "key": "{{paymentKey}}",
+            "args": {
+                "methodId": "{{methodId}}",
+                "amount": "{{amount}}",
+                "currencyCode": "{{currencyCode}}",
+                "direction": "Payment",
+                "debitSynchronously": true,
+                "payer": "{{payer}}",
+                "payee": "{{payee}}",
+                "token": "{{token}}",
+                "locale": "{{locale}}",
+                "specification": "{{specification}}"
+            },
+            "expect": {
+                "status": 200,
+                "schema": "StepComplete",
+                "events": [
+                    "Complete"
+                ],
+                "actions": [
+                    [
+                        "Authorize",
+                        "Debit"
+                    ]
+                ],
+                "echo": [
+                    "methodId",
+                    "amount",
+                    "currencyCode",
+                    "token"
+                ],
+                "derivedStatus": [
+                    "Debited"
+                ]
+            }
+        },
+        {
+            "call": "startPayment",
+            "key": "{{paymentKey}}",
+            "args": {
+                "methodId": "{{methodId}}",
+                "amount": "{{amount}}",
+                "currencyCode": "{{currencyCode}}",
+                "direction": "Payment",
+                "debitSynchronously": true,
+                "payer": "{{payer}}",
+                "payee": "{{payee}}",
+                "token": "{{token}}",
+                "locale": "{{locale}}",
+                "specification": "{{specification}}"
+            },
+            "expect": {
+                "status": 200,
+                "schema": "StepComplete",
+                "events": [
+                    "Complete"
+                ],
+                "idempotent": true,
+                "derivedStatus": [
+                    "Debited"
+                ]
+            }
+        }
+    ]
+}

@@ -1,0 +1,61 @@
+{
+    "currencyCode": "SEK",
+    "locale": "sv-SE",
+    "token": "tok-{{runId}}-{{id}}",
+    "paymentKey": "pay-{{runId}}-{{id}}",
+    "payer": {
+        "type": "Person",
+        "key": "person-0001",
+        "givenName": "Anna",
+        "familyName": "Lindqvist",
+        "fullName": "Anna Lindqvist",
+        "email": "anna.lindqvist@example.com",
+        "mobilePhone": "+46701234567",
+        "invoiceAddress": {
+            "lines": [
+                "Storgatan 1"
+            ],
+            "postalCode": "111 22",
+            "cityName": "Stockholm",
+            "countryCode": "SE"
+        }
+    },
+    "payee": {
+        "type": "Organization",
+        "key": "org-0001",
+        "fullName": "Reference Store AB",
+        "nationalId": "556000-0000",
+        "email": "store@example.com",
+        "invoiceAddress": {
+            "lines": [
+                "Butiksvägen 2"
+            ],
+            "postalCode": "333 44",
+            "cityName": "Göteborg",
+            "countryCode": "SE"
+        }
+    },
+    "specification": [
+        {
+            "identifier": "ART-0001",
+            "description": "Reference article A",
+            "quantity": "1",
+            "unit": "pcs",
+            "totalAmount": "{{half}}",
+            "vatPercentage": "25",
+            "currencyCode": "{{currencyCode}}"
+        },
+        {
+            "identifier": "ART-0002",
+            "description": "Reference article B",
+            "quantity": "1",
+            "unit": "pcs",
+            "totalAmount": "{{remainder}}",
+            "vatPercentage": "25",
+            "currencyCode": "{{currencyCode}}"
+        }
+    ],
+    "cancel": {
+        "isLocalTerminal": false
+    }
+}

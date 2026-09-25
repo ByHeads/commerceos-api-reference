@@ -1,0 +1,25 @@
+{
+    "id": "E1",
+    "title": "Transactions for a payment key that never completed: 404 with errors",
+    "amount": "100.00",
+    "steps": [
+        {
+            "call": "transaction",
+            "key": "{{paymentKey}}",
+            "args": {
+                "actions": [
+                    "Debit"
+                ],
+                "token": "{{token}}",
+                "amount": "{{amount}}",
+                "currencyCode": "{{currencyCode}}",
+                "methodId": "{{methodId}}",
+                "specification": "{{specification}}"
+            },
+            "expect": {
+                "status": 404,
+                "schema": "ErrorBody"
+            }
+        }
+    ]
+}

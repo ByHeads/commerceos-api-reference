@@ -1,0 +1,798 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://heads.com/schemas/payment-epi/dto.schema.json",
+  "title": "Payment EPI contract",
+  "description": "Every DTO and every SSE step of the CommerceOS payment EPI, and the CommerceOS API types that a payment integration calls back, copied from CommerceOS at the contract commit named in run.mjs. tools/epi-check/openapi.mjs renders this file into two OpenAPI 3.1 documents.",
+  "$defs": {
+    "DecimalDto": {
+      "type": "string",
+      "pattern": "^(-?\\d+(\\.\\d+)?|Missing)$",
+      "description": "A decimal number as a string, never a JSON number. CommerceOS sends a whole amount without decimals (\"15\", not \"15.00\") and a fraction without trailing zeros (\"10.04\", but \"298.5\" for 298.50); accept both and compare numerically. In a specification item CommerceOS may send the literal \"Missing\" for a quantity or amount it does not know; do not parse it as a number. Answer in either numeric form."
+    },
+    "PaymentDirection": { "type": "string", "enum": ["Payment", "Payout"], "description": "Payment: the customer pays. Payout: the customer is paid." },
+    "PaymentDeclineReason": {
+      "type": "string",
+      "description": "A code that selects the sentence the cashier sees. Translated codes: InsufficientFunds (send two params: the available balance and the requested amount), CardNotActive, CardExpired, CardNotFound, CardCancelled, CardFullyRedeemed, CardBlocked, InvalidPin, InvalidCode, Timeout. Any other code is shown as 'Payment declined: <code>', untranslated, in every language."
+    },
+    "Audience": {
+      "type": "string",
+      "enum": ["merchant", "customer", "all"],
+      "description": "Who sees the step: the merchant (the cashier's screen), the customer (the customer display), or all."
+    },
+    "InstallPayload": {
+      "type": "object",
+      "properties": {
+        "cosBaseUrl": { "type": "string", "description": "The public base URL of the CommerceOS instance, without /api. Your calls go to {cosBaseUrl}/api/v1/..." },
+        "tokenUrl": { "type": "string", "description": "The client-credentials token endpoint, complete: <OAuth2 public URL>/oauth2/v1/token." },
+        "clientId": { "type": "string", "description": "The OAuth2 client id." },
+        "clientSecret": { "type": "string", "description": "The OAuth2 client secret. CommerceOS refuses to install an integration whose client has no secret." },
+        "scope": {
+          "type": "string",
+          "description": "The scopes of that client, space-separated, as CommerceOS holds them. A client created in the back office for an integration has: me geo:read orders.sales:write orders.payments:write payment-records:write kv; a seeded one also has payment-means:read. Send the string back as scope in the token request. Your integration needs me, kv and orders.payments:write."
+        }
+      },
+      "required": ["cosBaseUrl", "tokenUrl", "clientId", "clientSecret", "scope"],
+      "description": "The body of POST /install. It is the only credential that your integration receives: the OAuth2 client of the integration's user in CommerceOS, for the calls back to CommerceOS (see the CommerceOS-side document). A second install usually sends the same client again, and it can carry a new one: always store the client that the latest install sent."
+    },
+    "MethodDto": {
+      "type": "object",
+      "properties": {
+        "methodId": {
+          "type": "string",
+          "description": "Your id of the method, unique within the integration, for example com.example.piggy. Every payment and transaction names it."
+        },
+        "name": { "type": "string", "description": "Display name." },
+        "requires": {
+          "type": "object",
+          "properties": {
+            "terminal": {
+              "type": "boolean",
+              "description": "true when a payment needs a payment terminal record. PaymentInitDto then carries terminalId, and CommerceOS reads GET /terminals/{terminalId} when an administrator creates the record."
+            },
+            "specification": { "type": "boolean", "description": "true when PaymentInitDto must carry the itemized specification." }
+          },
+          "required": ["terminal", "specification"],
+          "description": "What a payment with this method needs from CommerceOS."
+        },
+        "supports": {
+          "type": "object",
+          "properties": {
+            "incoming": { "type": "boolean", "description": "Payments (direction Payment)." },
+            "outgoing": { "type": "boolean", "description": "Payouts (direction Payout)." },
+            "reversal": { "type": "boolean", "description": "Annul and Credit through POST /payments/{paymentKey}/transactions." }
+          },
+          "required": ["incoming", "outgoing", "reversal"],
+          "description": "Which directions and reversals your provider handles."
+        },
+        "allows": {
+          "type": "object",
+          "properties": {
+            "availableInPos": { "type": "boolean", "description": "Default true. false hides the method from the pay screen." },
+            "openCashBoxOnUse": { "type": "boolean", "description": "Default false. Open the cash drawer when the method is used." },
+            "openCashBoxOnReturn": { "type": "boolean", "description": "Default false. Open the cash drawer on a return paid with the method." },
+            "fullAmountFinishesReceipt": {
+              "type": "boolean",
+              "description": "Default false. When the cashier tenders more than the balance with this method, the POS pays the change back through a second call to your integration: a Payout on the same method. Set it only when supports.outgoing is true, for example for cash-like methods."
+            }
+          },
+          "description": "POS behavior switches. Every field defaults as stated when absent, and configure applies the defaults on every run: an omitted block resets an administrator's edit of these four fields."
+        }
+      },
+      "required": ["methodId", "name", "requires", "supports"],
+      "description": "One way to pay that your integration offers. CommerceOS creates one payment method record per item of GET /methods when an administrator runs configure, and every configure overwrites name, requires, supports and allows from this DTO. The POS shows it as a button once it is added to the POS profile. The administrator sets the rest of the method in the back office, outside your control: requires customer, requires credit approval, and the currency rules (rounding increment, maximum overpayment). See the reference, section 2, The payment method record."
+    },
+    "TerminalDto": {
+      "type": "object",
+      "properties": {
+        "terminalId": { "type": "string", "description": "Your id of the terminal, unique within the method." },
+        "methodId": { "type": "string", "description": "The method the terminal serves." },
+        "name": { "type": "string", "description": "Display name." },
+        "directUrl": {
+          "type": "string",
+          "description": "How to reach the terminal directly on the store network. CommerceOS sends it back as terminalDirectUrl on payments and cancels."
+        }
+      },
+      "required": ["terminalId", "methodId"],
+      "description": "A payment terminal as your integration knows it. CommerceOS reads it to create its own payment terminal record, which is then linked to a device and a POS terminal by an administrator."
+    },
+    "LocalProxyDto": {
+      "type": "object",
+      "properties": {
+        "hostname": { "type": "string", "description": "Reach the proxy at https://<hostname>/proxy." },
+        "secret": { "type": "string", "description": "Send it as Proxy-Authorization: Bearer <secret>." }
+      },
+      "required": ["hostname", "secret"],
+      "description": "A proxy on the store network through which a local terminal is reached."
+    },
+    "PaymentInitDto": {
+      "type": "object",
+      "properties": {
+        "methodId": { "type": "string", "description": "One of the ids from your GET /methods." },
+        "amount": { "$ref": "#/$defs/DecimalDto", "description": "The amount to pay, positive." },
+        "currencyCode": { "type": "string", "description": "ISO 4217, for example SEK." },
+        "direction": { "$ref": "#/$defs/PaymentDirection", "description": "Payment or Payout." },
+        "payer": { "$ref": "#/$defs/AgentDto", "description": "The paying party. For direction Payment this is the customer; for Payout it is the organization node of the call." },
+        "payee": {
+          "$ref": "#/$defs/AgentDto",
+          "description": "The receiving party. For direction Payment this is the organization node of the call; for Payout it is the customer."
+        },
+        "token": { "type": "string", "description": "An opaque id of the money this payment is about. Echo it on every transaction you return." },
+        "locale": { "type": "string", "description": "The cashier's locale, for example sv-SE. Use it for texts that you return." },
+        "specification": { "$ref": "#/$defs/SpecificationDto", "description": "What the payment is for. For a Payment the total amounts sum to amount. A Payout from the pay screen carries an empty array." },
+        "debitSynchronously": {
+          "const": true,
+          "description": "Present and true when the money must move in this call, Payment and Payout alike. A till sends it on every request. A Complete under it must capture: actions Authorize and Debit, or a Debit transaction. CommerceOS refuses an Authorize-only Complete under the flag, and the cashier sees an error. The till is today the only caller, so the flag is always present. The contract also allows a request without it that reserves first and captures or releases later through the transactions route; no CommerceOS flow uses that path today."
+        },
+        "redirectUrls": {
+          "type": "object",
+          "properties": {
+            "completed": { "type": "string", "description": "After a completed payment." },
+            "failed": { "type": "string", "description": "After a failed payment." },
+            "cancelled": { "type": "string", "description": "After a cancelled payment." }
+          },
+          "required": ["completed", "failed", "cancelled"],
+          "description": "For a web flow: https URLs where the customer lands after the outcome."
+        },
+        "termsUrl": { "type": "string", "description": "The legal terms of the sale, for a provider that shows them." },
+        "terminalId": { "type": "string", "description": "The payment terminal of the POS, when the method requires one. One of your GET /terminals ids. Absent when requires.terminal is false, also when the device has a payment terminal record." },
+        "terminalDirectUrl": { "type": "string", "description": "The directUrl of that terminal, as your GET /terminals answered it." },
+        "localProxy": { "$ref": "#/$defs/LocalProxyDto", "description": "The proxy through which a local terminal is reached, when isLocalTerminal is true." },
+        "isLocalTerminal": { "type": "boolean", "description": "true when the terminal sits on the store network and the call must go through localProxy." },
+        "walletCode": { "type": "string", "description": "For wallet payments such as gift cards: the code the customer presented." },
+        "walletPin": { "type": "string", "description": "For wallet payments: the PIN the customer entered." },
+        "cardAcquisitionReference": {
+          "type": "object",
+          "properties": {
+            "poiTransactionId": { "type": "string", "description": "The POI transaction id of the earlier tap." },
+            "timestamp": { "type": "string", "description": "Its timestamp, ISO 8601." }
+          },
+          "required": ["poiTransactionId", "timestamp"],
+          "description": "Reuse an earlier card tap instead of asking the customer again."
+        }
+      },
+      "required": ["methodId", "amount", "currencyCode", "direction", "payer", "payee", "token", "locale", "specification"],
+      "description": "The body of PUT /payments/{paymentKey}. The paymentKey in the path is the key of the payment order that CommerceOS allocated before the call, and the key your integration uses to complete the payment asynchronously."
+    },
+    "PaymentDto": {
+      "type": "object",
+      "properties": {
+        "methodId": { "type": "string", "description": "Echo of the request." },
+        "amount": { "$ref": "#/$defs/DecimalDto", "description": "Echo of the request." },
+        "currencyCode": { "type": "string", "description": "Echo of the request." },
+        "processorsId": {
+          "type": "string",
+          "description": "Your id of the payment session at the provider. CommerceOS requires it to be unique per payment method for all time: a Complete whose processorsId equals that of any earlier payment order of the method fails with \"Payment order '<id>' already exists.\", so never restart a counter. A repeated PUT for a paymentKey you already completed must answer the same processorsId and the same transactions: a Complete whose processorsId differs from the order's is refused with \"The payment processor ID of the payment has changed.\"."
+        },
+        "transactions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/TransactionDto" },
+          "description": "The money that moved. CommerceOS creates one payment record per item on Complete. Empty on Create."
+        },
+        "issuedWalletKey": { "type": "string", "description": "The key of a wallet that this payment issued, for example a new gift card." }
+      },
+      "required": ["methodId", "amount", "currencyCode", "processorsId", "transactions"],
+      "description": "The result of a payment, carried by the Create and Complete steps."
+    },
+    "TransactionInitDto": {
+      "type": "object",
+      "properties": {
+        "actions": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["Authorize", "Annul", "Debit", "Credit"] },
+          "description": "One or more of Authorize (reserve), Annul (release a reservation), Debit (capture), Credit (refund). Most transactions carry one."
+        },
+        "token": { "type": "string", "description": "The token of the payment." },
+        "amount": { "$ref": "#/$defs/DecimalDto", "description": "Always positive, also for a refund." },
+        "currencyCode": { "type": "string", "description": "The payment currency." },
+        "methodId": { "type": "string", "description": "The method of the payment." },
+        "specification": { "$ref": "#/$defs/SpecificationDto", "description": "The items this transaction is about. Their total amounts sum to amount." },
+        "walletCode": { "type": "string", "description": "As in PaymentInitDto." },
+        "isLocalTerminal": { "type": "boolean", "description": "As in PaymentInitDto." },
+        "terminalDirectUrl": { "type": "string", "description": "As in PaymentInitDto." },
+        "localProxy": { "$ref": "#/$defs/LocalProxyDto", "description": "As in PaymentInitDto." },
+        "reversalArgs": { "$ref": "#/$defs/ReversalDto", "description": "Present on a refund: the original transaction to reverse." }
+      },
+      "required": ["actions", "token", "amount", "currencyCode", "methodId"],
+      "description": "The body of POST /payments/{paymentKey}/transactions: today only a refund (Credit) from a till; the contract also allows a capture (Debit) or a release (Annul) of a reservation, on a payment that completed. CommerceOS makes the call once and does not retry."
+    },
+    "TransactionDto": {
+      "type": "object",
+      "properties": {
+        "actions": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["Authorize", "Annul", "Debit", "Credit"] },
+          "description": "One or more of Authorize (reserve), Annul (release a reservation), Debit (capture), Credit (refund). Most transactions carry one."
+        },
+        "token": { "type": "string", "description": "The token of the payment." },
+        "amount": { "$ref": "#/$defs/DecimalDto", "description": "Always positive, also for a refund." },
+        "currencyCode": { "type": "string", "description": "The payment currency." },
+        "methodId": { "type": "string", "description": "The method of the payment." },
+        "specification": {
+          "$ref": "#/$defs/SpecificationDto",
+          "description": "The items this transaction is about. In a stream step CommerceOS stores it verbatim as the rows of the payment record, and an omitted or empty list gives a record with no items. On POST /payments/{paymentKey}/transactions an omitted field falls back to the request's specification; only an explicit [] gives no items."
+        },
+        "walletCode": { "type": "string", "description": "As in PaymentInitDto." },
+        "isLocalTerminal": { "type": "boolean", "description": "As in PaymentInitDto." },
+        "terminalDirectUrl": { "type": "string", "description": "As in PaymentInitDto." },
+        "localProxy": { "$ref": "#/$defs/LocalProxyDto", "description": "As in PaymentInitDto." },
+        "reversalArgs": { "$ref": "#/$defs/ReversalDto", "description": "Present on a refund: the original transaction to reverse." },
+        "transactionId": {
+          "type": "string",
+          "description": "Your id of the transaction, unique within the payment. A repeat of the identical record on the same payment order is idempotent; a record that reuses a transactionId with any field changed is refused. Use a new id for every distinct transaction."
+        },
+        "timestamp": { "type": "string", "description": "When it happened, ISO 8601." },
+        "means": {
+          "$ref": "#/$defs/PaymentMeansDto",
+          "description": "What paid. Set it: the receipt prints it instead of the method name, the back office shows it in the Payment means column, and the sales reports group by it; without it those show the method name, nothing, and --. A card terminal sends Card with scheme and maskedPan. A provider without card data sends Singleton with its brand as id. Wallet is only for a wallet that CommerceOS itself holds the balance of."
+        },
+        "consumerPrintout": { "type": "string", "description": "Receipt text for the customer copy, from the provider." },
+        "merchantPrintout": { "type": "string", "description": "Receipt text for the merchant copy, from the provider." },
+        "rawData": { "type": "object", "description": "Any JSON object. Stored as is, never read by CommerceOS." }
+      },
+      "required": ["actions", "token", "amount", "currencyCode", "methodId", "transactionId", "timestamp"],
+      "description": "What your provider did: a TransactionInitDto plus your identifiers. Returned by POST /payments/{paymentKey}/transactions and listed in PaymentDto.transactions."
+    },
+    "ReversalDto": {
+      "type": "object",
+      "properties": {
+        "originalTransactionId": { "type": "string", "description": "The transactionId of the transaction to reverse." },
+        "originalTimestamp": { "type": "string", "description": "Its timestamp." },
+        "terminalId": { "type": "string", "description": "The terminal that made it, when the method requires one." }
+      },
+      "description": "Names the transaction that a refund reverses."
+    },
+    "CancelDto": {
+      "type": "object",
+      "properties": {
+        "terminalId": { "type": "string", "description": "As in PaymentInitDto." },
+        "terminalDirectUrl": { "type": "string", "description": "As in PaymentInitDto." },
+        "isLocalTerminal": { "type": "boolean", "description": "As in PaymentInitDto." },
+        "localProxy": { "$ref": "#/$defs/LocalProxyDto", "description": "As in PaymentInitDto." }
+      },
+      "description": "The body of POST /payments/{cancellationToken}/cancel: the local-terminal context of the payment, so that a provider can route the cancel to the right terminal. All fields are optional and echo PaymentInitDto."
+    },
+    "SpecificationDto": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/SpecificationItemDto" },
+      "description": "The itemized content of a payment or transaction."
+    },
+    "SpecificationItemDto": {
+      "type": "object",
+      "properties": {
+        "identifier": { "type": "string", "description": "The article identifier, for example the GTIN or the internal id." },
+        "description": { "type": "string", "description": "The article name." },
+        "quantity": { "$ref": "#/$defs/DecimalDto", "description": "Decimal, in unit." },
+        "unit": { "type": "string", "description": "For example pcs or kg." },
+        "totalAmount": { "$ref": "#/$defs/DecimalDto", "description": "Decimal: quantity times the unit price, VAT included." },
+        "vatPercentage": { "$ref": "#/$defs/DecimalDto", "description": "Decimal, for example 25." },
+        "currencyCode": { "type": "string", "description": "ISO 4217." }
+      },
+      "required": ["description", "quantity", "unit", "totalAmount", "currencyCode"],
+      "description": "One line of what is paid for."
+    },
+    "PaymentMeansDto": {
+      "oneOf": [
+        { "$ref": "#/$defs/PaymentCardDto" },
+        { "$ref": "#/$defs/SingletonPaymentMeansDto" },
+        { "$ref": "#/$defs/WalletPaymentMeansDto" }
+      ],
+      "description": "What paid, told apart by type: Card, Singleton or Wallet."
+    },
+    "PaymentCardDto": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "Card", "description": "Card." },
+        "scheme": { "type": "string", "description": "For example Visa or Mastercard." },
+        "issuer": { "type": "string", "description": "The issuing bank." },
+        "maskedPan": { "type": "string", "description": "The masked card number, for example ************1234." },
+        "token": { "type": "string", "description": "The provider's token of the card, for later reuse." },
+        "validFrom": { "type": "string", "description": "ISO 8601 date." },
+        "validTo": { "type": "string", "description": "ISO 8601 date." }
+      },
+      "required": ["type"],
+      "description": "A card payment."
+    },
+    "SingletonPaymentMeansDto": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "Singleton", "description": "Singleton." },
+        "id": {
+          "type": "string",
+          "description": "A stable id of the brand or method, for example Piggy Bank. The same id on every transaction of that brand. CommerceOS shows it as the text, first letter capitalized, so write it as the cashier should read it."
+        }
+      },
+      "required": ["type", "id"],
+      "description": "A means with no per-customer identity, reusable across transactions: a brand or a method, for example swish, vipps, an invoice, or your provider's name. The right choice for a provider without card data."
+    },
+    "WalletPaymentMeansDto": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "Wallet", "description": "Wallet." },
+        "walletId": { "type": "string", "description": "The id of the wallet at the provider." },
+        "providerId": { "type": "string", "description": "The provider's id." },
+        "provider": { "type": "string", "description": "The provider's display name." },
+        "maskedCode": { "type": "string", "description": "The masked wallet code." },
+        "remainingBalance": { "type": "string", "description": "Decimal: what is left after this transaction." },
+        "refillable": { "type": "boolean", "description": "true when the wallet can be topped up." },
+        "validFrom": { "type": "string", "description": "ISO 8601 date." },
+        "validTo": { "type": "string", "description": "ISO 8601 date." }
+      },
+      "required": ["type"],
+      "description": "A wallet such as a gift card or a stored-value account."
+    },
+    "AgentDto": {
+      "oneOf": [
+        { "$ref": "#/$defs/PersonDto" },
+        { "$ref": "#/$defs/OrganizationDto" }
+      ],
+      "description": "A party of the payment: a PersonDto or an OrganizationDto, told apart by type."
+    },
+    "PersonDto": {
+      "type": "object",
+      "properties": {
+        "key": { "type": "string", "description": "The CommerceOS key of the agent." },
+        "fullName": { "type": "string", "description": "Full name." },
+        "nationalId": { "type": "string", "description": "National id or organization number." },
+        "email": { "type": "string", "description": "Some providers need it for a receipt or a wallet." },
+        "landlinePhone": { "type": "string", "description": "Phone number." },
+        "mobilePhone": { "type": "string", "description": "Phone number." },
+        "invoiceAddress": { "$ref": "#/$defs/AddressDto", "description": "Where invoices go." },
+        "deliveryAddress": { "$ref": "#/$defs/AddressDto", "description": "Where goods go." },
+        "type": { "const": "Person", "description": "Person." },
+        "givenName": { "type": "string", "description": "First name." },
+        "familyName": { "type": "string", "description": "Last name." },
+        "phoneNumber": { "type": "string", "description": "Phone number, when the split into landline and mobile is unknown." }
+      },
+      "required": ["key", "type"],
+      "description": "A person."
+    },
+    "OrganizationDto": {
+      "type": "object",
+      "properties": {
+        "key": { "type": "string", "description": "The CommerceOS key of the agent." },
+        "fullName": { "type": "string", "description": "Full name." },
+        "nationalId": { "type": "string", "description": "National id or organization number." },
+        "email": { "type": "string", "description": "Some providers need it for a receipt or a wallet." },
+        "landlinePhone": { "type": "string", "description": "Phone number." },
+        "mobilePhone": { "type": "string", "description": "Phone number." },
+        "invoiceAddress": { "$ref": "#/$defs/AddressDto", "description": "Where invoices go." },
+        "deliveryAddress": { "$ref": "#/$defs/AddressDto", "description": "Where goods go." },
+        "type": { "const": "Organization", "description": "Organization." }
+      },
+      "required": ["key", "type"],
+      "description": "An organization, for example the store that receives a payment."
+    },
+    "AddressDto": {
+      "type": "object",
+      "properties": {
+        "lines": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Street lines."
+        },
+        "postalCode": { "type": "string", "description": "Postal code." },
+        "cityName": { "type": "string", "description": "City." },
+        "regionName": { "type": "string", "description": "Region or state." },
+        "countryCode": { "type": "string", "description": "ISO 3166-1 alpha-2." }
+      },
+      "description": "A postal address."
+    },
+    "EpiErrorDetail": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "A provider-defined code. On a Fail step the POS shows the translation of the code when it has one (translation key ErrorCondition:<code>), else message, and never concatenates the two. On an error body (transactions, cancel, test, methods, terminals) the cashier sees '<code>: <message>' verbatim."
+        },
+        "message": { "type": "string", "description": "A human-readable description. On a Fail step the cashier sees errors[0].message unless code has a translation." },
+        "params": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Positional parameters for a translated message."
+        }
+      },
+      "required": ["message"],
+      "description": "One error."
+    },
+    "ErrorBody": {
+      "type": "object",
+      "properties": {
+        "errors": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/EpiErrorDetail" },
+          "description": "At least one error. Only the first is shown to the cashier."
+        }
+      },
+      "required": ["errors"],
+      "description": "The body of a non-2xx answer on every route except PUT /payments/{paymentKey}. On the stream route CommerceOS discards the body and the cashier sees 'Request failed: <status>.'; report a payment error as a Fail step in a 200 stream instead. A non-2xx whose body is not JSON with errors is shown as 'Request failed: <status>.' followed by a parse note."
+    },
+    "StepCreate": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "Create", "description": "Create." },
+        "result": { "$ref": "#/$defs/PaymentDto", "description": "The session so far, transactions empty." }
+      },
+      "required": ["type", "result"],
+      "description": "Intermediate. A session exists at the provider. The payment order now exists in CommerceOS, so a completion from a callback can PATCH it if the stream drops. Send it first when a payment can complete asynchronously."
+    },
+    "StepCancellable": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "Cancellable", "description": "Cancellable." },
+        "cancellationToken": { "type": "string", "description": "The token that names this payment in the cancel call." }
+      },
+      "required": ["type", "cancellationToken"],
+      "description": "Intermediate. CommerceOS may now call POST /payments/{cancellationToken}/cancel with this token. Follow it with a Wait or ShowImage step: the cancel button sits on that dialog, and Cancellable alone shows the cashier nothing."
+    },
+    "StepWait": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "Wait", "description": "Wait." },
+        "message": { "type": "string", "description": "The text for the cashier." },
+        "element": { "type": "string", "description": "A POS element to show instead of a plain message." },
+        "translationKey": { "type": "string", "description": "A POS translation key to show instead of message. No list of keys is published: use message, written in the request's locale." },
+        "params": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Fill {0}, {1} of the message or the translation."
+        }
+      },
+      "required": ["type"],
+      "description": "Intermediate. Show the cashier a waiting message. Send one at intervals while you wait for the provider: the HTTP runtime closes a stream with no bytes after about five minutes."
+    },
+    "StepShowImage": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "ShowImage", "description": "ShowImage." },
+        "url": { "type": "string", "description": "The image URL." },
+        "audience": { "$ref": "#/$defs/Audience", "description": "Who sees it. Default: merchant." }
+      },
+      "required": ["type", "url"],
+      "description": "Intermediate. Show an image, for example a QR code."
+    },
+    "StepVisitPage": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "VisitPage", "description": "VisitPage." },
+        "url": { "type": "string", "description": "The page URL." },
+        "audience": { "$ref": "#/$defs/Audience", "description": "Who sees it. Default: merchant." }
+      },
+      "required": ["type", "url"],
+      "description": "Intermediate. Open a web page. The manned POS renders nothing for it."
+    },
+    "StepRenderView": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "RenderView", "description": "RenderView." },
+        "path": { "type": "string", "description": "The view path." },
+        "config": { "type": "string", "description": "Its configuration." },
+        "audience": { "$ref": "#/$defs/Audience", "description": "Who sees it. Default: merchant." }
+      },
+      "required": ["type", "path", "config"],
+      "description": "Intermediate. Render a CommerceOS view."
+    },
+    "StepComplete": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "Complete", "description": "Complete." },
+        "result": { "$ref": "#/$defs/PaymentDto", "description": "The payment with its transactions." },
+        "issuedWalletKey": { "type": "string", "description": "Ignored here: CommerceOS reads issuedWalletKey from result." }
+      },
+      "required": ["type", "result"],
+      "description": "Final. Success. CommerceOS creates one payment record per result.transactions item and closes the receipt when the amount is covered."
+    },
+    "StepDecline": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "Decline", "description": "Decline." },
+        "reason": { "$ref": "#/$defs/PaymentDeclineReason", "description": "The code that selects the cashier's sentence." },
+        "params": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Fill {0}, {1} of that sentence. InsufficientFunds needs two. The POS inserts them as text, so format amounts for the request's locale, for example 0,00 kr for sv-SE."
+        }
+      },
+      "required": ["type", "reason"],
+      "description": "Final. A normal negative outcome, not an error: no payment record. The sale stays open and the cashier chooses another method."
+    },
+    "StepCancel": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "Cancel", "description": "Cancel." }
+      },
+      "required": ["type"],
+      "description": "Final. The payment was cancelled, after POST /payments/{cancellationToken}/cancel. May be sent without a data line."
+    },
+    "StepFail": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "Fail", "description": "Fail." },
+        "errors": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/EpiErrorDetail" },
+          "description": "At least one error."
+        }
+      },
+      "required": ["type", "errors"],
+      "description": "Final. An error. The cashier sees 'Payment failed: ' plus errors[0]."
+    },
+    "TerminalPaymentStep": {
+      "oneOf": [
+        { "$ref": "#/$defs/StepComplete" },
+        { "$ref": "#/$defs/StepDecline" },
+        { "$ref": "#/$defs/StepCancel" },
+        { "$ref": "#/$defs/StepFail" }
+      ],
+      "description": "The final steps. Exactly one ends every stream."
+    },
+    "IntermediatePaymentStep": {
+      "oneOf": [
+        { "$ref": "#/$defs/StepCreate" },
+        { "$ref": "#/$defs/StepCancellable" },
+        { "$ref": "#/$defs/StepWait" },
+        { "$ref": "#/$defs/StepShowImage" },
+        { "$ref": "#/$defs/StepVisitPage" },
+        { "$ref": "#/$defs/StepRenderView" }
+      ],
+      "description": "The steps that may precede the final step, zero or more."
+    },
+    "PaymentStep": {
+      "oneOf": [
+        { "$ref": "#/$defs/TerminalPaymentStep" },
+        { "$ref": "#/$defs/IntermediatePaymentStep" }
+      ],
+      "description": "Any step of the payment stream. On the wire each step is one SSE message: a line 'event: <type>', a line 'data: <JSON>', a blank line. Write exactly one space after each colon: CommerceOS strips a fixed number of characters. It adds type from the event line unless the data JSON carries its own type, which wins. Messages are split at a blank line, several data lines are joined with a newline, and id:, retry: and comment lines are ignored."
+    },
+    "LocalizableString": {
+      "description": "A string, or a map from locale to string, for example {\"en-US\": \"The API key\", \"sv-SE\": \"API-nyckeln\"}. The back office picks the exact locale, then any key of the same language, then en-US, then the first value. An empty string counts as missing.",
+      "oneOf": [
+        { "type": "string" },
+        {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      ]
+    },
+    "ConfigTypeString": {
+      "description": "The type of one configuration field, written as in the CommerceOS API's own type declarations. Base types: string, number, boolean, object (give it members), and any array type such as string[] or object[]. A union of quoted values: 'TEST' or 'LIVE' (two or more; the recommended separator is or, and | or , are also read). A trailing ? makes the field optional. Nothing else is accepted: no named types, no (read-only), no and. Only string, number, boolean and quoted unions are validated on save; arrays and object are stored as entered.",
+      "type": "string",
+      "pattern": "^(string|number|boolean|object|[A-Za-z]+\\[\\]|'[^']+'(\\s*(or|\\||,)\\s*'[^']+')*)\\??$"
+    },
+    "ConfigMember": {
+      "description": "One configuration field. The back office shows description as the label when present, else title, and title as the placeholder. A field whose type has no trailing ? is required: the form shows 'Required' until it has a value.",
+      "type": "object",
+      "properties": {
+        "type": { "$ref": "#/$defs/ConfigTypeString" },
+        "title": { "$ref": "#/$defs/LocalizableString", "description": "The field label, or the placeholder when description is present." },
+        "description": { "$ref": "#/$defs/LocalizableString", "description": "Help text. When present it is the label the administrator sees." },
+        "members": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/ConfigMember" },
+          "description": "For type object: the nested fields, rendered as a group."
+        }
+      },
+      "required": ["type"]
+    },
+    "ConfigSchema": {
+      "description": "The answer of GET /config-schema: a form description, not a JSON Schema. It has the shape of the CommerceOS API's own type declarations: title, description and members, each member with a type string. The back office renders one field per member when an administrator edits the configuration of your integration on an organization node, and stores the values. Your integration reads them back through GET /v1/context/config/{configId} and validates them in POST /test. members may be empty when the integration needs no configuration.",
+      "type": "object",
+      "properties": {
+        "title": { "$ref": "#/$defs/LocalizableString", "description": "The title of the configuration form." },
+        "description": { "$ref": "#/$defs/LocalizableString", "description": "Help text under the title." },
+        "members": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/ConfigMember" },
+          "description": "The fields, keyed by the property name that the stored configuration object uses."
+        }
+      },
+      "required": ["members"]
+    },
+    "TokenRequest": {
+      "description": "The form body of POST {tokenUrl}, application/x-www-form-urlencoded.",
+      "type": "object",
+      "properties": {
+        "grant_type": { "description": "Always client_credentials.", "const": "client_credentials" },
+        "client_id": { "type": "string", "description": "clientId from the install payload." },
+        "client_secret": { "type": "string", "description": "clientSecret from the install payload." },
+        "scope": {
+          "type": "string",
+          "description": "scope from the install payload, or the subset you need, space-separated. Always send it: a token requested without scope is valid and carries no scopes, so every later call fails."
+        }
+      },
+      "required": ["grant_type", "client_id", "client_secret"]
+    },
+    "TokenResponse": {
+      "description": "A bearer token. Cache it until expires_in seconds have passed, then request a new one.",
+      "type": "object",
+      "properties": {
+        "access_token": { "type": "string", "description": "Send it as Authorization: Bearer <access_token>." },
+        "token_type": { "type": "string", "description": "Bearer." },
+        "expires_in": { "type": "integer", "description": "Lifetime in seconds, about 3600 today (3599 seen). Read it rather than assuming it." },
+        "scope": { "type": "string", "description": "The granted scopes, space-separated." }
+      },
+      "required": ["access_token", "expires_in"]
+    },
+    "ContextConfig": {
+      "description": "The configuration behind a context id, as an administrator saved it against your config schema. The element also carries node (the organization node) and a configure action.",
+      "type": "object",
+      "properties": {
+        "configuration": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "The values, keyed as your config schema's members. Absent when the administrator has saved nothing yet."
+        },
+        "configurationHash": { "type": "string", "description": "Equals the X-EPI-Context-Config-Hash header of the calls that run under this configuration. Cache by it." },
+        "node": { "type": "object", "additionalProperties": true, "description": "The organization node that holds the configuration." }
+      },
+      "required": ["configurationHash"]
+    },
+    "PaymentOrderStatus": {
+      "description": "One flag of a payment order's status. The status is a set, recomputed from the records on every read: New (part of the amount is not yet authorized, annulled, debited or credited), Authorized (reserved, not captured), Annulled (a reservation was released), Debited (captured), Credited (refunded).",
+      "type": "string",
+      "enum": ["New", "Authorized", "Annulled", "Debited", "Credited"]
+    },
+    "PaymentOrderRecord": {
+      "description": "One payment record to add to a payment order: the CommerceOS API shape of a transaction, not the EPI wire shape. CommerceOS rejects a record with a missing required member (400), accepts a repeat of the identical record on the same order as a no-op, refuses a record that reuses a transactionId with any field changed, and answers 400 to a Debit or Authorize beyond the remaining amount.",
+      "type": "object",
+      "properties": {
+        "identifiers": {
+          "type": "object",
+          "description": "Your transaction id, qualified by the method.",
+          "properties": {
+            "transactionId": {
+              "type": "object",
+              "properties": {
+                "method": {
+                  "type": "object",
+                  "properties": {
+                    "identifiers": {
+                      "type": "object",
+                      "properties": {
+                        "methodId": { "type": "string", "description": "Your methodId." }
+                      },
+                      "required": ["methodId"],
+                      "description": "The identifiers of the method."
+                    }
+                  },
+                  "required": ["identifiers"],
+                  "description": "The payment method, by its methodId."
+                },
+                "id": { "type": "string", "description": "Your transactionId, unique within the method." }
+              },
+              "required": ["method", "id"],
+              "description": "Your transaction id, qualified by the method it belongs to."
+            }
+          },
+          "required": ["transactionId"]
+        },
+        "currency": {
+          "type": "object",
+          "properties": {
+            "identifiers": {
+              "type": "object",
+              "properties": {
+                "currencyCode": { "type": "string", "description": "ISO 4217." }
+              },
+              "required": ["currencyCode"],
+              "description": "The identifiers of the currency."
+            }
+          },
+          "required": ["identifiers"],
+          "description": "The payment currency."
+        },
+        "timestamp": { "type": "string", "description": "ISO 8601." },
+        "amount": { "$ref": "#/$defs/DecimalDto", "description": "Finite and non-zero." },
+        "actions": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["Authorize", "Annul", "Debit", "Credit"] },
+          "description": "One or more of the four actions."
+        },
+        "token": { "type": "string", "description": "The token of the payment. Without it CommerceOS takes the available money for the first action." },
+        "specification": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/PaymentOrderSpecificationItem" },
+          "description": "The items, in CommerceOS API shape."
+        },
+        "means": { "$ref": "#/$defs/PaymentOrderMeans", "description": "What paid, in CommerceOS API shape: a singleton is {\"identifiers\":{\"id\":\"Piggy Bank\"}}." },
+        "rawData": { "type": "object", "description": "Any JSON object." },
+        "consumerPrintout": { "type": "string", "description": "Receipt text for the customer copy." },
+        "merchantPrintout": { "type": "string", "description": "Receipt text for the merchant copy." }
+      },
+      "required": ["identifiers", "currency", "timestamp", "amount", "actions"]
+    },
+    "PaymentOrderPatch": {
+      "description": "The body of PATCH /v1/payment-orders/{paymentKey}: the records to add. Use it to complete a payment whose stream dropped before Complete, from a callback of your provider. For a key that never saw a Create or Complete step the answer is 400 with details 'Payment order not found.'.",
+      "type": "object",
+      "properties": {
+        "records": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/PaymentOrderRecord" },
+          "description": "The records to add, one per transaction."
+        }
+      },
+      "required": ["records"]
+    },
+    "PaymentOrder": {
+      "description": "The payment order after the patch. Only the members that a payment integration reads are listed.",
+      "type": "object",
+      "properties": {
+        "identifiers": {
+          "type": "object",
+          "properties": {
+            "key": { "type": "string", "description": "The paymentKey." }
+          },
+          "description": "The identifiers of the order."
+        },
+        "status": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/PaymentOrderStatus" },
+          "description": "The status set. A one-step sale is [\"Debited\"], a refunded sale [\"Credited\",\"Debited\"]."
+        }
+      }
+    },
+    "PaymentOrderMeans": {
+      "description": "A payment means in CommerceOS API shape, told apart by @type. A singleton (a brand) is identified by id, a card by its token; a card also carries scheme, issuer, maskedPan, validFrom and validTo.",
+      "type": "object",
+      "properties": {
+        "@type": { "type": "string", "enum": ["singleton payment means", "payment card"], "description": "Which shape. Default: singleton payment means." },
+        "identifiers": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string", "description": "The singleton's id, the same on every transaction of the brand." },
+            "token": { "type": "string", "description": "The card's token." }
+          },
+          "description": "id for a singleton, token for a card."
+        },
+        "scheme": { "type": "string", "description": "Card: for example Visa." },
+        "issuer": { "type": "string", "description": "Card: the issuing bank." },
+        "maskedPan": { "type": "string", "description": "Card: the masked card number." },
+        "validFrom": { "type": "string", "description": "Card: ISO 8601 date." },
+        "validTo": { "type": "string", "description": "Card: ISO 8601 date." }
+      },
+      "required": ["identifiers"]
+    },
+    "PaymentOrderSpecificationItem": {
+      "description": "One item of a payment record, in CommerceOS API shape: the article identifier sits under identifiers.specificationIdentifier and the currency under currency.identifiers.currencyCode.",
+      "type": "object",
+      "properties": {
+        "identifiers": {
+          "type": "object",
+          "properties": {
+            "specificationIdentifier": { "type": "string", "description": "The article identifier." }
+          },
+          "description": "The item's identifiers."
+        },
+        "description": { "type": "string", "description": "The article name." },
+        "quantity": { "$ref": "#/$defs/DecimalDto", "description": "In unit." },
+        "unit": { "type": "string", "description": "For example pcs." },
+        "totalAmount": { "$ref": "#/$defs/DecimalDto", "description": "VAT included." },
+        "vatPercentage": { "$ref": "#/$defs/DecimalDto", "description": "For example 25." },
+        "currency": {
+          "type": "object",
+          "properties": {
+            "identifiers": {
+              "type": "object",
+              "properties": {
+                "currencyCode": { "type": "string", "description": "ISO 4217." }
+              },
+              "description": "The currency's identifiers."
+            }
+          },
+          "description": "The item's currency."
+        }
+      },
+      "required": ["quantity", "totalAmount", "vatPercentage"]
+    },
+    "CosErrorBody": {
+      "description": "The body of a non-2xx answer from CommerceOS: a type discriminator, a generic message, and the specific reason in details.",
+      "type": "object",
+      "properties": {
+        "@type": { "type": "string", "description": "For example bad request, not found, unauthorized." },
+        "message": { "type": "string", "description": "Generic, for example 'The request was invalid and could not be processed.'" },
+        "details": { "type": "string", "description": "The specific reason, for example 'Payment order not found.' or 'Amount must agree with designated instance.'" },
+        "info": { "description": "Optional extra data." }
+      },
+      "required": ["@type", "message"]
+    }
+  }
+}

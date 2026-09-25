@@ -1,0 +1,29 @@
+{
+    "id": "E2",
+    "title": "Unknown methodId on the stream: a 200 stream with one Fail step, never a non-2xx",
+    "amount": "100.00",
+    "steps": [
+        {
+            "call": "startPayment",
+            "key": "{{paymentKey}}",
+            "args": {
+                "methodId": "com.epicheck.unknown",
+                "amount": "{{amount}}",
+                "currencyCode": "{{currencyCode}}",
+                "direction": "Payment",
+                "payer": "{{payer}}",
+                "payee": "{{payee}}",
+                "token": "{{token}}",
+                "locale": "{{locale}}",
+                "specification": "{{specification}}"
+            },
+            "expect": {
+                "status": 200,
+                "schema": "StepFail",
+                "events": [
+                    "Fail"
+                ]
+            }
+        }
+    ]
+}

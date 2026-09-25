@@ -1,0 +1,43 @@
+{
+    "id": "P5",
+    "title": "Payout: Complete with Authorize only",
+    "amount": "50.00",
+    "steps": [
+        {
+            "call": "startPayment",
+            "key": "{{paymentKey}}",
+            "args": {
+                "methodId": "{{methodId}}",
+                "amount": "{{amount}}",
+                "currencyCode": "{{currencyCode}}",
+                "direction": "Payout",
+                "payer": "{{payer}}",
+                "payee": "{{payee}}",
+                "token": "{{token}}",
+                "locale": "{{locale}}",
+                "specification": "{{specification}}"
+            },
+            "expect": {
+                "status": 200,
+                "schema": "StepComplete",
+                "events": [
+                    "Complete"
+                ],
+                "actions": [
+                    [
+                        "Authorize"
+                    ]
+                ],
+                "echo": [
+                    "methodId",
+                    "amount",
+                    "currencyCode",
+                    "token"
+                ],
+                "derivedStatus": [
+                    "Authorized"
+                ]
+            }
+        }
+    ]
+}

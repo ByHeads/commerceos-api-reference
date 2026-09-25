@@ -1,0 +1,75 @@
+{
+    "id": "P2",
+    "title": "Two-step sale without debitSynchronously: Authorize, then Debit through POST /transactions",
+    "amount": "100.05",
+    "steps": [
+        {
+            "call": "startPayment",
+            "key": "{{paymentKey}}",
+            "args": {
+                "methodId": "{{methodId}}",
+                "amount": "{{amount}}",
+                "currencyCode": "{{currencyCode}}",
+                "direction": "Payment",
+                "payer": "{{payer}}",
+                "payee": "{{payee}}",
+                "token": "{{token}}",
+                "locale": "{{locale}}",
+                "specification": "{{specification}}"
+            },
+            "expect": {
+                "status": 200,
+                "schema": "StepComplete",
+                "events": [
+                    "Complete"
+                ],
+                "actions": [
+                    [
+                        "Authorize"
+                    ]
+                ],
+                "echo": [
+                    "methodId",
+                    "amount",
+                    "currencyCode",
+                    "token"
+                ],
+                "derivedStatus": [
+                    "Authorized"
+                ]
+            }
+        },
+        {
+            "call": "transaction",
+            "key": "{{paymentKey}}",
+            "args": {
+                "actions": [
+                    "Debit"
+                ],
+                "token": "{{token}}",
+                "amount": "{{amount}}",
+                "currencyCode": "{{currencyCode}}",
+                "methodId": "{{methodId}}",
+                "specification": "{{specification}}"
+            },
+            "expect": {
+                "status": 200,
+                "schema": "TransactionDto",
+                "actions": [
+                    [
+                        "Debit"
+                    ]
+                ],
+                "echo": [
+                    "methodId",
+                    "amount",
+                    "currencyCode",
+                    "token"
+                ],
+                "derivedStatus": [
+                    "Debited"
+                ]
+            }
+        }
+    ]
+}

@@ -1,0 +1,30 @@
+{
+    "id": "P8",
+    "title": "Fail with errors",
+    "amount": "100.02",
+    "steps": [
+        {
+            "call": "startPayment",
+            "key": "{{paymentKey}}",
+            "args": {
+                "methodId": "{{methodId}}",
+                "amount": "{{amount}}",
+                "currencyCode": "{{currencyCode}}",
+                "direction": "Payment",
+                "debitSynchronously": true,
+                "payer": "{{payer}}",
+                "payee": "{{payee}}",
+                "token": "{{token}}",
+                "locale": "{{locale}}",
+                "specification": "{{specification}}"
+            },
+            "expect": {
+                "status": 200,
+                "schema": "StepFail",
+                "events": [
+                    "Fail"
+                ]
+            }
+        }
+    ]
+}
