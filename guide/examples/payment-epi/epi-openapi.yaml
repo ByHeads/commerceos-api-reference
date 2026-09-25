@@ -245,7 +245,7 @@ paths:
       tags:
         - "Payment"
       summary: "Cancel a payment that sent a Cancellable step"
-      description: "The cashier presses Cancel on the waiting dialog, after your stream sent Cancellable and then Wait. CommerceOS calls once, in parallel with the open stream. Answer 2xx, then end the stream with a Cancel step: the final step closes the payment, not this call. A non-2xx shows 'Cancel failed: <code>: <message>' from your error body (without '<code>: ' when the error has no code) and leaves the stream running."
+      description: "The cashier presses Cancel on the waiting dialog, after your stream sent Cancellable and then Wait. CommerceOS calls once, in parallel with the open stream. Answer 2xx, then end the stream with a Cancel step: the final step closes the payment, not this call. Answer 2xx for every known token, also when your provider can no longer cancel: then end the stream with the real outcome. A non-2xx does not show your message: the current POS shows the cashier an internal error (HTTP 500, 'Cannot enter scope since there is already an active transaction.'), and the stream keeps running."
       parameters:
         - name: "cancellationToken"
           in: "path"

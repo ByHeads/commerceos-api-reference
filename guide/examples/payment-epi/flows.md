@@ -53,7 +53,11 @@ sequenceDiagram
 
 The Cancel button sits on the `Wait` dialog, so `Cancellable` alone shows the cashier nothing. The cancel
 call runs in parallel with the stream; the button does not close the payment, your `Cancel` step does.
-A non-2xx answer shows `Cancel failed: <code>: <message>` and leaves the stream and the button as they were.
+Answer 2xx for every known token, also when your provider can no longer cancel (the card is
+already read): then end the stream with the real outcome, for example `Complete`. Do not answer
+non-2xx to say "too late". The current POS does not show your message: the cashier sees an
+internal error (HTTP 500, `Cannot enter scope since there is already an active transaction.`), and
+the stream and the button stay as they were. This is a CommerceOS defect.
 In self-checkout mode a `Cancel` step also locks the terminal for a supervisor.
 
 ## 3. Refund of a completed sale

@@ -275,8 +275,10 @@ fields carry the local-terminal context so that a provider can route the cancel 
 Answer any 2xx, then end the stream with `Cancel`. The cancel call runs beside the stream, so it can
 arrive after the stream ended: answer 2xx and do nothing. It can also arrive before your provider can
 cancel, for example while your start call to the provider is still open: retry the provider's cancel
-for a few seconds before you give up. An unknown token is answered with `404` and an
-error body, which the cashier sees as `Cancel failed: <code>: <message>`.
+for a few seconds before you give up. If your provider can no longer cancel, answer 2xx all the same
+and end the stream with the real outcome. An unknown token is answered with `404` and an error body.
+The current POS shows no non-2xx message to the cashier: any non-2xx gives an internal error (HTTP
+500, `Cannot enter scope since there is already an active transaction.`), a CommerceOS defect.
 <!-- fixture: scenarios/fixtures.json#/cancel -->
 ```json
 { "isLocalTerminal": false }
@@ -430,7 +432,7 @@ The cents of the amount select the outcome: [Build a payment integration](../pay
 | A repeated `records` item in `PATCH /v1/payment-orders/{key}` (same `transactionId.id` on the same order) | A repeat of the identical record is a no-op. A record that reuses the id with any field changed is refused | Repeat a callback with the same body, or not at all. Give every distinct transaction its own id |
 | A `records` item after the order is `Debited` | Has no state guard. A late `Debit` or `Authorize` beyond the remaining amount answers 400 (`Amount must agree with designated instance.`, or with a `token`, `Designated instance must be a subset of available instance.`). A `Credit` up to the debited amount is accepted and adds `Credited` | Post the completion once. Do not post a `Debit` for a sale that the stream already completed |
 | A `Complete` whose `processorsId` equals that of an earlier payment order of the same method | Refuses it. The cashier sees `Error: Payment order '<id>' already exists.` and no payment record is created | Make `processorsId` unique per method for all time. A counter that restarts with your process collides with the orders it created before the restart |
-| The cashier presses cancel | Calls `POST /payments/{cancellationToken}/cancel` once. A non-2xx shows `Cancel failed: <code>: <message>` from your error body and the stream keeps running | Answer 2xx, then end the stream with `Cancel` |
+| The cashier presses cancel | Calls `POST /payments/{cancellationToken}/cancel` once. A non-2xx shows the cashier an internal error (HTTP 500), not your message, and the stream keeps running | Answer 2xx, then end the stream with `Cancel`, or with the real outcome if the provider can no longer cancel |
 
 ## 12. Where every field is defined
 
