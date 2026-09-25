@@ -273,7 +273,9 @@ Capture, release and refund go to `POST {baseUrl}/payments/{paymentKey}/transact
 A cancel goes to `POST {baseUrl}/payments/{cancellationToken}/cancel` with a `CancelDto`, whose four
 fields carry the local-terminal context so that a provider can route the cancel to the right terminal.
 Answer any 2xx, then end the stream with `Cancel`. The cancel call runs beside the stream, so it can
-arrive after the stream ended: answer 2xx and do nothing. An unknown token is answered with `404` and an
+arrive after the stream ended: answer 2xx and do nothing. It can also arrive before your provider can
+cancel, for example while your start call to the provider is still open: retry the provider's cancel
+for a few seconds before you give up. An unknown token is answered with `404` and an
 error body, which the cashier sees as `Cancel failed: <code>: <message>`.
 <!-- fixture: scenarios/fixtures.json#/cancel -->
 ```json

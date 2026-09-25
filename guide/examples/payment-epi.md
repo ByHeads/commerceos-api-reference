@@ -342,8 +342,11 @@ at once with the seeded test method, not yours. On *Pay*, type the amount before
 without them shows in the field, but the till ignores it and charges the whole balance), and pick yours. Picking the method starts the
 payment at once, with no confirm step, so check the amount in the field first: it opens with the
 whole balance, in the till's own number format (`799` for a whole amount, `10,04` with öre, on a
-Swedish till). Your method is a text tile in the grid of
-methods, next to the logo tiles, and missing from the *Payments* shortcut panel until an
+Swedish till). A negative balance, a return that you pay out, opens with a Unicode minus
+(`−149,25`, U+2212). The field drops that character, so retyping the shown text charges a
+payment of +149,25 instead of a payout. Type the amount with an ASCII minus (`-149,25`). Your
+method is a text tile in the grid of methods (in the accessibility tree, an option in the
+*Betalningsmetod* list), next to the logo tiles, and missing from the *Payments* shortcut panel until an
 administrator adds it there. A `Decline`, `Fail` or `Cancel`
 closes the pay screen and shows the message with an *OK* button. The cashier presses *OK*, and the next attempt starts again from *Pay*.
 On a Swedish till, the cancel button of a `Cancellable` payment reads *Avbryt*. `Wait` keeps the pay screen open. A

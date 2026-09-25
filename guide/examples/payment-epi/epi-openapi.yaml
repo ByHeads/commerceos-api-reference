@@ -297,7 +297,7 @@ components:
     DecimalDto:
       type: "string"
       pattern: "^(-?\\d+(\\.\\d+)?|Missing)$"
-      description: "A decimal number as a string, never a JSON number. CommerceOS sends a whole amount without decimals (\"15\", not \"15.00\") and a fraction as typed (\"10.04\"); accept both and compare numerically. In a specification item CommerceOS may send the literal \"Missing\" for a quantity or amount it does not know; do not parse it as a number. Answer in either numeric form."
+      description: "A decimal number as a string, never a JSON number. CommerceOS sends a whole amount without decimals (\"15\", not \"15.00\") and a fraction without trailing zeros (\"10.04\", but \"298.5\" for 298.50); accept both and compare numerically. In a specification item CommerceOS may send the literal \"Missing\" for a quantity or amount it does not know; do not parse it as a number. Answer in either numeric form."
     PaymentDirection:
       type: "string"
       enum:
