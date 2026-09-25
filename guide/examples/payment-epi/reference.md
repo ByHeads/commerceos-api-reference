@@ -225,7 +225,7 @@ unless the JSON carries its own `type`. A stream holds zero or more intermediate
 
 | Step | Kind | Fields | Meaning |
 |---|---|---|---|
-| `Create` | intermediate | `result: PaymentDto` | a session exists at the provider. More steps follow |
+| `Create` | intermediate | `result: PaymentDto` | a session exists at the provider. More steps follow. **Important for retry logic:** if the stream drops after `Create`, the next `PUT /payments/{paymentKey}` uses a *new* `paymentKey`, not the same one. A session that was still waiting at the provider cannot be resumed. Consider your retry and resumption strategy before sending `Create` |
 | `Cancellable` | intermediate | `cancellationToken` | CommerceOS can now cancel (section 6). Send a `Wait` or `ShowImage` step after it: the cancel button sits on that dialog, and `Cancellable` alone shows nothing |
 | `Wait` | intermediate | `message?`, `element?`, `translationKey?`, `params?` | show a waiting message. Use `message`, written in the request's `locale`: the documents publish no list of POS translation keys |
 | `ShowImage` | intermediate | `url`, `audience?` | show an image, for example a QR code |
@@ -257,6 +257,13 @@ the pay screen and picks your method for the negative balance, the POS starts a 
 method that declares both flags, as the sample does, is refunded by `Payout` from the pay screen
 and by `Credit` from the *Refund* action. Nothing else in CommerceOS makes this call: no
 back-office action and no API route.
+
+**Refund call timing.** The `Credit` call is one synchronous HTTP request. CommerceOS waits for the
+response and shows a waiting message to the cashier if the call takes more than a few seconds. The
+call does not wait for a customer interaction: the refund either goes through immediately (for
+example, with a card-not-present refund) or the integration answers an error. A refund that
+requires the customer to tap their card (a card-present refund) is not an option on the `Credit`
+route; use `Payout` instead if you need it.
 
 Capture, release and refund go to `POST {baseUrl}/payments/{paymentKey}/transactions` with a
 `TransactionInitDto`. The answer is a `TransactionDto`: the same fields plus `transactionId` and
