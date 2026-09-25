@@ -13,7 +13,7 @@ import { Readable } from "node:stream";
 import { DEFECT_SCENARIO, METHOD_ID } from "./reference-server.mjs";
 import { startCosStub, CLIENT } from "./cos-stub.mjs";
 import { startLab, defectMessages } from "./test-lab.mjs";
-import { run, parseArgs, resolvePlaceholders, runIdFor, ORDER, MODES, STREAM_NON_2XX, CANCELLABLE_ALONE, NOT_CAPTURED_UNDER_FLAG, TRANSLATED_DECLINE_REASONS, comparableTypes } from "./run.mjs";
+import { run, parseArgs, resolvePlaceholders, runIdFor, ORDER, MODES, STREAM_NON_2XX, CANCELLABLE_ALONE, NOT_CAPTURED_UNDER_FLAG, TRANSLATED_DECLINE_REASONS, comparableTypes, checkStream, CREATE_TWICE, CREATE_ID_CHANGED } from "./run.mjs";
 import { validate } from "./validate.mjs";
 import { buildReport, buildMeta, reportJson, reportMarkdown, sortKeys } from "./report.mjs";
 
@@ -434,4 +434,16 @@ test("a Cancellable step is ignored where not expected, so a card reader may off
     assert.deepEqual(comparableTypes(steps(["Cancellable", "Wait", "Complete"]), ["Complete"]), ["Complete"]);
     assert.deepEqual(comparableTypes(steps(["Wait", "Cancellable", "Wait", "Wait", "Complete"]), ["Wait", "Complete"]), ["Wait", "Complete"]);
     assert.deepEqual(comparableTypes(steps(["Wait", "Cancel"]), ["Cancellable", "Cancel"]), ["Cancel"], "a missing Cancellable still fails P7");
+    assert.deepEqual(comparableTypes(steps(["Create", "Wait", "Complete"]), ["Complete"]), ["Complete"], "an unlisted Create is the integration's choice");
+    assert.deepEqual(comparableTypes(steps(["Create", "Cancellable", "Wait", "Cancel"]), ["Cancellable", "Wait", "Cancel"]), ["Cancellable", "Wait", "Cancel"]);
+});
+
+test("checkStream accepts one Create before the final step, with the same processorsId on Complete", () => {
+    const failures = events => { const found = []; checkStream({ label: "P1", events, fail: (_label, path, message) => found.push(`${path}: ${message}`) }); return found; };
+    const create = id => ({ type: "Create", result: { processorsId: id } });
+    const complete = id => ({ type: "Complete", result: { processorsId: id } });
+    assert.deepEqual(failures([create("S-1"), { type: "Wait" }, complete("S-1")]), []);
+    assert.deepEqual(failures([create("S-1"), { type: "Decline", reason: "Timeout" }]), []);
+    assert.match(failures([create("S-1"), create("S-1"), complete("S-1")]).join(), new RegExp(CREATE_TWICE));
+    assert.ok(failures([create("S-1"), complete("S-2")]).some(f => f.includes(CREATE_ID_CHANGED)));
 });

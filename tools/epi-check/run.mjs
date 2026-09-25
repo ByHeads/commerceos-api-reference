@@ -159,6 +159,8 @@ const CANCEL_DIALOG_STEPS = ["Wait", "ShowImage"];
 export const TRANSLATED_DECLINE_REASONS = ["InsufficientFunds", "CardNotActive", "CardExpired", "CardNotFound", "CardCancelled", "CardFullyRedeemed", "CardBlocked", "InvalidPin", "InvalidCode", "Timeout"];
 /** On the stream route CommerceOS never reads a non-2xx body: the error escapes the POS task and the cashier sees no dialog (reference section 7). */
 export const STREAM_NON_2XX = "CommerceOS discards the body of a non-2xx on this route and shows the cashier nothing: answer a 200 stream with a Fail step";
+export const CREATE_TWICE = "a stream sends Create at most once: the payment order exists from the first one";
+export const CREATE_ID_CHANGED = "the Complete after a Create must carry the same processorsId; CommerceOS refuses the payment with 'The payment processor ID of the payment has changed.'";
 export const CANCELLABLE_ALONE = "the POS shows the cancel button on the Wait or ShowImage step after Cancellable; Cancellable alone shows nothing";
 /** A till sends `debitSynchronously: true` on every request, Payment and Payout alike, and CommerceOS refuses a Complete under it whose transactions do not leave the order Debited (PaymentMethod.ts:343-349). */
 export const DEDUPLICATED_REFUND = "a second identical Credit answered the first refund again: CommerceOS never retries a transactions call, and two equal partial refunds of one line carry the same token, so every call is a new refund and the customer must be paid twice";
@@ -180,13 +182,17 @@ const is2xx = status => status >= 200 && status < 300;
 const transactionIds = result => (Array.isArray(result?.transactions) ? result.transactions.map(t => t?.transactionId) : []).sort();
 
 /** The checks on every stream, whatever the scenario expects. */
-function checkStream({ label, events, fail }) {
+export function checkStream({ label, events, fail }) {
     const types = events.map(e => e.type);
     const finals = types.map((type, index) => [type, index]).filter(([type]) => FINAL_STEPS.includes(type));
     if (finals.length === 0) fail(label, "events", `the stream ended without a final step (${FINAL_STEPS.join(", ")}), got [${types.join(", ")}]`);
     else if (finals.length > 1 || finals[0][1] !== events.length - 1) fail(label, "events", `a stream holds exactly one final step, and it is the last event; got [${types.join(", ")}]`);
     const cancellable = types.indexOf("Cancellable");
     if (cancellable !== -1 && !types.slice(cancellable + 1, -1).some(type => CANCEL_DIALOG_STEPS.includes(type))) fail(label, "events", CANCELLABLE_ALONE);
+    const creates = events.filter(e => e.type === "Create");
+    if (creates.length > 1) fail(label, "events", CREATE_TWICE);
+    const last = events.at(-1);
+    if (creates.length && last?.type === "Complete" && !sameJson(last.result?.processorsId, creates[0].result?.processorsId)) fail(label, "result.processorsId", `${CREATE_ID_CHANGED}: Create had ${JSON.stringify(creates[0].result?.processorsId)}, Complete has ${JSON.stringify(last.result?.processorsId)}`);
 }
 
 /**
@@ -225,13 +231,19 @@ function checkDistinct({ label, subject, previous, fail }) {
  * A Cancellable step is the integration's choice too: a card reader can offer the cancel button on
  * every payment. Where the expectation names no Cancellable, it is dropped. checkStream still
  * requires a Wait or ShowImage after it.
+ * A Create step is the integration's choice as well: flows section 2 asks for it before Wait on any
+ * payment that can complete asynchronously, and CommerceOS accepts it before every final step
+ * (PaymentMethod.ts:292-333). Where the expectation names no Create, it is dropped. checkStream
+ * requires at most one, and the same processorsId on a Complete that follows it.
  */
 export function comparableTypes(events, expected) {
     const namesWait = expected?.includes("Wait");
     const namesCancellable = expected?.includes("Cancellable");
+    const namesCreate = expected?.includes("Create");
     const types = [];
     for (const { type } of events) {
         if (type === "Cancellable" && !namesCancellable) continue;
+        if (type === "Create" && !namesCreate) continue;
         if (type === "Wait" && (!namesWait || types.at(-1) === "Wait")) continue;
         types.push(type);
     }

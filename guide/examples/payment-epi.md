@@ -382,7 +382,7 @@ amount to select the outcome, for a `Payment` and a `Payout` alike. The sample f
 | `.02` | `Fail`, one error |
 | `.03` | `Cancellable`, then `Wait`, then `Cancel` after the cancel call. The `Wait` step puts the cancel button on the cashier's dialog. Without a cancel call, end the stream when your own window runs out. Keep the window under the tool's `--timeout`
 (thirty seconds by default), or raise the timeout: the sample completes, and a `Decline` with reason `Timeout` is as valid. For a till, prefer the `Decline`: a customer who walked away is then not charged |
-| `.04` | `Wait`, then `Complete`. No `Create` step. Repeated `Wait` steps to keep the stream open are fine: the tool ignores a `Wait` it did not list, and counts a run of `Wait` steps as one. In a test, let the session complete by itself after a short delay, as the sample does, so that no one has to tap |
+| `.04` | `Wait`, then `Complete`. A `Create` step before them is optional, as on every amount. Repeated `Wait` steps to keep the stream open are fine: the tool ignores a `Wait` it did not list, and counts a run of `Wait` steps as one. In a test, let the session complete by itself after a short delay, as the sample does, so that no one has to tap |
 | `.05` | `Complete`, actions `["Authorize"]` only, when the request carries no `debitSynchronously`. Under the flag, `.05` captures like `.00`: a till never sees a reservation |
 
 On a till every request carries `debitSynchronously: true`, `Payment` and `Payout` alike, and a

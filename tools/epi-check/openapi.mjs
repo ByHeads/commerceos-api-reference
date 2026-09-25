@@ -27,7 +27,7 @@ const STEPS = "Create, Cancellable, Wait, ShowImage, VisitPage, RenderView (inte
  * shape. `when` says what makes CommerceOS call the route; it becomes the operation description.
  */
 const EPI_ROUTES = [
-    { method: "post", path: "/install", tag: "Lifecycle", contextful: false, summary: "Install: receive the OAuth2 client for the calls back to CommerceOS", request: "InstallPayload", response: "none",
+    { method: "post", path: "/install", tag: "Lifecycle", contextful: false, summary: "Install: receive the OAuth2 client for the calls back to CommerceOS", request: "InstallPayload", requestText: true, response: "none",
       when: "A Heads administrator runs the install action on the payment integration record. Store the body: it is the only credential your integration gets. The request carries Content-Type text/plain;charset=UTF-8, not application/json, so parse the body as JSON whatever the header says. On any 2xx the integration becomes Active." },
     { method: "post", path: "/uninstall", tag: "Lifecycle", contextful: false, summary: "Uninstall: the integration becomes Inactive", response: "none",
       when: "The administrator runs the uninstall action. Forget the stored client. A failure is logged and ignored." },
@@ -90,7 +90,10 @@ function epiOperation(route) {
     const parameters = pathParameters(route.path);
     if (route.contextful) parameters.push(...CONTEXT.map(name => ({ $ref: `#/components/parameters/${name}` })));
     const operation = { tags: [route.tag], summary: route.summary, description: route.when, ...(parameters.length ? { parameters } : {}) };
-    if (route.request) operation.requestBody = { required: true, content: json(ref(route.request)) };
+    // CommerceOS sends the install payload as a string with no header, so it arrives as text/plain JSON.
+    if (route.request) operation.requestBody = { required: true, content: route.requestText
+        ? { "text/plain": { schema: { type: "string", contentMediaType: "application/json", contentSchema: ref(route.request) } } }
+        : json(ref(route.request)) };
     operation.responses = { ...responseOf(route.response), "4XX": ERROR_RESPONSE };
     return operation;
 }

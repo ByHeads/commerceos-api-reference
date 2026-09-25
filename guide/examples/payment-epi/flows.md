@@ -134,7 +134,10 @@ sequenceDiagram
 Send `Create` before `Wait` when a payment can complete asynchronously: the payment order exists from
 that step, and the completion is `PATCH /v1/payment-orders/{key}` (`commerceos-openapi.yaml` says what it
 accepts and refuses). What CommerceOS does when the cashier pays again: reference, section 11. The
-conformance amount `.04` is the synchronous case: it expects `Wait` then `Complete`, without `Create`.
+conformance tool accepts one `Create` before the final step in every scenario, so an integration can send it on
+every payment. The `Complete` after it must carry the same `processorsId`: CommerceOS refuses a changed one
+with "The payment processor ID of the payment has changed." A `Decline`, `Cancel` or `Fail` after `Create` is
+allowed too. The payment order then exists with no records.
 
 ## What the cashier sees
 

@@ -25,9 +25,12 @@ paths:
       requestBody:
         required: true
         content:
-          "application/json":
+          "text/plain":
             schema:
-              "$ref": "#/components/schemas/InstallPayload"
+              type: "string"
+              contentMediaType: "application/json"
+              contentSchema:
+                "$ref": "#/components/schemas/InstallPayload"
       responses:
         "2XX":
           description: "Accepted. The body is ignored, and an empty body is fine."

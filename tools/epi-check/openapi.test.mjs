@@ -92,6 +92,10 @@ test("the document lists the ten routes, three context parameters on every conte
         assert.deepEqual(refs, ["#/components/parameters/ConfigId", "#/components/parameters/ConfigHash", "#/components/parameters/DebugInfo"], route);
     }
     assert.equal(document.paths["/install"].post.parameters, undefined, "a bare route carries no context parameters");
+    const install = document.paths["/install"].post.requestBody.content;
+    assert.deepEqual(Object.keys(install), ["text/plain"], "CommerceOS sends the install payload as text/plain (EpiIntegrationOauthExtensions.ts:66)");
+    assert.equal(install["text/plain"].schema.contentMediaType, "application/json");
+    assert.equal(install["text/plain"].schema.contentSchema.$ref, "#/components/schemas/InstallPayload");
     const stream = document.paths["/payments/{paymentKey}"].put;
     assert.equal(Object.keys(stream.responses["200"].content)[0], "text/event-stream");
     for (const step of ["Create", "Cancellable", "Wait", "ShowImage", "VisitPage", "RenderView", "Complete", "Decline", "Cancel", "Fail"]) assert.match(stream.description, new RegExp(`\\b${step}\\b`));
