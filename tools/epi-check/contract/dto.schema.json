@@ -134,7 +134,7 @@
           "description": "For a web flow: https URLs where the customer lands after the outcome."
         },
         "termsUrl": { "type": "string", "description": "The legal terms of the sale, for a provider that shows them." },
-        "terminalId": { "type": "string", "description": "The payment terminal of the POS, when the method requires one. One of your GET /terminals ids." },
+        "terminalId": { "type": "string", "description": "The payment terminal of the POS, when the method requires one. One of your GET /terminals ids. Absent when requires.terminal is false, also when the device has a payment terminal record." },
         "terminalDirectUrl": { "type": "string", "description": "The directUrl of that terminal, as your GET /terminals answered it." },
         "localProxy": { "$ref": "#/$defs/LocalProxyDto", "description": "The proxy through which a local terminal is reached, when isLocalTerminal is true." },
         "isLocalTerminal": { "type": "boolean", "description": "true when the terminal sits on the store network and the call must go through localProxy." },

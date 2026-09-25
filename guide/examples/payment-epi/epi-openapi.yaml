@@ -487,7 +487,7 @@ components:
           description: "The legal terms of the sale, for a provider that shows them."
         terminalId:
           type: "string"
-          description: "The payment terminal of the POS, when the method requires one. One of your GET /terminals ids."
+          description: "The payment terminal of the POS, when the method requires one. One of your GET /terminals ids. Absent when requires.terminal is false, also when the device has a payment terminal record."
         terminalDirectUrl:
           type: "string"
           description: "The directUrl of that terminal, as your GET /terminals answered it."

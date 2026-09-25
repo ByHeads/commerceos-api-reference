@@ -231,7 +231,7 @@ unless the JSON carries its own `type`. A stream holds zero or more intermediate
 | `ShowImage` | intermediate | `url`, `audience?` | show an image, for example a QR code |
 | `VisitPage` | intermediate | `url`, `audience?` | open a web page |
 | `RenderView` | intermediate | `path`, `config`, `audience?` | render a view |
-| `Complete` | final | `result: PaymentDto` | success. A wallet that the payment issued, a new gift card for example, goes in `result.issuedWalletKey`. CommerceOS ignores an `issuedWalletKey` beside `result`. CommerceOS creates one payment record per `result.transactions[]` item. Amounts are positive for both directions: CommerceOS stores and shows a `Payout` amount negative |
+| `Complete` | final | `result: PaymentDto` | success. A wallet that the payment issued, a new gift card for example, goes in `result.issuedWalletKey`. CommerceOS ignores an `issuedWalletKey` beside `result`. CommerceOS creates one payment record per `result.transactions[]` item. Amounts are positive for both directions. CommerceOS stores a `Payout` amount positive, and the API reads it positive: the order's payer and payee carry the direction. Only the till and the receipt show it with a minus |
 | `Decline` | final | `reason`, `params?` | a normal negative outcome. `reason` is a code such as `InsufficientFunds` |
 | `Cancel` | final | none | the payment was cancelled |
 | `Fail` | final | `errors[]` | an error. The cashier sees `Payment failed: <text>` from `errors[0]` (section 7) |

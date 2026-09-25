@@ -390,7 +390,7 @@ On a till every request carries `debitSynchronously: true`, `Payment` and `Payou
 cashier sees an error instead of a payment line. So a `Payout` that completes on a till answers
 `["Authorize","Debit"]`: the money leaves in the same call. Only a request without
 `debitSynchronously`, which a till never sends, gets `["Authorize"]` alone. Answer the
-`amount` of a `Payout` positive: CommerceOS stores and shows it negative. A return that the
+`amount` of a `Payout` positive: CommerceOS stores it positive too, and `records[].amount` of the payment order reads positive. The direction is in the order's payer and payee. Only the till and the receipt show a payout with a minus. A return that the
 cashier pays out with your method from the pay screen reaches you as such a `Payout`. Only the
 *Refund* action under the cart makes the refund transaction, see
 [four more flows](./payment-epi/flows.md) section 3.
