@@ -428,3 +428,10 @@ test("a run of keep-alive Wait steps counts as one Wait, and Wait is ignored whe
     assert.deepEqual(comparableTypes(steps(["Wait", "Complete"]), ["Complete"]), ["Complete"]);
     assert.deepEqual(comparableTypes(steps(["Wait", "Create", "Wait", "Complete"]), ["Wait", "Create", "Wait", "Complete"]), ["Wait", "Create", "Wait", "Complete"]);
 });
+
+test("a Cancellable step is ignored where not expected, so a card reader may offer cancel on every payment", () => {
+    const steps = types => types.map(type => ({ type }));
+    assert.deepEqual(comparableTypes(steps(["Cancellable", "Wait", "Complete"]), ["Complete"]), ["Complete"]);
+    assert.deepEqual(comparableTypes(steps(["Wait", "Cancellable", "Wait", "Wait", "Complete"]), ["Wait", "Complete"]), ["Wait", "Complete"]);
+    assert.deepEqual(comparableTypes(steps(["Wait", "Cancel"]), ["Cancellable", "Cancel"]), ["Cancel"], "a missing Cancellable still fails P7");
+});

@@ -89,7 +89,7 @@ the run, a `processorsId` that a later scenario repeats fails that scenario: Com
 | `unique` | The named field is unique across the array response |
 | `keys` | The response object has these keys |
 | `equals` | The response equals this JSON value |
-| `events` | For `startPayment`: the ordered list of event types. `Wait` steps are ignored unless listed, so a waiting message during P1 still passes |
+| `events` | For `startPayment`: the ordered list of event types. `Wait` and `Cancellable` steps are ignored unless listed, so a waiting message or a cancel button during P1 still passes. Where a scenario lists `Cancellable` (P7), the stream must send it. After a `Cancellable`, a `Wait` or `ShowImage` step must follow in every scenario |
 | `actions` | Per transaction, in order: the exact `actions` array |
 | `echo` | Field names that must equal the request. Checked on the response, on `result`, and on every transaction |
 | `derivedStatus` | The sorted status set (reference section 9), computed over every transaction the scenario collected so far, with `amount` as the limit |

@@ -222,11 +222,16 @@ function checkDistinct({ label, subject, previous, fail }) {
  * The step types of a stream, as the expectation compares them. A Wait step is the integration's
  * choice (contract section 5): where the expectation names no Wait, every Wait is dropped; where it
  * names one, a run of repeated Wait steps counts as one, because a keep-alive Wait is allowed.
+ * A Cancellable step is the integration's choice too: a card reader can offer the cancel button on
+ * every payment. Where the expectation names no Cancellable, it is dropped. checkStream still
+ * requires a Wait or ShowImage after it.
  */
 export function comparableTypes(events, expected) {
     const namesWait = expected?.includes("Wait");
+    const namesCancellable = expected?.includes("Cancellable");
     const types = [];
     for (const { type } of events) {
+        if (type === "Cancellable" && !namesCancellable) continue;
         if (type === "Wait" && (!namesWait || types.at(-1) === "Wait")) continue;
         types.push(type);
     }

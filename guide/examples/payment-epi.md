@@ -250,7 +250,9 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/payment-integrat
 #    credential that your integration gets. The agent is the integration's database key:
 #   curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/payment-integrations/name=Piggy/identifiers/key"
 #   (the answer is a JSON string with its quotes: paste the 32 characters between them)
-# The user identifier can be any com.<your namespace>.<name> identifier. It needs no registration.
+# The user identifier can be any identifier of exactly three dot-separated parts, com.<namespace>.<name>,
+# for example com.myapp.userId. It needs no registration. A key with a fourth part (com.heads.myapp.userId)
+# is dropped without an error: the request still answers 200, and a later call by that key finds nothing.
 # The client node below uses the seed identifier of the Heads sample data. On your own CommerceOS,
 # write {"key": "<company node key>"} instead, the same key as in step 4.
 curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/users" \
@@ -299,7 +301,11 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/epi-configuratio
 
 ```bash
 # 5) Configure. CommerceOS calls GET {baseUrl}/methods with the context of this node and
-#    creates one payment method per item.
+#    creates one payment method per item. Address the configuration by the identifier from step 4,
+#    or by key=<the key in the answer of step 4>. An answer of 200 with the body null means that no
+#    configuration matched: nothing was configured. Check the result with
+#    curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/payment-integrations/name=Piggy?fields=methods"
+#    (the list must hold your methods before step 7).
 curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/epi-configurations/com.myapp.configId=company-piggy-config" \
   -H "Content-Type: application/json" \
   -d '{"configure": true}'
@@ -316,7 +322,8 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/payment-integrat
 ```bash
 # 7) Allow the method on the POS profile. A method that configure created is not on the pay
 #    screen until the profile of the till allows it. Without this step the integration tests
-#    green and the cashier never sees the button.
+#    green and the cashier never sees the button. Run it after step 5: a methodId that no method
+#    has yet is not refused, CommerceOS creates an empty method record with no integration.
 curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/pos-profiles/posProfileId=default/allowedPaymentMethods" \
   -H "Content-Type: application/json" \
   -d '{"identifiers": {"methodId": "com.example.piggy"}}'
@@ -367,7 +374,7 @@ amount to select the outcome, for a `Payment` and a `Payout` alike. The sample f
 
 | Cents | Outcome |
 |---|---|
-| `.00`, and every cents value not listed below | `Complete`, actions `["Authorize","Debit"]`. A `Payout` without `debitSynchronously` gets `["Authorize"]` alone, see below |
+| `.00`, and every cents value not listed below | `Complete`, actions `["Authorize","Debit"]`. A `Cancellable` step first is fine: a card reader that the customer taps can offer the cancel button on every payment, and the tool ignores a `Cancellable` it did not list. A `Payout` without `debitSynchronously` gets `["Authorize"]` alone, see below |
 | `.01` | `Decline`, reason `InsufficientFunds` |
 | `.02` | `Fail`, one error |
 | `.03` | `Cancellable`, then `Wait`, then `Cancel` after the cancel call. The `Wait` step puts the cancel button on the cashier's dialog. Without a cancel call, end the stream when your own window runs out. Keep the window under the tool's `--timeout`

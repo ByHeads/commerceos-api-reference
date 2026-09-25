@@ -293,7 +293,7 @@ non-2xx status with the body `{ "errors": [ ... ] }`, and CommerceOS reads it. O
 dialog `¿Error: Request failed: <status>.?`, the sale stays open, and the next attempt reuses the same
 `paymentKey` (verified on a till 2026-09-22). After a final `Decline`, `Fail` or `Cancel` step the
 next attempt carries a new `paymentKey`. So a request that your integration cannot take on that
-route, an unknown `methodId` for example, is answered as a 200 stream with one `Fail` step. The
+route, an unknown `methodId` for example, is answered as a 200 stream with one `Fail` step. The one exception is a call without the three context headers: only a caller that is not CommerceOS sends it, and it gets a 400 (tutorial, section 3). The
 conformance scenario `E2` checks it, and the tool fails any scenario in which the stream route
 answered a non-2xx. Each error item has:
 
