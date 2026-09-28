@@ -105,6 +105,15 @@ reason in the *Orsak* list, *Skapa*, then the button reads `Återbetalning <your
 transactions call shows `<code>: <message>` from your error body verbatim: unlike a `Fail` step, no
 code is translated on this route.
 
+Some providers do not allow every refund. A refund without the card, which is what the *Refund* action
+asks for, can be switched off for a merchant by the acquirer: Softpay answers `403` with `errorCode 8004`
+on its sandbox merchant. Refuse the `Credit` with a message that names the way that works, because the
+cashier reads it as `<code>: <message>`. The way that works is the payout above: on the same return the
+cashier opens the pay screen (`F4`), keeps the negative amount and picks your method, and your integration
+takes the refund with the card. Verified on a till with Softpay on 2026-09-28: the refusal
+`NotAllowed: Softpay tillåter inte återbetalning utan kort här. Återbetala på betalskärmen: välj Softpay och låt kunden blippa kortet`,
+then an approved payout of the same amount.
+
 ## 4. Asynchronous completion
 
 ```mermaid
@@ -164,6 +173,8 @@ Captures from a manned till with Piggy Bank installed: one line of 15.00, paid i
 | The cashier sees `Payment declined: MyCode` in English on a Swedish till | The `reason` is not in the translated list | Use a code from reference, section 9, or accept the generic text |
 | The waiting dialog never ends | The stream sent no final step | Give every provider call a timeout, and end the stream with `Fail` on it |
 | The stream stops after about five minutes | The HTTP runtime of CommerceOS closes a stream with no bytes for that long | Send a `Wait` step at intervals while you wait |
+| A cancel on the provider's device, or a device fault, shows `Betalningen tog för lång tid` | Your integration maps every stop at the provider to `Decline` `Timeout` | Read the provider's reason and send `Cancel`, `Decline` or `Fail` per cause (reference, section 5, "When a real provider owns the outcome") |
+| `Recovered an earlier unrecorded payment of <amount> and added it to the cart. Check the remaining balance and tender it separately.` | An earlier attempt on this sale was debited after its stream dropped, for example by your recovery after a restart. CommerceOS attached it and failed the current attempt | Expected. The cashier tenders the rest again. The text is English on every till |
 | `POST /payments/{key}/transactions` answers 404 from your integration | Your integration lost the session behind `paymentKey` after a restart | Keep the session in the key-value store or your database (reference, section 8), not only in memory |
 | `PATCH /v1/payment-orders/{key}` answers 400 with details `Payment order not found.` | The stream sent no `Create` or `Complete` step before it dropped | Send `Create` as the first step of an asynchronous payment |
 | `PATCH /v1/payment-orders/{key}` answers 400 `Amount must agree with designated instance.` | A `Debit` or `Authorize` beyond what the order still allows, for example a completion posted twice with two ids | Post the completion once, with one `transactionId` |

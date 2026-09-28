@@ -395,6 +395,13 @@ cashier pays out with your method from the pay screen reaches you as such a `Pay
 *Refund* action under the cart makes the refund transaction, see
 [four more flows](./payment-epi/flows.md) section 3.
 
+An integration in front of a real provider cannot make these cents select these outcomes: the provider's
+sandbox has its own table. Softpay's sandbox, for example, selects the outcome by the whole amount in minor
+units (`0,10` declines, `0,21` times out). Map the scenarios to your sandbox's amounts in a profile. The
+outcomes that need a physical device (approval, decline, timeouts, a cancel on the device, a device fault, a
+refund with the card, a restart during a payment) are then certified on a till with the device. When your
+`/test` checks that a device is registered, scenario `C1` fails until one is, and the tool skips the other 19.
+
 Heads certifies your installed integration with the tool in `--cos` mode, through the CommerceOS. A profile file is needed only when your sandbox selects outcomes by other amounts, or when the method to test is not the first on your integration record. Tell Heads both.
 
 ## 7. Go live
@@ -405,6 +412,10 @@ Heads certifies your installed integration with the tool in `--cos` mode, throug
 - [ ] A repeated `PUT` for a completed `paymentKey` answers the same `processorsId` and the same transactions, and `processorsId` is unique for all time.
 - [ ] `POST /test` answers per node: it reads the configuration of the context id and checks it.
 - [ ] State lives in the CommerceOS key-value store or in your database, never only in memory.
+- [ ] A restart never loses a charge: you keep a list of the payments that have a provider session and no outcome, and on start you stop each open one at the provider and complete each charged one with `PATCH /v1/payment-orders/{key}` (reference § 11).
+- [ ] Each provider outcome maps to one step, and two causes never share a step (reference § 5, "When a real provider owns the outcome").
+- [ ] You know which refunds your provider allows for each merchant. A `Credit` that the provider refuses answers a message that sends the cashier to a payout with the card (flows § 3).
+- [ ] Your provider credentials live in your integration's environment, not in the configuration: the configuration schema has no secret field type, so an administrator can read every value.
 - [ ] `POST /payments/{paymentKey}/transactions` treats every call as a new transaction. CommerceOS never retries it, and two equal partial refunds of one line arrive with the same token and body: both must be paid. Refuse a call that asks for more than the payment has left, with a non-2xx and an error body: the cashier sees `<code>: <message>`.
 - [ ] Every stream ends with exactly one final step, also on an exception. A stream that closes without one shows the cashier nothing at all.
 - [ ] Every call to your provider has a timeout, and a timeout ends the stream with `Fail`.
