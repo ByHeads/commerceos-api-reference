@@ -244,6 +244,33 @@ whose `type` is not in the table is ignored, and the POS keeps waiting for the n
 the transaction's `specification` verbatim as the item rows of the payment record; a transaction without
 it gives a record with no items in the back office.
 
+### When a real provider owns the outcome
+
+The sample decides its own outcomes. An integration in front of a real provider, a card terminal or a
+SoftPOS phone for example, only reports what the provider decided. Map every provider outcome to exactly
+one step, and never map two causes to one step: the cashier acts differently on each. One provider state
+often carries several causes, so read the provider's reason code as well as its state. Softpay, verified on
+a till against its sandbox on 2026-09-28, is the example:
+
+| Softpay reports | Cause | Step | The cashier sees (sv-SE till) |
+|---|---|---|---|
+| `COMPLETED` | approved | `Complete` | the payment line |
+| `DECLINED`, `responseCode` `TIMEOUT` | the acquirer timed out | `Decline`, reason `Timeout` | `Betalningen tog för lång tid` |
+| `DECLINED`, another `responseCode` | declined | `Decline`, a reason from section 9 when one fits | a translated decline, or the generic text |
+| `ABORTED` after your cancel call | the cashier pressed cancel | `Cancel` | `Betalningen avbruten.` |
+| `ABORTED`, `responseCode` `MANUAL_ABORTED` | the merchant cancelled on the phone | `Cancel` | `Betalningen avbruten.` |
+| `ABORTED`, `responseCode` `TIMEOUT_ABORTED` | nobody tapped a card | `Decline`, reason `Timeout` | `Betalningen tog för lång tid` |
+| `ABORTED`, `responseCode` `TECHNICAL_FAILURE` | a fault on the phone, NFC off for example | `Fail`, a `code` that is not in the section 9 list, and a `message` in the request's `locale` | `Betalningen misslyckades: ` and your message |
+
+A first build that sent `Decline` `Timeout` for every `ABORTED` told the cashier "took too long" for a
+cancel on the phone and for NFC off alike.
+
+A provider that takes the card on a device needs the device to be named per till. A device id in the node
+configuration sends the payments of every till under that node to one device. The per-till path is a
+method with `requires.terminal: true` (`MethodDto` in `epi-openapi.yaml`): list the devices on
+`GET /terminals` (section 2), and every payment then carries the `terminalId` of the till's payment
+terminal. That path is not yet verified with a real provider.
+
 ## 6. Transactions, cancel, and reversal arguments
 
 A `paymentKey` whose stream ended in `Decline`, `Cancel` or `Fail` has no payment order: treat a new `PUT` for it as a new payment, and answer a transactions call for it with `404` and an error body. An administrator who reads `GET /v1/payment-orders/key=<key>` for such a key gets `200` with the body `null`, the same as for any unknown key of 32 characters, never a 404. A key of another length fails to parse and answers `404 not found`, so the tool's own keys (`pay-<runId>-P1`) read as 404. CommerceOS never sends such a key.
@@ -361,13 +388,15 @@ curl -X PATCH -H "Authorization: Bearer <access token>" "https://example.app.hea
         "identifiers": { "transactionId": { "method": { "identifiers": { "methodId": "com.example.card" } }, "id": "T-0001" } },
         "currency": { "identifiers": { "currencyCode": "SEK" } },
         "timestamp": "2026-09-18T09:00:00Z", "amount": "100.00",
-        "actions": ["Authorize", "Debit"], "token": "tok-P1", "specification": []
+        "actions": ["Authorize", "Debit"], "token": "tok-P1"
       } ] }'
 ```
 
 The shape of the record, which members are required, and what CommerceOS does with a duplicate
 `transactionId` are in [`commerceos-openapi.yaml`](./commerceos-openapi.yaml), `PaymentOrderRecord`.
-Without `token`, CommerceOS takes the available money for the first action.
+Without `token`, CommerceOS takes the available money for the first action. Leave `specification` out of the record: CommerceOS answers 500 when a record carries it
+(`PaymentOrderRecord`). Send `means` so that the return dialog can show what paid: a record without it
+shows the payment line with no card details.
 
 ## 9. Status, actions and decline reasons
 
@@ -435,6 +464,7 @@ The cents of the amount select the outcome: [Build a payment integration](../pay
 | The stream closes cleanly with no final step | Shows nothing. No dialog, no payment line, the sale stays open. Verified on a till 2026-09-22 | Never close a stream without a final step. On an exception, send `Fail` first |
 | A `Complete` that CommerceOS refuses (an Authorize-only answer under `debitSynchronously`, or a transaction it cannot record) | The raw dialog `¿Error: Payment was requested to be synchronously debited, but it was not.?`, no payment order, and the next attempt reuses the same `paymentKey`, so a resume repeats the refused answer and the cashier is stuck. A platform fix that turns this into a `Fail` step is proposed; with it the next attempt is a new key | Never send such a `Complete`. The tool refuses a non-capturing `Complete` under the flag |
 | The connection drops before a final step | Shows the raw dialog `¿TypeError: terminated?`. The payment order is not marked failed. On the cashier's next attempt with direction `Payment`: no order yet, same `paymentKey` again; an order `Debited` for the tender amount, attached without a new call; an order `Debited` for another amount, attached and the cashier told to tender the rest; a non-debited order, a fresh key | Treat a second `PUT` with a known `paymentKey` as a resume: answer the same `processorsId` and the same transactions, never a second charge. The conformance scenario `P10` checks it. When the session behind the key still waits for the customer, continue that session on the new stream, with `Wait` steps, and never open a second session. The new stream starts without a cancel button: if the customer can still cancel, send `Cancellable` again before the first `Wait`. A later `Wait` never hides the button |
+| Your integration restarts while a payment waits at the provider | Shows `¿TypeError: terminated?`. The cashier's next attempt gets a fresh `paymentKey` while no order is debited, so CommerceOS never asks again about the old one. Once you debit the old order, the next pay attempt on that sale attaches it and shows `Recovered an earlier unrecorded payment of <amount> and added it to the cart. Check the remaining balance and tender it separately.`, in English on every till, and fails that attempt. The cashier tenders the rest again. Verified on a till 2026-09-28 | Keep a list of the payments that have a provider session and no outcome, outside memory. The key-value store cannot list keys (section 8), so keep the list yourself. On start, stop each open session at the provider, so that no later card tap charges a sale that no one waits for, and complete each charged one with `PATCH /v1/payment-orders/{key}` |
 | A stream call or a transactions call fails (network error, non-2xx) | Makes no retry. The cashier sees the error and starts the payment again by hand. Data after a final step is ignored | On the stream route, treat a second `PUT` with a known `paymentKey` as a resume (see below). On the transactions route, treat every call as new: CommerceOS never retries it, and two equal partial refunds arrive identical (section 6). Send exactly one final step, then close |
 | A repeated `records` item in `PATCH /v1/payment-orders/{key}` (same `transactionId.id` on the same order) | A repeat of the identical record is a no-op. A record that reuses the id with any field changed is refused | Repeat a callback with the same body, or not at all. Give every distinct transaction its own id |
 | A `records` item after the order is `Debited` | Has no state guard. A late `Debit` or `Authorize` beyond the remaining amount answers 400 (`Amount must agree with designated instance.`, or with a `token`, `Designated instance must be a subset of available instance.`). A `Credit` up to the debited amount is accepted and adds `Credited` | Post the completion once. Do not post a `Debit` for a sale that the stream already completed |

@@ -691,7 +691,7 @@
         "specification": {
           "type": "array",
           "items": { "$ref": "#/$defs/PaymentOrderSpecificationItem" },
-          "description": "The items, in CommerceOS API shape."
+          "description": "The items, in CommerceOS API shape. Leave it out for now: a record that carries specification answers 500 Internal server error today, and the same record without it is accepted (verified 2026-09-28). The payment record then has no item rows in the back office."
         },
         "means": { "$ref": "#/$defs/PaymentOrderMeans", "description": "What paid, in CommerceOS API shape: a singleton is {\"identifiers\":{\"id\":\"Piggy Bank\"}}." },
         "rawData": { "type": "object", "description": "Any JSON object." },
