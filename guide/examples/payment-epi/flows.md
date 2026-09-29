@@ -93,8 +93,9 @@ a refund larger than the order can still credit, or rounding on the amount. Comm
 call once and does not retry: a non-2xx with an error body shows your `<code>: <message>` to the cashier, and the cashier starts the refund again by hand.
 
 This flow runs only from the *Refund* action under the cart, and only for a method with
-`supports.reversal`. A cashier who returns the article, opens the pay screen and picks your method
-for the negative balance starts a **new payment** instead: `PUT /payments/{key}` with
+`supports.reversal`. For a method without it but with `supports.outgoing`, the same *Refund* action
+starts the payout below. A cashier who returns the article, opens the pay screen and picks your method
+for the negative balance also starts a **new payment**: `PUT /payments/{key}` with
 `direction: "Payout"` and `debitSynchronously: true`, on a new key, and your integration answers it
 like a sale, with `["Authorize","Debit"]`. The reference, section 6, gives the rule that chooses
 between the two.
@@ -105,14 +106,16 @@ reason in the *Orsak* list, *Skapa*, then the button reads `Återbetalning <your
 transactions call shows `<code>: <message>` from your error body verbatim: unlike a `Fail` step, no
 code is translated on this route.
 
-Some providers do not allow every refund. A refund without the card, which is what the *Refund* action
+Some providers do not allow every refund. A refund without the card, which is what the `Credit` call
 asks for, can be switched off for a merchant by the acquirer: Softpay answers `403` with `errorCode 8004`
-on its sandbox merchant. Refuse the `Credit` with a message that names the way that works, because the
-cashier reads it as `<code>: <message>`. The way that works is the payout above: on the same return the
-cashier opens the pay screen (`F4`), keeps the negative amount and picks your method, and your integration
-takes the refund with the card. Verified on a till with Softpay on 2026-09-28: the refusal
-`NotAllowed: Softpay tillåter inte återbetalning utan kort här. Återbetala på betalskärmen: välj Softpay och låt kunden blippa kortet`,
-then an approved payout of the same amount.
+on its sandbox merchant. For such a merchant, declare `supports.reversal: false` and keep
+`supports.outgoing: true`. The *Refund* action then starts a `Payout`, and your integration takes the refund
+with the card. The cashier presses the same button and sees no refusal. Make the flag a configuration
+value, so that `configure` sets it per organization node: turn it on only for a merchant whose provider
+allows refunds without the card. Verified on a till with Softpay on 2026-09-29: the *Refund* action on a
+Softpay receipt started a `Payout`, and the customer tapped the card. If your method keeps
+`supports.reversal` and the provider refuses a `Credit`, answer an error body whose message tells the
+cashier to refund from the pay screen: the cashier reads it as `<code>: <message>`.
 
 ## 4. Asynchronous completion
 

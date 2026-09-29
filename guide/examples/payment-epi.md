@@ -414,7 +414,7 @@ Heads certifies your installed integration with the tool in `--cos` mode, throug
 - [ ] State lives in the CommerceOS key-value store or in your database, never only in memory.
 - [ ] A restart never loses a charge: you keep a list of the payments that have a provider session and no outcome, and on start you stop each open one at the provider and complete each charged one with `PATCH /v1/payment-orders/{key}` (reference § 11).
 - [ ] Each provider outcome maps to one step, and two causes never share a step (reference § 5, "When a real provider owns the outcome").
-- [ ] You know which refunds your provider allows for each merchant. A `Credit` that the provider refuses answers a message that sends the cashier to a payout with the card (flows § 3).
+- [ ] You know which refunds your provider allows for each merchant. Where it cannot refund without the card, your method declares `supports.reversal: false` with `supports.outgoing: true`, and the *Refund* action becomes a refund with the card (flows § 3).
 - [ ] Your provider credentials live in your integration's environment, not in the configuration: the configuration schema has no secret field type, so an administrator can read every value.
 - [ ] `POST /payments/{paymentKey}/transactions` treats every call as a new transaction. CommerceOS never retries it, and two equal partial refunds of one line arrive with the same token and body: both must be paid. Refuse a call that asks for more than the payment has left, with a non-2xx and an error body: the cashier sees `<code>: <message>`.
 - [ ] Every stream ends with exactly one final step, also on an exception. A stream that closes without one shows the cashier nothing at all.

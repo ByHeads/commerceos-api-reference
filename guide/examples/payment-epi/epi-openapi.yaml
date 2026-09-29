@@ -375,7 +375,7 @@ components:
               description: "Payouts (direction Payout)."
             reversal:
               type: "boolean"
-              description: "Annul and Credit through POST /payments/{paymentKey}/transactions."
+              description: "Annul and Credit through POST /payments/{paymentKey}/transactions. false when your provider cannot refund without the card: with outgoing true, the till's Refund action then starts a Payout instead, a refund with the card (verified 2026-09-29)."
           required:
             - "incoming"
             - "outgoing"

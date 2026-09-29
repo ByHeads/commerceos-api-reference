@@ -277,7 +277,9 @@ A `paymentKey` whose stream ended in `Decline`, `Cancel` or `Fail` has no paymen
 
 **When a refund reaches this route.** The POS makes the `Credit` call only from the *Refund*
 action under the cart, on a return whose original sale your method paid, and only when your method
-declares `supports.reversal` and the amount fits the original order. When the cashier instead opens
+declares `supports.reversal` and the amount fits the original order. A method with `supports.reversal`
+`false` and `supports.outgoing` `true` keeps the *Refund* action: it starts a `Payout` on a new key instead
+of the `Credit` call (verified on a till 2026-09-29). When the cashier instead opens
 the pay screen and picks your method for the negative balance, the POS starts a new payment with
 `direction: "Payout"` through `PUT {baseUrl}/payments/{paymentKey}` whenever `supports.outgoing` is
 `true`, and tries the `Credit` path there only for a method with `supports.outgoing` `false`. A
