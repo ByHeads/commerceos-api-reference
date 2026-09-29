@@ -31,7 +31,7 @@ commerceos-api-reference/
 │   │   ├── advanced.md           # Advanced query patterns
 │   │   ├── configuration.md      # System configuration examples
 │   │   ├── payment-epi.md        # Build a payment integration: tutorial
-│   │   ├── payment-epi/          # Contract reference, conformance fixtures, the Piggy Bank sample
+│   │   ├── payment-epi/          # Contract reference, two OpenAPI 3.1 documents, scenarios, the Piggy Bank sample
 │   │   ├── discount-rules.md     # Discount and pricing rules
 │   │   ├── discount-coupons.md   # Coupon codes that activate discount rules
 │   │   ├── inventory.md          # Stock and inventory management
@@ -63,10 +63,13 @@ commerceos-api-reference/
 │   ├── pagination.md             # Pagination patterns and strategies
 │   ├── primitives.md             # Primitive types and values
 │   ├── receipts.md               # Receipt data model and operations
+│   ├── stock-entries.md          # Set stock to a target quantity; the server writes the deltas
 │   ├── trade-records.md          # Ledger log of order activity; trade-records:write markers
 │   ├── mapped-types.md           # Data transformation
+│   ├── mapped-types-dry-run.md   # Stateless dry-run endpoint for mapped types
 │   ├── resource-patterns.md      # Common resource patterns
 │   ├── type-members.md           # Type member reference
+│   ├── openapi-extensions.md     # OpenAPI vendor extensions (x-* properties)
 │   ├── common-gotchas.md         # Known pitfalls
 │   ├── platform-takeaways.md     # Cross-cutting behaviors
 │   ├── email-integrations.md     # Email provider config
@@ -85,9 +88,12 @@ commerceos-api-reference/
 │       ├── orders-integration.md # External order system integration
 │       ├── bi-receipts-analytics.md  # BI analytics for receipts
 │       └── retail-implementation.md  # End-to-end retail setup
-└── features/
-    ├── sql-export.md             # SQL export specification
-    └── config-import-export.md   # Config utility spec
+├── features/
+│   ├── streaming.md              # Streaming and batch processing guide
+│   ├── sql-export.md             # SQL export specification
+│   └── config-import-export.md   # Config utility spec
+└── tools/
+    └── epi-check/                # Conformance tool for payment integrations (Node 22, no dependencies)
 ```
 
 ---
@@ -213,6 +219,7 @@ When working with this repository, agents should:
    - `guide/` - Practical guides and examples
    - `reference/` - API reference material
    - `features/` - Feature specifications
+   - `tools/` - Runnable tools that partners use against their own integration
 
 2. Use external-facing language only
 3. Update README.md if adding major new sections

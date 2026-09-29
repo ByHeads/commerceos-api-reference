@@ -621,7 +621,7 @@ Installing an EPI integration requires a **confidential OAuth2 client** associat
 | **Refresh Token Lifetime** | 2592000 seconds (30 days) |
 | **Confidential** | `true` (client secret required) |
 
-> **Where these defaults come from:** EPI users are seeded via `commerceos-api-gen/src/v1/epi-users.ts` when running seed configurations (e.g., `seed/pay/seed-config.json`). The seeder creates a user with an embedded OAuth2 client using the scopes and grants listed above.
+> **Where these defaults come from:** the Heads sample data creates each EPI user with an embedded OAuth2 client that has the scopes and grants listed above. On your own CommerceOS, create the user and client yourself, as step 2 of [Build a payment integration](./payment-epi.md#5-connect-it-to-commerceos) shows.
 
 ### Installation Flow
 

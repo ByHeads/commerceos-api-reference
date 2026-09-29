@@ -18,6 +18,8 @@ This is a **high-level reference, example database and cookbook-style guide** fo
 
 **Why no endpoint listings?** The API serves its own documentation at each deployed instance. Endpoint schemas and model definitions are always up-to-date there, so this repository focuses on the higher-level patterns that don't change between versions.
 
+The one exception is the payment EPI: CommerceOS calls *your* service there, so no running instance can document it. Its contract ships here as two OpenAPI 3.1 documents, next to a tutorial, a sample integration and a conformance tool. See [Build a payment integration](guide/examples/payment-epi.md).
+
 ---
 
 ## Where to Find Documentation
@@ -53,11 +55,26 @@ commerceos-api-reference/
 │   │   ├── orders.md             # Trade order examples
 │   │   ├── users.md              # User management examples
 │   │   ├── configuration.md      # Settings and config examples
-│   │   ├── payment-epi.md        # Build a payment integration: tutorial, reference and sample
+│   │   ├── payment-epi.md        # Build a payment integration: the tutorial
+│   │   ├── payment-epi/          # The payment EPI contract and its test material
+│   │   │   ├── reference.md      # Contract reference: every call, header, step and error
+│   │   │   ├── flows.md          # Decline, cancel, refund, asynchronous completion, troubleshooting
+│   │   │   ├── epi-openapi.yaml  # OpenAPI 3.1: the calls CommerceOS makes to your integration
+│   │   │   ├── commerceos-openapi.yaml # OpenAPI 3.1: the calls your integration makes to CommerceOS
+│   │   │   ├── sample/           # Piggy Bank, a runnable sample integration (Node 22, no dependencies)
+│   │   │   └── scenarios/        # The conformance scenarios, one JSON file each
 │   │   ├── labels.md             # Labels guide (all entity types)
 │   │   ├── query-operators.md    # Query operator examples
 │   │   ├── advanced.md           # Advanced usage patterns
-│   │   └── discount-rules.md     # Discount rule examples
+│   │   ├── discount-rules.md     # Discount rule examples
+│   │   ├── discount-coupons.md   # Coupon codes that activate discount rules
+│   │   ├── surcharge-rules.md    # Surcharge rule configuration
+│   │   ├── receipt-discounts-surcharges.md # Discounts and surcharges on receipts
+│   │   ├── product-packages.md   # Packages, package classes and product sets
+│   │   ├── units-of-measure.md   # Units, divisibility and conversion
+│   │   ├── product-instances-tracking.md # Instance-level stock tracking
+│   │   ├── serial-number-tracking.md # Serial numbers and IMEIs
+│   │   └── stock-inventory-guide.md # End-to-end stock walkthrough
 │   ├── advanced-queries.md       # 300 advanced query examples
 │   ├── provisioning-users.md     # End-to-end user, credential and role setup
 │   └── creating-skills.md        # How to create Claude skills
@@ -71,6 +88,7 @@ commerceos-api-reference/
 │   ├── pagination.md             # Pagination patterns and best practices
 │   ├── primitives.md             # Primitive types and values
 │   ├── receipts.md               # Receipt data model and operations
+│   ├── stock-entries.md          # Set stock to a target quantity; the server writes the deltas
 │   ├── trade-records.md          # Ledger log of order activity; writable sync markers
 │   ├── mapped-types.md           # Data transformation
 │   ├── mapped-types-dry-run.md   # Stateless dry-run endpoint for mapped types
@@ -95,10 +113,12 @@ commerceos-api-reference/
 │       ├── orders-integration.md # Order management integration
 │       ├── bi-receipts-analytics.md # BI/analytics receipt export
 │       └── retail-implementation.md # Retail implementation patterns
-└── features/                     # Feature-specific documentation
-    ├── streaming.md              # Streaming and batch processing guide
-    ├── sql-export.md             # SQL export specification
-    └── config-import-export.md   # Config utility spec
+├── features/                     # Feature-specific documentation
+│   ├── streaming.md              # Streaming and batch processing guide
+│   ├── sql-export.md             # SQL export specification
+│   └── config-import-export.md   # Config utility spec
+└── tools/
+    └── epi-check/                # Conformance tool for payment integrations (Node 22, no dependencies)
 ```
 
 ---
@@ -111,6 +131,7 @@ commerceos-api-reference/
 4. **Advanced queries?** Check [`guide/advanced-queries.md`](guide/advanced-queries.md) for 300 examples
 5. **Looking for operators?** See [`reference/operators.md`](reference/operators.md)
 6. **Avoiding pitfalls?** Read [`reference/common-gotchas.md`](reference/common-gotchas.md)
+7. **Building a payment integration?** Start with [`guide/examples/payment-epi.md`](guide/examples/payment-epi.md), then test it with [`tools/epi-check`](tools/epi-check/README.md)
 
 ---
 
@@ -135,6 +156,8 @@ commerceos-api-reference/
 | Curl Examples | [`guide/examples.md`](guide/examples.md) |
 | Advanced Queries | [`guide/advanced-queries.md`](guide/advanced-queries.md) |
 | Creating Skills | [`guide/creating-skills.md`](guide/creating-skills.md) |
+| Payment Integration (EPI) | [`guide/examples/payment-epi.md`](guide/examples/payment-epi.md), [`guide/examples/payment-epi/reference.md`](guide/examples/payment-epi/reference.md) |
+| Payment Conformance Tool | [`tools/epi-check/README.md`](tools/epi-check/README.md) |
 
 ---
 
