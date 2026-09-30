@@ -1076,7 +1076,7 @@ International Commercial Terms define when responsibility transfers. Delivery te
 
 ### The Eleven Codes, and a Collection for Each
 
-Each Incoterm code has a collection of its own, alongside two broader ones. All thirteen are under `logistics:write`.
+Each Incoterm code has a collection of its own, alongside two broader ones. All thirteen are under `logistics:write`, and readable under `logistics:read` on v26.2.1 and later (not in v26.2.0 or v26.1.x). `supply-chains:read` reads only the two broad collections, `/v1/delivery-terms` and `/v1/incoterm-delivery-terms`; the eleven code collections are a `404` under it.
 
 | Code | Name | Responsibility transfer | Collection |
 |------|------|------------------------|------------|

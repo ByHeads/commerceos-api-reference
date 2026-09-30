@@ -185,21 +185,27 @@ The API is organized around resource families like Agents, Products, Orders, Inv
 | Scope | Concepts |
 |-------|----------|
 | **org** | People, companies, and stores in your organization; identifiers and contact data live here. |
-| **products** | Catalog items, categories, groups/families, and pricing metadata used by ordering and stock. |
-| **stock** | Stock places, stock transactions, and adjustment reasons tied to products and stores. |
-| **orders.sales** / **orders.payments** | Trade orders and trade order items, plus payment orders for capturing order payments. |
+| **products** | Catalog items, categories, groups/families, and pricing metadata used by ordering and stock. Also brands, batches, package classes, age restrictions, hazard classes and dangerous goods, commodity codes and GS1 series; `products:read` reads those from v26.2.1. |
+| **stock** | Stock places, stock transactions, and adjustment reasons tied to products and stores. Also the logical stocks, stock entries, placement rules, stock counts and stock transfers; `stock:read` reads those from v26.2.1, before that they took `stock:write`. |
+| **orders.sales** / **orders.payments** | Trade orders and trade order items, plus payment orders for capturing order payments. Each has a `:write` and, from v26.2.1, a `:read` half. |
+| **discounts.system** / **discounts.manual** | Discount rules with their effects, phases, reasons and coupons, and the manual discounts a cashier can give. `:write`, and `:read` from v26.2.1. See [Discount Rules](../guide/examples/discount-rules.md). |
+| **periods** | Trade periods, seasons and campaigns. `:write`, and `:read` from v26.2.1. |
+| **logistics** | Picking orders and picking records, shipment orders, supply routes and delivery terms. `logistics:read` reads the last three from v26.2.1. |
+| **payment-records** / **shipment-records** | What was actually paid and shipped against an order. `:write`, and `:read` from v26.2.1. |
 | **trade-records** | The ledger's log of what was actually done to an order — reservations, deliveries, returns, cancellations. `trade-records:read` reads it; `trade-records:write` additionally opens external identifiers and registered dynamic properties on a record, and includes the reads. See [`trade-records.md`](trade-records.md). |
-| **pos** | Terminals, profiles, functions, devices, printers, and currency denominations for in-store flows. |
+| **pos** | Terminals, profiles, functions, devices, tiles and tile sets, templates, printers, and currency denominations for in-store flows. Tiles, templates, printers and denominations take `pos:write` before v26.2.1; `pos:read` reads them from v26.2.1. |
 | **prices** | Price definitions, validity windows, and currency-scoped pricing. |
-| **supply-chains** | Trade relationships, delivery terms, and payment terms between agents. |
-| **users** | User accounts and credentials for access and identity. `users:read` is read-only and covers users plus local, retail and Entra ID credentials; **there is no `users:write`** — every write, and everything to do with roles and permissions, needs `admin`. See [Users → Scopes](users.md#scopes). |
+| **supply-chains** | Trade relationships, delivery terms, and payment terms between agents. Delivery terms are also readable under `logistics:read` from v26.2.1. |
+| **users** | User accounts and credentials for access and identity. `users:read` is read-only and covers users plus local, retail and Entra ID credentials; **there is no `users:write`** — every write, and everything to do with roles and permissions, needs `admin`. `admin:read` (v26.2.1 and later) reads users, systems, OAuth2 clients and every credential collection with secrets masked. See [Users → Scopes](users.md#scopes). |
 | **retail** | Receipts, payment methods, payment cards/means, Z/X and cash register reports, return reasons, and mobile device/plans. See [`receipts.md`](receipts.md) for BI/analytics usage. |
 | **geo** | Currencies, languages, countries, and cities for localization. |
 | **media** | Images and other media assets attached to products and agents. |
+| **integrations** | Payment, shipment, wallet, loyalty and EPI integrations with their configurations. `integrations` is the single full-access scope; `integrations:read` (v26.2.1 and later) lists them without the configuration bodies. |
+| **links** | Shortened links. `:write`, and `:read` from v26.2.1. |
 | **config** | System settings and serial number sequences. |
 | **advanced** | Mapped types and sync webhooks for custom data transformations and integrations. See [`mapped-types.md`](mapped-types.md), [`mapped-types-dry-run.md`](mapped-types-dry-run.md), and [`sync-webhooks.md`](sync-webhooks.md). |
 
-> **Note:** Scopes control what API clients can access. Most scopes have `:read` (GET-only) and `:write` (full access) variants. See your OAuth2 client configuration for assigned scopes.
+> **Note:** Scopes control what API clients can access. Every `:write` scope has a `:read` twin that exposes the same collections read-only. `me`, `advanced`, `config` and `kv` have no read variant; `integrations` and `admin` have restricted ones. Before v26.2.1 eight write scopes have no read twin and four read scopes stop short of their write twin. See [Credentials → Every write scope has a read twin](credentials.md#every-write-scope-has-a-read-twin) for the full table, and your OAuth2 client configuration for assigned scopes.
 
 ---
 

@@ -226,6 +226,64 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/trade-records/{ke
 
 ---
 
+## Reading Orders Without Write Access
+
+> **Availability:** v26.2.1 and later. Not in v26.2.0 or v26.1.x, where reading a trade order or a payment order takes the write scope.
+
+`orders.sales:read` reads trade orders and their items and opens no write. `orders.payments:read` does the same for payment orders. An order refers to agents, products and a currency, and each of those comes back only when the key can read it:
+
+| The key holds | The order reads | Each item reads |
+|---|---|---|
+| `orders.sales:read` alone | `identifiers`, `timestamp`, `status`, `totalAmount`, `balanceAmount`, `invoiceAddresses`, `deliveryAddresses`, `items` | `identifiers`, `quantity`, `classification`, `totalAmount`, `unitAmountInclVat`, `discountAmountInclVat`, `vatPercentage` |
+| plus `customers:read`, `suppliers:read` or `supply-chains:read` | plus `supplier` and `customer` | the same |
+| plus `products:read` and `geo:read` | plus `currency` | plus `product` |
+
+With all of them this read is the same as under `write:api`. So the scope set for a read-only order feed is `orders.sales:read`, one of the three agent scopes, `products:read` and `geo:read`, with `orders.payments:read` for the payments and `trade-records:read` for the ledger. `read:api` carries `products:read`, `geo:read`, `suppliers:read` and `supply-chains:read`, but none of the order scopes and not `trade-records:read`: grant those by name.
+
+```bash
+# What the key holds
+curl -X GET -u ":readonly-key" "https://example.app.heads.com/api/v1/scopes"
+# ["geo:read","customers:read","products:read","orders.sales:read"]
+
+# Orders with their lines
+curl -X GET -u ":readonly-key" "https://example.app.heads.com/api/v1/trade-orders~with(items)~take(100)"
+
+# The finder works under the read scope as well
+curl -X PUT -u ":readonly-key" "https://example.app.heads.com/api/v1/trade-orders/@find/results" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+Every write under the read scope is refused or does nothing, which is the point of granting it:
+
+```bash
+# Create: refused, nothing created
+curl -X POST -u ":readonly-key" "https://example.app.heads.com/api/v1/trade-orders" \
+  -H "Content-Type: application/json" \
+  -d '[{"identifiers": {"com.myapp.orderId": "ORD-NEW"}}]'
+# 400 {"@type": "failed indexing", "error": "Found no matching 'trade order' using this index. Check identifiers.", ...}
+
+# Approve: 204, and the order stays ["New"]
+curl -X PUT -u ":readonly-key" "https://example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-2024-001/actions/tryApprove" \
+  -H "Content-Type: application/json" \
+  -d 'true'
+
+# Update: 200 with the order echoed, and nothing changed
+curl -X PATCH -u ":readonly-key" "https://example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-2024-001" \
+  -H "Content-Type: application/json" \
+  -d '{"customerNotifications": false}'
+
+# Delete: 200 {"deletedCount": 0, "info": "Nothing happened"}
+curl -X DELETE -u ":readonly-key" "https://example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-2024-001"
+
+# A collection outside the key's scopes: 404
+curl -X GET -u ":readonly-key" "https://example.app.heads.com/api/v1/products"
+```
+
+> **Read the value before you conclude anything from a `PATCH`.** `supplierNotifications` and `customerNotifications` are `true` on a new order, so a `PATCH` that sets one to `true` looks as if it landed under any scope. None of these answers is a permission error; see [gotcha 41](../../reference/common-gotchas.md#41-a-write-under-a-read-only-scope-is-a-silent-200) and [Credentials → Every write scope has a read twin](../../reference/credentials.md#every-write-scope-has-a-read-twin).
+
+---
+
 ## Trade Relationships
 
 ```bash

@@ -1085,7 +1085,9 @@ Related: [gotcha 39](#39-a-null-in-a-response-does-not-prove-the-field-exists) (
 
 ## 41. A Write Under a Read-Only Scope Is a Silent `200`
 
-Several resources come as a pair: a read-only collection under `<area>:read` and a writable twin under `<area>:write`, both mounted at the same path. Which one a request lands on is decided by the scopes the token holds — and **being on the wrong one is not an error**.
+Every resource family comes as a pair: a read-only collection under `<area>:read` and a writable twin under `<area>:write`, both mounted at the same path. Which one a request lands on is decided by the scopes the token holds — and **being on the wrong one is not an error**.
+
+> **Availability:** every family has the pair on v26.2.1 and later. Before v26.2.1 only some do: orders, payment orders, discount rules, manual discounts, trade periods, payment and shipment records and shortened links have no read scope there. The behaviour below is the same on both. See [Credentials → Every write scope has a read twin](credentials.md#every-write-scope-has-a-read-twin).
 
 ```bash
 # The token holds trade-records:read only
@@ -1149,8 +1151,9 @@ GET /v1/scopes~where($this=products:write)    # ["products:write"] when granted,
 
 Worth doing at start-up in anything that syncs: it is the difference between finding out now and finding out from a month of markers that never landed.
 
-Three related points:
+Five related points:
 
+- **An action under a read-only twin is inert too.** `PUT /v1/trade-orders/{key}/actions/tryApprove` with `true` under `orders.sales:read` answers `204` and `PATCH …/actions {"tryApprove": true}` answers `200 null`; the order stays `["New"]` either way. `actions` never appears in a read, so the only confirmation is the `status` you read back.
 - **A write to a read-only *member* behaves the same way**, even when the token holds the write scope. `PATCH /v1/trade-records/{key} {"items": []}` is a `200` that changes nothing, as is a member the type does not declare at all. Only the writable members of the resource you landed on take a value; everything else in the payload is quietly ignored.
 - **A marker sent alongside a rejected member still lands.** The payload is not rejected as a whole, so a mixed body applies its writable half — see [gotcha 30](#30-an-outer-member-beats-the-same-member-inside-value) for the other way a payload's halves can disagree.
 - **A `403` that does reach your client did not come from the API.** Since nothing in the error layer raises one, it came from whatever sits in front of the API — a gateway, proxy or load balancer — and it will not carry the `@type` error body every API error carries. See [Error Types](overview.md#error-types).

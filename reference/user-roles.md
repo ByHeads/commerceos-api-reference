@@ -12,7 +12,7 @@ user role assignment   gives a user that role at a node     Ada is Manager at St
 
 A permission is a capability. A role bundles permissions. An assignment gives one user one role, optionally scoped to one organizational node — so the same person can be a Manager at one store and a Cashier at another.
 
-> **All three collections are `admin`-scoped, read *and* write.** Unlike users and their credentials, there is no read-only variant: a `users:read` key cannot list roles, permissions or assignments at all. See [Users → Scopes](users.md#scopes).
+> **All three collections are `admin`-scoped, read *and* write.** Unlike users and their credentials, there is no read-only variant: a `users:read` key cannot list roles, permissions or assignments at all, nor can `admin:read`. See [Users → Scopes](users.md#scopes).
 
 ---
 

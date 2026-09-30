@@ -1006,7 +1006,7 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/discount-rules/co
 
 > **Warning: `PerApplication` is unsupported on a fixed price effect.** The API accepts `"multiplicity": "PerApplication"` on this effect type without complaint, but price recalculation then fails with a `500` the moment a matching product is in a cart. Always send `"PerUnit"`.
 
-The effect type also has a collection of its own, `GET /v1/fixed-price-rule-effects`. Note that the route name has no `discount` in it, unlike `/v1/package-discount-rule-effects` and `/v1/fixed-reduction-discount-rule-effects`. All three sit in the `discounts.system:write` scope together with `/v1/discount-rules`.
+The effect type also has a collection of its own, `GET /v1/fixed-price-rule-effects`. Note that the route name has no `discount` in it, unlike `/v1/package-discount-rule-effects` and `/v1/fixed-reduction-discount-rule-effects`. All three sit in the `discounts.system:write` scope together with `/v1/discount-rules`, and read-only under `discounts.system:read` on v26.2.1 and later (not in v26.2.0 or v26.1.x, where discount rules have no read scope).
 
 ---
 
