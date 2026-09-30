@@ -668,7 +668,7 @@ GET /v1/products/{id}~just(name,assortmentOwners~just(name),assortmentContexts~j
 | the same, key on store `N1` | `GET /v1/stores/{S1}` | the store | `200 null` |
 | the same plus `products:read`, key on store `N1` | `GET /v1/stores/{S1}/assortmentOwner/assortment` | the list | `200 null` |
 
-On v26.2.1 and later a key on a store still reads its own store and the assortment it uses at `/v1/store` and `/v1/store/assortmentOwner/assortment`, and any store still resolves where another resource refers to it. Listing or addressing every store takes `supply-chains:write`.
+On v26.2.1 and later a key on a store still reads its own store and the assortment it uses at `/v1/store` and `/v1/store/assortmentOwner/assortment`, and any store still resolves where another resource refers to it. Listing or addressing every store takes `supply-chains:write`. See [Credentials → A read scope on the org or geo side resolves, it does not list](../credentials.md#a-read-scope-on-the-org-or-geo-side-resolves-it-does-not-list).
 
 ### Traps
 

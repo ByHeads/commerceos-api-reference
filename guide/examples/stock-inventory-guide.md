@@ -167,7 +167,9 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/stocks/com.exam
 
 > **Note:** The `default` field is read-only. You cannot create a second default stock — each store has exactly one.
 
-> **Scope note:** The `/v1/stocks` endpoint is only available under the `stock:write` scope — it is **not** included in `stock:read`. This means integrations that only have `stock:read` access can work with stock places, adjustments, and transactions, but cannot list or manage logical stock containers. If your integration needs to read stocks, request the `stock:write` scope.
+> **Scope note:** `/v1/stocks` reads under `stock:read`; creating or changing a stock takes `stock:write`. Stock counts, stock transfers and their records read under `stock:read` as well. A write under `stock:read` is refused or silently dropped, see [gotcha 41](../../reference/common-gotchas.md#41-a-write-under-a-read-only-scope-is-a-silent-200).
+>
+> **Availability:** v26.2.1 and later. Before v26.2.1 (v26.2.0, v26.1.12 and earlier) `/v1/stocks`, stock counts and stock transfers are a `404` under `stock:read`, which there covers stock places, adjustments and transactions only; reading them takes `stock:write`.
 
 ### 2.2 Creating Stock Places (Physical Locations)
 
@@ -882,7 +884,7 @@ Example: moving 10 units from the Stockholm store's default stock into its consi
 Start by finding the agent's stocks, so you can name a non-default one:
 
 ```bash
-# All logical stocks (requires the stock:write scope)
+# All logical stocks (stock:read is enough to list them; before v26.2.1 this takes stock:write)
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stocks"
 
 # Or just the ones belonging to this agent
@@ -1956,7 +1958,7 @@ Inherits from `stock transaction` (has `timestamp`, `owner`).
 
 | Endpoint | Methods | Description |
 |----------|---------|-------------|
-| `/v1/stocks` | GET, POST, PATCH | Logical stock containers (`stock:write` scope only) |
+| `/v1/stocks` | GET, POST, PATCH | Logical stock containers (`GET` under `stock:read`, writes under `stock:write`; before v26.2.1 `stock:write` only) |
 | `/v1/stock-places` | GET, POST, PATCH | Physical locations |
 | `/v1/stock-places/{id}/entries` | GET | Current stock levels at a location |
 | `/v1/stock-places/{id}/transactions` | GET | Adjustments affecting a location |
