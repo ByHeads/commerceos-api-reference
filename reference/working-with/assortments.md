@@ -658,12 +658,17 @@ GET /v1/products/{id}~just(name,assortmentOwners~just(name),assortmentContexts~j
 
 ### Which stores a read key reaches
 
-| Key | Request | Answer |
-|---|---|---|
-| `org:read` alone, key on company `NORTH` | `GET /v1/stores` | the stores of `NORTH` |
-| `org:read` plus one of `supply-chains:read`, `suppliers:read`, `customers:read`, `users:read`; or `read:api`. Key on a company, on a store, or without a node | `GET /v1/stores` | every store |
-| the same, key on store `N1` | `GET /v1/stores/{S1}` | the store |
-| the same plus `products:read`, key on store `N1` | `GET /v1/stores/{S1}/assortmentOwner/assortment` | the list |
+> **Availability:** the last column is v26.2.1 and later. Before v26.2.1 (v26.2.0, v26.1.12 and earlier) an agent read scope next to `org:read` widens the listing to every store.
+
+| Key | Request | Before v26.2.1 | v26.2.1 and later |
+|---|---|---|---|
+| `org:read` alone, key on company `NORTH` | `GET /v1/stores` | the stores of `NORTH` | the stores of `NORTH` |
+| `org:read` plus one of `supply-chains:read`, `suppliers:read`, `customers:read`, `users:read`; or `read:api`. Key on company `NORTH` | `GET /v1/stores` | every store | the stores of `NORTH` |
+| the same, key on a store or without a node | `GET /v1/stores` | every store | `[]` |
+| the same, key on store `N1` | `GET /v1/stores/{S1}` | the store | `200 null` |
+| the same plus `products:read`, key on store `N1` | `GET /v1/stores/{S1}/assortmentOwner/assortment` | the list | `200 null` |
+
+On v26.2.1 and later a key on a store still reads its own store and the assortment it uses at `/v1/store` and `/v1/store/assortmentOwner/assortment`, and any store still resolves where another resource refers to it. Listing or addressing every store takes `supply-chains:write`.
 
 ### Traps
 
