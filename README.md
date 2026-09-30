@@ -100,6 +100,7 @@ commerceos-api-reference/
 │   ├── platform-takeaways.md     # Cross-cutting behaviors
 │   ├── email-integrations.md     # Email provider configuration
 │   ├── working-with/             # Domain-specific guides
+│   │   ├── assortments.md        # Assortment owners, contexts, what makes a product sell
 │   │   ├── products.md           # Working with products
 │   │   ├── customers.md          # Working with customers
 │   │   ├── orders.md             # Working with trade orders

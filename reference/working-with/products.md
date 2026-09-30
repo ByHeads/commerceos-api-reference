@@ -135,13 +135,15 @@ GET /v1/products~where(status=Pending)~orderBy(createdAt:desc)~take(100)
 | `signText` | localized | Text for signage/displays |
 | `keywords` | string | Search keywords |
 | `plu` | string[] | Price look-up codes |
-| `hidden` | boolean | Visibility flag |
+| `hidden` | boolean | Visibility flag. The till refuses a hidden product |
+| `hiddenInPos` | boolean | On products and families: the till refuses the product while it is set (v26.1.5 and later). Not in the default response; ask with `~with(hiddenInPos)`. See [What Makes a Product Show Up and Sell](assortments.md#what-makes-a-product-show-up-and-sell) |
 | `instanceType` | string | Variant type (e.g., "MobileDevice", "Apparel") |
 | `instanceProperties` | object | Pre-defined variant values (e.g., size, color) |
 | `defaultVatCode` | reference | VAT rate for this product |
 | `maxDiscountPercentage` | decimal | Cap on automatic discounts for this node, inherited by the nodes under it (v26.1.10 and later) — see [Maximum Discount Percentage](#maximum-discount-percentage-maxdiscountpercentage) |
 | `parentGroup` | reference | Parent product group |
-| `assortmentContexts` | array | Per-owner settings |
+| `assortmentContexts` | array | Per-owner settings; see [Assortments](assortments.md) |
+| `assortmentOwners` | array | The owners this product has been assigned to; see [Assortments](assortments.md) |
 | `prices` | array | Associated price definitions |
 | `stockLevels` | array | Inventory at locations |
 | `stockEntries` | array | Target-based stock-update submissions for this product (see [Stock Entries](../stock-entries.md)). Listing this sub-collection returns submissions whose underlying stock-adjustment touched this product. Posting to it accepts the same body as `/v1/stock-entries`, but `product` on each entry is implicit (taken from the URL — body `product` values are ignored). |
@@ -479,56 +481,55 @@ GET /v1/product-categories/com.example.catId=ELECTRONICS~with(childCategories~wi
 
 ## Assortment Contexts
 
-Assortment contexts allow different organizations to have their own article numbers and settings for the same product. This enables multi-tenant catalog sharing.
+An assortment context is what one owner records about one product: its own article number, its primary supplier, and a discontinued flag. The same product can be in many assortments, with a different article number in each. The full model is in [Working with Assortments](assortments.md): how a store finds its assortment, where a new product lands, and what makes a product show up in the back office and sell at the till.
 
 ### Structure
 
 | Field | Description |
 |-------|-------------|
-| `owner` | Company/store owning this context |
-| `articleNumber` | Owner-specific SKU/article number |
-| `minimumOrderQuantity` | Minimum units per order for this owner |
-| `primarySupplier` | Preferred supplier for this owner |
+| `owner` | The agent (company, store, supplier) this context belongs to. The address of the context; cannot be changed |
+| `articleNumber` | The owner's own article number |
+| `primarySupplier` | The company this owner buys the product from |
+| `discontinued` | A flag per owner (v26.1.9 and later) |
 
-### Creating with Assortment Contexts
+`minimumOrderQuantity` is no longer a member of the context (removed in v26.1.5). A write is accepted and dropped.
+
+### The Short Version
 
 ```bash
+# Create a product in named assortments.
+# "assortmentOwners": [] switches off the default owner; without it the product
+# also lands in the assortment of the owner of the key's node.
 POST /v1/products
-{
+[{
   "identifiers": {"com.example.sku": "SHARED-PROD"},
   "name": "Shared Product",
   "status": "Active",
+  "assortmentOwners": [],
   "assortmentContexts": [
-    {
-      "owner": {"identifiers": {"com.example.companyId": "COMPANY-A"}},
-      "articleNumber": "ART-001",
-      "minimumOrderQuantity": 10
-    },
-    {
-      "owner": {"identifiers": {"com.example.companyId": "COMPANY-B"}},
-      "articleNumber": "SKU-999",
-      "primarySupplier": {"identifiers": {"com.example.supplierId": "SUPP-001"}}
-    }
+    {"owner": {"identifiers": {"com.example.companyId": "COMPANY-A"}}, "articleNumber": "ART-001"},
+    {"owner": {"identifiers": {"com.example.companyId": "COMPANY-B"}}, "articleNumber": "SKU-999",
+     "primarySupplier": {"identifiers": {"com.example.supplierId": "SUPP-001"}}}
   ]
-}
-```
+}]
 
-### Managing Assortment Contexts
-
-```bash
-# Get product's assortment contexts
+# A product's contexts, and one owner's context
 GET /v1/products/com.example.sku=SHARED-PROD/assortmentContexts
-
-# Get specific owner's context
 GET /v1/products/com.example.sku=SHARED-PROD/assortmentContexts/com.example.companyId=COMPANY-A
 
-# Update owner-specific article number
+# Update one owner's article number (adds the product to that owner if it was not there)
 PATCH /v1/products/com.example.sku=SHARED-PROD/assortmentContexts/com.example.companyId=COMPANY-A
 {"articleNumber": "ART-001-NEW"}
 
-# Get agent's assortment (products they own)
+# Remove the product from one owner. Nothing on assortmentContexts removes.
+DELETE /v1/products/com.example.sku=SHARED-PROD/assortmentOwners/com.example.companyId=COMPANY-B
+
+# An agent's assortment
 GET /v1/companies/com.example.companyId=COMPANY-A/assortment~take(50)
 ```
+
+- A product created without an `assortmentOwners` array lands in the assortment of the owner of the key's node; a key without a node puts it in none. See [The default owner on create](assortments.md#the-default-owner-on-create)
+- A product sells in a store when it is `Active`, not `hidden`, not `hiddenInPos`, and assigned to the owner the store uses. See [What Makes a Product Show Up and Sell](assortments.md#what-makes-a-product-show-up-and-sell)
 
 ---
 
@@ -1202,5 +1203,6 @@ GET /v1/trade-orders/com.example.orderId=ORD-2024-001~with(items)
 - [VAT](vat.md) - Tax codes, rates, net/gross calculations
 - [Orders](orders.md) - Using products in trade orders, IMEI tracking
 - [Stock](stock.md) - Inventory management, stock places
-- [Customers](customers.md) - Agent-product relationships, assortments
+- [Assortments](assortments.md) - Assortment owners, contexts, what makes a product show up and sell
+- [Customers](customers.md) - Agent-product relationships
 - [Receipts](../receipts.md) - Completed transactions with products

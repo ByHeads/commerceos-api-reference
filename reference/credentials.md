@@ -191,7 +191,7 @@ POST /v1/users/com.example.userId=U-1/apikeyCredentials
 |---|---|
 | `apiKey` | The key value itself. **You supply it** — the API does not generate one. Write-only; no read ever returns it |
 | `scopes` | The fine-grained scopes this key may use. An empty list means the key cannot authenticate at all |
-| `node` | The organizational node the key acts within. Optional |
+| `node` | The organizational node the key acts within. Optional. It also decides where new products land: a product created without an `assortmentOwners` array goes into the assortment of the owner of this node, and a key without a node puts it in none. See [The default owner on create](working-with/assortments.md#the-default-owner-on-create) |
 
 **Capture the key value when you write it.** The API never hands it back, so if the value is lost the credential has to be replaced with a new one.
 
@@ -296,7 +296,7 @@ POST /v1/users/com.example.userId=U-1/oauth2Clients
 | `redirectURIs` | Whitelisted redirect URIs, for flows that redirect |
 | `isConfidential` | Whether the client is confidential |
 | `accessTokenLifetimeSeconds` / `refreshTokenLifetimeSeconds` | Token lifetimes |
-| `node` | The organizational node the client acts within |
+| `node` | The organizational node the client acts within. It decides where new products land, as for an [API key](#api-key-credentials); see [The default owner on create](working-with/assortments.md#the-default-owner-on-create) |
 
 Using the resulting token is covered in [Overview → Authentication](overview.md#authentication). External Payment Integrations have their own client requirements — see [EPI Integrations & Configurations](../guide/examples/configuration.md#epi-integrations--configurations).
 

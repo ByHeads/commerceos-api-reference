@@ -90,10 +90,10 @@ These are separate concepts that are often confused:
 | Member | Purpose | What it contains |
 |--------|---------|------------------|
 | `stockRoots` | Defines where an agent's **inventory** is managed | Stock places (warehouses, stockrooms) |
-| `assortmentRoots` | Defines an agent's **product catalog** | Product nodes (categories, groups) |
+| `assortmentRoots` | Lists an agent's **product catalog** | Every product node with its own entry in the assortment |
 
 - Use `stockRoots` for stock adjustments and inventory tracking
-- Use `assortmentRoots` for product assortment and catalog visibility
+- Read `assortmentRoots` for what has its own entry in the assortment. Assign products from the product side, not through `assortmentRoots`; see [Working with Assortments](../../reference/working-with/assortments.md)
 
 ### Clearing stockRoots
 
@@ -111,7 +111,7 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/companies/com.h
   -d '{"replace": []}'
 ```
 
-This applies to all `indexedArray` properties (e.g., `stockRoots`, `assortmentRoots`, `labels`, `categories`).
+This applies to all `indexedArray` properties (e.g., `stockRoots`, `labels`, `categories`). Do not clear `assortmentRoots` this way; see [Working with Assortments](../../reference/working-with/assortments.md#do-not-write-assortmentroots).
 
 ---
 

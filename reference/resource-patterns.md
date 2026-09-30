@@ -95,21 +95,21 @@ Agents (person, company, store) share common members:
 | `labels` | Assigned labels | Add/remove |
 | `timeline` | Receipts for buyer | Read-only |
 | `stockRoots` | Stock places attached to agent | Add/remove |
-| `assortmentOwner` | Owner agent for assortment inheritance | Writable |
-| `assortmentRoots` | Root product nodes in assortment | Add/remove |
-| `assortment` | All product nodes in assortment | Add/remove |
+| `assortmentOwner` | The agent whose assortment this store or company uses. `null` means its own. Resolved through the organization when not set; see [How a Store Finds Its Assortment](working-with/assortments.md#how-a-store-finds-its-assortment) | Writable |
+| `assortmentRoots` | Every product node with its own entry in the agent's assortment, not only top-level nodes | Read it; do not write it. Writes do not reach the till; see [Do not write `assortmentRoots`](working-with/assortments.md#do-not-write-assortmentroots) |
+| `assortment` | All product nodes in the assortment, assigned and covered | Read-only. Writes answer `500` |
 | `preferredCurrency` | Preferred currency | Set by currency key |
 
 Notes:
 - `timeline` fetches receipts where agent is the buyer.
 - `stockRoots` provides stock owner interface.
-- `assortmentOwner` writes config at the agent node.
+- `assortmentOwner` writes config at the agent node. `null` means "this agent itself", not "inherit", and there is no way to clear it on an agent. Assign products from the product side (`assortmentOwners`, `assortmentContexts`); see [Working with Assortments](working-with/assortments.md).
 - Phone numbers are converted on set.
 - Email addresses are converted on set.
 
 ### Clearing Add/Remove Collections
 
-To remove all items from an add/remove collection (e.g., `stockRoots`, `labels`, `assortmentRoots`), use `PUT` with an empty array:
+To remove all items from an add/remove collection (e.g., `stockRoots`, `labels`), use `PUT` with an empty array:
 
 ```bash
 # Clear all stock roots from a store
@@ -693,16 +693,25 @@ Product nodes share common members:
 
 ### assortmentContexts
 
-The collection itself is read-only, but **each context element has writable nested fields**:
+One context per owner, with writable nested fields:
 
 | Nested Field | Description | Write Semantics |
 |--------------|-------------|-----------------|
-| `owner` | Owning agent | Read-only |
-| `articleNumber` | Custom article number for this owner | Settable |
-| `minimumOrderQuantity` | Minimum order quantity | Settable |
-| `primarySupplier` | Primary supplier company | Settable |
+| `owner` | Owning agent | Read-only. The address of the context |
+| `articleNumber` | Custom article number for this owner | Settable; `null` clears it |
+| `primarySupplier` | Primary supplier company | Settable; `null` clears it |
+| `discontinued` | Discontinued flag for this owner (v26.1.9 and later) | Settable |
 
-When setting nested fields, the relation is created if it doesn't exist.
+`minimumOrderQuantity` is no longer a member (removed in v26.1.5); a write is accepted and dropped.
+
+What the collection accepts:
+
+- `POST …/assortmentContexts` adds the node to the owners named, one element per owner
+- `PATCH …/assortmentContexts/{owner}` writes one owner's fields, and adds the node to that owner if it was not there
+- A product `PATCH` or `PUT` carrying the array adds and updates; owners left out stay
+- Nothing on `assortmentContexts` removes. `DELETE`, `{"remove": […]}` and `PUT` with `null` answer `200` or `204` and change nothing. Remove through `assortmentOwners`
+
+See [Working with Assortments](working-with/assortments.md) for the full model.
 
 ### categories
 
@@ -817,16 +826,16 @@ Groups define variant dimensions, default VAT codes, instance types, and age res
 
 ## Assortment Contexts
 
-Assortment contexts link products to owning agents with owner-specific metadata.
+Assortment contexts link products to owning agents with owner-specific metadata. The guide is [Working with Assortments](working-with/assortments.md).
 
 ### Structure
 
 | Field | Description |
 |-------|-------------|
-| `owner` | Owning agent (company/store) |
+| `owner` | Owning agent (company, store, supplier) |
 | `articleNumber` | Owner-specific article number |
-| `minimumOrderQuantity` | Minimum order quantity for this owner |
 | `primarySupplier` | Primary supplier (company reference) |
+| `discontinued` | Discontinued flag for this owner (v26.1.9 and later) |
 
 ### Common Interactions (Examples)
 
@@ -836,8 +845,12 @@ Use these patterns when you need owner-specific assortment data or want to navig
 # Product's assortment contexts
 GET /products/{id}/assortmentContexts
 
-# Company's assortment (use /stores/{id}/assortment for store-level)
+# Company's assortment
 GET /companies/{id}/assortment
+
+# The assortment a store uses. /stores/{id}/assortment lists only the store's
+# own entries, which is usually none: most stores use their company's assortment.
+GET /stores/{id}/assortmentOwner/assortment
 ```
 
 ### Product Expansions
@@ -1185,7 +1198,7 @@ An organizational child that trades under a parent's relationship — a chain st
 | `customer` | The customer's **supplier owner** (the agent that acts as customer towards suppliers), or the customer itself when none is configured |
 | `supplier` | The supplier's **customer owner** (the agent that acts as supplier towards customers), or the supplier itself when none is configured |
 
-The root-level owners are readable and writable at `GET /v1/config/root-trade-relationship` (`supplierOwner`, `customerOwner`); both are unset by default, in which case every agent owns its own relationships and the order's two agents are used verbatim.
+The root-level owners are readable and writable at `GET /v1/config/root-trade-relationship` (`supplierOwner`, `customerOwner`); both are unset by default, in which case every agent owns its own relationships and the order's two agents are used verbatim. The same resource carries a third sibling, `assortmentOwner`: the tenant-wide default for whose assortment a store or company uses, resolved through the same hierarchy. See [How a Store Finds Its Assortment](working-with/assortments.md#how-a-store-finds-its-assortment).
 
 ```bash
 # STORE-01 is configured to buy under COMPANY. Post an order for the store:

@@ -21,6 +21,7 @@ This reference explains how to integrate with CommerceOS at a practical level. I
 
 **Domain Guides (Working with...):**
 - [Products](working-with/products.md) — Catalog management, variants, GTIN/PLU, categories, assortments
+- [Assortments](working-with/assortments.md) — One assortment or many across stores and companies, assortment owners and contexts, what makes a product sell
 - [Prices](working-with/prices.md) — Price creation, validity periods, seller/buyer scoping
 - [VAT](working-with/vat.md) — Tax codes, rates, net/gross calculations
 - [Customers](working-with/customers.md) — People, companies, stores, addresses, contact methods

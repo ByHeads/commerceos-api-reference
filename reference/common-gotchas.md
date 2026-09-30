@@ -468,7 +468,7 @@ The `phoneImei` must reference an `imei` from an item that appears **earlier** i
 
 ## 22. Clearing Array Properties
 
-To remove all items from an array property (`stockRoots`, `labels`, `assortmentRoots`, `categories`, `prices`, etc.), use `PUT` with an empty array or `PATCH` with `replace: []`:
+To remove all items from an array property (`stockRoots`, `labels`, `categories`, `prices`, etc.), use `PUT` with an empty array or `PATCH` with `replace: []`:
 
 ```bash
 # Clear all stock roots from a store
@@ -483,7 +483,9 @@ PATCH /v1/stores/{key}/stockRoots
 DELETE /v1/stores/{key}/stockRoots  # 200 {"deletedCount": 0, "info": "Nothing happened"}
 ```
 
-This works for all `indexedArray` properties: `stockRoots`, `assortmentRoots`, `assortmentOwners`, `categories`, `labels`, `prices`, `users`, `customerGroups`, etc.
+This works for all `indexedArray` properties: `stockRoots`, `assortmentOwners`, `categories`, `labels`, `prices`, `users`, `customerGroups`, etc. On `assortmentOwners` it removes the product from every assortment, suppliers' included.
+
+**`assortmentRoots` is the exception.** Clearing it empties the lists the API and the back office show, and the till keeps selling everything that was in them. Do not write `assortmentRoots`; see [gotcha 64](#64-a-write-to-assortmentroots-changes-the-lists-not-what-the-till-sells).
 
 **`DELETE` addresses one element, so a collection path has nothing to address.** It leaves the array exactly as it was and says so in the response — a product carrying two labels still carries two after `DELETE /v1/products/{key}/labels`. The zero is the tell; it is not a partial clear.
 
@@ -1785,6 +1787,240 @@ GET /v1/trade-orders~where(!items/deliveryAddresses~first/line1)      # every or
 Measured on three till orders (two collected, one shipped): the nested forms split them correctly; every flat form returned `[]` or all of them. For anything but a quick count, project `items~just(deliveryAddresses,seller,statusDetails)` and classify each line in the client.
 
 Related: [Orders → Finding and polling till orders](working-with/orders.md#finding-and-polling-till-orders), [gotcha 3](#3-reverse-and-any-dont-exist).
+
+---
+
+## 62. A Product Created Through the API Can Land in No Assortment
+
+A new product node whose body has no `assortmentOwners` array is put into the assortment of the owner of the key's node. A key without a node gives no default, and `"assortmentOwners": []` switches the default off, so either way the product is in no assortment: it is missing from the back-office product list and the till refuses it. This is the likely cause of "I created it through the API and cannot find it". The opposite surprise: `assortmentContexts` alone does **not** switch the default off, so the product lands in the named assortments **and** the default one.
+
+```bash
+# Key whose node uses NORTH's assortment
+POST /v1/products  [{"identifiers": {…}, "name": "A"}]                                   # lands in NORTH
+POST /v1/products  [{…, "assortmentContexts": [{"owner": {SOUTH}, "articleNumber": "S-1"}]}]   # NORTH and SOUTH
+POST /v1/products  [{…, "assortmentOwners": []}]                                         # none
+POST /v1/products  [{…, "assortmentOwners": [], "assortmentContexts": [{"owner": {SOUTH}, …}]}] # SOUTH only
+
+# Find the products nobody sees
+GET /v1/products~where(assortmentOwners~count=0)~just(name)
+```
+
+The default applies only when the request creates the node (`POST`, `PUT`). A later `PATCH` adds nothing. Measured with a key on a company: the four bodies above landed as commented.
+
+Related: [Assortments → The default owner on create](working-with/assortments.md#the-default-owner-on-create), [Credentials → API-key credentials](credentials.md#api-key-credentials).
+
+---
+
+## 63. A Product Covered by Its Group Is Listed but Does Not Sell
+
+When a group, family, category or brand is assigned to an owner, the nodes under it at that time get their own entry. A node created or moved under it **later** is only covered: it is listed in the owner's `assortment`, and a context for the owner appears on it, but the owner is not in its `assortmentOwners`, the back-office product list does not show it, and the till refuses it. A product also has to be `Active`, not `hidden` and not `hiddenInPos` to sell.
+
+```bash
+# own entry: the owner object; covered or absent: null (200)
+GET /v1/products/com.example.sku=P1/assortmentOwners/com.example.companyId=NORTH
+
+# an assortment with a marker per row: "own" is absent on a covered node
+GET /v1/companies/{owner}/assortment~just(name,own:assortmentOwners/com.example.companyId=NORTH/name)
+
+# give a covered product its own entry
+POST /v1/products/com.example.sku=P1/assortmentOwners  [{"identifiers": {"com.example.companyId": "NORTH"}}]
+```
+
+Assign each new product explicitly, also when its group is already in the assortment.
+
+Related: [Assortments → What Makes a Product Show Up and Sell](working-with/assortments.md#what-makes-a-product-show-up-and-sell).
+
+---
+
+## 64. A Write to `assortmentRoots` Changes the Lists, Not What the Till Sells
+
+`POST`, `DELETE` and `PUT` on an agent's `assortmentRoots` are accepted. They change what the API and the back office list, and not what the till accepts. This is current behaviour, a known defect, and may change.
+
+```bash
+# WRONG - listed everywhere afterwards, and the till refuses it
+POST /v1/companies/{owner}/assortmentRoots  [{"identifiers": {"com.example.sku": "P1"}}]
+
+# WRONG - gone from every list afterwards, and the till still sells it
+DELETE /v1/companies/{owner}/assortmentRoots/com.example.sku=P1
+PUT /v1/companies/{owner}/assortmentRoots  []
+
+# RIGHT - assign and remove from the product side
+POST   /v1/products/com.example.sku=P1/assortmentOwners  [{"identifiers": {"com.example.companyId": "NORTH"}}]
+DELETE /v1/products/com.example.sku=P1/assortmentOwners/com.example.companyId=NORTH
+```
+
+No read can tell a product added through `assortmentRoots` from an assigned one, and the product-side removals no longer work on it. Repairs: for "listed, refused by the till", `PATCH /v1/products/{id}/assortmentContexts/{owner}` with any field; for "not listed, still sold", `POST` the node to `assortmentRoots` again and then remove it from the product side. Writes on `/assortment` itself answer `500` `Property 'assortment' is readonly.`
+
+Related: [Assortments → Do not write `assortmentRoots`](working-with/assortments.md#do-not-write-assortmentroots), [gotcha 22](#22-clearing-array-properties).
+
+---
+
+## 65. `/stores/{id}/assortment` Is Not the Assortment the Store Uses
+
+`/stores/{id}/assortment` lists the store's **own** entries. A store that uses its company's assortment, which is the usual setup, has none, so the request answers `[]` while the tills of that store sell the company's whole assortment.
+
+```bash
+# WRONG for a store that follows another owner - 200 []
+GET /v1/stores/com.example.storeId=N1/assortment
+
+# RIGHT - read the owner, then the owner's assortment
+GET /v1/stores/com.example.storeId=N1~with(assortmentOwner)
+GET /v1/stores/com.example.storeId=N1/assortmentOwner/assortment     # assortmentOwner is an agent
+GET /v1/stores/com.example.storeId=N1/assortment                     # assortmentOwner is null: the store uses its own
+```
+
+`/stores/{id}/assortmentOwner/assortment` answers `200 null` for a store that uses its own. A store that once had its own assortment and now follows another owner still lists its old entries under `/assortment`; they are out of use. Changing the owner a store follows moves no products.
+
+Related: [Assortments → The assortment a store actually uses](working-with/assortments.md#the-assortment-a-store-actually-uses).
+
+---
+
+## 66. `assortmentOwner: null` Means "Itself", and `DELETE` on It Clears Nothing
+
+On a store or company, `null` is a setting: "this agent uses its own assortment". It is not "inherit from the level above", and there is no request that clears a setting on an agent.
+
+```bash
+PATCH /v1/stores/com.example.storeId=N2  {"assortmentOwner": null}     # N2 now uses its own, whatever is set above
+
+# WRONG - does not go back to following the company
+DELETE /v1/stores/com.example.storeId=N2/assortmentOwner              # 200 {"deletedCount": 1, …}, nothing cleared
+
+# RIGHT - to follow the level above again, name the same owner explicitly
+PATCH /v1/stores/com.example.storeId=N2  {"assortmentOwner": {"identifiers": {"com.example.companyId": "NORTH"}}}
+```
+
+The exception is the tenant-wide default on `/v1/config/root-trade-relationship`: there `{"assortmentOwner": null}` does clear it. The `DELETE` answer is current behaviour and may change. A company without `parent` and a store without `owner` are outside the organization, so the tenant-wide default never reaches them.
+
+Related: [Assortments → Setting the owner](working-with/assortments.md#setting-the-owner).
+
+---
+
+## 67. An Owner That Follows Another Owner Passes On What Is Assigned to It
+
+Resolution stops at the owner it finds: a store set to `SOUTH` uses `SOUTH`'s assortment even when `SOUTH` itself follows `GROUP`. But a product assigned to `SOUTH` is written to the owner `SOUTH` follows, so it lands on `GROUP` and the store never gets it.
+
+```bash
+GET /v1/stores/com.example.storeId=S1/assortmentOwner~just(name)        # South
+GET /v1/companies/com.example.companyId=SOUTH/assortmentOwner~just(name) # Group   <- the problem
+
+POST /v1/products/com.example.sku=P1/assortmentOwners  [{"identifiers": {"com.example.companyId": "SOUTH"}}]
+GET  /v1/products/com.example.sku=P1/assortmentOwners~just(name)        # [Group], not South
+
+# RIGHT - an owner must use its own assortment: set it to itself first
+PATCH /v1/companies/com.example.companyId=SOUTH  {"assortmentOwner": {"identifiers": {"com.example.companyId": "SOUTH"}}}
+```
+
+The usual way in: a tenant-wide default is set, and a store is pointed at its company without the company being set to itself. Measured with a company under a tenant default: a product assigned to the company read back with the default owner in `assortmentOwners`.
+
+Related: [Assortments → An owner must use its own assortment](working-with/assortments.md#an-owner-must-use-its-own-assortment), [gotcha 37](#37-a-trade-order-can-attach-its-relationship-to-an-agent-you-did-not-name).
+
+---
+
+## 68. A Misspelt Owner Identifier Creates a Nameless Agent
+
+An owner reference is not validated. An identifier that matches nothing, in `assortmentOwner` on a store or company, in `owner` of an assortment context, or in `parent` / `owner` when building the organization, creates an agent without a name and uses it. The write answers `200`.
+
+```bash
+PATCH /v1/stores/com.example.storeId=N1  {"assortmentOwner": {"identifiers": {"com.example.companyId": "NORHT"}}}   # 200
+
+GET /v1/stores/com.example.storeId=N1/assortmentOwner
+{"@type": "agent", "identifiers": {"key": "…", "com.example.companyId": "NORHT"}}
+# "@type": "agent" and no name: a new, empty agent, not the company you meant
+```
+
+Read the owner back after the write, or `GET` it first. An identifier key that is not exactly three segments gets there too, since the key is dropped ([gotcha 40](#40-a-malformed-identifier-key-is-dropped-and-every-retry-then-creates-another-record)). With a key that cannot create agents, an unknown owner in `assortmentOwners` is a `400` `Found no matching 'agent' using this index.` instead. Current behaviour; it may change.
+
+Related: [Assortments → Naming the owners](working-with/assortments.md#naming-the-owners).
+
+---
+
+## 69. A Context Addressed by a Store's Id Reads One Record and Writes Another
+
+A write that names a store which uses another owner's assortment goes to that owner. A read on the same address does not.
+
+```bash
+# N1 uses NORTH's assortment
+POST /v1/products/com.example.sku=P1/assortmentContexts
+[{"owner": {"identifiers": {"com.example.storeId": "N1"}}, "articleNumber": "A-1"}]
+# 200 - the response shows the store as owner and no articleNumber
+
+GET /v1/products/com.example.sku=P1/assortmentContexts/com.example.storeId=N1       # owner only, no data
+GET /v1/products/com.example.sku=P1/assortmentContexts/com.example.companyId=NORTH  # "articleNumber": "A-1"
+```
+
+Always address contexts by the id of the owner the store uses, never the store's. Also, a `GET` on `…/assortmentContexts/{owner}` answers `200` with `owner` only for any agent, so it is not a membership test; use `GET /v1/companies/{owner}/assortment/{product}`. Current behaviour; it may change.
+
+Related: [Assortments → Naming the owners](working-with/assortments.md#naming-the-owners), [What is not a membership test](working-with/assortments.md#what-is-not-a-membership-test).
+
+---
+
+## 70. Nothing on `assortmentContexts` Removes, and `PUT …/assortmentOwners` Drops Suppliers Too
+
+A product leaves an assortment through `assortmentOwners` only. Every removal form on `assortmentContexts` answers success and changes nothing.
+
+```bash
+# WRONG - all four leave the product in the assortment
+DELETE /v1/products/{id}/assortmentContexts/{owner}                # 200 {"deletedCount": 0, "info": "Nothing happened"}
+PATCH  /v1/products/{id}/assortmentContexts  {"remove": [ … ]}     # 200, the unchanged list
+PUT    /v1/products/{id}/assortmentContexts/{owner}  null          # 204
+PUT    /v1/products/{id}/assortmentContexts  [ … ]                 # 200 [null], not even an update
+
+# RIGHT
+DELETE /v1/products/{id}/assortmentOwners/{owner}                  # 200 {"deletedCount": 1, "info": "Deleted 1 items"}
+PATCH  /v1/products/{id}/assortmentOwners  {"remove": [{"identifiers": {…}}]}
+```
+
+`PUT …/assortmentOwners` replaces the whole list, and the list includes suppliers and manufacturers. A `PUT` naming only your own companies takes the product out of the supplier's assortment as well. Arrays in a product `PUT` or `PATCH` body only add, so leaving an owner out of a later write removes nothing either.
+
+Related: [Assortments → Removing a Product from an Assortment](working-with/assortments.md#removing-a-product-from-an-assortment).
+
+---
+
+## 71. Filters Through `assortmentOwners` and `assortmentContexts` Match Only by Identifier
+
+Both are keyed by the owner. A filter reaches an owner by its identifier directly under the member name, as in [gotcha 56](#56-a-filter-through-an-array-relation-takes-the-identifier-directly-under-the-relation-name). Any other path, and any negation through them, answers `200 []`.
+
+```bash
+# RIGHT
+GET /v1/products~where(assortmentOwners/com.example.companyId=NORTH)
+GET /v1/products~where(assortmentContexts/com.example.companyId=NORTH/articleNumber=N-3)
+GET /v1/products~where(assortmentContexts/com.example.companyId=NORTH/discontinued=true)
+GET /v1/products~where(assortmentContexts~where(articleNumber=S-3)~count>0)      # any owner
+
+# WRONG - 200 [] with nothing matched
+GET /v1/products~where(assortmentOwners/identifiers/com.example.companyId=NORTH)
+GET /v1/products~where(assortmentOwners/name=North)
+GET /v1/products~where(assortmentContexts/articleNumber=S-900)
+GET /v1/products~where(assortmentContexts/discontinued=true)
+GET /v1/products~where(!assortmentOwners/com.example.companyId=NORTH)
+GET /v1/products~where(discontinued)                 # discontinued is on the context, not the product
+GET /v1/companies/{owner}/assortment~where(@type=product)      # use ~where(status)
+
+# WRONG - matches every product
+GET /v1/products~where(assortmentContexts/com.example.companyId=NORTH/owner)
+```
+
+`assortmentOwner` on a store or company is a single reference and takes the other form: `~where(assortmentOwner/identifiers/com.example.companyId=NORTH)`, `~where(assortmentOwner/name=North)` and `~where(!assortmentOwner)` all work. Measured on five products under two owners: every `RIGHT` form returned the expected products and every `WRONG` form returned `[]`, or all products for the last one.
+
+Related: [Assortments → Forms that match nothing](working-with/assortments.md#forms-that-match-nothing).
+
+---
+
+## 72. Too Narrow a Key Makes an Assortment Read as Empty
+
+Several assortment reads answer `200` with less than is there when the key lacks a scope, and nothing in the response says so.
+
+| Key | Request | What comes back |
+|---|---|---|
+| `products:read` alone | a product's contexts | contexts without `owner`, `assortmentOwners` `[]` |
+| `org:read` alone, or `me` alone, key on a store | `assortmentOwner` | `null`, although the store follows a company |
+| `supply-chains:write` alone | `GET /v1/companies/{id}/assortment` | `[]`, although the assortment has nodes |
+| `products:write` alone | create with `assortmentOwners: [SOUTH]` | created, in no assortment |
+| `products:write` alone | create with `assortmentContexts` | `500`, nothing created |
+
+So "uses its own assortment" and "owner not visible to this key" look the same, and so do an empty assortment and "no products scope". Reading contexts with their owners needs `products:read` plus `supply-chains:read` or `suppliers:read`; writing them needs `products:write` plus a scope that reaches the owner. Check the key with [`/v1/scopes`](overview.md#checking-what-a-key-can-do-v1scopes) before trusting an empty answer.
+
+Related: [Assortments → Scopes](working-with/assortments.md#scopes), [gotcha 41](#41-a-write-under-a-read-only-scope-is-a-silent-200), [gotcha 39](#39-a-null-in-a-response-does-not-prove-the-field-exists).
 
 ---
 

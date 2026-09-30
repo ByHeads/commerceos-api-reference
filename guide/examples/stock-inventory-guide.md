@@ -250,10 +250,10 @@ These are separate concepts that are often confused:
 | Member | Purpose | What it contains |
 |--------|---------|------------------|
 | `stockRoots` | Defines where an agent's **inventory** is managed | Stock places (warehouses, stockrooms) |
-| `assortmentRoots` | Defines an agent's **product catalog** | Product nodes (categories, groups) |
+| `assortmentRoots` | Lists an agent's **product catalog** | Every product node with its own entry in the assortment |
 
 - Use `stockRoots` for stock adjustments and inventory tracking
-- Use `assortmentRoots` for product assortment and catalog visibility
+- Read `assortmentRoots` for what has its own entry in the assortment. Assign products from the product side, not through `assortmentRoots`; see [Working with Assortments](../../reference/working-with/assortments.md)
 
 #### Clearing stockRoots
 
@@ -1938,7 +1938,7 @@ Inherits from `stock transaction` (has `timestamp`, `owner`).
 
 - **`/v1/stock-entries` ignores direction entirely.** It takes an absolute target level and computes the delta itself, so a per-entry `direction` is ignored and the reason's `direction` is audit metadata only. `physicalQuantity` may be negative — a signed target level, not a decrease instruction.
 
-- **`stockRoots` vs `assortmentRoots` are different things.** `stockRoots` = inventory locations (stock places). `assortmentRoots` = product catalog (product nodes/categories). Confusing them is a common mistake.
+- **`stockRoots` vs `assortmentRoots` are different things.** `stockRoots` = inventory locations (stock places). `assortmentRoots` = product catalog (every product node with its own entry in the agent's assortment). Confusing them is a common mistake.
 
 - **Multi-stock-place in a single store is not fully supported.** Create exactly one stock place per store for now and designate it as the sole `stockRoot`.
 
