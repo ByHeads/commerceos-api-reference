@@ -84,6 +84,9 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/products" \
   }'
 
 # Create product with assortment context
+# Without an "assortmentOwners" array the product ALSO lands in the assortment of the owner
+# of the key's node. Send "assortmentOwners": [] to place it in the named assortments only.
+# See reference/working-with/assortments.md ("The default owner on create").
 curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/products" \
   -H "Content-Type: application/json" \
   -d '{
@@ -130,9 +133,14 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/products/com.mya
   -d '{"category": {"identifiers": {"com.myapp.catId": "CAT-001"}}}'
 
 # Add product to assortment owner
+# Name the agent whose assortment the stores use, usually the company. Naming a store
+# that uses its company's assortment puts the product on the company.
 curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/products/com.myapp.sku=SKU-001/assortmentOwners" \
   -H "Content-Type: application/json" \
-  -d '{"@type": "store", "identifiers": {"com.heads.seedID": "store1"}}'
+  -d '[{"identifiers": {"com.heads.seedID": "ourcompany"}}]'
+
+# Remove product from an assortment owner (nothing on assortmentContexts removes)
+curl -X DELETE -u ":banana" "https://example.app.heads.com/api/v1/products/com.myapp.sku=SKU-001/assortmentOwners/com.heads.seedID=ourcompany"
 
 # Delete product
 curl -X DELETE -u ":banana" "https://example.app.heads.com/api/v1/products/com.myapp.sku=SKU-001"
@@ -565,6 +573,8 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/products/com.mya
 # Get assortment contexts (per-owner article numbers)
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/products/com.myapp.sku=SKU-001/assortmentContexts"
 ```
+
+For which assortment a store uses, where a new product lands and what makes it sell at the till, see [Working with Assortments](../../reference/working-with/assortments.md).
 
 ---
 

@@ -86,7 +86,7 @@ All agents share these common members:
 - `labels` - Custom tags
 - `customerRelations` / `supplierRelations` - Trade relationships
 - `stockRoots` - Primary stock locations
-- `assortment` / `assortmentRoots` - Product ownership
+- `assortmentOwner` / `assortment` / `assortmentRoots` - Which assortment the agent uses and what is in its own (see [Assortments](assortments.md))
 - `timeline` - Receipt history
 - `preferredCurrency` - Default currency
 
@@ -1455,7 +1455,8 @@ Erasure also clears the national ID, nationality, every email address, phone num
 ## Related Guides
 
 - [Discount Rules](../../guide/examples/discount-rules.md) - Using customer groups in discount rules (buyer condition)
-- [Products](products.md) - Assortment contexts per owner
+- [Products](products.md) - Product catalog
+- [Assortments](assortments.md) - Which assortment a store or company uses, assortment contexts per owner
 - [Prices](prices.md) - Buyer-specific pricing
 - [Orders](orders.md) - Customer/supplier in trade orders
 - [Stock](stock.md) - Agent stock roots

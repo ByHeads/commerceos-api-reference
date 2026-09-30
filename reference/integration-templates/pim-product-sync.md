@@ -884,7 +884,7 @@ Content-Type: application/json
 
 ## Phase 5: Multi-Channel Assortments
 
-Assortment contexts allow different organizations to have their own article numbers and settings for shared products.
+Assortment contexts allow different organizations to have their own article numbers and settings for shared products. [Working with Assortments](../working-with/assortments.md) has the full model: which assortment a store uses, where a new product lands, and what makes it sell.
 
 ### Understanding Assortment Contexts
 
@@ -892,8 +892,10 @@ Assortment contexts allow different organizations to have their own article numb
 |-------|-------------|
 | `owner` | Company/store owning this context |
 | `articleNumber` | Owner-specific SKU/article number |
-| `minimumOrderQuantity` | Minimum units per order |
 | `primarySupplier` | Preferred supplier for restocking |
+| `discontinued` | Discontinued flag for this owner (v26.1.9 and later) |
+
+`minimumOrderQuantity` is no longer a member of the context (removed in v26.1.5). A write is accepted and dropped.
 
 ### Create Product with Assortment Contexts
 
@@ -908,26 +910,28 @@ PUT /v1/products/com.acme.pim-id=SHARED-PRODUCT
   "status": "Active",
   "gtin": ["7312345670100"],
   "defaultVatCode": {"identifiers": {"percentage": "25"}},
+  "assortmentOwners": [],
   "assortmentContexts": [
     {
       "owner": {"identifiers": {"com.acme.company-id": "COMPANY-STOCKHOLM"}},
-      "articleNumber": "ART-STH-001",
-      "minimumOrderQuantity": 1
+      "articleNumber": "ART-STH-001"
     },
     {
       "owner": {"identifiers": {"com.acme.company-id": "COMPANY-GOTHENBURG"}},
       "articleNumber": "ART-GBG-001",
-      "minimumOrderQuantity": 5,
       "primarySupplier": {"identifiers": {"com.acme.supplier-id": "SUPPLIER-WEST"}}
     },
     {
       "owner": {"identifiers": {"com.acme.company-id": "COMPANY-MALMO"}},
-      "articleNumber": "ART-MLM-001",
-      "minimumOrderQuantity": 10
+      "articleNumber": "ART-MLM-001"
     }
   ]
 }
 ```
+
+`"assortmentOwners": []` is what keeps the product in the three named assortments only. Without it, a request that **creates** the product also puts it into the assortment of the owner of the key's node; `assortmentContexts` alone does not switch that default off. See [The default owner on create](../working-with/assortments.md#the-default-owner-on-create).
+
+Each company named here must use its own assortment (`assortmentOwner` reads `null` on it). A company that follows another owner passes what is assigned to it on to that owner; see [An owner must use its own assortment](../working-with/assortments.md#an-owner-must-use-its-own-assortment).
 
 ### Query Assortment by Owner
 
@@ -948,7 +952,7 @@ GET /v1/products/com.acme.pim-id=SHARED-PRODUCT/assortmentContexts/com.acme.comp
 PATCH /v1/products/com.acme.pim-id=SHARED-PRODUCT/assortmentContexts/com.acme.company-id=COMPANY-STOCKHOLM
 {
   "articleNumber": "ART-STH-001-NEW",
-  "minimumOrderQuantity": 2
+  "discontinued": false
 }
 ```
 
@@ -960,7 +964,17 @@ PATCH /v1/products/com.acme.pim-id=SHARED-PRODUCT/assortmentContexts/com.acme.co
 | PROD-002 | ✓ | ✓ | ✗ | ✓ |
 | PROD-003 | ✗ | ✓ | ✓ | ✗ |
 
-Implement by creating assortment contexts only for available channels.
+Implement it in both directions:
+
+- **Make available:** write an assortment context for each channel the product should be in, and send `"assortmentOwners": []` on the create so that the default owner is not added on top
+- **Make unavailable:** remove the owner through `assortmentOwners`. Leaving a context out of a later write removes nothing, and nothing on `assortmentContexts` removes
+
+```bash
+# PROD-003 leaves Stockholm
+DELETE /v1/products/com.acme.pim-id=PROD-003/assortmentOwners/com.acme.company-id=COMPANY-STOCKHOLM
+```
+
+A product also has to be `Active`, not `hidden` and not `hiddenInPos` to sell at a till; see [What Makes a Product Show Up and Sell](../working-with/assortments.md#what-makes-a-product-show-up-and-sell).
 
 ---
 
@@ -1308,8 +1322,7 @@ Content-Type: application/json
   "assortmentContexts": [
     {
       "owner": {"identifiers": {"com.acme.company-id": "MAIN-COMPANY"}},
-      "articleNumber": "ART-MAIN-999",
-      "minimumOrderQuantity": 1
+      "articleNumber": "ART-MAIN-999"
     }
   ]
 }

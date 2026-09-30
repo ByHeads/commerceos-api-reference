@@ -138,7 +138,7 @@ Note: Queries 36-40 corrected - companies don't have a `stores` member. To find 
 49. GET /companies~with(assortmentRoots~just(name, hidden))~take(5)
 50. GET /companies~with(assortment~where(hidden=false)~take(5))
 ```
-Note: Queries 49-50 use `hidden` instead of `status` — `assortmentRoots` and `assortment` are product nodes, which have `hidden` but not `status`.
+Note: Queries 49-50 filter on `hidden`, which every product node has. `~where(status)` and `~where(status=Active)` also work inside an assortment: they keep the nodes that have a status (products and families) and drop groups and categories. `assortmentRoots` lists every node with its own entry, not only top-level nodes; see [Working with Assortments](../reference/working-with/assortments.md).
 
 ### Complex
 ```
@@ -210,6 +210,14 @@ Note: Queries 71-75 corrected - stores don't have `tradeOrders`. Use `timeline` 
 85. GET /stores~with(supplierRelations~just(supplierAgent~just(name)))~take(5)
 ```
 Note: Queries 82-83 corrected to remove `tradeOrders`.
+
+Note: Queries 76-80 and 82-84 read each store's **own** `assortment`. A store that uses its company's assortment, which is the usual setup, has an empty one, so these return empty lists and zero counts there. For the assortment a store uses, go through `assortmentOwner`:
+```
+GET /stores~just(name, assortmentOwner~just(name))
+GET /stores/{id}/assortmentOwner/assortment~where(status=Active)~take(5)
+GET /stores/{id}/assortmentOwner/assortment~count
+```
+A store whose `assortmentOwner` is `null` uses its own, and the queries above apply to it as written. See [Working with Assortments](../reference/working-with/assortments.md#the-assortment-a-store-actually-uses).
 
 ---
 

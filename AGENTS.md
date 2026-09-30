@@ -72,6 +72,7 @@ commerceos-api-reference/
 │   ├── email-integrations.md     # Email provider config
 │   ├── sync-webhooks.md          # Webhook synchronization
 │   ├── working-with/             # Domain-specific guides
+│   │   ├── assortments.md        # Assortment owners and contexts across stores and companies
 │   │   ├── customers.md          # Customer management
 │   │   ├── orders.md             # Order lifecycle and operations
 │   │   ├── prices.md             # Price configuration

@@ -139,10 +139,10 @@ These are separate agent members that are often confused:
 | Member | Purpose | What it contains |
 |--------|---------|------------------|
 | `stockRoots` | Defines where an agent's **inventory** is managed (for stock adjustments/entries) | Stock places (warehouses, stockrooms) |
-| `assortmentRoots` | Defines an agent's **product catalog/assortment** | Product nodes (categories, groups) |
+| `assortmentRoots` | Lists an agent's **product catalog/assortment** | Every product node with its own entry in the assortment |
 
 - Use `stockRoots` for stock adjustments and inventory tracking
-- Use `assortmentRoots` for product assortment and catalog visibility
+- Read `assortmentRoots` for what has its own entry in the assortment. Assign products from the product side, not through `assortmentRoots`; see [Working with Assortments](assortments.md)
 - They are managed independently and serve different purposes
 
 ---

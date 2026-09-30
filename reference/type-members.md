@@ -197,7 +197,7 @@ transactions, transactionItems
 ## Assortment Context Members
 
 ```
-owner (agent), articleNumber, minimumOrderQuantity, primarySupplier (company)
+owner (agent), articleNumber, primarySupplier (company), discontinued
 ```
 
 ## User Members
