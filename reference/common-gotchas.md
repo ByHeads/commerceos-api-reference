@@ -2090,7 +2090,7 @@ Related: [POS Carts → A parked cart is read-only](working-with/pos-carts.md#a-
 
 > **Availability:** v26.2.1 and later. Not in v26.2.0 or v26.1.x.
 
-`true` parks with the cart's current visibility. A cart that never had one is parked without any, and the store's other terminals do not list it under `resumableCarts` and cannot resume it (`409`).
+`true` parks with the cart's current visibility. A cart that never had one is parked without any, and the store's other terminals do not list it under `resumableCarts`. From v26.2.2 they cannot resume it either (`409`).
 
 ```bash
 # WRONG when another till must pick it up
