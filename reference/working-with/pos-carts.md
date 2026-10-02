@@ -177,7 +177,7 @@ The default projection:
 | `identifiers` | The key only. The parking id is not an identifier |
 | `state` | `Active` or `Parked` |
 | `terminal`, `site` | The terminal that holds the cart, active or parked, and its store |
-| `currency` | The cart's currency: `{"@type": "currency", "identifiers": {"key": "…", "currencyCode": "SEK"}}` |
+| `currency` | The cart's currency: `{"@type": "currency", "identifiers": {"key": "…", "currencyCode": "SEK"}}`. v26.2.2 and later. On v26.2.1 it is absent |
 | `itemCount`, `pieceCount` | Lines, and units across them |
 | `totalAmountInclVat`, `totalAmountExclVat`, `vatAmount`, `discountAmountInclVat` | |
 | `paidAmount`, `prepaidAmount`, `roundingAmount`, `balanceAmount`, `balanced` | |
@@ -275,7 +275,7 @@ The answer is `201` with the line:
 - `unit` is the till's unit label in the API user's language: `""` for a product without a unit, `"st"` for pieces under a Swedish user.
 - `pendingInput` names what the till still needs before the line can be sold: `tracking` (a serial number), `weight`, `price`, `domain`.
 - `orderItem` is the line of the cart's draft order.
-- `unitAmountExclVat` is the unit price without VAT, before discounts: `"799.2"` beside `unitAmountInclVat: "999"` on a line with 25 % VAT.
+- `unitAmountExclVat` is the unit price without VAT, before discounts: `"799.2"` beside `unitAmountInclVat: "999"` on a line with 25 % VAT. v26.2.2 and later. On v26.2.1 it does not render as a number.
 
 A cart the till has worked on can hold other line types, told apart by `@type` and read-only through the API: `POS payment item`, `POS pick item`, `POS wallet item`.
 
@@ -425,7 +425,7 @@ PATCH /v1/pos-terminals/posTerminalName=Kassa%201/cart
 | a `customer` that matches nothing | `400` `The customer was not found; pass a reference to an existing one, e.g. { "identifiers": { "key": "…" } }.` Nothing is attached |
 | `{"manualNotes": "Called ahead, picks up at 17:00"}` | `200`, the receipt note. `null` clears it |
 | `{"visibility": "Everywhere"}` | `200`. One of `This terminal`, `This store`, `Everywhere`; the same values and the same rule as when parking. `null` clears it |
-| `{"visibility": "<any other string>"}` | `400` `visibility takes one of 'This terminal', 'This store', 'Everywhere', or null to clear it.`, `info.invalidItem` |
+| `{"visibility": "<any other string>"}` | `400` `visibility takes one of 'This terminal', 'This store', 'Everywhere', or null to clear it.`, `info.invalidItem`. v26.2.2 and later. On v26.2.1 the same request answers `500` |
 
 - Unlike `product` on a line, `customer` does **not** take the bare form `{ "com.example.customerId": "…" }`. Use `{ "identifiers": { … } }`.
 - A customer cannot be detached while the cart holds lines of existing orders: `409`.
@@ -450,7 +450,7 @@ PATCH /v1/pos-terminals/posTerminalName=Kassa%201/session/actions
 | Value | Effect |
 |---|---|
 | `"This terminal"`, `"This store"`, `"Everywhere"` | Parks with that visibility |
-| `true` | Parks with the cart's current visibility. **A cart that never had one is parked for this terminal only**: the store's other terminals do not list it under `resumableCarts` and cannot resume it (`409`) |
+| `true` | Parks with the cart's current visibility. **A cart that never had one is parked for this terminal only**: the store's other terminals do not list it under `resumableCarts`. From v26.2.2 they cannot resume it either (`409`) |
 | any other string | `400` `parkCart takes true or one of 'This terminal', 'This store', 'Everywhere'.` |
 | `false`, `null` | `200`, nothing happens |
 
@@ -489,7 +489,7 @@ Which carts a terminal may resume is its `resumableCarts`:
 
 | Refusal | Answer |
 |---|---|
-| a cart parked for another terminal of the same store: parked there as `This terminal`, or with `true` and no visibility | `409` `The cart is parked for another terminal.` Nothing moves |
+| a cart parked for another terminal of the same store: parked there as `This terminal`, or with `true` and no visibility | `409` `The cart is parked for another terminal.` Nothing moves. v26.2.2 and later. On v26.2.1 the resume goes through, `200`, and the cart moves |
 | a cart parked `This store`, resumed in another store | `409` `Can only resume a cart from a different node if its visibility is 'Everywhere' and it exclusively has new sales.` |
 | a cart that is not parked (active somewhere, or already resumed) | `409` `The cart is not parked.` |
 | a key that matches no cart | `400` `failed indexing`, `Found no matching 'POS cart' using this index.` |
@@ -540,7 +540,7 @@ Every action takes `true`; `lock` also takes a reason.
 
 `resetSession` is refused with `409` when the cart holds payments, the terminal is frozen, or the cart has a loyalty session; on v26.2.1 also while a card tap is pending. `unclog` is the action for those cases.
 
-**A cart that `unclog` parked is resumable at that lane only**, unless it carried a wider visibility: another terminal's `resumeCart` answers `409` `The cart is parked for another terminal.` To continue the sale at another terminal, send three requests:
+**A cart that `unclog` parked is resumable at that lane only**, unless it carried a wider visibility: another terminal's `resumeCart` answers `409` `The cart is parked for another terminal.` v26.2.2 and later. On v26.2.1 the other terminal resumes it directly. To continue the sale at another terminal, send three requests:
 
 1. `{"resumeCart": {"identifiers": {"key": "<cart key>"}}}` to the lane's `/session/actions`
 2. `{"parkCart": "This store"}` to the lane's `/session/actions`
