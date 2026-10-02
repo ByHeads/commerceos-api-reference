@@ -27,6 +27,7 @@ This reference explains how to integrate with CommerceOS at a practical level. I
 - [Customers](working-with/customers.md) — People, companies, stores, addresses, contact methods
 - [Orders](working-with/orders.md) — Trade orders, items, instances (IMEI), discounts, payments
 - [Stock](working-with/stock.md) — Stock places, transactions, adjustments, shipments
+- [POS Carts](working-with/pos-carts.md) — A till's session, its active and parked carts, cart lines, supervisor control of a self-checkout lane
 
 **Integration Templates:**
 - [CRM Customer Sync](integration-templates/crm-customer-sync.md) — Bidirectional customer sync with CRM systems, identifier strategies, GDPR handling
@@ -50,7 +51,7 @@ The API organizes resources into logical groups. Each group maps to OAuth2 scope
 | Pricing | Price rules, validity periods, and currency handling | [Prices guide](working-with/prices.md), [VAT guide](working-with/vat.md) | [Examples](../guide/examples/pricing.md) |
 | Orders | Trade orders, items, payments, returns, and the trade records logging what was done to them | [Orders guide](working-with/orders.md), [Trade Records](trade-records.md) | [Examples](../guide/examples/orders.md) |
 | Inventory | Stock places, stock transactions, and adjustment reasons | [Stock guide](working-with/stock.md) | [Examples](../guide/examples/inventory.md) |
-| POS | Terminals, profiles, receipts, and payment methods | [Receipts](receipts.md) | [Examples](../guide/examples/pos.md) |
+| POS | Terminals, profiles, carts and sessions, receipts, and payment methods | [Receipts](receipts.md), [POS Carts guide](working-with/pos-carts.md) | [Examples](../guide/examples/pos.md) |
 | Users | User accounts, credentials, and role assignments | [Users](users.md), [Credentials](credentials.md), [Roles & Permissions](user-roles.md), [Provisioning guide](../guide/provisioning-users.md) | [Examples](../guide/examples/users.md) |
 | Configuration | System settings and serial number sequences | — | [Examples](../guide/examples/configuration.md) |
 | Advanced | Mapped types and sync webhooks (requires `advanced` scope) | [Sync Webhooks](sync-webhooks.md), [Mapped Types](mapped-types.md) | [Examples](../guide/examples/advanced.md) |
@@ -194,6 +195,7 @@ The API is organized around resource families like Agents, Products, Orders, Inv
 | **payment-records** / **shipment-records** | What was actually paid and shipped against an order. `:write`, and `:read` from v26.2.1. |
 | **trade-records** | The ledger's log of what was actually done to an order — reservations, deliveries, returns, cancellations. `trade-records:read` reads it; `trade-records:write` additionally opens external identifiers and registered dynamic properties on a record, and includes the reads. See [`trade-records.md`](trade-records.md). |
 | **pos** | Terminals, profiles, functions, devices, tiles and tile sets, templates, printers, and currency denominations for in-store flows. Tiles, templates, printers and denominations take `pos:write` before v26.2.1; `pos:read` reads them from v26.2.1. |
+| **pos.carts** / **pos.supervisor** | What a till is doing: a terminal's session, its active and parked carts and their lines (`pos.carts:read`, `pos.carts:write`), and the supervisor's control of a self-checkout lane (`pos.supervisor:write`, no read half). v26.2.1 and later. See [POS Carts](working-with/pos-carts.md). |
 | **prices** | Price definitions, validity windows, and currency-scoped pricing. |
 | **supply-chains** | Trade relationships, delivery terms, and payment terms between agents. Delivery terms are also readable under `logistics:read` from v26.2.1. |
 | **users** | User accounts and credentials for access and identity. `users:read` is read-only and covers users plus local, retail and Entra ID credentials; **there is no `users:write`** — every write, and everything to do with roles and permissions, needs `admin`. `admin:read` (v26.2.1 and later) reads users, systems, OAuth2 clients and every credential collection with secrets masked. See [Users → Scopes](users.md#scopes). |

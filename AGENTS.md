@@ -78,6 +78,7 @@ commerceos-api-reference/
 │   │   ├── assortments.md        # Assortment owners and contexts across stores and companies
 │   │   ├── customers.md          # Customer management
 │   │   ├── orders.md             # Order lifecycle and operations
+│   │   ├── pos-carts.md          # POS carts, sessions and supervisor control
 │   │   ├── prices.md             # Price configuration
 │   │   ├── purchasing.md         # Purchase orders, deliveries and supplier returns
 │   │   ├── products.md           # Product catalog management

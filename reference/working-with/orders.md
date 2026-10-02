@@ -468,6 +468,8 @@ See the [Orders examples guide](../../guide/examples/orders.md#click-and-collect
 
 A cashier can turn the lines in a cart into a customer order with the till's "Add to order" tile. The cashier picks a **delivery mode** — collect in store or ship to the customer — the **store** the goods come from, and a **payment mode** — pay now or pay later. The result is an ordinary trade order on `/v1/trade-orders`, so an order-management, warehouse or e-commerce integration reads it like any other. What differs is how you recognise one, how you tell the two delivery modes apart, which store hands the goods over, and what the till does to the order afterwards.
 
+The cart itself, before the cashier completes it, is readable and changeable at `/v1/pos-terminals/{id}/cart` from v26.2.1; its `draftOrder` is the numberless `New` order described under [Finding and polling till orders](#finding-and-polling-till-orders). See [Working with POS Carts](pos-carts.md).
+
 This is a different thing from the [click-and-collect order](#click-and-collect-order) above, which an integration **creates** through the API with `reservedUntil`. A till order is created by the till, has no expiry, and is finished either at the till or by the integration, depending on its delivery mode.
 
 #### What the till writes
