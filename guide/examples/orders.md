@@ -240,6 +240,8 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/trade-records/{ke
 
 With all of them this read is the same as under `write:api`. So the scope set for a read-only order feed is `orders.sales:read`, one of the three agent scopes, `products:read` and `geo:read`, with `orders.payments:read` for the payments and `trade-records:read` for the ledger. `read:api` carries `products:read`, `geo:read`, `suppliers:read` and `supply-chains:read`, but none of the order scopes and not `trade-records:read`: grant those by name.
 
+The purchasing members are the exception. Under `orders.sales:read` an order answers `null` for `deliveries` and `deliveryDiscrepancy`, also next to `deliveries:read`, and `~withAll` has no `underdeliveryPolicy`, `overdeliveryPolicy`, `supplierConfirmed` or `returns`. A read-only key reads what was received from the delivery, where `deliveries:read` with `orders.sales:read` fills `orders`: see [Working with Purchasing → The Scope Set for a Receiving Integration](../../reference/working-with/purchasing.md#the-scope-set-for-a-receiving-integration).
+
 ```bash
 # What the key holds
 curl -X GET -u ":readonly-key" "https://example.app.heads.com/api/v1/scopes"

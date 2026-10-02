@@ -87,14 +87,18 @@ A delivery refers to agents, products, a currency and trade orders, and each of 
 | `read:api` + `deliveries:read` | `sender`, `receiver`, `currency` present; `orders: []`. |
 | `deliveries:write` alone | `POST /v1/deliveries` from an order → `400` `"Invalid trade order match. Must match exactly one existing trade order."` — the key cannot see the order it names. |
 | `read:api` alone | `GET /v1/deliveries` → `404`. |
+| `deliveries:write`, `orders.sales:read`, `suppliers:read`, `products:read`, `geo:read` | Create the delivery from an existing order, count, approve: all `200`, and approval moves the order line on (`["Committed", "Fulfilled"]`). A read shows the same members, `orders` included. The key cannot create or approve the order itself. |
+| `deliveries:read`, `orders.sales:read` | Read `200` with `orders` filled. |
 | `orders.sales:write` alone | `GET /v1/trade-orders/{id}~just(status,deliveries,deliveryDiscrepancy)` → `200` with **`deliveries: []`** on an order that has one; `deliveryDiscrepancy` reads normally. Add `deliveries:read` and the same read lists the delivery. |
+| `orders.sales:read`, with or without `deliveries:read` | The same read → `200` with **`deliveries: null`** and **`deliveryDiscrepancy: null`**: the read-only order does not carry the purchasing members. |
 
-**Grant a receiving integration** `deliveries:write`, `orders.sales:write`, `suppliers:read`, `products:read` and `geo:read`. Add `stock:read` when it verifies stock levels, `returns:write` for supplier returns, and `config` when it sets up the numbering serials (`/v1/serials`, `/v1/config/root-order`). `supply-chains:read` fills the agent members as well as `suppliers:read` does.
+**Grant a receiving integration** `deliveries:write`, `orders.sales:read`, `suppliers:read`, `products:read` and `geo:read` when it books deliveries against orders that already exist, and `orders.sales:write` in place of `orders.sales:read` when it also creates or approves the purchase orders. Add `stock:read` when it verifies stock levels, `returns:write` for supplier returns, and `config` when it sets up the numbering serials (`/v1/serials`, `/v1/config/root-order`). `supply-chains:read` fills the agent members as well as `suppliers:read` does.
 
 Two consequences worth knowing before you size a key:
 
-- **Trade orders have no read scope.** `orders.sales:write` is what fills `orders` on a delivery and lets a create find the order it names — even for a key that otherwise only reads.
-- **The link is one-directional per scope.** `deliveries` on an order reads `[]` without `deliveries:read`, and `orders` on a delivery reads `[]` without `orders.sales:write`. A key that needs both directions needs both scopes.
+- **The delivery needs an order scope to see its order.** `orders.sales:read` is enough: it fills `orders` on a delivery and lets a create find the order it names. Without `orders.sales:read` or `orders.sales:write`, `orders` reads `[]` and the create is the `400` above.
+- **The link is one-directional per scope.** `orders` on a delivery takes an order scope next to the delivery scope. `deliveries` on an order takes `deliveries:read` next to `orders.sales:write`.
+- **A read-only key reads the link from the delivery.** Under `orders.sales:read` an order answers `null` for `deliveries` and `deliveryDiscrepancy`, and `~withAll` leaves out `underdeliveryPolicy`, `overdeliveryPolicy`, `supplierConfirmed` and `returns` as well. Read `GET /v1/deliveries~just(identifiers,status,discrepancy,orders)` instead, or grant `orders.sales:write`.
 
 ---
 
