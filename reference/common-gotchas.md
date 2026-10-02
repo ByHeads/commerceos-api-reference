@@ -2041,7 +2041,7 @@ POST …/cart/items  {"product": {…WIDGET…}, "quantity": 1}   # 201, key f1e
 GET  …/cart/items~count                                    # 1
 ```
 
-Count the cart's lines, not your `POST`s. A line with a note, a manual price or a discount does not take a merge.
+Count the cart's lines, not your `POST`s. A line with a note, a manual price or a discount does not take a merge, and a fractional quantity never merges: it starts its own line.
 
 Related: [POS Carts → What a POST answers](working-with/pos-carts.md#what-a-post-answers-the-line-the-units-landed-on).
 
@@ -2149,7 +2149,7 @@ Related: [POS Carts → Scopes](working-with/pos-carts.md#scopes).
 
 > **Availability:** v26.2.1 and later. Not in v26.2.0 or v26.1.x.
 
-Where the till words a `409`, `details` and `info.reasons` carry the text in the API user's preferred language. "Cart is empty" arrives as `"Varukorgen är tom"` under a Swedish user. Match on the status and on the keys of `info` (`reasons`, `mergedInto`, `state`, `lockReason`, `mode`), not on the wording.
+Where the till words a `409`, `details` and `info.reasons` carry the text in the API user's preferred language. "Cart is empty" arrives as `"Varukorgen är tom"` under a Swedish user. Match on the status and on the keys of `info` (`reasons`, `mergedInto`, `state`, `status`, `lockReason`, `mode`), not on the wording.
 
 Related: [POS Carts → Refusals](working-with/pos-carts.md#refusals).
 

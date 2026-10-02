@@ -149,13 +149,13 @@ GET /v1/pos-terminals/posTerminalName=Kassa%201/session
 | Member | Values | Notes |
 |---|---|---|
 | `mode` | `Manned`, `Self-checkout` | The profile's mode. Absent when the terminal has no profile |
-| `status` | `age-restriction`, `locked`, `paying`, `loyalty-pending`, `reward-pending`, `help-requested`, `alert`, `shopping`, `receipt`, `completing`, `available` | The first that applies, in that order. `available` on a fresh or reset till, `shopping` with lines in the cart, `locked` under a supervisor lock |
+| `status` | `age-restriction`, `locked`, `paying`, `loyalty-pending`, `reward-pending`, `help-requested`, `alert`, `shopping`, `receipt`, `completing`, `available` | The first that applies, in that order. `available` on a fresh or reset till, `shopping` with lines in the cart, `locked` under a supervisor lock. v26.2.2 and later add `card-reading`, between `alert` and `shopping`: a self-checkout whose start screen asks for the payment method is reading the customer's card. Treat a value outside this list as possible |
 | `locked`, `lockReason` | `true` with `manual`, `spot-check`, `cancelled`, `printer-error` or `age-restriction` | Only ever set on a self-checkout. `lockReason` is absent when not locked |
 | `helpRequested` | boolean | The customer asked for help at the lane |
 | `ageRestrictionPending`, `pendingAgeRestriction`, `ageRestrictionReasons` | `true`, `18`, `"Alcohol"` | See [Age control](#age-control). The last two are absent when no line is restricted |
 | `sessionActive` | boolean | A self-checkout customer's session. Lines added through the API do not start one |
 | `frozen`, `currentTask` | `true` and a task name | While a task is queued at the till. Cart writes are refused, see [A frozen terminal](#a-frozen-terminal) |
-| `cardAcquisitionStatus` | `"Pending"` | While a card tap is in flight at the lane. Absent otherwise |
+| `cardAcquisitionStatus` | `Pending`, `Acquired`, `Failed`, `Idle` | The lane's card tap ahead of the amount. `Pending` while one is in flight, `Acquired` or `Failed` once it has ended. Often absent. On v26.2.1 it reads `Idle` after `unclog`. Test for `Pending`: every other value, and absence, mean no tap is in flight |
 | `alert` | `{ message, customerMessage, tone }` | When the lane shows an alert. Absent otherwise |
 | `turnedOn` | boolean | Started for the day |
 | `cart` | the cart's default projection | Absent when there is none |
@@ -269,7 +269,7 @@ The answer is `201` with the line:
 }
 ```
 
-- Left out when empty: `package`, `manualDiscount`, `manualNotes`, `returnParameters`, `productInstances`.
+- Left out when empty: `package`, `manualDiscount`, `manualNotes`.
 - `unit` is the till's unit label in the API user's language: `""` for a product without a unit, `"st"` for pieces under a Swedish user.
 - `pendingInput` names what the till still needs before the line can be sold: `tracking` (a serial number), `weight`, `price`, `domain`.
 - `orderItem` is the line of the cart's draft order.
@@ -282,11 +282,13 @@ A `POST` does not necessarily create the line it answers.
 
 | Case | Answer |
 |---|---|
-| Same product (and package) as the last line, and that line has no manual price, discount or note | `201`, the **same key** as before, with the higher quantity. The units merged |
+| Same product (and package) as the last line, that line has no manual price, discount or note, and the quantity is a whole number | `201`, the **same key** as before, with the higher quantity. The units merged |
+| The same, with a fractional quantity such as `0.5` | `201`, a **new** line. The next whole-number add merges into that new line |
 | The last line has a note, a manual price or a discount | `201`, a new line |
 | A priced add (`unitAmountInclVat`) that would merge | `409`, nothing changed, `info.mergedInto` names the line. See below |
 | A product sold one line per unit (serial-tracked), `quantity: 3` | `201`, the **last** of three new lines, each with `quantity: "1"` |
 | The same, more than 20 at once | `400` `Could not add the line: Cannot add more than 20 items at once. 21 requested.` |
+| More than 500 units of any other product at once | `400` `Could not add the line: Cannot add more than 500 units at once. 501 requested.` The cart stays `null` |
 | An array body `[ {…} ]` | **`200`** with an array of the landed lines. A single object answers `201` |
 
 So count the cart's lines with `GET …/cart/items~count`, not your `POST`s.
@@ -384,6 +386,7 @@ It reads back on the line as:
 | Mistake | Answer |
 |---|---|
 | no `reason`, or one that matches nothing | `400` `A manual discount needs a reason that matches exactly one discount reason.` |
+| no `@type` | `400` `manualDiscount takes a percentage, fixed reduction or fixed price manual discount, told apart by @type.` The line's `@type` may be left out; the discount's is required |
 | an unknown `@type` | `400` `The provided type key 'bogus' is not defined in the current type schema` |
 | a percentage discount without `percentage` | `400` `A percentage manual discount needs a percentage.` |
 | a fixed kind without `amount` | `400` `A fixed manual discount needs an amount.` |
@@ -500,10 +503,10 @@ Refused with `409`:
 - an empty cart ("Cart is empty")
 - payments in the cart ("Cart has external side effects that must be resolved first")
 - a frozen terminal
-- a pending card tap (`A card acquisition is pending at the terminal; empty the cart at the till, which cancels it.`)
+- a pending card tap, on v26.2.1 only (`A card acquisition is pending at the terminal; empty the cart at the till, which cancels it.`). From v26.2.2 the discard goes through and releases the card at the payment terminal
 - a loyalty session (`The cart has a loyalty session; discard it at the till, which cancels the session.`)
 
-`parkCart` stays open in those cases, and so does the supervisor's `unclog`. A supervisor lock does **not** stop a discard.
+With payments in the cart, a pending card tap or a loyalty session, `parkCart` stays open, and so does the supervisor's `unclog`. A supervisor lock does **not** stop a discard.
 
 ---
 
@@ -526,9 +529,9 @@ Every action takes `true`; `lock` also takes a reason.
 | `{"denyAgeRestriction": true}` | Under an age-control lock: lifts the lock, the restriction stays pending, and the next Pay locks again. Otherwise `409` `The terminal is not under an age control.`, `info.lockReason` |
 | `{"clearAlert": true, "clearHelpRequest": true}` | `200` |
 | `{"resetSession": true}` | `200`; the active cart is gone, `status: "available"`, `locked: false`, `sessionActive: false`, `helpRequested: false`. A cart already parked at the lane stays parked. Works under a supervisor lock |
-| `{"unclog": true}` | `200`; the cart is **parked** (no visibility, a new `parkingId`) and `status` is `available`. It also clears a queued task, the alert and a pending card tap. The way out of a lane the till cannot clear |
+| `{"unclog": true}` | `200`; the cart is **parked** (with the visibility it had, usually none, and a new `parkingId`) and `status` is `available`. It also clears a queued task and the alert, and ends a pending card tap. The way out of a lane the till cannot clear |
 
-`resetSession` is refused with `409` when the cart holds payments, the terminal is frozen, a card tap is pending, or the cart has a loyalty session. `unclog` is the action for those cases.
+`resetSession` is refused with `409` when the cart holds payments, the terminal is frozen, or the cart has a loyalty session; on v26.2.1 also while a card tap is pending. `unclog` is the action for those cases.
 
 ### What a lock blocks
 
@@ -564,11 +567,12 @@ Not held back by it: reads, `unlock`, `denyAgeRestriction`, `confirmAgeRestricti
 
 ### What the till can do that the API cannot
 
-The till cancels a pending card tap and a loyalty session when it empties a cart. The API cannot reach either:
+The till cancels a loyalty session when it empties a cart. The API cannot: while the cart has a loyalty session, `discardCart` and `resetSession` answer `409`. `parkCart` and `unclog` stay open.
 
-- While `session.cardAcquisitionStatus` is `"Pending"`: `discardCart`, `resetSession` and a `DELETE` of the last line answer `409`.
-- While the cart has a loyalty session: `discardCart` and `resetSession` answer `409`.
-- `parkCart` and `unclog` stay open in both cases.
+A pending card tap (`session.cardAcquisitionStatus` is `"Pending"`):
+
+- v26.2.1: `discardCart`, `resetSession` and a `DELETE` of the last line answer `409`. `parkCart` and `unclog` stay open.
+- v26.2.2 and later: all of them go through, and the card is released at the payment terminal. A `DELETE` of the last line on a self-checkout with an active session keeps the card for that session.
 
 ---
 
@@ -594,6 +598,8 @@ A `400` is `{ "@type": "bad request", "error": "…", "details": "<text>", "info
 | `reasons` | The till's own reasons, as text |
 | `mergedInto` | The line a priced add would have merged into |
 | `state` | `Parked` on a write to a parked cart |
+| `status` | The order line's status, on a line that can no longer be changed |
+| `@type` | The line's type, on a line that cannot be removed |
 | `lockReason` | The lane's current lock reason, on `denyAgeRestriction` |
 | `mode` | `Manned`, on `lock` at a manned terminal |
 | `invalidItem` | The value a `400` refused |
