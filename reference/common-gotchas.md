@@ -1742,6 +1742,8 @@ GET /v1/trade-orders~where(suppliersId)~take(50)    # matches everything - the m
 GET /v1/trade-orders~where(items~count)~take(50)    # a cart with lines in it has items
 ```
 
+From v26.2.1 the cart behind such an order is at `/v1/pos-terminals/{id}/cart`, and the order is its `draftOrder`: see [Working with POS Carts](working-with/pos-carts.md).
+
 Related: [Orders → Finding and polling till orders](working-with/orders.md#finding-and-polling-till-orders), [Orders integration → Status Mapping](integration-templates/orders-integration.md#status-mapping-to-external-system).
 
 ---
@@ -2024,6 +2026,184 @@ Several assortment reads answer `200` with less than is there when the key lacks
 So "uses its own assortment" and "owner not visible to this key" look the same, and so do an empty assortment and "no products scope". Reading contexts with their owners needs `products:read` plus `supply-chains:read` or `suppliers:read`; writing them needs `products:write` plus a scope that reaches the owner. Check the key with [`/v1/scopes`](overview.md#checking-what-a-key-can-do-v1scopes) before trusting an empty answer.
 
 Related: [Assortments → Scopes](working-with/assortments.md#scopes), [gotcha 41](#41-a-write-under-a-read-only-scope-is-a-silent-200), [gotcha 39](#39-a-null-in-a-response-does-not-prove-the-field-exists).
+
+---
+
+## 73. A `POST` to a Cart's `items` Does Not Necessarily Create the Line It Answers
+
+> **Availability:** v26.2.1 and later. Not in v26.2.0 or v26.1.x.
+
+The answer is the line the units landed on. The same product and package merge into the last line, so the second `POST` answers `201` with the **same key** and a higher `quantity`. A product sold one line per unit comes back as the **last** of several new lines: `quantity: 3` answers one line with `quantity: "1"`, and the cart has three more.
+
+```bash
+POST …/cart/items  {"product": {…WIDGET…}, "quantity": 2}   # 201, key f1e3…, quantity "2"
+POST …/cart/items  {"product": {…WIDGET…}, "quantity": 1}   # 201, key f1e3… again, quantity "3"
+GET  …/cart/items~count                                    # 1
+```
+
+Count the cart's lines, not your `POST`s. A line with a note, a manual price or a discount does not take a merge.
+
+Related: [POS Carts → What a POST answers](working-with/pos-carts.md#what-a-post-answers-the-line-the-units-landed-on).
+
+---
+
+## 74. A Priced Add That Would Merge Is a `409`, Not a Silently Dropped Price
+
+> **Availability:** v26.2.1 and later. Not in v26.2.0 or v26.1.x.
+
+A `POST` with `unitAmountInclVat` whose units would merge into the last line is refused, and nothing changes: `409`, `info.mergedInto` names the line. The line keeps its price.
+
+```bash
+# RIGHT - change the line's price
+PATCH …/cart/items/{mergedInto}   {"unitAmountInclVat": "149.00"}
+
+# RIGHT - or stop the merge first, then add at the price
+PATCH …/cart/items/{mergedInto}   {"manualNotes": "first batch"}
+POST  …/cart/items                {"product": {…}, "quantity": 1, "unitAmountInclVat": "149.00"}
+```
+
+Related: [POS Carts → What a POST answers](working-with/pos-carts.md#what-a-post-answers-the-line-the-units-landed-on).
+
+---
+
+## 75. An Array Body to a Cart's `items` Answers `200` with an Array; a Single Object Answers `201`
+
+> **Availability:** v26.2.1 and later. Not in v26.2.0 or v26.1.x.
+
+`POST …/cart/items` with `[ {…} ]` answers `200` and an array of the lines the units landed on. The same line as a single object answers `201` and the line. A client that treats only `201` as "added" misses every array write.
+
+Related: [POS Carts → What a POST answers](working-with/pos-carts.md#what-a-post-answers-the-line-the-units-landed-on).
+
+---
+
+## 76. A Parked Cart Is Read-Only, and Every Write to It Is a `409`
+
+> **Availability:** v26.2.1 and later. Not in v26.2.0 or v26.1.x.
+
+`PATCH …/parkedCarts/{key}`, `POST …/parkedCarts/{key}/items`, and `PATCH` and `DELETE` on its lines all answer `409` `The cart is parked; resume it at a terminal before changing it.` with `info.state: "Parked"`. Resume the cart at a terminal with `{"resumeCart": {…}}`, change it there as that terminal's `cart`, and park it again.
+
+Related: [POS Carts → A parked cart is read-only](working-with/pos-carts.md#a-parked-cart-is-read-only).
+
+---
+
+## 77. `parkCart: true` on a Cart That Never Had a Visibility Parks It for That Terminal Only
+
+> **Availability:** v26.2.1 and later. Not in v26.2.0 or v26.1.x.
+
+`true` parks with the cart's current visibility. A cart that never had one is parked without any, and the store's other terminals do not list it under `resumableCarts`.
+
+```bash
+# WRONG when another till must pick it up
+PATCH …/session/actions   {"parkCart": true}
+
+# RIGHT
+PATCH …/session/actions   {"parkCart": "This store"}
+```
+
+Related: [POS Carts → Park](working-with/pos-carts.md#park).
+
+---
+
+## 78. The POS `actions` Objects Read Back Empty
+
+> **Availability:** v26.2.1 and later. Not in v26.2.0 or v26.1.x.
+
+A `PATCH` to `…/session/actions` or `…/supervisor/actions` answers `200 {"@type": "POS session actions"}` or `{"@type": "POS supervisor actions"}` and nothing else. A `GET` on them answers the same. The `200` does not say what happened: read `…/session` or `…/cart` afterwards.
+
+Related: [POS Carts → Routes](working-with/pos-carts.md#routes).
+
+---
+
+## 79. A Missing POS Cart Scope Is a `200 null`, Never a `403`
+
+> **Availability:** v26.2.1 and later. Not in v26.2.0 or v26.1.x.
+
+Without `pos.carts:read` a terminal's `session` and `cart` read `null` and its `parkedCarts` `[]`. Without `pos.carts:write` a `PATCH` to `…/session/actions` answers `200 null` and nothing happens, and a `POST` to `…/cart/items` answers `400` `failed indexing`. Without `pos.supervisor:write`, `…/supervisor` reads `null` and its actions answer `200 null`.
+
+So "no cart" and "no scope" look the same on a read. Check the key with [`/v1/scopes`](overview.md#checking-what-a-key-can-do-v1scopes).
+
+Related: [POS Carts → Scopes](working-with/pos-carts.md#scopes), [gotcha 41](#41-a-write-under-a-read-only-scope-is-a-silent-200).
+
+---
+
+## 80. Adding a Cart Line Needs `products:read` Beside `pos.carts:write`
+
+> **Availability:** v26.2.1 and later. Not in v26.2.0 or v26.1.x.
+
+A key with only the two cart scopes cannot resolve the product, and every `POST` answers `400` `Invalid product match. Must match exactly one existing product.` although the product exists.
+
+| To do this | The key also needs |
+|---|---|
+| add a line | `products:read` |
+| attach a customer | `customers:read` |
+| give a manual discount | `discounts.manual:read` |
+| read `draftOrder` | `orders.sales:read` |
+
+The read twins are enough; none of the write scopes is needed.
+
+Related: [POS Carts → Scopes](working-with/pos-carts.md#scopes).
+
+---
+
+## 81. The Till's Refusal Texts Come in the API User's Language
+
+> **Availability:** v26.2.1 and later. Not in v26.2.0 or v26.1.x.
+
+Where the till words a `409`, `details` and `info.reasons` carry the text in the API user's preferred language. "Cart is empty" arrives as `"Varukorgen är tom"` under a Swedish user. Match on the status and on the keys of `info` (`reasons`, `mergedInto`, `state`, `lockReason`, `mode`), not on the wording.
+
+Related: [POS Carts → Refusals](working-with/pos-carts.md#refusals).
+
+---
+
+## 82. `lock` Takes Three Reasons, and a Second `lock: true` Overwrites the First
+
+> **Availability:** v26.2.1 and later. Not in v26.2.0 or v26.1.x.
+
+`lock` takes `true` (= `manual`), `"manual"`, `"spot-check"` or `"cancelled"`. The lane sets `age-restriction` and `printer-error` itself; sending either is a `400`. And locking a lane that is already locked `spot-check` with `{"lock": true}` answers `200` and changes the reason to `manual`. Read `session.lockReason` before locking if the reason matters.
+
+`lock` applies to self-checkout terminals only: on a manned terminal it is a `409`.
+
+Related: [POS Carts → Supervisor Control](working-with/pos-carts.md#supervisor-control).
+
+---
+
+## 83. `unlock` and `confirmAgeRestriction` Do Not Resume the Payment the Lock Interrupted
+
+> **Availability:** v26.2.1 and later. Not in v26.2.0 or v26.1.x.
+
+Both answer `200` and clear the lock or the age control. The payment that was under way when the lane locked does not continue: the customer presses Pay again at the lane. Do not wait for a receipt after an `unlock`.
+
+Related: [POS Carts → Age control](working-with/pos-carts.md#age-control).
+
+---
+
+## 84. The API Never Opens or Completes a Sale
+
+> **Availability:** v26.2.1 and later. Not in v26.2.0 or v26.1.x.
+
+No request creates a cart. The first **accepted** line opens it; a refused first line opens nothing, and `PATCH …/cart` on a terminal without a cart is a `200 null` that changes nothing. Payment is the till's: after Pay, `cart` reads `null` and the sale is under `/v1/receipts`.
+
+Related: [POS Carts → Overview](working-with/pos-carts.md#overview), [Receipts](receipts.md).
+
+---
+
+## 85. A Supervisor Lock Freezes the Cart's Contents, Not Its Lifecycle
+
+> **Availability:** v26.2.1 and later. Not in v26.2.0 or v26.1.x.
+
+While a self-checkout lane is locked, adding, changing and removing lines and changing the cart's customer or note answer `409` `The terminal is locked by a supervisor.` But `parkCart`, `resumeCart`, `discardCart` and `resetSession` go through. A lock is therefore not a guarantee that the cart is still there when you unlock.
+
+Related: [POS Carts → What a lock blocks](working-with/pos-carts.md#what-a-lock-blocks).
+
+---
+
+## 86. `false` on a POS Action Is a Silent `200`
+
+> **Availability:** v26.2.1 and later. Not in v26.2.0 or v26.1.x.
+
+`{"parkCart": false}`, `{"discardCart": false}` and any action sent as `null` answer `200` and do nothing. So does an action whose state already holds: `unlock` on an unlocked lane, `confirmAgeRestriction` with nothing pending. Only a string outside the allowed values is a `400`. A `200` from an action is not evidence that anything changed.
+
+Related: [POS Carts → Routes](working-with/pos-carts.md#routes).
 
 ---
 

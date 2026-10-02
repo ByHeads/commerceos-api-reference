@@ -104,6 +104,7 @@ commerceos-api-reference/
 │   │   ├── products.md           # Working with products
 │   │   ├── customers.md          # Working with customers
 │   │   ├── orders.md             # Working with trade orders
+│   │   ├── pos-carts.md          # POS carts, sessions and supervisor control
 │   │   ├── prices.md             # Working with prices
 │   │   ├── purchasing.md         # Purchase orders, deliveries and supplier returns
 │   │   ├── stock.md              # Working with stock/inventory

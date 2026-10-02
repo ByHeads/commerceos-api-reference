@@ -203,11 +203,13 @@ POST /v1/users/com.example.userId=U-1/apikeyCredentials
 
 | Kind | Values |
 |---|---|
-| Read | `org:read`, `geo:read`, `suppliers:read`, `customers:read`, `supply-chains:read`, `users:read`, `products:read`, `prices:read`, `prices.sales:read`, `surcharges:read`, `pos:read`, `retail:read`, `logistics:read`, `trade-records:read`, `payment-means:read`, `labels:read`, `stock:read`, `media:read`, `wallet:read`, `deliveries:read`, `returns:read`, `orders.sales:read`, `orders.payments:read`, `discounts.system:read`, `discounts.manual:read`, `periods:read`, `payment-records:read`, `shipment-records:read`, `links:read`, `prices.purchase:read`, `integrations:read`, `admin:read` |
-| Write | `geo:write`, `supply-chains:write`, `products:write`, `prices:write`, `discounts.system:write`, `discounts.manual:write`, `surcharges:write`, `pos:write`, `retail:write`, `receipts:write`, `pos-slips:write`, `logistics:write`, `payment-records:write`, `shipment-records:write`, `trade-records:write`, `orders.sales:write`, `orders.payments:write`, `labels:write`, `stock:write`, `periods:write`, `media:write`, `wallet:write`, `links:write`, `deliveries:write`, `returns:write` |
+| Read | `org:read`, `geo:read`, `suppliers:read`, `customers:read`, `supply-chains:read`, `users:read`, `products:read`, `prices:read`, `prices.sales:read`, `surcharges:read`, `pos:read`, `pos.carts:read`, `retail:read`, `logistics:read`, `trade-records:read`, `payment-means:read`, `labels:read`, `stock:read`, `media:read`, `wallet:read`, `deliveries:read`, `returns:read`, `orders.sales:read`, `orders.payments:read`, `discounts.system:read`, `discounts.manual:read`, `periods:read`, `payment-records:read`, `shipment-records:read`, `links:read`, `prices.purchase:read`, `integrations:read`, `admin:read` |
+| Write | `geo:write`, `supply-chains:write`, `products:write`, `prices:write`, `discounts.system:write`, `discounts.manual:write`, `surcharges:write`, `pos:write`, `pos.carts:write`, `pos.supervisor:write`, `retail:write`, `receipts:write`, `pos-slips:write`, `logistics:write`, `payment-records:write`, `shipment-records:write`, `trade-records:write`, `orders.sales:write`, `orders.payments:write`, `labels:write`, `stock:write`, `periods:write`, `media:write`, `wallet:write`, `links:write`, `deliveries:write`, `returns:write` |
 | Other | `me`, `advanced`, `config`, `integrations`, `admin` |
 
 `orders.sales:read` and `orders.payments:read` read trade orders, order items and payment orders without opening any write. They are two of the eleven read scopes at the end of the Read row, from `orders.sales:read` to `admin:read`, which are v26.2.1 and later, not in v26.2.0 or v26.1.x: see [Every write scope has a read twin](#every-write-scope-has-a-read-twin). Before that release there was no read scope for orders: order data was read through `trade-records:read` and `logistics:read`, or by granting the write scope. `deliveries:*` and `returns:*` ship in v26.2.1 and later (not in v26.1.x) and are not part of `logistics:*` or `read:api`.
+
+`pos.carts:read`, `pos.carts:write` and `pos.supervisor:write` are v26.2.1 and later too, not in v26.2.0 or v26.1.x. They open a terminal's session, its active and parked carts and the supervisor's control of a self-checkout lane: see [Working with POS Carts → Scopes](working-with/pos-carts.md#scopes).
 
 **The scope set for a receiving integration** — one that books supplier deliveries against purchase orders — is `deliveries:write`, `orders.sales:write`, `suppliers:read`, `products:read` and `geo:read`. Add `stock:read` to verify stock, `returns:write` for supplier returns, and `config` to set up the numbering serials. Two consequences of the missing `orders:read`: `orders` on a delivery reads `[]` without `orders.sales:write`, even for a key that only reads, and a create from an order fails to find it; the other way round, `deliveries` on an order reads `[]` without `deliveries:read`. See [Working with Purchasing → Scopes](working-with/purchasing.md#scopes).
 
@@ -215,7 +217,7 @@ A few `:write` scopes include their own read side rather than sitting beside it,
 
 Two broad legacy scopes are also accepted, and they do not mean what their names suggest:
 
-- **`read:api`** expands to a fixed set of read scopes — `org:read`, `geo:read`, `suppliers:read`, `supply-chains:read`, `users:read`, `products:read`, `prices:read`, `pos:read`, `retail:read`, `stock:read`, `media:read`, `surcharges:read`. It is not "every `:read` scope": `customers:read`, `prices.sales:read`, `logistics:read`, `trade-records:read`, `payment-means:read`, `labels:read` and `wallet:read` are **not** included, so those collections stay out of reach for a `read:api` key. Neither is any of the eleven newer read scopes: `orders.sales:read`, `orders.payments:read`, `discounts.system:read`, `discounts.manual:read`, `periods:read`, `payment-records:read`, `shipment-records:read`, `links:read`, `prices.purchase:read`, `integrations:read` and `admin:read`. `GET /v1/trade-orders` under `read:api` is a `404`. List them explicitly if you need them.
+- **`read:api`** expands to a fixed set of read scopes — `org:read`, `geo:read`, `suppliers:read`, `supply-chains:read`, `users:read`, `products:read`, `prices:read`, `pos:read`, `retail:read`, `stock:read`, `media:read`, `surcharges:read` and, from v26.2.1, `pos.carts:read`. It is not "every `:read` scope": `customers:read`, `prices.sales:read`, `logistics:read`, `trade-records:read`, `payment-means:read`, `labels:read` and `wallet:read` are **not** included, so those collections stay out of reach for a `read:api` key. Neither is any of the eleven newer read scopes: `orders.sales:read`, `orders.payments:read`, `discounts.system:read`, `discounts.manual:read`, `periods:read`, `payment-records:read`, `shipment-records:read`, `links:read`, `prices.purchase:read`, `integrations:read` and `admin:read`. `GET /v1/trade-orders` under `read:api` is a `404`. List them explicitly if you need them.
 - **`write:api`** expands to **every** fine-grained scope, `admin` included. A key created with it can create users, set passwords and define roles.
 
 Grant the narrowest set that works. A key that only reads the catalogue should carry `products:read` and nothing else.
@@ -242,6 +244,7 @@ Every `:write` scope has a `:read` twin that exposes the same collections read-o
 | `discounts.manual:write` | `discounts.manual:read` | **new** |
 | `surcharges:write` | `surcharges:read` | |
 | `pos:write` | `pos:read` | **widened** |
+| `pos.carts:write` | `pos.carts:read` | **new**. `pos.carts:write` carries the read side itself |
 | `retail:write` | `retail:read` | |
 | `receipts:write` | `retail:read` | receipts are read under `retail:read` |
 | `pos-slips:write` | `retail:read` | |
@@ -260,7 +263,7 @@ Every `:write` scope has a `:read` twin that exposes the same collections read-o
 | `integrations` | `integrations:read` | **new**, restricted: see [below](#the-two-restricted-twins-integrationsread-and-adminread) |
 | `admin` | `admin:read` | **new**, restricted: see [below](#the-two-restricted-twins-integrationsread-and-adminread) |
 
-`me`, `advanced`, `config` and `kv` have no read variant. `org:read`, `suppliers:read`, `customers:read`, `users:read` and `payment-means:read` are read-only families with no write scope of their own. `deliveries:*` and `returns:*` are pairs too; they are covered in [Working with Purchasing → Scopes](working-with/purchasing.md#scopes).
+`me`, `advanced`, `config`, `kv` and `pos.supervisor:write` have no read variant. `org:read`, `suppliers:read`, `customers:read`, `users:read` and `payment-means:read` are read-only families with no write scope of their own. `deliveries:*` and `returns:*` are pairs too; they are covered in [Working with Purchasing → Scopes](working-with/purchasing.md#scopes).
 
 Two things a read twin never gets are the members of a write scope that are not collections: `/v1/stock-reset` under `stock:write`, and the `renderTemplate` operator under `pos:write`.
 
@@ -278,6 +281,7 @@ Each opens the collections below at their usual paths. The `find` methods work a
 | `payment-records:read` | `payment-records` |
 | `shipment-records:read` | `shipment-records` |
 | `links:read` | `shortened-links` |
+| `pos.carts:read` | No collection of its own. It opens the `session`, `cart`, `parkedCarts` and `resumableCarts` members of `pos-terminals`, read-only, and gives a key without a `pos:*` scope a read-only `pos-terminals`. Unlike the others in this table, `read:api` carries it |
 | `prices.purchase:read` | `prices`, limited to the price rules that name the key's organization, or one above it, among the `buyers`. It is the buyer-side counterpart of `prices.sales:read`. A key without a `node` lists none |
 | `integrations:read` | `payment-integrations`, `shipment-integrations`, `wallet-integrations`, `native-wallet-integrations`, `loyalty-integrations`, `epi-integrations`, `epi-configurations`, `wallet-providers` |
 | `admin:read` | `users`, `systems`, `oauth2-clients`, `local-credentials`, `retail-credentials`, `mobile-credentials`, `bankid-credentials`, `entraid-credentials`, `pin-credentials`, `scan-token-credentials`, `apikey-credentials` |
@@ -310,7 +314,7 @@ These are the three shapes of [gotcha 41](common-gotchas.md#41-a-write-under-a-r
 Four rules complete the picture:
 
 - **References outside the key's scopes are absent.** Under `orders.sales:read` alone a trade order carries `identifiers`, `timestamp`, `status`, `totalAmount`, `balanceAmount`, the addresses and `items`, but no `supplier`, `customer` or `currency`, and its items have no `product`. [Reading orders without write access](../guide/examples/orders.md#reading-orders-without-write-access) shows which scope brings each back.
-- **`read:api` does not carry them.** It expands to none of the eleven new scopes. `write:api` expands to every scope, the new ones included.
+- **`read:api` does not carry them.** It expands to none of the eleven new scopes; `pos.carts:read` is the one newer read scope it does carry. `write:api` expands to every scope, the new ones included.
 - **Scopes only add.** A read scope next to a write scope never narrows what the key can write: `supply-chains:write` with `logistics:read` still creates delivery terms. Where two read scopes carry the same collection at different widths the broader listing wins: `prices:read` with `prices.purchase:read` lists every price rule, `prices.sales:read` with `prices.purchase:read` lists the organization's sales and purchase prices together, and `customers:read` with `supply-chains:read` lists every customer group.
 - **Registering a dynamic property still needs the `:write` scope.** Under any read twin it is the silent `200` of [gotcha 43](common-gotchas.md#43-registering-a-dynamic-property-under-a-read-scope-is-a-silent-200).
 

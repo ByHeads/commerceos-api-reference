@@ -28,7 +28,7 @@ Comprehensive curl examples demonstrating the full capabilities of the CommerceO
 | [Stock & Inventory Guide](./examples/stock-inventory-guide.md) | Comprehensive stock management | Two-dimensional model, counts, transfers, tracking, batches |
 | [Serial Number Tracking](./examples/serial-number-tracking.md) | Track individual units by serial number | Quick start: configure, receive, sell, read back |
 | [Product Instances & Tracking](./examples/product-instances-tracking.md) | Serial numbers, batches, instance types | MobileDevice, Artifact, productInstances, batch tracking |
-| [Point of Sale](./examples/pos.md) | Terminals, profiles, tile sets, receipts, devices, printers | Tile layouts, receipt creation, payment terminals |
+| [Point of Sale](./examples/pos.md) | Terminals, carts, sessions, supervisor control, profiles, tile sets, receipts, devices, printers | Tile layouts, receipt creation, payment terminals |
 | [Users & Auth](./examples/users.md) | Users, credentials, permissions, roles, role assignments, OAuth2, auth providers | User management, authentication (needs the `admin` scope — see the [provisioning guide](./provisioning-users.md)) |
 | [Configuration](./examples/configuration.md) | Countries, languages, templates, mapped types, dynamic properties, webhooks | System settings, integrations |
 | [Build a payment integration](./examples/payment-epi.md) | A payment provider integration: sample server, the call set, setup in CommerceOS, go-live checklist | Sequence diagram, contract reference, conformance fixtures, [four more flows and troubleshooting](./examples/payment-epi/flows.md) |

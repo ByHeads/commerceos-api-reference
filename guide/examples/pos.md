@@ -1,6 +1,6 @@
 # Point of Sale (POS) Examples
 
-Curl examples for POS terminals, profiles, tile sets, functions, slips, receipts, devices, printers, and payment terminals.
+Curl examples for POS terminals, carts, sessions, supervisor control, profiles, tile sets, functions, slips, receipts, devices, printers, and payment terminals.
 
 **Base URL:** `https://example.app.heads.com/api/v1`
 **API Key:** `banana` (passed via Basic Auth with empty username: `-u ":banana"`)
@@ -39,6 +39,78 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/pos-terminals/p
   -H "Content-Type: application/json" \
   -d '{"status": "Inactive"}'
 ```
+
+---
+
+## POS Carts, Sessions and Supervisor Control
+
+> **Availability:** v26.2.1 and later. Not in v26.2.0 or v26.1.x.
+
+Everything hangs off the terminal. The API adds, changes and removes lines and parks, resumes and discards carts; it never starts or completes a sale. Full contract: [Working with POS Carts](../../reference/working-with/pos-carts.md).
+
+```bash
+# What the till is doing: mode, status, locks, age control, its cart and parked carts
+curl -u ":banana" "https://example.app.heads.com/api/v1/pos-terminals/posTerminalName=Kassa%201/session"
+
+# The active cart (null when there is none); with its lines, validation and draft order
+curl -u ":banana" "https://example.app.heads.com/api/v1/pos-terminals/posTerminalName=Kassa%201/cart"
+curl -u ":banana" "https://example.app.heads.com/api/v1/pos-terminals/posTerminalName=Kassa%201/cart?fields=all"
+
+# Add a line - opens the cart when there is none. The answer is the line the units landed on:
+# the same product merges into the last line unless that line has a manual price, discount or note.
+# The key needs products:read beside pos.carts:write.
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/pos-terminals/posTerminalName=Kassa%201/cart/items" \
+  -H "Content-Type: application/json" \
+  -d '{"@type": "POS trade item", "product": {"identifiers": {"com.example.sku": "WIDGET-001"}}, "quantity": 2}'
+
+# A line at a manual price (409 if these units would merge into the last line - give that line a note first)
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/pos-terminals/posTerminalName=Kassa%201/cart/items" \
+  -H "Content-Type: application/json" \
+  -d '{"@type": "POS trade item", "product": {"identifiers": {"com.example.sku": "WIDGET-001"}}, "quantity": 1, "unitAmountInclVat": "149.00"}'
+
+# Change a line: quantity, manual price (null clears), manual discount (null clears), note
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/pos-terminals/posTerminalName=Kassa%201/cart/items/<line key>" \
+  -H "Content-Type: application/json" -d '{"quantity": 4}'
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/pos-terminals/posTerminalName=Kassa%201/cart/items/<line key>" \
+  -H "Content-Type: application/json" -d '{"unitAmountInclVat": "80.00"}'
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/pos-terminals/posTerminalName=Kassa%201/cart/items/<line key>" \
+  -H "Content-Type: application/json" \
+  -d '{"manualDiscount": {"@type": "percentage manual discount", "percentage": "10", "reason": {"identifiers": {"com.example.reasonId": "STAFF"}}, "notes": "staff"}}'
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/pos-terminals/posTerminalName=Kassa%201/cart/items/<line key>" \
+  -H "Content-Type: application/json" -d '{"manualNotes": "gift wrap"}'
+
+# Remove a line (removing the last one closes the cart)
+curl -X DELETE -u ":banana" "https://example.app.heads.com/api/v1/pos-terminals/posTerminalName=Kassa%201/cart/items/<line key>"
+
+# The customer (null detaches) and the receipt note (null clears)
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/pos-terminals/posTerminalName=Kassa%201/cart" \
+  -H "Content-Type: application/json" -d '{"customer": {"identifiers": {"com.example.customerId": "CUST-001"}}}'
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/pos-terminals/posTerminalName=Kassa%201/cart" \
+  -H "Content-Type: application/json" -d '{"manualNotes": "Called ahead, picks up at 17:00"}'
+
+# Park (This terminal | This store | Everywhere; true keeps the cart's visibility), list, resume elsewhere, discard
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/pos-terminals/posTerminalName=Kassa%201/session/actions" \
+  -H "Content-Type: application/json" -d '{"parkCart": "This store"}'
+curl -u ":banana" "https://example.app.heads.com/api/v1/pos-terminals/posTerminalName=Kassa%201/parkedCarts"
+curl -u ":banana" "https://example.app.heads.com/api/v1/pos-terminals/posTerminalName=Kassa%202/resumableCarts"
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/pos-terminals/posTerminalName=Kassa%202/session/actions" \
+  -H "Content-Type: application/json" -d '{"resumeCart": {"identifiers": {"key": "<cart key>"}}}'
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/pos-terminals/posTerminalName=Kassa%202/session/actions" \
+  -H "Content-Type: application/json" -d '{"discardCart": true}'
+
+# Supervisor control of a self-checkout lane (pos.supervisor:write)
+curl -u ":banana" "https://example.app.heads.com/api/v1/pos-terminals/posTerminalName=SCO-01/supervisor"
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/pos-terminals/posTerminalName=SCO-01/supervisor/actions" \
+  -H "Content-Type: application/json" -d '{"lock": "spot-check"}'
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/pos-terminals/posTerminalName=SCO-01/supervisor/actions" \
+  -H "Content-Type: application/json" -d '{"unlock": true}'
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/pos-terminals/posTerminalName=SCO-01/supervisor/actions" \
+  -H "Content-Type: application/json" -d '{"confirmAgeRestriction": true}'
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/pos-terminals/posTerminalName=SCO-01/supervisor/actions" \
+  -H "Content-Type: application/json" -d '{"resetSession": true}'
+```
+
+> **Note:** The `actions` answers are empty (`{"@type": "POS session actions"}`); read the session or the cart to see what happened. A key that lacks the scope gets `200 null`, not a `403`.
 
 ---
 
