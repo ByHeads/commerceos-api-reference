@@ -55,6 +55,7 @@ commerceos-api-reference/
 │   └── creating-skills.md        # How to create Claude skills
 ├── reference/
 │   ├── overview.md               # API basics, auth, endpoints
+│   ├── upgrading-to-26-2-2.md    # What changed for clients written against an older release; the one page that names versions
 │   ├── users.md                  # User accounts and lifecycle
 │   ├── credentials.md            # The nine credential types, auth providers
 │   ├── user-roles.md             # Roles, permissions, role assignments
@@ -83,7 +84,7 @@ commerceos-api-reference/
 │   │   ├── purchasing.md         # Purchase orders, deliveries and supplier returns
 │   │   ├── products.md           # Product catalog management
 │   │   ├── stock.md              # Stock and inventory
-│   │   └── vat.md                # VAT and tax handling
+│   │   └── vat.md                # VAT classes, areas and rules; prices including VAT
 │   └── integration-templates/    # Comprehensive integration guides
 │       ├── crm-customer-sync.md  # CRM customer synchronization
 │       ├── pim-product-sync.md   # PIM product catalog sync
