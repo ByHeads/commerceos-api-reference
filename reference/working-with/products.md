@@ -38,13 +38,13 @@ Products are the core of your catalog in CommerceOS. Every item you sell, track,
 - Products have a `status` lifecycle: `Active`, `Inactive`, or `Pending`
 - Products support multiple barcodes (GTIN) and PLU codes
 - Assortment contexts allow different article numbers per owner (multi-tenant support)
-- VAT codes cascade down from parent groups if not set on the product
+- A product's VAT class is its own or the nearest ancestor group's (`vatClass`)
 - Instance types enable tracking of serialized goods (devices, plans, accessories)
 
 **Domain Relationships:**
 ```
 Products  ↔  Prices (which sellers can sell at what price)
-    ↔  VAT Codes (tax rates cascade from product groups)
+    ↔  VAT classes (`vatClass`, inherited from product groups)
     ↔  Stock (inventory levels at stock places)
     ↔  Orders (products appear as order items)
     ↔  Receipts (proof of sale, downstream from orders)
@@ -68,7 +68,7 @@ Products  ↔  Prices (which sellers can sell at what price)
 | **Assortment Context** | Per-owner settings including article number and supplier |
 | **Instance Type** | Classification that determines tracking behavior (e.g., "MobileDevice" enables IMEI tracking) |
 | **Instance Properties** | Pre-defined variant properties (e.g., size: "M", color: "Blue") |
-| **VAT Code** | Tax rate applied to the product (or inherited from parent group) |
+| **VAT Class** | Country-neutral classification (Food, Books, Standard rate) that the VAT rules of each area key on; set on the product or inherited from its group |
 | **Stock Level** | Quantity of product at a specific location |
 
 ---
@@ -139,7 +139,8 @@ GET /v1/products~where(status=Pending)~orderBy(createdAt:desc)~take(100)
 | `hiddenInPos` | boolean | On products and families: the till refuses the product while it is set (v26.1.5 and later). Not in the default response; ask with `~with(hiddenInPos)`. See [What Makes a Product Show Up and Sell](assortments.md#what-makes-a-product-show-up-and-sell) |
 | `instanceType` | string | Variant type (e.g., "MobileDevice", "Apparel") |
 | `instanceProperties` | object | Pre-defined variant values (e.g., size, color) |
-| `defaultVatCode` | reference | VAT rate for this product |
+| `vatClass` | reference | The product's VAT class, own or inherited. Not in the default read: `~with(vatClass)`. `null` clears the product's own class — see [Assigning VAT to products](vat.md#assigning-vat-to-products) |
+| `vatRates` | array (read-only) | Treatment and rate per VAT area for the class in effect. `~with(vatRates)` |
 | `maxDiscountPercentage` | decimal | Cap on automatic discounts for this node, inherited by the nodes under it (v26.1.10 and later) — see [Maximum Discount Percentage](#maximum-discount-percentage-maxdiscountpercentage) |
 | `parentGroup` | reference | Parent product group |
 | `assortmentContexts` | array | Per-owner settings; see [Assortments](assortments.md) |
@@ -213,7 +214,7 @@ POST /v1/products
   "gtin": ["7312345678901", "7312345678902"],
   "plu": ["1234"],
   "status": "Active",
-  "defaultVatCode": {"identifiers": {"percentage": "25"}}
+  "vatClass": {"identifiers": {"com.heads.seedID": "vat-class-standard"}}
 }
 ```
 
@@ -241,7 +242,7 @@ POST /v1/products
   "name": "Smartphone Pro Max",
   "status": "Active",
   "instanceType": "MobileDevice",
-  "defaultVatCode": {"identifiers": {"percentage": "25"}}
+  "vatClass": {"identifiers": {"com.heads.seedID": "vat-class-standard"}}
 }
 ```
 
@@ -371,7 +372,7 @@ POST /v1/products
   "instanceType": "MobileDevice",
   "gtin": ["0194252123456"],
   "status": "Active",
-  "defaultVatCode": {"identifiers": {"percentage": "25"}}
+  "vatClass": {"identifiers": {"com.heads.seedID": "vat-class-standard"}}
 }
 
 # Create associated plan with MobilePlan type
@@ -381,7 +382,7 @@ POST /v1/products
   "name": "Unlimited Data Plan",
   "instanceType": "MobilePlan",
   "status": "Active",
-  "defaultVatCode": {"identifiers": {"percentage": "25"}}
+  "vatClass": {"identifiers": {"com.heads.seedID": "vat-class-standard"}}
 }
 ```
 
@@ -600,7 +601,7 @@ GET /v1/product-groups/com.example.groupId=SUMMER-2024~with(members)
 # Set default VAT for entire group
 PATCH /v1/product-groups/com.example.groupId=SUMMER-2024-APPAREL
 {
-  "defaultVatCode": {"identifiers": {"percentage": "25"}}
+  "vatClass": {"identifiers": {"com.heads.seedID": "vat-class-standard"}}
 }
 ```
 
@@ -900,17 +901,17 @@ GET /v1/products/com.example.sku=PROD-001/categories/count
    {"gtin": ["7312345678901"]}
    ```
 
-4. **VAT code reference:**
+4. **VAT class reference:**
    ```bash
-   # Reference by percentage
-   {"defaultVatCode": {"identifiers": {"percentage": "25"}}}
+   # Reference by seed ID; the class must exist (the pack ships twelve)
+   {"vatClass": {"identifiers": {"com.heads.seedID": "vat-class-standard"}}}
    ```
 
 ### Preconditions
 
 - `DELETE /v1/products/{id}` is a **no-op** (the product resource doesn't implement purge). It answers `200 {"deletedCount": 0, "info": "Nothing happened"}` even from a token holding `write:api`, so the response confirms the no-op rather than leaving you to check — see [What a `DELETE` reports](../overview.md#what-a-delete-reports). To retire a product, use `PATCH` with `{"status": "Inactive"}` instead.
 - Status changes to `Inactive` preserve historical data and keep the product available for order history/reporting
-- VAT codes must exist before referencing
+- A product with no VAT class, own or inherited, cannot be sold (400 `No VAT rate applies to …`) — see [VAT classes](vat.md#vat-classes)
 
 ---
 
@@ -920,15 +921,13 @@ This section provides a phased approach to building a catalog integration.
 
 ### Phase 1: Foundation
 
-**Checkpoint:** Categories and VAT codes exist
+**Checkpoint:** Categories exist and the VAT area is installed
 
 ```bash
-# 1. Create VAT codes
-PUT /v1/vat-codes/percentage=25
-{"identifiers": {"percentage": 25}}
-
-PUT /v1/vat-codes/percentage=12
-{"identifiers": {"percentage": 12}}
+# 1. Install the VAT area (one request, idempotent)
+POST /v1/vat-areas
+[{"identifiers": {"com.heads.seedID": "vat-area-se"}}]
+# the twelve pack classes come with it; assign them with vatClass on groups or products
 
 # 2. Create category structure
 POST /v1/product-categories
@@ -953,7 +952,7 @@ PUT /v1/products/com.example.sku=PROD-001
   "name": "Product Name",
   "status": "Active",
   "gtin": ["7312345678901"],
-  "defaultVatCode": {"identifiers": {"percentage": "25"}}
+  "vatClass": {"identifiers": {"com.heads.seedID": "vat-class-standard"}}
 }
 
 # 4. Assign to categories
@@ -1025,7 +1024,7 @@ POST /v1/products
   "status": "Active",
   "instanceType": "MobileDevice",
   "gtin": ["8806095070568"],
-  "defaultVatCode": {"identifiers": {"percentage": "25"}},
+  "vatClass": {"identifiers": {"com.heads.seedID": "vat-class-standard"}},
   "promotionTitle": {"en-US": "Latest Galaxy Flagship"},
   "keywords": "samsung galaxy s24 android smartphone"
 }
@@ -1052,7 +1051,7 @@ POST /v1/products
   "name": "5G Unlimited Plan",
   "status": "Active",
   "instanceType": "MobilePlan",
-  "defaultVatCode": {"identifiers": {"percentage": "25"}}
+  "vatClass": {"identifiers": {"com.heads.seedID": "vat-class-standard"}}
 }
 ```
 
@@ -1178,8 +1177,9 @@ GET /v1/trade-orders/com.example.orderId=ORD-2024-001~with(items)
    ```
 
 5. **VAT inheritance:**
-   - If product has no `defaultVatCode`, it inherits from `parentGroup`
-   - Ensure either product or group has a VAT code set
+   - `vatClass` reads the class in effect: the product's own, else the nearest ancestor's
+   - Set it on the group once and let the products inherit; set it on a product to override
+   - A product with no class, own or inherited, cannot be sold
    - `maxDiscountPercentage` is inherited the same way — see [Maximum Discount Percentage](#maximum-discount-percentage-maxdiscountpercentage)
 
 6. **Instance type is on product, not order:**
@@ -1200,7 +1200,7 @@ GET /v1/trade-orders/com.example.orderId=ORD-2024-001~with(items)
 ## Related Guides
 
 - [Prices](prices.md) - Price creation, validity periods, seller/buyer scoping
-- [VAT](vat.md) - Tax codes, rates, net/gross calculations
+- [VAT](vat.md) - VAT classes, areas and rules, prices including VAT, net/gross formulas
 - [Orders](orders.md) - Using products in trade orders, IMEI tracking
 - [Stock](stock.md) - Inventory management, stock places
 - [Assortments](assortments.md) - Assortment owners, contexts, what makes a product show up and sell

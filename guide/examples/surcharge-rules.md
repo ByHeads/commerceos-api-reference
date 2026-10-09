@@ -5,40 +5,34 @@ Curl examples for surcharge rules, surcharge reasons, and how surcharges appear 
 **Base URL:** `https://example.app.heads.com/api/v1`
 **API Key:** `banana` (passed via Basic Auth with empty username: `-u ":banana"`)
 
-> **See also:** [Examples Index](../examples.md) | [Discount Rules](./discount-rules.md) | [Orders & Fulfillment](./orders.md) | [Point of Sale](./pos.md) | [Reference Documentation](../../reference/)
+> **See also:** [Examples Index](../examples.md) | [Discount Rules](./discount-rules.md) | [Orders & Fulfillment](./orders.md) | [Point of Sale](./pos.md) | [Working with VAT](../../reference/working-with/vat.md) | [Reference Documentation](../../reference/)
 
 ---
 
 ## Surcharge Rule Anatomy
 
-A surcharge rule extends `trade rule` (the same base type as discount rules and price rules). Key properties:
+A surcharge rule carries its products, its currency and its value itself. Key properties:
 
 | Property | Purpose |
 |----------|---------|
-| `seller` / `buyer` | Scope the rule to specific sellers or buyer groups. Use `include`/`exclude` arrays with identifier references. |
-| `currency` | Restrict to specific currencies (e.g., `{"currencyCode": "SEK"}`). |
-| `time` | Optional validity window with `start` and `end` dates (ISO format). Both bounds are optional; see [Update a surcharge rule](#update-a-surcharge-rule) for the merge and validation rules when changing one. |
-| `items` | A **named map** of item groups. Each key defines a group with `include`/`exclude` arrays and optional `atLeast`/`atMost` quantity constraints. |
-| `effects` | Array of effect objects. Each effect must include `@type` and which items it targets. |
-| `effects[].@type` | Effect type: `"fixed surcharge rule effect"` (flat amount) or `"percentage surcharge rule effect"` (percentage of item value). Anything else costs you the effect's value — see the note below. |
-| `effects[].items` | **Must reference keys from the `items` map** (e.g., `["thing"]`). |
+| `products` | The product nodes the rule applies to: products, families, groups or product categories, each with `@type` and `identifiers`. **Replaces on set.** |
+| `kind` | `"Fixed"` (a flat amount per unit) or `"Percentage"` (a share of the unit value). Default `Fixed` on create. |
+| `amount` | For `Fixed`: the surcharge per unit. Net unless `includesTax` is `true`. |
+| `includesTax` | For `Fixed`: `true` means `amount` is the surcharge as the customer sees it, VAT included; the net is derived from the line's own rate. Default `false`. |
+| `percentage` | For `Percentage`: a straight percentage of the unit value, `0`–`100`. |
+| `currency` | One currency reference, for a fixed amount (e.g. `{"identifiers": {"currencyCode": "SEK"}}`). |
+| `worthAtLeast` / `worthAtMost` | Optional unit value bounds, excluding VAT: the rule applies only to units priced inside them. |
 | `reason` | A reference to a `surcharge reason` explaining the fee (shown on receipts). |
+| `seller` / `buyer` | Scope the rule to specific sellers or buyer groups. Use `include`/`exclude` arrays with identifier references. Non-essential. |
+| `time` | Optional validity window with `start` and `end` dates (ISO format). Both bounds are optional; see [Update a surcharge rule](#update-a-surcharge-rule) for the merge and validation rules when changing one. Non-essential. |
 
-> **Only those two `@type` values carry a value, and the others fail quietly.** `amount` is declared by `fixed surcharge rule effect` and `percentage` by `percentage surcharge rule effect` — the abstract types above them declare neither. So `"surcharge rule effect"`, `"trade rule effect"`, an omitted `@type`, and even `"price rule effect"` (the price side's effect, accepted here because it satisfies everything the effects array's element type declares) are all accepted, and store an effect with no value on it. The amount is dropped on the way in and nothing reports it. Read the rule's `effects` back and check the `@type` you got:
->
-> ```bash
-> GET /v1/surcharge-rules/com.example.surchargeRuleId=pant-1kr/effects
-> # [{"@type": "fixed surcharge rule effect", "items": ["thing"], "amount": "0.892857"}]  <- kept
-> # [{"@type": "trade rule effect", "items": ["thing"]}]                                   <- the amount is gone
-> ```
->
-> Only a key the schema does not define at all (`"no such effect"`) or one that fits nothing (`"product"`) is a clean `400`. See [gotcha 47](../../reference/common-gotchas.md#47-a-declared-type-key-is-not-always-one-you-can-write).
+A `Fixed` rule reads `kind`, `amount`, `includesTax`, `currency` (expanded) and `products` (an array), and no `percentage`; a `Percentage` rule reads `kind`, `percentage` and no `amount`.
 
 **Key differences from discount rules:**
 - No `phase` — surcharge rules have no priority ordering. All matching rules are applied (additive).
-- No `includesTax` — the `amount` on fixed effects is **always excluding VAT**.
 - No `multiplicity` or `targeting` — surcharges apply per unit to all matching items.
 - No manual surcharges — surcharges are always automatic. There is no equivalent of `manualDiscount`.
+- `includesTax` means the same thing on both: on a surcharge rule it says whether the fixed `amount` is gross.
 
 ---
 
@@ -126,7 +120,7 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/surcharge-reaso
 
 This is the primary use case for surcharge rules. Swedish "pant" adds a fixed deposit fee to beverages at checkout — 1 SEK for cans, 2 SEK for PET bottles, etc.
 
-### Create a pant surcharge rule (1 SEK deposit)
+### Create a pant surcharge rule (1 SEK deposit, as the customer sees it)
 
 ```bash
 curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/surcharge-rules" \
@@ -135,56 +129,43 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/surcharge-rules"
     "@type": "surcharge rule",
     "identifiers": { "com.example.surchargeRuleId": "pant-1kr" },
     "name": "Pant 1kr",
-    "currency": {
-      "include": [{ "identifiers": { "currencyCode": "SEK" } }]
-    },
-    "items": {
-      "thing": {
-        "@type": "product condition",
-        "include": [
-          { "@type": "product category", "identifiers": { "com.example.categoryId": "beverages-with-deposit" } }
-        ],
-        "exclude": []
-      }
-    },
-    "effects": [
-      {
-        "@type": "fixed surcharge rule effect",
-        "items": ["thing"],
-        "amount": "0.892857"
-      }
+    "products": [
+      { "@type": "product category", "identifiers": { "com.example.categoryId": "beverages-with-deposit" } }
     ],
+    "currency": { "identifiers": { "currencyCode": "SEK" } },
+    "kind": "Fixed",
+    "amount": "1",
+    "includesTax": true,
     "reason": {
       "identifiers": { "com.example.surchargeReasonId": "pant" }
     }
   }'
 ```
 
-> **CRITICAL: The `amount` is always excluding VAT.**
+What it reads back:
+
+```json
+{
+  "@type": "surcharge rule",
+  "identifiers": { "key": "5d617830d19739b7139d08ed1c5f3c65", "com.example.surchargeRuleId": "pant-1kr" },
+  "name": "Pant 1kr",
+  "products": [ { "@type": "product category", "identifiers": { "com.example.categoryId": "beverages-with-deposit" }, "name": "Beverages with deposit" } ],
+  "currency": { "@type": "currency", "identifiers": { "currencyCode": "SEK" } },
+  "kind": "Fixed",
+  "amount": "1",
+  "includesTax": true,
+  "reason": { "@type": "surcharge reason", "identifiers": { "com.example.surchargeReasonId": "pant" }, "name": "Pant", "active": true, "discountable": false }
+}
+```
+
+> **`includesTax` decides which figure `amount` is.** With `"includesTax": true`, `amount` is the deposit the customer pays, and the net is derived from each line's own VAT rate: `1` on a 12 % line is `0.892857` excl. VAT, on a 25 % line `0.8`. With `includesTax` false or omitted, `amount` is the net surcharge and VAT is added on top. The two forms below both charge 1 kr on a 12 % beverage:
 >
-> This is the most common integration mistake. The `amount` field on `fixed surcharge rule effect` is the surcharge amount **before VAT**. For a consumer-facing 1 SEK pant deposit at 12% VAT, the excl-VAT amount is:
->
+> ```json
+> { "kind": "Fixed", "amount": "1",        "includesTax": true  }
+> { "kind": "Fixed", "amount": "0.892857", "includesTax": false }
 > ```
-> 1 SEK / 1.12 = 0.892857 SEK (excl VAT)
-> ```
 >
-> The system adds VAT on top to arrive at the consumer-facing price.
-
-### Swedish Pant Deposit Reference Table
-
-These are the exact values used in production. All assume 12% VAT (standard Swedish food/beverage rate):
-
-| Consumer-facing deposit | VAT rate | `amount` value (excl VAT) |
-|---|---|---|
-| 1 SEK | 12% | `0.892857` |
-| 2 SEK | 12% | `1.785714` |
-| 3 SEK | 12% | `2.678571` |
-| 4 SEK | 12% | `3.571429` |
-| 5 SEK | 12% | `4.464286` |
-| 10 SEK | 12% | `8.928571` |
-| 24 SEK | 12% | `21.428571` |
-
-Formula: `amount = consumer_facing_price / (1 + vat_rate)`
+> Prefer the first: it is what the customer sees, it survives a rate change, and one rule serves lines at different rates.
 
 ### Get a surcharge rule
 
@@ -202,6 +183,8 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/surcharge-rules
   }'
 ```
 
+**Changing the value.** `amount`, `includesTax`, `percentage` and `kind` are ordinary members: a `PATCH` with `{"amount": "2"}` changes the deposit, and `{"kind": "Percentage", "percentage": "2.5"}` turns the rule into a percentage rule.
+
 **Moving a rule's validity window.** The `time` member is merged with what is stored, then the **resulting** window is validated. Send both bounds in one call and they are validated and applied together — so a seasonal rule can be moved to a period that starts after its current end in a single request:
 
 ```bash
@@ -216,7 +199,7 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/surcharge-rules
   }'
 ```
 
-A bound you omit keeps its stored value; a bound sent as `null` is cleared (open-ended in that direction). A **single-bound** patch that inverts the window against the stored counterpart — pushing `start` past the stored `end` — is rejected with `400` and `The end date, if specified, must be greater than the start date.`, leaving the rule unchanged. See [Resource Patterns → Validity Window (`time`)](../../reference/resource-patterns.md#validity-window-time) for the full rules, which are shared with discount rules and price rules.
+A bound you omit keeps its stored value; a bound sent as `null` is cleared (open-ended in that direction). A **single-bound** patch that inverts the window against the stored counterpart — pushing `start` past the stored `end` — is rejected with `400` and `The end date, if specified, must be greater than the start date.`, leaving the rule unchanged. See [Resource Patterns → Validity Window (`time`)](../../reference/resource-patterns.md#validity-window-time) for the full rules, which are shared with discount rules.
 
 ### Delete a surcharge rule
 
@@ -233,98 +216,37 @@ A tiered pant system uses separate surcharge rules per tier, all sharing the sam
 ### Create all pant tiers at once
 
 ```bash
-# Tier 1: Small cans (33cl) — 1 SEK deposit
 curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/surcharge-rules" \
   -H "Content-Type: application/json" \
-  -d '{
-    "@type": "surcharge rule",
-    "identifiers": { "com.example.surchargeRuleId": "pant-1kr" },
-    "name": "Pant 1kr",
-    "currency": {
-      "include": [{ "identifiers": { "currencyCode": "SEK" } }]
+  -d '[
+    {
+      "@type": "surcharge rule",
+      "identifiers": { "com.example.surchargeRuleId": "pant-1kr" },
+      "name": "Pant 1kr",
+      "products": [ { "@type": "product category", "identifiers": { "com.example.categoryId": "pant-1kr-products" } } ],
+      "currency": { "identifiers": { "currencyCode": "SEK" } },
+      "kind": "Fixed", "amount": "1", "includesTax": true,
+      "reason": { "identifiers": { "com.example.surchargeReasonId": "pant" } }
     },
-    "items": {
-      "thing": {
-        "@type": "product condition",
-        "include": [
-          { "@type": "product category", "identifiers": { "com.example.categoryId": "pant-1kr-products" } }
-        ],
-        "exclude": []
-      }
+    {
+      "@type": "surcharge rule",
+      "identifiers": { "com.example.surchargeRuleId": "pant-2kr" },
+      "name": "Pant 2kr",
+      "products": [ { "@type": "product category", "identifiers": { "com.example.categoryId": "pant-2kr-products" } } ],
+      "currency": { "identifiers": { "currencyCode": "SEK" } },
+      "kind": "Fixed", "amount": "2", "includesTax": true,
+      "reason": { "identifiers": { "com.example.surchargeReasonId": "pant" } }
     },
-    "effects": [
-      {
-        "@type": "fixed surcharge rule effect",
-        "items": ["thing"],
-        "amount": "0.892857"
-      }
-    ],
-    "reason": {
-      "identifiers": { "com.example.surchargeReasonId": "pant" }
+    {
+      "@type": "surcharge rule",
+      "identifiers": { "com.example.surchargeRuleId": "pant-4kr" },
+      "name": "Pant 4kr",
+      "products": [ { "@type": "product category", "identifiers": { "com.example.categoryId": "pant-4kr-products" } } ],
+      "currency": { "identifiers": { "currencyCode": "SEK" } },
+      "kind": "Fixed", "amount": "4", "includesTax": true,
+      "reason": { "identifiers": { "com.example.surchargeReasonId": "pant" } }
     }
-  }'
-
-# Tier 2: Large bottles (PET 50cl–150cl) — 2 SEK deposit
-curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/surcharge-rules" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "@type": "surcharge rule",
-    "identifiers": { "com.example.surchargeRuleId": "pant-2kr" },
-    "name": "Pant 2kr",
-    "currency": {
-      "include": [{ "identifiers": { "currencyCode": "SEK" } }]
-    },
-    "items": {
-      "thing": {
-        "@type": "product condition",
-        "include": [
-          { "@type": "product category", "identifiers": { "com.example.categoryId": "pant-2kr-products" } }
-        ],
-        "exclude": []
-      }
-    },
-    "effects": [
-      {
-        "@type": "fixed surcharge rule effect",
-        "items": ["thing"],
-        "amount": "1.785714"
-      }
-    ],
-    "reason": {
-      "identifiers": { "com.example.surchargeReasonId": "pant" }
-    }
-  }'
-
-# Tier 3: Multi-packs / large containers — 4 SEK deposit
-curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/surcharge-rules" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "@type": "surcharge rule",
-    "identifiers": { "com.example.surchargeRuleId": "pant-4kr" },
-    "name": "Pant 4kr",
-    "currency": {
-      "include": [{ "identifiers": { "currencyCode": "SEK" } }]
-    },
-    "items": {
-      "thing": {
-        "@type": "product condition",
-        "include": [
-          { "@type": "product category", "identifiers": { "com.example.categoryId": "pant-4kr-products" } }
-        ],
-        "exclude": []
-      }
-    },
-    "effects": [
-      {
-        "@type": "fixed surcharge rule effect",
-        "items": ["thing"],
-        "amount": "3.571429"
-      }
-    ],
-    "reason": {
-      "identifiers": { "com.example.surchargeReasonId": "pant" }
-    }
-  }'
+  ]'
 ```
 
 **Key pattern:** All three rules share the same `reason` (Pant). Each targets a different product category. When a product moves from the "pant-1kr-products" category to "pant-2kr-products", the correct surcharge applies automatically — no rule changes needed.
@@ -333,7 +255,7 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/surcharge-rules"
 
 ## Section 4: Percentage Surcharge Rules
 
-Percentage surcharges add a fee calculated as a percentage of the item's value. Use these for fees that should scale with price.
+Percentage surcharges add a fee calculated as a percentage of the unit value. Use these for fees that should scale with price.
 
 ### Create a percentage-based environmental fee (5% on electronics)
 
@@ -344,36 +266,24 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/surcharge-rules"
     "@type": "surcharge rule",
     "identifiers": { "com.example.surchargeRuleId": "electronics-env-fee" },
     "name": "Environmental fee - Electronics",
-    "items": {
-      "product": {
-        "@type": "product condition",
-        "include": [
-          { "@type": "product category", "identifiers": { "com.example.categoryId": "electronics" } }
-        ],
-        "exclude": [],
-        "atLeast": 1
-      }
-    },
-    "effects": [
-      {
-        "@type": "percentage surcharge rule effect",
-        "items": ["product"],
-        "percentage": "5"
-      }
+    "products": [
+      { "@type": "product category", "identifiers": { "com.example.categoryId": "electronics" } }
     ],
+    "kind": "Percentage",
+    "percentage": "5",
     "reason": {
       "identifiers": { "com.example.surchargeReasonId": "environmental-fee" }
     }
   }'
 ```
 
-> **Note:** The `percentage` field on `percentage surcharge rule effect` is a straight percentage (e.g., `"5"` means 5%). Unlike fixed surcharges, there is no VAT calculation concern in the rule definition — the percentage is applied to the item's price, and VAT is calculated on the resulting surcharge amount.
+> **Note:** `percentage` is a straight percentage (`"5"` means 5 %) of the unit value, and must be between `0` and `100`; `"100"` is accepted, `"150"` is `400 A surcharge percentage must be between 0 and 100.`. There is no `includesTax` question for a percentage rule: the surcharge is a share of the line, and VAT is calculated on the resulting amount at the line's rate. A `Percentage` rule needs no `currency`.
 
 ---
 
 ## Section 5: Scoped Surcharge Rules
 
-Like discount rules, surcharge rules can be scoped by seller, currency, time period, or any combination.
+Like discount rules, surcharge rules can be scoped by seller, time period, unit value, or any combination. A fixed amount is in one currency, so a deposit in another currency is a second rule.
 
 ### Scoped by seller (store-specific surcharge)
 
@@ -389,95 +299,52 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/surcharge-rules"
     "seller": {
       "include": [{ "identifiers": { "com.example.storeId": "store-a" } }]
     },
-    "items": {
-      "thing": {
-        "@type": "product condition",
-        "include": [
-          { "@type": "product category", "identifiers": { "com.example.categoryId": "plastic-bags" } }
-        ],
-        "exclude": []
-      }
-    },
-    "effects": [
-      {
-        "@type": "fixed surcharge rule effect",
-        "items": ["thing"],
-        "amount": "5.357143"
-      }
+    "products": [
+      { "@type": "product category", "identifiers": { "com.example.categoryId": "plastic-bags" } }
     ],
+    "currency": { "identifiers": { "currencyCode": "SEK" } },
+    "kind": "Fixed",
+    "amount": "6",
+    "includesTax": true,
     "reason": {
       "identifiers": { "com.example.surchargeReasonId": "bag-handling-fee" }
     }
   }'
 ```
 
-### Scoped by currency
+### One currency per fixed rule
 
-Pant amounts are currency-specific. If you operate in multiple currencies, create separate rules:
+A fixed amount names its currency. If you operate in more than one, create a rule per currency:
 
 ```bash
-# SEK rule: 1 SEK pant at 12% VAT
+# SEK rule: 1 SEK pant
 curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/surcharge-rules" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "surcharge rule",
     "identifiers": { "com.example.surchargeRuleId": "pant-1kr-sek" },
     "name": "Pant 1kr (SEK)",
-    "currency": {
-      "include": [{ "identifiers": { "currencyCode": "SEK" } }]
-    },
-    "items": {
-      "thing": {
-        "@type": "product condition",
-        "include": [
-          { "@type": "product category", "identifiers": { "com.example.categoryId": "pant-1kr-products" } }
-        ],
-        "exclude": []
-      }
-    },
-    "effects": [
-      {
-        "@type": "fixed surcharge rule effect",
-        "items": ["thing"],
-        "amount": "0.892857"
-      }
-    ],
-    "reason": {
-      "identifiers": { "com.example.surchargeReasonId": "pant" }
-    }
+    "products": [ { "@type": "product category", "identifiers": { "com.example.categoryId": "pant-1kr-products" } } ],
+    "currency": { "identifiers": { "currencyCode": "SEK" } },
+    "kind": "Fixed", "amount": "1", "includesTax": true,
+    "reason": { "identifiers": { "com.example.surchargeReasonId": "pant" } }
   }'
 
-# NOK rule: 2 NOK deposit at 15% VAT (Norwegian equivalent)
+# NOK rule: 2 NOK deposit
 curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/surcharge-rules" \
   -H "Content-Type: application/json" \
   -d '{
     "@type": "surcharge rule",
     "identifiers": { "com.example.surchargeRuleId": "pant-2nok" },
     "name": "Pant 2kr (NOK)",
-    "currency": {
-      "include": [{ "identifiers": { "currencyCode": "NOK" } }]
-    },
-    "items": {
-      "thing": {
-        "@type": "product condition",
-        "include": [
-          { "@type": "product category", "identifiers": { "com.example.categoryId": "pant-1kr-products" } }
-        ],
-        "exclude": []
-      }
-    },
-    "effects": [
-      {
-        "@type": "fixed surcharge rule effect",
-        "items": ["thing"],
-        "amount": "1.739130"
-      }
-    ],
-    "reason": {
-      "identifiers": { "com.example.surchargeReasonId": "pant" }
-    }
+    "products": [ { "@type": "product category", "identifiers": { "com.example.categoryId": "pant-1kr-products" } } ],
+    "currency": { "identifiers": { "currencyCode": "NOK" } },
+    "kind": "Fixed", "amount": "2", "includesTax": true,
+    "reason": { "identifiers": { "com.example.surchargeReasonId": "pant" } }
   }'
 ```
+
+With `includesTax: true` the two rules say what the customer pays in each country; the net is derived from each line's rate in the area of sale, so the Norwegian rate never has to be typed into the Swedish rule or vice versa.
 
 ### Scoped by time (seasonal surcharge)
 
@@ -494,31 +361,41 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/surcharge-rules"
       "start": "2026-06-01T00:00:00",
       "end": "2026-08-31T23:59:59"
     },
-    "items": {
-      "thing": {
-        "@type": "product condition",
-        "include": [
-          { "@type": "product category", "identifiers": { "com.example.categoryId": "plastic-bags" } }
-        ],
-        "exclude": []
-      }
-    },
-    "effects": [
-      {
-        "@type": "fixed surcharge rule effect",
-        "items": ["thing"],
-        "amount": "4.464286"
-      }
+    "products": [
+      { "@type": "product category", "identifiers": { "com.example.categoryId": "plastic-bags" } }
     ],
+    "currency": { "identifiers": { "currencyCode": "SEK" } },
+    "kind": "Fixed",
+    "amount": "5",
+    "includesTax": true,
     "reason": {
       "identifiers": { "com.example.surchargeReasonId": "bag-handling-fee" }
     }
   }'
 ```
 
-### Combined scope (store + currency + time)
+### Scoped by unit value
 
-A tariff scoped to a specific store, in SEK, during a defined period:
+`worthAtLeast` and `worthAtMost` bound the unit value, excluding VAT, the rule applies to. A deposit on priced units only, so a free sample carries none:
+
+```bash
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/surcharge-rules" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "@type": "surcharge rule",
+    "identifiers": { "com.example.surchargeRuleId": "pant-1kr-priced" },
+    "name": "Pant 1kr (priced units)",
+    "products": [ { "@type": "product category", "identifiers": { "com.example.categoryId": "pant-1kr-products" } } ],
+    "currency": { "identifiers": { "currencyCode": "SEK" } },
+    "kind": "Fixed", "amount": "1", "includesTax": true,
+    "worthAtLeast": "0.01",
+    "reason": { "identifiers": { "com.example.surchargeReasonId": "pant" } }
+  }'
+```
+
+### Combined scope (store + time + percentage)
+
+A tariff scoped to a specific store during a defined period:
 
 ```bash
 curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/surcharge-rules" \
@@ -530,30 +407,15 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/surcharge-rules"
     "seller": {
       "include": [{ "identifiers": { "com.example.storeId": "store-b" } }]
     },
-    "currency": {
-      "include": [{ "identifiers": { "currencyCode": "SEK" } }]
-    },
     "time": {
       "start": "2026-01-01T00:00:00",
       "end": "2026-03-31T23:59:59"
     },
-    "items": {
-      "product": {
-        "@type": "product condition",
-        "include": [
-          { "@type": "product category", "identifiers": { "com.example.categoryId": "imported-goods" } }
-        ],
-        "exclude": [],
-        "atLeast": 1
-      }
-    },
-    "effects": [
-      {
-        "@type": "percentage surcharge rule effect",
-        "items": ["product"],
-        "percentage": "3"
-      }
+    "products": [
+      { "@type": "product category", "identifiers": { "com.example.categoryId": "imported-goods" } }
     ],
+    "kind": "Percentage",
+    "percentage": "3",
     "reason": {
       "identifiers": { "com.example.surchargeReasonId": "tariff" }
     }
@@ -704,26 +566,27 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/surcharge-rules/c
 ### Get specific fields only
 
 ```bash
-curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/surcharge-rules?fields=name,effects,reason"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/surcharge-rules~just(name,kind,amount,includesTax,reason)"
+```
+
+```json
+[{"@type":"surcharge rule","name":"Pant 1kr","kind":"Fixed","amount":"1","includesTax":true,"reason":{"@type":"surcharge reason","identifiers":{"com.example.surchargeReasonId":"pant"},"name":"Pant","active":true,"discountable":false}}]
+```
+
+### Rules by kind, and the gross-basis ones
+
+```bash
+# Percentage rules
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/surcharge-rules~where(kind=Percentage)"
+
+# Fixed rules whose amount is the customer-facing figure
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/surcharge-rules~where(includesTax=true)~just(name,amount,currency)"
 ```
 
 ### List all surcharge reasons
 
 ```bash
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/surcharge-reasons"
-```
-
-### List all surcharge rule effects
-
-```bash
-# All effect types
-curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/surcharge-rule-effects"
-
-# Fixed effects only
-curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/fixed-surcharge-rule-effects"
-
-# Percentage effects only
-curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/percentage-surcharge-rule-effects"
 ```
 
 ---
@@ -733,11 +596,12 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/percentage-surcha
 | Aspect | Discount Rule | Surcharge Rule |
 |---|---|---|
 | Direction | Reduces price | Adds fee |
-| Effect types | Percentage, Fixed reduction, Fixed price, Package | Percentage, Fixed amount |
+| Value | Effects: percentage, fixed reduction, fixed price, package | `kind`: `Fixed` (`amount`) or `Percentage` (`percentage`), on the rule itself |
+| Products | `items` map with include/exclude and quantity conditions | `products` array |
 | Has `phase` | Yes (priority ordering) | No |
 | Has `reason` | Yes (`discount reason`) | Yes (`surcharge reason`) |
 | Manual override | Yes (`manualDiscounts` on trade order items) | No manual surcharges |
-| `includesTax` field | Yes (on discount rule) | No (amount is always excl VAT) |
+| `includesTax` field | Yes (on discount rule) | Yes (on a fixed amount) |
 | `multiplicity` / `targeting` | Yes (`PerUnit`/`PerApplication`, `All`/`LowestValue`/`HighestValue`) | No |
 | Receipt field | `discountAmount`, `discounts[]` | `surchargeAmount`, `surcharges[]` |
 | Common use cases | Campaigns, loyalty, volume tiers, staff discount | Pant/deposits, environmental fees, bag fees, tariffs |
@@ -746,13 +610,13 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/percentage-surcha
 
 ## Section 10: Best Practices and Pitfalls
 
-### Amount is always excl VAT
+### Say which figure `amount` is
 
-The most common integration mistake. If your consumer-facing deposit is 2 SEK and VAT is 12%, the `amount` must be `1.785714`, not `2`. Use the formula:
+A deposit the customer sees as 2 SEK is `{"kind": "Fixed", "amount": "2", "includesTax": true}`. Sent without the flag, `2` is a net surcharge and the customer pays `2.24` at 12 %. If you keep net figures, say so: `{"amount": "1.785714", "includesTax": false}` is the same 2 kr deposit on a 12 % line.
 
-```
-amount = consumer_facing_price / (1 + vat_rate)
-```
+### Prefer the gross form for consumer-facing fees
+
+A gross amount is one figure per rule however many rates the matching products carry (the net is stripped per line at its own rate), and it stays put when a rate changes. A net figure has to be recomputed on both counts.
 
 ### One reason, many rules
 
@@ -760,7 +624,7 @@ Use a single "Pant" surcharge reason shared across all pant tiers (1kr, 2kr, 4kr
 
 ### Product categories drive matching
 
-Assign products to pant categories (e.g., "Pant 1kr products", "Pant 2kr products") and create surcharge rules targeting those categories. When a product changes category, the correct surcharge applies automatically — no rule changes needed.
+Assign products to pant categories (e.g., "Pant 1kr products", "Pant 2kr products") and create surcharge rules targeting those categories. When a product changes category, the correct surcharge applies automatically — no rule changes needed. `products` replaces on set: a `PATCH` with `products` is the whole new list.
 
 ### No manual surcharges
 
@@ -770,9 +634,9 @@ Unlike discounts, surcharges cannot be manually applied at checkout. They are al
 
 Unlike discount rules, surcharge rules don't have a `phase` for priority ordering. All matching surcharge rules are applied additively. If two rules match the same item, both surcharges are added (they don't compete or override each other).
 
-### Currency scoping is critical
+### One currency per fixed rule
 
-Pant amounts are currency-specific. The excl-VAT amount for a "1 SEK" deposit is different from a "1 NOK" deposit because the VAT rates differ. Always create separate rules per currency with the correct excl-VAT amounts.
+A fixed amount is in one currency. Create a rule per currency you sell in; with `includesTax: true` each rule carries the local deposit as the customer sees it.
 
 ### Testing surcharge setup
 
@@ -782,3 +646,5 @@ After creating surcharge rules, verify the setup by creating a test trade order 
 # Check that surcharges appear on the receipt
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/receipts/receiptID=RCP-TEST-001?fields=items.surcharges,surcharges"
 ```
+
+An order line also shows the effect before any receipt exists: a product at 100 net and 25 % with a `Fixed` `2.5` `includesTax: true` rule reads `totalAmount: "127.5"` (`100` + `2` net surcharge, plus 25 %).

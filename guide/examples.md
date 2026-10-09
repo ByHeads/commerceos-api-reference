@@ -15,7 +15,7 @@ Comprehensive curl examples demonstrating the full capabilities of the CommerceO
 |-------|-------------|------|
 | [Organization](./examples/organization.md) | People, companies, stores, and generic agents | CRUD, relations, addresses |
 | [Products & Catalog](./examples/products.md) | Products, categories, families, groups, labels, images | GTIN/PLU lookup, assortment contexts |
-| [Pricing](./examples/pricing.md) | Prices, currencies, VAT codes | Validity periods, buyer restrictions |
+| [Pricing](./examples/pricing.md) | Prices (net or including VAT), currencies, VAT classes | Validity periods, buyer restrictions |
 | [Orders & Fulfillment](./examples/orders.md) | Trade orders, relationships, shipments, payments | Order lifecycle, fulfillment |
 | [Labels](./examples/labels.md) | Labels across all entity types | Type restrictions, filtering, integration patterns |
 | [Discount Rules](./examples/discount-rules.md) | Discount rules, manual discounts, trade restrictions | Promotions, bundles, volume tiers |

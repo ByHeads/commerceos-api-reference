@@ -118,7 +118,7 @@ The company has no stock of its own for the units to land in. `buyers` on the or
 
 ### Purchase Price per Line: `unitAmountExclVat` — long-standing
 
-Put your agreed purchase price on each line as `unitAmountExclVat`, and give each line an identifier of your own:
+Put your agreed purchase price on each line as `unitAmountExclVat`, and give each line an identifier of your own. Purchase prices are written net: `unitAmountExclVat` is always excluding VAT.
 
 ```json
 POST /v1/trade-orders

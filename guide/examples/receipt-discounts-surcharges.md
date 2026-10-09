@@ -325,13 +325,10 @@ Response with pant (bottle deposit) surcharge example:
             "@type": "surcharge rule",
             "identifiers": { "com.example.id": "pant-1kr" },
             "name": "Pant 1kr",
-            "effects": [
-              {
-                "@type": "fixed surcharge rule effect",
-                "items": ["thing"],
-                "amount": "0.892857"
-              }
-            ]
+            "kind": "Fixed",
+            "amount": "1",
+            "includesTax": true,
+            "currency": { "identifiers": { "currencyCode": "SEK" } }
           }
         }
       ]

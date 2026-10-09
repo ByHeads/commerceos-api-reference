@@ -85,12 +85,16 @@ Receipt
   │     ├── discountAmount ───────── Discount amount
   │     ├── discounts[] ──────────── Discount breakdown (item subpaths currently unsupported)
   │     ├── vatPercentage ────────── Tax rate
+  │     ├── vatArea ──────────────── Name of the VAT area the line was taxed in (non-essential)
+  │     ├── vatTreatment ─────────── Standard, ZeroRated, Exempt, ReverseCharge, IntraEuSupply, Export, OutsideScope (non-essential)
+  │     ├── vatExemptionReason ───── VATEX code when the treatment carries one, else null (non-essential)
+  │     ├── supplyKind ───────────── Goods or Services (non-essential)
   │     └── instances[] ──────────── IMEI/serial data (item subpaths currently unsupported)
   ├── payments (Payment[]) ───────── Payment transactions
   │     ├── method ───────────────── Payment method
   │     ├── amount ───────────────── Amount paid
   │     └── paymentType ──────────── PAYMENT or REFUND
-  ├── vatGroups (VATGroup[]) ─────── Tax summary by rate
+  ├── vatGroups (VATGroup[]) ─────── Tax summary by area, treatment, rate and exemption reason
   ├── totalAmount ────────────────── Grand total (incl. VAT)
   ├── totalTaxAmount ─────────────── Total VAT
   ├── totalDiscountAmount ────────── Total discounts (excl. VAT)
@@ -722,27 +726,31 @@ GET /v1/spot-exchange-rates~where(baseCurrency/identifiers/currencyCode=EUR)~whe
 
 ### VAT Normalization
 
-Receipts include VAT breakdown by rate:
+Receipts include a VAT breakdown keyed by **area, treatment, percentage and exemption reason** (`~with(vatGroups)`):
 
 ```json
 {
   "vatGroups": [
-    {"percentage": "25", "quantity": "3", "netAmount": "800.00", "grossAmount": "1000.00", "vatAmount": "200.00"},
-    {"percentage": "12", "quantity": "1", "netAmount": "89.00", "grossAmount": "99.68", "vatAmount": "10.68"}
+    {"@type": "VAT group", "percentage": "6",  "vatArea": "Sverige", "treatment": "Standard", "quantity": "3", "netAmount": "250", "grossAmount": "265",  "vatAmount": "15"},
+    {"@type": "VAT group", "percentage": "25", "vatArea": "Sverige", "treatment": "Standard", "quantity": "1", "netAmount": "800", "grossAmount": "1000", "vatAmount": "200"}
   ]
 }
 ```
 
+`exemptionReason` appears on a group whose treatment carries a VATEX code and is omitted otherwise. Two groups can share a percentage (a `ZeroRated` domestic line and an `Export` line are both `"0"`), so load all four key columns and sum when you report by rate alone. Each receipt item also carries `vatArea`, `vatTreatment`, `vatExemptionReason` and `supplyKind` (non-essential; `~with(items~with(vatArea,vatTreatment,vatExemptionReason,supplyKind))`) for a line-level fact table. See [Working with VAT → VAT in Receipts and Z Reports](../working-with/vat.md#vat-in-receipts-and-z-reports).
+
 **VAT Analysis Query:**
 ```sql
 SELECT
+  vat_area,
+  vat_treatment,
   vat_rate,
   SUM(net_amount) as net_sales,
   SUM(vat_amount) as vat_collected,
   SUM(gross_amount) as gross_sales
 FROM fact_receipt_vat
-GROUP BY vat_rate
-ORDER BY vat_rate DESC
+GROUP BY vat_area, vat_treatment, vat_rate
+ORDER BY vat_area, vat_rate DESC
 ```
 
 ### Net vs Gross Calculations
@@ -1289,7 +1297,7 @@ PATCH /v1/sync-webhooks/com.acme.sync-id=bi-receipt-sync
 GET /v1/stores~with(addresses,owner)~take(500)
 
 # Load products for dim_product
-GET /v1/products~with(defaultVatCode,categories)~take(1000)
+GET /v1/products~with(vatClass,vatRates,categories)~take(1000)
 
 # Load customers for dim_customer (people)
 GET /v1/people~with(addresses,customerGroups)~take(1000)

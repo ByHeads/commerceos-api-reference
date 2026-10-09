@@ -12,7 +12,7 @@ Product catalog synchronization is the foundation of retail operations. When you
 - **Operational efficiency** — Single source of truth eliminates manual data entry
 - **Dynamic pricing** — Time-based and channel-specific pricing flows from PIM
 - **Inventory accuracy** — Stock levels tied to correct products
-- **Compliance** — VAT codes and regulatory info flow through the entire stack
+- **Compliance** — VAT classes and regulatory info flow through the entire stack
 
 This guide provides a production-ready integration template with copy-paste payloads, sync patterns, and operational guidance.
 
@@ -48,7 +48,7 @@ This guide provides a production-ready integration template with copy-paste payl
 | **Price accuracy** | Near-zero pricing errors | Validity-windowed prices with seller/currency scoping |
 | **Channel consistency** | Same data across all touchpoints | Assortment contexts per owner/channel |
 | **Stock-product alignment** | Eliminated "ghost inventory" | Product identifiers link to stock places |
-| **Tax compliance** | Correct VAT on every transaction | VAT codes cascade from product groups |
+| **Tax compliance** | Correct VAT on every transaction | VAT classes are inherited from product groups |
 
 ### Integration Cost vs Value
 
@@ -84,8 +84,8 @@ Product Node (base type)
 | Product Family | `/v1/product-families` | Variant container | Style, Base Product |
 | Product Group | `/v1/product-groups` | Organizational hierarchy | Collection, Line |
 | Product Category | `/v1/product-categories` | Browsing structure | Category, Department |
-| Price | `/v1/prices` | Net amount + validity | Price List Entry |
-| VAT Code | `/v1/vat-codes` | Tax rate | Tax Class |
+| Price | `/v1/prices` | Amount (net, or gross with `includesTax`) + validity | Price List Entry |
+| VAT class | `/v1/vat-classes` | Product classification the VAT rules key on | Tax Class |
 | Label | `/v1/labels` | Custom tags | Attribute, Tag |
 
 ### Product Fields
@@ -99,7 +99,8 @@ Product Node (base type)
 | `plu` | string[] | Price look-up codes |
 | `instanceType` | string | Variant type (MobileDevice, Apparel) |
 | `instanceProperties` | object | Variant attributes (e.g., `Apparel::size`, `Apparel::color`) |
-| `defaultVatCode` | reference | VAT rate for this product |
+| `vatClass` | reference | The product's VAT class, own or inherited; not in the default read (`~with(vatClass)`) |
+| `vatRates` | array (read-only) | Treatment and rate per VAT area, `~with(vatRates)` |
 | `parentGroup` | reference | Parent product group |
 | `promotionTitle` | localized | Customer-facing title |
 | `promotionDescription` | localized | Marketing description |
@@ -223,7 +224,7 @@ See [Resource Patterns → The `@value` Write Envelope](../resource-patterns.md#
 ┌────────────────────────────────────────────────────────────────────────┐
 │                         CommerceOS                                      │
 │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐ │
-│  │ Products │  │Categories│  │  Prices  │  │  Images  │  │ VAT Codes│ │
+│  │ Products │  │Categories│  │  Prices  │  │  Images  │  │VAT class │ │
 │  └──────────┘  └──────────┘  └──────────┘  └──────────┘  └──────────┘ │
 └────────────────────────────────────────────────────────────────────────┘
 ```
@@ -250,34 +251,33 @@ On-Demand:  Event-driven for urgent updates (price changes, recalls)
 
 Before syncing products, establish the foundational data.
 
-### Step 1: Create VAT Codes
+### Step 1: Install the VAT area and map your tax classes
 
-VAT codes are identified by their percentage rate. The only supported identifier field is `percentage`.
+A **VAT area** is a territory with one set of VAT rules (Sweden, Norway). Installing the reference pack's area for a country is one request, and it is idempotent: run it on every deploy if you like.
 
 ```bash
-# Standard VAT rates for Sweden
-PUT /v1/vat-codes/percentage=25
-{
-  "identifiers": {"percentage": "25"}
-}
-
-PUT /v1/vat-codes/percentage=12
-{
-  "identifiers": {"percentage": "12"}
-}
-
-PUT /v1/vat-codes/percentage=6
-{
-  "identifiers": {"percentage": "6"}
-}
-
-PUT /v1/vat-codes/percentage=0
-{
-  "identifiers": {"percentage": "0"}
-}
+# Sweden: creates the area "Sverige" with the twelve VAT classes, the Swedish rules and the rate defaults
+POST /v1/vat-areas
+[{"identifiers": {"com.heads.seedID": "vat-area-se"}}]
 ```
 
-> **Note:** VAT codes accept only `identifiers.percentage`. Other fields like `name` are not persisted.
+Pack areas: `vat-area-se`, `vat-area-no`, `vat-area-dk`, `vat-area-fi`, `vat-area-ax`. Install one per country you sell in. You never write VAT rules for a pack area yourself.
+
+A **VAT class** is a country-neutral classification of products (Food, Books, Standard rate); the rules in each area say how a class is taxed there. Products reference a class by its seed ID, so the sync only needs a mapping from your PIM's tax classes:
+
+| PIM tax class | CommerceOS VAT class (`com.heads.seedID`) |
+|---------------|-------------------------------------------|
+| Standard | `vat-class-standard` |
+| Food | `vat-class-food` |
+| Books | `vat-class-books` |
+| Zero-rated | `vat-class-zero-rated` |
+
+```bash
+# List the classes the area brought with it
+GET /v1/vat-classes
+```
+
+The full set of classes and the rule model are in [Working with VAT](../working-with/vat.md#vat-classes); the pack areas are described under [VAT areas and the reference pack](../working-with/vat.md#vat-areas-and-the-reference-pack).
 
 ### Step 2: Create Currencies
 
@@ -374,22 +374,22 @@ POST /v1/product-categories/com.acme.cat-id=APPAREL/childCategories
 
 ### Step 4: Create Product Groups (for VAT Inheritance)
 
-Product groups enable VAT code inheritance across multiple products:
+Product groups enable VAT class inheritance across multiple products: a product with no `vatClass` of its own uses its group's.
 
 ```bash
-# Create product group with default VAT
+# Create product group with a VAT class
 POST /v1/product-groups
 {
   "identifiers": {"com.acme.group-id": "STANDARD-VAT-PRODUCTS"},
   "name": "Standard VAT Products",
-  "defaultVatCode": {"identifiers": {"percentage": "25"}}
+  "vatClass": {"identifiers": {"com.heads.seedID": "vat-class-standard"}}
 }
 
 POST /v1/product-groups
 {
   "identifiers": {"com.acme.group-id": "FOOD-PRODUCTS"},
   "name": "Food Products",
-  "defaultVatCode": {"identifiers": {"percentage": "12"}}
+  "vatClass": {"identifiers": {"com.heads.seedID": "vat-class-food"}}
 }
 ```
 
@@ -460,7 +460,7 @@ PUT /v1/products/com.acme.pim-id=PIM-PROD-00001
   "name": "Premium Widget",
   "status": "Active",
   "gtin": ["7312345678901"],
-  "defaultVatCode": {"identifiers": {"percentage": "25"}}
+  "vatClass": {"identifiers": {"com.heads.seedID": "vat-class-standard"}}
 }
 ```
 
@@ -479,7 +479,7 @@ PUT /v1/products/com.acme.pim-id=PIM-PROD-00002
   "gtin": ["8806095070568"],
   "plu": ["1001"],
   "instanceType": "MobileDevice",
-  "defaultVatCode": {"identifiers": {"percentage": "25"}},
+  "vatClass": {"identifiers": {"com.heads.seedID": "vat-class-standard"}},
   "parentGroup": {"identifiers": {"com.acme.group-id": "STANDARD-VAT-PRODUCTS"}},
   "promotionTitle": {
     "en-US": "Latest Samsung Flagship",
@@ -529,7 +529,7 @@ PUT /v1/products/com.acme.pim-id=TSHIRT-PREMIUM-S-BLK
     "Apparel::color": "Black"
   },
   "parentGroup": {"identifiers": {"com.acme.family-id": "TSHIRT-PREMIUM"}},
-  "defaultVatCode": {"identifiers": {"percentage": "25"}}
+  "vatClass": {"identifiers": {"com.heads.seedID": "vat-class-standard"}}
 }
 
 PUT /v1/products/com.acme.pim-id=TSHIRT-PREMIUM-M-BLK
@@ -547,7 +547,7 @@ PUT /v1/products/com.acme.pim-id=TSHIRT-PREMIUM-M-BLK
     "Apparel::color": "Black"
   },
   "parentGroup": {"identifiers": {"com.acme.family-id": "TSHIRT-PREMIUM"}},
-  "defaultVatCode": {"identifiers": {"percentage": "25"}}
+  "vatClass": {"identifiers": {"com.heads.seedID": "vat-class-standard"}}
 }
 
 PUT /v1/products/com.acme.pim-id=TSHIRT-PREMIUM-L-WHT
@@ -565,7 +565,7 @@ PUT /v1/products/com.acme.pim-id=TSHIRT-PREMIUM-L-WHT
     "Apparel::color": "White"
   },
   "parentGroup": {"identifiers": {"com.acme.family-id": "TSHIRT-PREMIUM"}},
-  "defaultVatCode": {"identifiers": {"percentage": "25"}}
+  "vatClass": {"identifiers": {"com.heads.seedID": "vat-class-standard"}}
 }
 ```
 
@@ -623,9 +623,9 @@ For large catalogs, stream products as NDJSON:
 PUT /v1/products
 Content-Type: application/x-ndjson
 
-{"identifiers":{"com.acme.pim-id":"PIM-001"},"name":"Product 1","status":"Active","gtin":["7312345670001"],"defaultVatCode":{"identifiers":{"percentage":"25"}}}
-{"identifiers":{"com.acme.pim-id":"PIM-002"},"name":"Product 2","status":"Active","gtin":["7312345670002"],"defaultVatCode":{"identifiers":{"percentage":"25"}}}
-{"identifiers":{"com.acme.pim-id":"PIM-003"},"name":"Product 3","status":"Active","gtin":["7312345670003"],"defaultVatCode":{"identifiers":{"percentage":"25"}}}
+{"identifiers":{"com.acme.pim-id":"PIM-001"},"name":"Product 1","status":"Active","gtin":["7312345670001"],"vatClass":{"identifiers":{"com.heads.seedID":"vat-class-standard"}}}
+{"identifiers":{"com.acme.pim-id":"PIM-002"},"name":"Product 2","status":"Active","gtin":["7312345670002"],"vatClass":{"identifiers":{"com.heads.seedID":"vat-class-standard"}}}
+{"identifiers":{"com.acme.pim-id":"PIM-003"},"name":"Product 3","status":"Active","gtin":["7312345670003"],"vatClass":{"identifiers":{"com.heads.seedID":"vat-class-standard"}}}
 ```
 
 **A bulk load commits in chunks of 200 products, not as one transaction.** If product 401 fails, that chunk rolls back and products 1–400 are already in the catalog — and the response is an ordinary error status that looks like nothing landed. Plan the loader around that:
@@ -653,7 +653,7 @@ PUT /v1/products/com.acme.pim-id=PIM-PROD-00001
   "status": "Active",
   "gtin": ["7312345678901"],
   "promotionTitle": {"en-US": "Now with 20% more features!"},
-  "defaultVatCode": {"identifiers": {"percentage": "25"}}
+  "vatClass": {"identifiers": {"com.heads.seedID": "vat-class-standard"}}
 }
 ```
 
@@ -711,41 +711,73 @@ PUT /v1/sync-webhooks/com.acme.sync-id=pim-product-pull
 
 ## Phase 4: Pricing Synchronization
 
-### Net vs Gross: Critical Concept
+### Net or gross: say which with `includesTax`
 
-CommerceOS stores prices as **NET** (VAT excluded). If your PIM stores gross prices, convert before sync:
+A price is net unless `includesTax` is `true`. Send your PIM's price as it is: `includesTax: true` for a consumer price list, `false` (or omitted) for a net one; there is nothing to convert. With `includesTax: true`, `amount` is the gross unit price, the figure on the shelf, and the net is derived at sale time from the product's rate in the VAT area of the sale, so a rate change leaves the consumer price alone.
+
+```bash
+# Consumer price list: the amount is what the shelf says
+POST /v1/prices
+{
+  "identifiers": {"com.acme.price-id": "PRICE-PIM-001-GROSS"},
+  "products": [{"identifiers": {"com.acme.pim-id": "PIM-PROD-00001"}}],
+  "sellers": [],
+  "buyers": [],
+  "amount": "199.00",
+  "includesTax": true,
+  "currency": {"identifiers": {"currencyCode": "SEK"}},
+  "from": "2024-01-01T00:00:00Z",
+  "to": "2099-12-31T23:59:59Z"
+}
+
+# Net price list: the same product at the same consumer price, stated net
+POST /v1/prices
+{
+  "identifiers": {"com.acme.price-id": "PRICE-PIM-001-NET"},
+  "products": [{"identifiers": {"com.acme.pim-id": "PIM-PROD-00001"}}],
+  "sellers": [],
+  "buyers": [],
+  "amount": "159.20",
+  "currency": {"identifiers": {"currencyCode": "SEK"}},
+  "from": "2024-01-01T00:00:00Z",
+  "to": "2099-12-31T23:59:59Z"
+}
+```
+
+If you want to check the numbers yourself:
 
 ```
 Net = Gross / (1 + VAT Rate / 100)
 
 Example (25% VAT):
-Gross: 249.00 SEK
-Net:   249.00 / 1.25 = 199.20 SEK
+Gross: 199.00 SEK
+Net:   199.00 / 1.25 = 159.20 SEK
 ```
+
+See [Prices that include VAT](../working-with/prices.md#prices-that-include-vat).
 
 ### How VAT is Applied
 
-VAT is calculated automatically when orders and receipts are created:
+VAT is calculated when orders and receipts are created:
 
-1. The product's `defaultVatCode` determines the VAT percentage
-2. VAT is applied **on top of** the net `amount` from the price
-3. Receipt items and order items show both net amounts and VAT breakdowns
+1. The product's `vatClass` (own or inherited) picks the VAT rule in the VAT area of the selling store at the time of sale
+2. The rule's rate is applied to the price: on top of a net `amount`, or backed out of a gross one (`includesTax: true`)
+3. Order lines and receipt items then show the line both ways: `unitAmountExclVat` and `unitAmountInclVat`
 
 ```
-Product: Widget (defaultVatCode = 25%)
-Price:   amount = 199.00 (net)
+Product: Widget (vatClass = vat-class-standard, 25% in Sverige)
+Price:   amount = 199.00, includesTax = true
 
-On Receipt:
-  Net Amount:    199.00 SEK
-  VAT (25%):      49.75 SEK
-  Gross Amount:  248.75 SEK
+On the order line:
+  unitAmountExclVat:  159.20 SEK
+  unitAmountInclVat:  199.00 SEK
 ```
 
-> **Important:** Always store prices as net amounts. VAT rates flow from the product's `defaultVatCode` (or inherited from its `parentGroup`). Do not bake VAT into the price amount.
+> **Important:** A gross amount sent without `includesTax: true` is taxed again. Set the flag.
 
 ### Create Basic Price
 
-Price essential fields are `identifiers`, `sellers`, `buyers`, `amount`, `currency`, `from`, and `to`.
+Price essential fields are `identifiers`, `sellers`, `buyers`, `amount`, `includesTax`, `currency`, `from`, and `to`.
 
 ```bash
 POST /v1/prices
@@ -909,7 +941,7 @@ PUT /v1/products/com.acme.pim-id=SHARED-PRODUCT
   "name": "Shared Catalog Product",
   "status": "Active",
   "gtin": ["7312345670100"],
-  "defaultVatCode": {"identifiers": {"percentage": "25"}},
+  "vatClass": {"identifiers": {"com.heads.seedID": "vat-class-standard"}},
   "assortmentOwners": [],
   "assortmentContexts": [
     {
@@ -1043,39 +1075,43 @@ PUT /v1/products/com.acme.pim-id=PIM-PROD-00001/images
 
 ### VAT Inheritance
 
-Products inherit VAT codes from their parent group if not set directly:
+Products inherit the VAT class of their parent group if none is set directly. A product's own class beats its group's:
 
 ```
-Product Group (defaultVatCode: 25%)
-  └── Product A (no defaultVatCode) → Inherits 25%
-  └── Product B (defaultVatCode: 12%) → Uses own 12%
+Product Group (vatClass: vat-class-food)
+  └── Product A (no class of its own)          → inherits vat-class-food
+  └── Product B (vatClass: vat-class-standard) → uses its own
 ```
+
+Read the class in effect with `~with(vatClass)`; it is not in the default read. Writing `"vatClass": null` clears the node's own class so that it inherits again. `~with(vatRates)` lists treatment and rate per VAT area whose rules cover the product's class right now.
+
+> **A product with no class, own or inherited, cannot be sold.** `POST /v1/receipts` answers `400 No VAT rate applies to <product name>; the line cannot be posted until a VAT rule covers it.`, and `tryApprove`/`tryFulfill` on an order answer `400 Could not approve order. No VAT rate applies to …`. See [Assigning VAT to products](../working-with/vat.md#assigning-vat-to-products).
 
 ### Setting VAT on Product
 
 ```bash
-# Direct VAT assignment
+# Direct VAT class assignment
 PUT /v1/products/com.acme.pim-id=FOOD-PRODUCT
 {
   "identifiers": {"com.acme.pim-id": "FOOD-PRODUCT"},
   "name": "Organic Snack",
   "status": "Active",
-  "defaultVatCode": {"identifiers": {"percentage": "12"}}
+  "vatClass": {"identifiers": {"com.heads.seedID": "vat-class-food"}}
 }
 ```
 
 ### Setting VAT via Product Group
 
 ```bash
-# Create product group with VAT
+# Create product group with a VAT class
 PUT /v1/product-groups/com.acme.group-id=FOOD-ITEMS
 {
   "identifiers": {"com.acme.group-id": "FOOD-ITEMS"},
   "name": "Food Items",
-  "defaultVatCode": {"identifiers": {"percentage": "12"}}
+  "vatClass": {"identifiers": {"com.heads.seedID": "vat-class-food"}}
 }
 
-# Product inherits VAT from group
+# Product inherits the VAT class from its group
 PUT /v1/products/com.acme.pim-id=ANOTHER-FOOD
 {
   "identifiers": {"com.acme.pim-id": "ANOTHER-FOOD"},
@@ -1111,7 +1147,7 @@ PUT /v1/stores/com.acme.store-id=STORE-EU
 |-------|-------|------------|
 | `InvalidIdentifier` | Non-namespaced identifier | Use `com.acme.pim-id` format |
 | `ProductNotFound` | Referenced product doesn't exist | Create product first |
-| `VatCodeNotFound` | VAT code doesn't exist | Create VAT code first |
+| `400 No VAT rate applies to <product>; the line cannot be posted until a VAT rule covers it.` | The product has no VAT class, own or inherited | Set `vatClass` on the product or its group |
 | `CurrencyNotFound` | Currency doesn't exist | Create currency first |
 | `DuplicateGtin` | GTIN already used | Check for existing product |
 
@@ -1237,13 +1273,13 @@ PUT /v1/prices/com.acme.price-id=PRICE-MISMATCH
 
 - [ ] **Identifier namespace** — Confirm reverse-domain namespace (e.g., `com.acme.pim-id`), and that every key is **exactly three** dot-separated segments — a malformed key is dropped at `200` and the product is re-created on every run ([why](../overview.md#a-malformed-identifier-key-is-discarded-not-rejected))
 - [ ] **Field mapping** — Document PIM → CommerceOS field mapping
-- [ ] **VAT mapping** — Map PIM tax classes to CommerceOS VAT codes
+- [ ] **VAT mapping** — Map PIM tax classes to CommerceOS VAT classes (seed IDs)
 - [ ] **Category mapping** — Map PIM categories to CommerceOS categories
-- [ ] **Price conversion** — Implement gross-to-net conversion if needed
+- [ ] **Price basis** — Decide per price list whether amounts are gross (`includesTax: true`) or net
 
 ### Foundation Setup
 
-- [ ] **VAT codes** — Create all needed VAT codes
+- [ ] **VAT area** — Install the pack area for each country you sell in
 - [ ] **Currencies** — Create all needed currencies
 - [ ] **Categories** — Create category hierarchy
 - [ ] **Product groups** — Create groups for VAT inheritance
@@ -1295,7 +1331,7 @@ Content-Type: application/json
     "MobileDevice::storage": "256GB",
     "MobileDevice::color": "Black"
   },
-  "defaultVatCode": {"identifiers": {"percentage": "25"}},
+  "vatClass": {"identifiers": {"com.heads.seedID": "vat-class-standard"}},
   "parentGroup": {"identifiers": {"com.acme.group-id": "ELECTRONICS"}},
   "promotionTitle": {
     "en-US": "Amazing Product",
@@ -1345,6 +1381,7 @@ Content-Type: application/json
     {"@type": "company", "identifiers": {"com.acme.company-id": "WHOLESALE-PARTNER-001"}}
   ],
   "amount": "799.00",
+  "includesTax": false,
   "currency": {"identifiers": {"currencyCode": "SEK"}},
   "from": "2024-01-01T00:00:00Z",
   "to": "2024-12-31T23:59:59Z"
@@ -1427,7 +1464,7 @@ GET /v1/prices~with(products,sellers,currency)~take(100)
 
 - [Working with Products](../working-with/products.md) — Detailed product field reference
 - [Working with Prices](../working-with/prices.md) — Pricing patterns and validation
-- [Working with VAT](../working-with/vat.md) — Tax configuration
+- [Working with VAT](../working-with/vat.md) — VAT classes, areas, rules and prices that include VAT
 - [Sync Webhooks](../sync-webhooks.md) — Automated sync configuration
 - [Mapped Types](../mapped-types.md) — Data transformation
 - [Pagination](../pagination.md) — Large dataset handling

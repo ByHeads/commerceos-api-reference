@@ -275,7 +275,7 @@ Each opens the collections below at their usual paths. The `find` methods work a
 |---|---|
 | `orders.sales:read` | `trade-orders`, `trade-order-items` |
 | `orders.payments:read` | `payment-orders` |
-| `discounts.system:read` | `discount-rules`, `discount-phases`, `discount-reasons`, `discount-coupons`, `trade-rule-effects`, `discount-rule-effects`, `percentage-discount-rule-effects`, `fixed-reduction-discount-rule-effects`, `fixed-price-rule-effects`, `package-discount-rule-effects` |
+| `discounts.system:read` | `discount-rules`, `discount-phases`, `discount-reasons`, `discount-coupons`, `discount-rule-effects`, `percentage-discount-rule-effects`, `fixed-reduction-discount-rule-effects`, `fixed-price-rule-effects`, `package-discount-rule-effects` |
 | `discounts.manual:read` | `manual-discounts`, `percentage-manual-discounts`, `fixed-reduction-manual-discounts`, `fixed-price-manual-discounts`, `discount-reasons` |
 | `periods:read` | `periods`, `seasons`, `campaigns` |
 | `payment-records:read` | `payment-records` |

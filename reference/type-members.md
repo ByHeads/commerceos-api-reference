@@ -13,6 +13,8 @@ manufacturerRelations, labels, timeline, stockRoots, assortmentOwner,
 assortmentRoots, assortment, preferredCurrency
 ```
 
+`vatId` reads and writes the agent's home VAT registration (the one with no country); registrations in other countries live in `/v1/vat-registrations`. See [Working with VAT → VAT Registrations and `vatId`](working-with/vat.md#vat-registrations-and-vatid).
+
 `customerRelations` and `supplierRelations` list established trade relationships only — the same objects `/v1/trade-relationships` returns, filtered to this agent's role. An agent configured to trade under a parent has none of its own; the relationship belongs to the parent. See [Resource Patterns → What the agent sub-collections contain](resource-patterns.md#what-the-agent-sub-collections-contain).
 
 ## Person-specific Members
@@ -43,6 +45,14 @@ createdBy, createdAt, promotionTitle, promotionBanner, promotionDescription,
 notesForPicking, labels, images, categories, prices, xrefs, application
 ```
 
+## Product/Family/Group Members
+
+```
+vatClass (non-essential)
+```
+
+`vatClass` reads the VAT class in effect, the node's own or the nearest ancestor's; written, it is the node's own class, cleared with `null`. Ask with `~with(vatClass)`. See [Working with VAT → Assigning VAT to Products](working-with/vat.md#assigning-vat-to-products).
+
 ## Product/Family Members
 
 ```
@@ -57,8 +67,11 @@ you ask for it with `~with(status)` or a `fields=` list.
 
 ```
 status ('Active', 'Inactive', 'Pending'), instanceProperties, keywords,
-designatedStockPlaces, stockLevels, receiptText, signText
+designatedStockPlaces, stockLevels, receiptText, signText,
+vatRates (read-only, non-essential)
 ```
+
+`vatRates` lists the treatment and percentage the product's class carries in each VAT area right now, one entry per area whose rules cover it.
 
 ## Product Category Members
 
@@ -70,8 +83,59 @@ identifiers, members, childCategories
 
 ```
 identifiers, name, parentGroup, members (computed), variantDimensions,
-defaultVatCode, instanceType, ageRestriction
+instanceType, ageRestriction
 ```
+- Plus `vatClass` (non-essential), above
+
+---
+
+## VAT Class Members
+
+```
+identifiers, name, supplyKind ('Goods', 'Services') (non-essential)
+```
+
+## VAT Area Members
+
+```
+identifiers, name, taxingCountry, timeZone (non-essential), euVatScope (non-essential)
+```
+
+## VAT Rule Members
+
+```
+identifiers, vatArea, vatClass, treatment ('Standard', 'ZeroRated', 'Exempt', 'OutsideScope'),
+percentage, exemptionReason, from, to
+```
+- All but `to` are fixed at creation; `to` can only be moved earlier. See [Working with VAT → VAT Rules](working-with/vat.md#vat-rules)
+
+## VAT Rate Default Members
+
+```
+identifiers, vatArea, percentage, vatClass
+```
+
+## VAT Registration Members
+
+```
+identifiers, holder, country, number
+```
+- `holder` is read back as the agent's database key; `country` is omitted on the home registration, which `agent.vatId` reads and writes
+
+## Country Members (VAT)
+
+```
+vatArea (non-essential)
+```
+
+## Surcharge Rule Members
+
+```
+identifiers, name, products, currency, kind ('Fixed', 'Percentage'), amount, includesTax,
+percentage, worthAtLeast, worthAtMost, reason, seller (non-essential), buyer (non-essential),
+time (non-essential)
+```
+- `amount` is per unit for a `Fixed` rule, gross when `includesTax` is true; `percentage` is for a `Percentage` rule. See [Surcharge Rules](../guide/examples/surcharge-rules.md)
 
 ---
 
@@ -158,9 +222,13 @@ discountAmount (read-only), vatAmount (read-only), vatPercentage (read-only),
 discountPercentage (read-only), currencyCode (read-only), manualNotes (read-only),
 unitAmountExclVat (read-only, non-essential), unitAmountInclVat (read-only, non-essential),
 unitAmountAfterDiscountInclVat (read-only, non-essential),
+vatArea (read-only, non-essential), vatTreatment (read-only, non-essential),
+vatExemptionReason (read-only, non-essential), supplyKind (read-only, non-essential),
 receipt (read-only, non-essential), related (read-only, non-essential),
 orderItems (read-only, non-essential)
 ```
+
+`vatArea`, `vatTreatment`, `vatExemptionReason` and `supplyKind` record what the line was taxed by. The receipt's `vatGroups` are keyed by area, treatment, percentage and exemption reason. See [Working with VAT → VAT in Receipts and Z Reports](working-with/vat.md#vat-in-receipts-and-z-reports).
 
 `unitAmountExclVat` / `unitAmountInclVat` are the VAT-explicit unit prices, mirroring the pair on
 `trade order item` but read-only here. `unitAmountExclVat` is the same number as the essential
@@ -184,8 +252,10 @@ counterpart of the receipt-level `orders`. It is empty for ordinary walk-in sale
 ## Price Members
 
 ```
-identifiers, sellers, buyers, products, amount, open, currency, from, to
+identifiers, sellers, buyers, products, amount, includesTax, open, currency, from, to
 ```
+
+`includesTax` (boolean, default `false`, essential) says whether `amount` is gross. See [Working with Prices → Prices That Include VAT](working-with/prices.md#prices-that-include-vat).
 
 ## Stock Place Members
 

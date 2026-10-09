@@ -82,7 +82,10 @@ These are additional resources that constitute configuration but are not in the 
 **Retail Config** *(reference data for retail operations)*
 - `/v1/payment-methods`
 - `/v1/return-reasons`
-- `/v1/vat-codes`
+- `/v1/vat-classes`
+- `/v1/vat-areas`
+- `/v1/vat-rules`
+- `/v1/vat-rate-defaults`
 - `/v1/discount-phases`
 - `/v1/discount-reasons`
 - `/v1/sales-channels`
@@ -101,13 +104,13 @@ These are additional resources that constitute configuration but are not in the 
 - Any transactional or historical data
 - `/v1/oauth2-clients` *(contains masked secrets, security-sensitive)*
 - `/v1/sync-webhooks` *(environment-specific URLs and tokens)*
-- `/v1/price-rules` *(business logic, closer to data than static configuration)*
+- `/v1/vat-registrations` *(belong to agents, which are excluded)*
 
 ### Configuration vs Data Decision Criteria
 
 Resources are considered **configuration** if they:
 1. Define HOW the system operates (settings, behaviors)
-2. Are reference data that rarely changes (payment methods, VAT codes, return reasons)
+2. Are reference data that rarely changes (payment methods, VAT classes and rules, return reasons)
 3. Control access and permissions (users, roles, permissions)
 4. Configure hardware/devices (devices, printers, POS terminals)
 5. Define integration settings
@@ -189,7 +192,7 @@ Resources are considered **data** (excluded) if they:
    - Admin/Access: permissions → roles → users → role-assignments → systems
    - Devices: permissions → roles → devices → role-assignments
    - POS: templates → printers (all types) → currency-denominations → pos-functions → pos-profiles → pos-terminals
-   - Retail Config: vat-codes → discount-phases → discount-reasons → sales-channels
+   - Retail Config: vat-classes → vat-areas → vat-rules → vat-rate-defaults → discount-phases → discount-reasons → sales-channels. Rows of the VAT reference pack travel by the area's `com.heads.seedID`: a `POST` of the area installs them on the target, so only the tenant's own classes, rules and defaults need to be exported and imported as data. Re-importing an unchanged rule is accepted.
    - Payments: payment-methods → return-reasons → payment-terminals
    - Integrations: payment-integrations → shipment-integrations → epi-integrations → epi-configurations
 6. For each resource:
@@ -367,9 +370,8 @@ Administrators should whitelist `https://cdnjs.cloudflare.com/ajax/libs/jszip/` 
 
 - **Which admin endpoints are safe?** Users, roles, permissions, and role-assignments are safe. OAuth clients and API key credentials are excluded due to masked secrets.
 - **Are any config endpoints returning masked secrets?** Yes, `/v1/oauth2-clients` returns masked secrets. Masked fields must be omitted from export/import.
-- **Should export/import include `sales-channels`, `price-rules`, or `sync-webhooks`?**
+- **Should export/import include `sales-channels` or `sync-webhooks`?**
   - `sales-channels`: **Yes** - included in Retail Config category (defines selling channels)
-  - `price-rules`: **No** - excluded (business logic, closer to data than static configuration)
   - `sync-webhooks`: **No** - excluded (environment-specific URLs and tokens)
 - **Do any resources require special ordering?** Yes, the import dependency order follows: config singletons → roles/permissions → users/assignments → devices → printers/templates → POS → retail config → payment methods → integrations.
 

@@ -325,7 +325,7 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/products/com.my
 
 ## Product Groups (Hierarchical Organizers)
 
-Product groups organize products and families in a tree structure. They can hold variant dimensions and VAT codes that cascade down to children.
+Product groups organize products and families in a tree structure. They can hold variant dimensions and a VAT class that the products under them inherit.
 
 > **Important:** Use `parentGroup` and `members` relationships — product groups do NOT have `parent` or `children` fields.
 
@@ -378,26 +378,29 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/product-groups/
   }'
 ```
 
-### VAT Code Inheritance
+### VAT Class Inheritance
 
-VAT codes can be assigned at any level in the group hierarchy. VAT calculations traverse `parentGroup` to find the nearest ancestor with a VAT rule, so effective VAT can be inherited.
+`vatClass` can be set at any level in the group hierarchy. A product reads the class in effect: its own, else the nearest ancestor's. Set it on a group once; override on a product when needed; `null` on the product clears the override. See [Assigning VAT to products](../../reference/working-with/vat.md#assigning-vat-to-products).
 
 ```bash
 # Set default VAT for entire group
 curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/product-groups/com.myapp.groupId=apparel" \
   -H "Content-Type: application/json" \
   -d '{
-    "defaultVatCode": {"identifiers": {"percentage": "25"}}
+    "vatClass": {"identifiers": {"com.heads.seedID": "vat-class-standard"}}
   }'
+
+# Read the class in effect and the rates it gives per VAT area
+curl -u ":banana" "https://example.app.heads.com/api/v1/products/com.myapp.sku=SKU-001~with(vatClass,vatRates)"
 ```
 
-> **Note:** Products use the nearest ancestor VAT rule for calculations, but `defaultVatCode` in API responses only shows direct assignments; set it on the product if you need it to appear on the product payload.
+> **Note:** `vatClass` is not in the default read of a product or group; ask with `~with(vatClass)`. It reads the class in effect, inherited or own. A product with no class, own or inherited, cannot be sold. See [VAT classes](../../reference/working-with/vat.md#vat-classes).
 
 ### Maximum Discount Percentage
 
 > **Availability:** v26.1.10 and later.
 
-`maxDiscountPercentage` (decimal, optional) caps the automatic discount on a product node: "The maximum discount percentage allowed on this product node. When set, discounts exceeding this percentage are capped." It is inherited like the VAT code — a value on a group or family applies to every product under it — and it caps what [discount rules](./discount-rules.md#discount-caps-and-vouchers) do; manual discounts at the till are exempt at recalculation.
+`maxDiscountPercentage` (decimal, optional) caps the automatic discount on a product node: "The maximum discount percentage allowed on this product node. When set, discounts exceeding this percentage are capped." It is inherited like the VAT class — a value on a group or family applies to every product under it — and it caps what [discount rules](./discount-rules.md#discount-caps-and-vouchers) do; manual discounts at the till are exempt at recalculation.
 
 ```bash
 # Cap automatic discounts on a whole group at 20%
@@ -584,7 +587,7 @@ For which assortment a store uses, where a new product lands and what makes it s
 - **Product Groups**: Assign products via `parentGroup` on the product, NOT via the group's `members`
 - **Product Families**: Use `parentGroup` to attach variants to a family
 - **Category Hierarchy**: Categories have NO `parent` setter — add child categories via parent's `childCategories` collection
-- **Inherited members**: `defaultVatCode` and `maxDiscountPercentage` set on a group or family apply to the products under it
+- **Inherited members**: `vatClass` and `maxDiscountPercentage` set on a group or family apply to the products under it
 
 ### Variant Dimensions
 - **`variantDimensions` is a STRING**, not an array: `"Apparel::size, Apparel::color"`

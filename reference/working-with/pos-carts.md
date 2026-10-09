@@ -276,6 +276,7 @@ The answer is `201` with the line:
 - `pendingInput` names what the till still needs before the line can be sold: `tracking` (a serial number), `weight`, `price`, `domain`.
 - `orderItem` is the line of the cart's draft order.
 - `unitAmountExclVat` is the unit price without VAT, before discounts: `"799.2"` beside `unitAmountInclVat: "999"` on a line with 25 % VAT. v26.2.2 and later. On v26.2.1 it does not render as a number.
+- `unitAmountInclVat` written on a line is a manual price including VAT; the net is derived from the product's rate. A regular price can carry the gross the same way, with `includesTax: true` — see [Prices That Include VAT](prices.md#prices-that-include-vat).
 
 A cart the till has worked on can hold other line types, told apart by `@type` and read-only through the API: `POS payment item`, `POS pick item`, `POS wallet item`.
 

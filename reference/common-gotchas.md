@@ -1345,43 +1345,47 @@ Related: [gotcha 41](#41-a-write-under-a-read-only-scope-is-a-silent-200), [gotc
 
 ## 47. A Declared Type Key Is Not Always One You Can Write
 
-Sending an object into a polymorphic collection means choosing a subtype with `@type`. The check is **structural** rather than a membership test against the target's own family, so a *sibling* type that declares everything the target declares gets through — and the object is then built as the target, with whatever the sibling declared on top of that dropped:
+Sending an object into a polymorphic collection means choosing a subtype with `@type`. The check is **structural**: any type whose members fit the target's is accepted, and the object is then built with only the members the target declares. The collection's own abstract element type always fits, and it declares no value:
 
 ```bash
-# WRONG — `price rule effect` is a sibling of `surcharge rule effect`, not a subtype.
-# It happens to declare everything the target does, plus `amount`.
-POST /v1/surcharge-rule-effects
-[{"@type": "price rule effect", "identifiers": {"com.example.effectId": "E-1"}, "amount": "999"}]
-→ 200  {"@type": "surcharge rule effect", "items": [], "identifiers": {...}}   ← `amount` is gone
+# WRONG — `discount rule effect` is the abstract type the collection is declared on.
+# It fits, and it has no `percentage` to keep.
+POST /v1/discount-rule-effects
+[{"@type": "discount rule effect", "identifiers": {"com.example.effectId": "E-1"}, "percentage": "10"}]
+→ 200  {"@type": "discount rule effect", "items": [], "minimumResultingPrice": "0", "identifiers": {...}}   ← `percentage` is gone
 
-# RIGHT — a real subtype, and the amount lands
-POST /v1/surcharge-rule-effects
-[{"@type": "fixed surcharge rule effect", "identifiers": {"com.example.effectId": "E-2"}, "amount": "25"}]
-→ 200  {"@type": "fixed surcharge rule effect", "items": [], "amount": "25", "identifiers": {...}}
+# RIGHT — a real subtype, and the value lands
+POST /v1/discount-rule-effects
+[{"@type": "percentage discount rule effect", "identifiers": {"com.example.effectId": "E-2"}, "percentage": "10"}]
+→ 200  {"@type": "percentage discount rule effect", "items": [], "multiplicity": "PerUnit", "targeting": "All", "minimumResultingPrice": "0", "percentage": "10", "identifiers": {...}}
 ```
 
-**What makes it expensive is that the object is still there.** The effect is created, carries the identifier you gave it, and lists like any other; it simply has no amount to apply. Nothing is missing to count, and nothing failed to report.
+**What makes it expensive is that the object is still there.** The effect is created, carries the identifier you gave it, and lists like any other; it simply has no value to apply. Nothing is missing to count, and nothing failed to report.
 
 Everything that does *not* fit is refused — including a key the schema does not define at all — and the message names what it was measured against:
 
 ```
-"@type": "trade rule effect"   → 400  Invalid type annotation 'trade rule effect'.
-                                      Type is not assignable to parent relation return type 'surcharge rule effect'
-"@type": "product"             → 400  the same message, naming `product`
+"@type": "product"             → 400  Invalid type annotation 'product'.
+                                      Type is not assignable to parent relation return type 'discount rule effect'
 "@type": "no such effect"      → 400  The provided type key 'no such effect' is not defined in the current type schema
+
+# the same check on a narrower collection: a sibling that declares a different value does not fit
+POST /v1/percentage-discount-rule-effects   with "@type": "fixed reduction discount rule effect"
+                               → 400  Invalid type annotation 'fixed reduction discount rule effect'.
+                                      Type is not assignable to parent relation return type 'percentage discount rule effect'
 ```
 
 **A `@type` names one type, not a type expression.** A decoration, or two names combined — a trailing `?`, an `[]`, a `(read-only)`, two names joined by `or` or by a comma, two joined by `and` — is refused whatever it wraps, and the message names what to write instead:
 
 ```
-"@type": "fixed surcharge rule effect?"
-  → 400  Invalid type annotation 'fixed surcharge rule effect?'.
-         A type annotation names one type exactly; write 'fixed surcharge rule effect'.
+"@type": "percentage discount rule effect?"
+  → 400  Invalid type annotation 'percentage discount rule effect?'.
+         A type annotation names one type exactly; write 'percentage discount rule effect'.
 
-"@type": "fixed surcharge rule effect or percentage surcharge rule effect"
-  → 400  Invalid type annotation 'fixed surcharge rule effect or percentage surcharge rule effect'.
+"@type": "percentage discount rule effect or fixed reduction discount rule effect"
+  → 400  Invalid type annotation 'percentage discount rule effect or fixed reduction discount rule effect'.
          A type annotation names one type exactly;
-         write 'fixed surcharge rule effect' or 'percentage surcharge rule effect'.
+         write 'percentage discount rule effect' or 'fixed reduction discount rule effect'.
 ```
 
 **And it has to be written as a string.** A JSON array, number, object or `true` in the `@type` slot is refused before any name is looked up — a value that is not a name cannot be resolved into one — and the message quotes back what was sent, naming the string to write when there is one to name:
@@ -1403,15 +1407,15 @@ Unlike assignability, neither of these is positional: the spelling is checked th
 
 **A typo carrying a decoration is still reported as a typo.** The name is resolved before the spelling is checked, so `"@type": "no such effect?"` is reported as `'no such effect'` — the root, with the decoration stripped — and a combination reports its leftmost name (`"no such effect or another missing"` is also reported as `'no such effect'`). Worth knowing if you are matching the message against your payload and cannot find the string it names.
 
-**Read that message rather than assuming which types are safe, because the thing being measured against is where you are writing, not what you are writing.** The same effect sent into a surcharge rule's own `effects` array is checked against `trade rule effect` instead — so there `"trade rule effect"` is accepted and quiet, where here it is a `400`. An array write is measured the same way: `add`, `replace` and `remove` are checked against the element type of the array you are patching, so a `@type` one collection takes can be a `400` on another — see [The Element Type Is Implied](resource-patterns.md#the-element-type-is-implied).
+**Read that message rather than assuming which types are safe, because the thing being measured against is where you are writing, not what you are writing.** The same effect sent into a discount rule's own `effects` array is checked against that array's element type instead of the collection's. An array write is measured the same way: `add`, `replace` and `remove` are checked against the element type of the array you are patching, so a `@type` one collection takes can be a `400` on another — see [The Element Type Is Implied](resource-patterns.md#the-element-type-is-implied).
 
-Omitting `@type` altogether lands in the same place as a type that merely fits — the object is built as the target type and the extra members go — so the two mistakes are indistinguishable from the response. `"dynamic"` and `"void"` are two more spellings of it: both are accepted, neither narrows anything, and a write carrying either is identical to one carrying no `@type` at all. Those two and the sibling are what is left of the quiet cases.
+Omitting `@type` altogether lands in the same place as a type that merely fits — the object is built as the target type and the extra members go — so the two mistakes are indistinguishable from the response. `"dynamic"` and `"void"` are two more spellings of it: both are accepted, neither narrows anything, and a write carrying either is identical to one carrying no `@type` at all. Those two and the abstract name are what is left of the quiet cases.
 
 The check is the one [gotcha 46](#46-deprecated-does-not-tell-you-whether-a-member-still-works) and [gotcha 41](#41-a-write-under-a-read-only-scope-is-a-silent-200) prescribe, with one addition: **read the object back and compare the `@type` you got against the `@type` you sent**, not just the members. A downgraded write keeps every member the target declares, so a comparison that only checks the fields it can see will pass.
 
 Two related points:
 
-- **A generated client cannot warn you either.** `price rule effect` is a real type with real members, so it is in the spec exactly like the ones that work. What the document does not record is which relations will accept it — assignability is worked out from the members rather than written down anywhere. It does name the right *element* type for `add`/`replace`/`remove`, which is a narrower promise than it looks: the type is correct, which types are assignable to it still is not written down.
+- **A generated client cannot warn you either.** `discount rule effect` is a real type with real members, so it is in the spec exactly like the ones that work. What the document does not record is that a write naming it keeps no value — assignability is worked out from the members rather than written down anywhere. It does name the right *element* type for `add`/`replace`/`remove`, which is a narrower promise than it looks: the type is correct, which types are assignable to it still is not written down.
 - **This is not the same as a missing `@type`.** Omitting the discriminator entirely leaves the object as the target type for the same reason, so the symptom matches, but the cause is the one the [POS tile sets](../guide/examples/pos.md#pos-tile-sets) note already covers. Either way the fix is the same: send the subtype the resource actually builds, and verify by reading it back.
 
 **Changed 2026-08-23.** A decorated `@type` used to be accepted rather than refused — a trailing `?` or a `X or Y` union was read down to a single name and the write went through as that name, and this entry said so in as many words. A one-element array was accepted as its element in the same way, so a client that wrapped the discriminator in an array could be working; and it worked only once that type had been looked up for some other reason, so the same payload could go through or not depending on what the process had already served. Both are a `400` now, with the messages above. Nothing that names one type exactly behaves differently, so a payload that was already correct is unaffected.
@@ -1557,7 +1561,7 @@ PUT /v1/stores/com.example.storeId=T1
 
 The `@type` on the **root** object is fine; it is the nested element that has to lose it. **Strip `@type` from nested elements on every v26.1.x build**, which also costs nothing on later ones, where the annotated `PUT` is a `200` and repeating it is idempotent.
 
-A *narrowing* annotation — one that names a subtype of what the array holds, such as `{"@type": "fixed surcharge rule effect"}` on a surcharge rule's `effects` — is a different thing and works on every build. It is only the redundant exact-type spelling that is affected, and `stock` has no subtypes, so on `stocks` that is the only annotation there is.
+A *narrowing* annotation — one that names a subtype of what the array holds, such as `{"@type": "percentage discount rule effect"}` on a discount rule's `effects` — is a different thing and works on every build. It is only the redundant exact-type spelling that is affected, and `stock` has no subtypes, so on `stocks` that is the only annotation there is.
 
 Related: [gotcha 47](#47-a-declared-type-key-is-not-always-one-you-can-write), [Resource Patterns → The Element Type Is Implied](resource-patterns.md#the-element-type-is-implied).
 
@@ -2204,6 +2208,34 @@ Related: [POS Carts → What a lock blocks](working-with/pos-carts.md#what-a-loc
 `{"parkCart": false}`, `{"discardCart": false}` and any action sent as `null` answer `200` and do nothing. So does an action whose state already holds: `unlock` on an unlocked lane, `confirmAgeRestriction` with nothing pending. Only a string outside the allowed values is a `400`. A `200` from an action is not evidence that anything changed.
 
 Related: [POS Carts → Routes](working-with/pos-carts.md#routes).
+
+---
+
+## 87. A Product with No VAT Class Cannot Be Sold
+
+A product's VAT comes from its **VAT class** — its own `vatClass`, else the nearest ancestor group's — and the VAT rule for that class in the selling store's VAT area. A product with no class, own or inherited, is created with a `200` like any other, reads `"vatClass": null` and `"vatRates": []`, and sits in an order with `vatPercentage: "0"`. It fails at the point of sale:
+
+```bash
+PATCH /v1/trade-orders/com.example.orderId=O-1/actions
+{"tryApprove": true}
+→ 400  Could not approve order. No VAT rate applies to Docs unclassed; the line cannot be posted until a VAT rule covers it.
+
+POST /v1/receipts
+[{..., "items": [{"product": {"identifiers": {"com.example.sku": "NOCLASS-1"}}, "quantity": "1", "unitAmount": "100"}], ...}]
+→ 400  No VAT rate applies to Docs unclassed; the line cannot be posted until a VAT rule covers it.
+```
+
+`tryFulfill` answers the same text after `Could not fulfill order.`. The same refusal meets a product whose class has no rule in the seller's area — a class of your own before you gave it a rule, or a tenant that has not installed a VAT area yet.
+
+**The fix is a class on the group, once:** `PATCH /v1/product-groups/{id}` with `{"vatClass": {"identifiers": {"com.heads.seedID": "vat-class-standard"}}}`, and every product under it inherits. Installing the Swedish area with its rules is `POST /v1/vat-areas` with `[{"identifiers": {"com.heads.seedID": "vat-area-se"}}]`. To find the products at risk before the till does:
+
+```bash
+GET /v1/products~where(vatClass=null)~just(identifiers,name)
+```
+
+Two things make this one easy to miss. `vatClass` is **not in the default read** of a product or group — ask with `~with(vatClass)`, and it then reads the class in effect, inherited or own. And a product that *looks* classed because its group is, loses the class when it is moved to an unclassed group.
+
+Related: [Working with VAT → Assigning VAT to Products](working-with/vat.md#assigning-vat-to-products), [Working with VAT → VAT Areas and the Reference Pack](working-with/vat.md#vat-areas-and-the-reference-pack), [gotcha 10](#10-products-belong-to-groups-via-parentgroup).
 
 ---
 

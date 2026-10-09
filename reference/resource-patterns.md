@@ -199,7 +199,7 @@ A spelling that is not a bare type name is refused too, even when the name insid
 
 One wrong type is not refused. A *sibling* that happens to declare everything the element declares is accepted, built as the element, and whatever it declared on top of that is dropped — a `200` with no signal. See [gotcha 47](common-gotchas.md#47-a-declared-type-key-is-not-always-one-you-can-write), which is also where the exact messages are.
 
-**Naming the exact element type is accepted, and does nothing.** `{"@type": "stock"}` on a store's `stocks`, or `{"@type": "label"}` on `labels`, is the type the array already holds, so the annotation is redundant rather than wrong. **Narrowing to a subtype works and is the one case where the annotation carries information**: where the array's element type has subtypes, the annotation picks which one to create — `{"effects": [{"@type": "fixed surcharge rule effect", "amount": "5"}]}` on a surcharge rule creates a `fixed surcharge rule effect`. An element type with no subtypes, such as `stock`, can only ever be annotated with its exact name.
+**Naming the exact element type is accepted, and does nothing.** `{"@type": "stock"}` on a store's `stocks`, or `{"@type": "label"}` on `labels`, is the type the array already holds, so the annotation is redundant rather than wrong. **Narrowing to a subtype works and is the one case where the annotation carries information**: where the array's element type has subtypes, the annotation picks which one to create — `{"effects": [{"@type": "percentage discount rule effect", "percentage": "5"}]}` on a discount rule creates a `percentage discount rule effect`. An element type with no subtypes, such as `stock`, can only ever be annotated with its exact name.
 
 > **Availability:** ships in the release after v26.1.11. Not in v26.1.10 or v26.1.11. On v26.1.10 and v26.1.11 the exact-type annotation on a nested element **adds the element twice**, which on a store's `stocks` surfaces as a `500`:
 >
@@ -820,7 +820,7 @@ GET /product-categories/{id}/members
 
 ### Product Groups and Families
 
-Groups define variant dimensions, default VAT codes, instance types, and age restrictions.
+Groups define variant dimensions, a VAT class (`vatClass`, inherited by the families and products under them; see [Working with VAT](working-with/vat.md#assigning-vat-to-products)), instance types, and age restrictions.
 
 ---
 

@@ -235,24 +235,37 @@ GET /v1/receipts/{id}~withAll
 | `totalPayableAmount` | decimal | Amount due |
 | `totalPaidAmount` | decimal | Amount paid |
 | `totalExternalSettlementsAmount` | decimal | Total amount settled outside POS |
-| `vatGroups` | array | VAT breakdown by rate |
+| `vatGroups` | array | VAT breakdown by area, treatment, rate and exemption reason (`~with(vatGroups)`) |
 | `payments` | array | Payment transactions |
 | `externalSettlements` | array | External payments from webshop/invoice |
 | `items` | array | Line items |
 
 ### VAT Groups Structure
 
-Each VAT group summarizes items at the same tax rate:
+A VAT group summarizes the lines that share an **area, treatment, percentage and exemption reason**:
 
 ```json
 {
+  "@type": "VAT group",
   "percentage": "25",
-  "quantity": "3",
-  "netAmount": "800.00",
-  "grossAmount": "1000.00",
-  "vatAmount": "200.00"
+  "vatArea": "Sverige",
+  "treatment": "Standard",
+  "quantity": "1",
+  "netAmount": "800",
+  "grossAmount": "1000",
+  "vatAmount": "200"
 }
 ```
+
+| Field | Description |
+|-------|-------------|
+| `percentage` | The rate |
+| `vatArea` | The name of the VAT area the lines were taxed in |
+| `treatment` | `Standard`, `ZeroRated`, `Exempt`, `ReverseCharge`, `IntraEuSupply`, `Export` or `OutsideScope` |
+| `exemptionReason` | The VATEX code when the treatment carries one; omitted when empty |
+| `quantity`, `netAmount`, `grossAmount`, `vatAmount` | The group's totals |
+
+Two groups can share a percentage: a `ZeroRated` domestic line and an `Export` line both read `"percentage": "0"`. A consumer that keys by percentage alone must sum the groups; a consumer that reports by treatment can read it off the group. Each line also carries what it was taxed by, as the non-essential members `vatArea`, `vatTreatment`, `vatExemptionReason` and `supplyKind` on the receipt item (`~with(vatArea,vatTreatment,vatExemptionReason,supplyKind)`). See [Working with VAT → VAT in Receipts and Z Reports](working-with/vat.md#vat-in-receipts-and-z-reports).
 
 ### Payments Structure
 

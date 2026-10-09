@@ -29,10 +29,10 @@ This guide is the definitive playbook for pricing in CommerceOS. It covers the p
 
 ## Overview
 
-Prices in CommerceOS store **net amounts** (VAT excluded). The system calculates gross amounts at transaction time using the product's VAT code. This separation ensures pricing remains accurate across different tax jurisdictions.
+A price in CommerceOS is **net** (VAT excluded) unless `includesTax` is `true`, in which case `amount` is the gross price the customer sees. Either way, VAT is applied at transaction time from the product's VAT class and the VAT area of the sale, so one price list serves every store in an area and a rate change is handled for you. See [Prices That Include VAT](#prices-that-include-vat).
 
 **Key Characteristics:**
-- Prices are NET (VAT is calculated separately at transaction time)
+- A price is net unless `includesTax` is true; VAT is applied at transaction time either way
 - Prices are scoped by seller, optionally by buyer, and optionally by time period
 - Multiple prices for the same product support different contexts (wholesale vs retail, seasonal, customer-specific)
 - Currency defaults to USD if omitted (recommended to always set explicitly)
@@ -44,7 +44,7 @@ Prices  ↔  Products (prices apply to one or more products)
     ↔  Sellers (agents: stores, companies that sell at this price)
     ↔  Buyers (agents: customers who get this price)
     ↔  Currency (every price has a currency)
-    ↔  VAT Codes (tax applied via product's defaultVatCode)
+    ↔  VAT classes (tax applied via the product's vatClass and the VAT area of the sale)
     ↔  Orders (order items use applicable prices)
     ↔  Receipts (final transaction records)
 ```
@@ -55,8 +55,9 @@ Prices  ↔  Products (prices apply to one or more products)
 
 | Term | Description |
 |------|-------------|
-| **Net Amount** | Price excluding VAT (what you store) |
-| **Gross Amount** | Price including VAT (calculated at transaction time) |
+| **Net Amount** | Price excluding VAT (what `amount` is when `includesTax` is false) |
+| **Gross Amount** | Price including VAT (what `amount` is when `includesTax` is true; otherwise derived at transaction time) |
+| **`includesTax`** | Boolean on the price, default `false`: says which of the two `amount` is |
 | **Seller** | Agent (store, company) authorized to sell at this price |
 | **Buyer** | Agent (customer) eligible for this price |
 | **Validity Period** | Time range during which price is active (`from`/`to`) |
@@ -73,7 +74,8 @@ Prices  ↔  Products (prices apply to one or more products)
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `identifiers` | object | — | Namespaced external IDs |
-| `amount` | string (decimal) | `"0"` | Net price (VAT excluded). Defaults to zero if omitted. |
+| `amount` | string (decimal) | `"0"` | The unit price: net unless `includesTax` is true. Defaults to zero if omitted. |
+| `includesTax` | boolean | `false` | `true` makes `amount` the gross price, VAT included. Essential: in every price read. See [Prices That Include VAT](#prices-that-include-vat). |
 | `currency` | reference | `USD` | Currency reference. Defaults to USD if omitted. |
 | `products` | array | `[]` | Products this price applies to. Can be omitted or empty. |
 
@@ -99,15 +101,59 @@ Prices  ↔  Products (prices apply to one or more products)
 
 ## Net vs Gross: The Core Concept
 
-CommerceOS stores prices as **NET** (VAT excluded). This is fundamental to understand.
+A price is net unless `includesTax` is `true`. You choose the basis per price, and you do not have to convert.
 
-### Why Net?
+### Prices That Include VAT
 
-1. **Tax jurisdiction flexibility** - Same product can have different VAT rates in different countries
-2. **Consistent pricing math** - Net + VAT = Gross calculation is unambiguous
-3. **Integration clarity** - External systems often work with net prices
+Send the shelf price with `includesTax: true`:
+
+```bash
+# A consumer price: 199 kr on the shelf, VAT included
+POST /v1/prices
+{
+  "identifiers": {"com.example.priceId": "PRICE-010"},
+  "products": [{"identifiers": {"com.example.sku": "SKU-010"}}],
+  "sellers": [{"identifiers": {"com.example.storeId": "STORE-001"}}],
+  "amount": "199.00",
+  "includesTax": true,
+  "currency": {"identifiers": {"currencyCode": "SEK"}}
+}
+
+# A net price (the default): 159.20 excl. VAT, 199.00 on the shelf at 25 %
+POST /v1/prices
+{
+  "identifiers": {"com.example.priceId": "PRICE-011"},
+  "products": [{"identifiers": {"com.example.sku": "SKU-011"}}],
+  "sellers": [{"identifiers": {"com.example.storeId": "STORE-001"}}],
+  "amount": "159.20",
+  "currency": {"identifiers": {"currencyCode": "SEK"}}
+}
+
+# Switch an existing price to the gross basis: give the gross amount in the same request
+PATCH /v1/prices/com.example.priceId=PRICE-011
+{"amount": "199.00", "includesTax": true}
+
+# Every price in the gross basis
+GET /v1/prices~where(includesTax=true)~with(products)~take(100)
+```
+
+With `includesTax: true`, `amount` is the **gross** unit price. The till and the order engine derive the net at sale time from the product's rate in the VAT area of the sale, so:
+
+- the consumer price is what you typed, not a rounded `0.892857`;
+- a rate change leaves the consumer price alone and moves the net. A 112 kr loaf priced gross stays 112 kr on the shelf when the food rate goes from 12 % to 6 %; a 100 kr net loaf goes from 112 kr to 106 kr.
+
+Read from an order line on a 25 % product (`~with(unitAmountExclVat,unitAmountInclVat,vatPercentage)`):
+
+| Price | `unitAmountExclVat` | `unitAmountInclVat` | `vatPercentage` |
+|-------|---------------------|---------------------|-----------------|
+| `"amount": "125", "includesTax": true` | `100` | `125` | `25` |
+| `"amount": "100"` | `100` | `125` | `25` |
+
+Existing prices read `includesTax: false`. Prices compete on their net whatever basis each is in; the lowest net wins (see [Price Selection Logic](#price-selection-logic)). The same flag exists on a fixed [surcharge rule](../../guide/examples/surcharge-rules.md). The worked table for packages, surcharges, 0 % products and manual prices is in [Working with VAT → Prices That Include VAT](vat.md#prices-that-include-vat).
 
 ### Conversion Formulas
+
+If you want to check the numbers yourself:
 
 ```
 VAT Amount = Net Amount × (VAT Rate / 100)
@@ -140,7 +186,7 @@ Gross: 500.00 SEK
 
 ### Converting VAT-Inclusive Prices
 
-If your source system has gross (VAT-inclusive) prices:
+You do not have to: send the gross amount with `includesTax: true`. If you prefer to keep a net price list, the conversion is:
 
 ```
 Net = Gross / (1 + VAT Rate / 100)
@@ -154,7 +200,7 @@ Gross: 112.00 SEK
 Net:   112.00 / 1.12 = 100.00 SEK
 ```
 
-Store the calculated net amount in the price, and ensure the product's `defaultVatCode` is set correctly.
+A net price list has to be recomputed when a rate changes; a gross one does not. Either way the product needs a VAT class (`vatClass`, own or inherited) for the rate to come from; see [Working with VAT](vat.md#assigning-vat-to-products).
 
 ---
 
@@ -573,6 +619,7 @@ When multiple prices exist for a product, CommerceOS filters to the eligible pri
 ### Selection outcome
 
 - The **lowest net amount** among the eligible prices wins. If two prices share the same amount, the first encountered match is used—avoid equal amounts when you need deterministic overrides.
+- A price with `includesTax: true` competes on the net derived from the product's rate, so mixed-basis prices compare correctly: `100` gross on a 25 % product (80 net) beats `90` net, and the line is priced at `80` net, `100` gross.
 - Empty `sellers`/`buyers` arrays are global, so a cheaper global price can override a more specific seller/buyer price.
 - The same holds for a [customer-group price](#customer-groups-as-buyers-price-lists): it wins only when it is lower than the general price. There is no buyer exclusion on a price, so a group cannot be made to pay *more* than the general price through `/v1/prices`.
 
@@ -826,18 +873,30 @@ PUT /v1/prices/com.example.priceId=PROD-001-STORE-001
 
 ### Phase 3: Handling Source Data Formats
 
-**Converting gross prices to net:**
+**Send each price list in its own basis.** A consumer price list is gross: set `includesTax: true` and send the amounts as they are. A net price list is the default:
 
-```javascript
-// JavaScript example
-function grossToNet(grossAmount, vatPercentage) {
-  return grossAmount / (1 + vatPercentage / 100);
+```bash
+# Consumer price list: amounts as printed on the shelf
+PUT /v1/prices/com.example.priceId=PROD-001-SHELF
+{
+  "products": [{"identifiers": {"com.example.sku": "PROD-001"}}],
+  "sellers": [{"identifiers": {"com.example.storeId": "STORE-001"}}],
+  "amount": "249.00",
+  "includesTax": true,
+  "currency": {"identifiers": {"currencyCode": "SEK"}}
 }
 
-// Source: 249.00 SEK (VAT-inclusive, 25% VAT)
-// Net: 249.00 / 1.25 = 199.20 SEK
-const netAmount = grossToNet(249.00, 25);
+# Net price list: amounts excluding VAT
+PUT /v1/prices/com.example.priceId=PROD-001-NET
+{
+  "products": [{"identifiers": {"com.example.sku": "PROD-001"}}],
+  "sellers": [{"identifiers": {"com.example.storeId": "STORE-001"}}],
+  "amount": "199.20",
+  "currency": {"identifiers": {"currencyCode": "SEK"}}
+}
 ```
+
+Do not run a gross list through a conversion and then send it without the flag: the two representations are equivalent today, but only the gross one keeps its shelf price through a rate change.
 
 ### Phase 4: Bulk Price Sync
 
@@ -894,7 +953,7 @@ PUT /v1/products/com.example.sku=JACKET-001
 {
   "name": "Premium Winter Jacket",
   "status": "Active",
-  "defaultVatCode": {"identifiers": {"percentage": "25"}}
+  "vatClass": {"identifiers": {"com.heads.seedID": "vat-class-standard"}}
 }
 ```
 
@@ -997,9 +1056,10 @@ POST /v1/prices
 
 ### Critical Rules
 
-1. **Prices are NET (VAT excluded):**
+1. **Say which basis a price is in:**
    ```
-   Store net amount, not gross. VAT is calculated at transaction time.
+   A price is net unless includesTax is true. Send a shelf price with
+   "includesTax": true; VAT is applied at transaction time either way.
    ```
 
 2. **Currency defaults to USD:**
@@ -1044,7 +1104,7 @@ POST /v1/prices
 
 | Mistake | Result | Fix |
 |---------|--------|-----|
-| Storing gross instead of net | Incorrect tax calculations | Convert gross to net before storing |
+| A gross amount sent without `includesTax: true` | Taxed again | Set the flag |
 | Omitting currency | Defaults to USD unexpectedly | Always include currency reference explicitly |
 | Number instead of string for amount | Precision loss | Use `"199.00"` not `199.00` |
 | Wrong validity range | Price not applied | Check `from`/`to` timestamps |
@@ -1061,7 +1121,7 @@ POST /v1/prices
 ## Related Guides
 
 - [Products](products.md) - Product catalog management
-- [VAT](vat.md) - Tax calculation and net/gross formulas
+- [VAT](vat.md) - VAT classes, areas and rules; prices that include VAT; net/gross formulas
 - [Orders](orders.md) - Using prices in trade orders
 - [Customers](customers.md) - Buyer-specific pricing
 - [Stock](stock.md) - Inventory that prices apply to

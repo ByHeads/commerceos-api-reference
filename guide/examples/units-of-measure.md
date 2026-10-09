@@ -24,7 +24,7 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/products" \
     "name": "Artisan Salami",
     "unit": "Kilogram",
     "parentGroup": { "identifiers": { "com.example.id": "deli-meats" } },
-    "defaultVatCode": { "identifiers": { "percentage": "12" } }
+    "vatClass": { "identifiers": { "com.heads.seedID": "vat-class-food" } }
   }'
 ```
 
@@ -49,7 +49,7 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/products" \
     "name": "Phone X200",
     "unit": "Piece",
     "parentGroup": { "identifiers": { "com.example.id": "smartphones" } },
-    "defaultVatCode": { "identifiers": { "percentage": "25" } }
+    "vatClass": { "identifiers": { "com.heads.seedID": "vat-class-standard" } }
   }'
 ```
 
@@ -211,7 +211,7 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/products" \
     "name": "Black T-Shirt (M)",
     "unit": "Piece",
     "parentGroup": { "identifiers": { "com.example.id": "tshirts" } },
-    "defaultVatCode": { "identifiers": { "percentage": "25" } }
+    "vatClass": { "identifiers": { "com.heads.seedID": "vat-class-standard" } }
   }'
 ```
 
@@ -228,7 +228,7 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/products" \
     "name": "French Brie",
     "unit": "Kilogram",
     "parentGroup": { "identifiers": { "com.example.id": "deli-cheese" } },
-    "defaultVatCode": { "identifiers": { "percentage": "12" } }
+    "vatClass": { "identifiers": { "com.heads.seedID": "vat-class-food" } }
   }'
 ```
 
@@ -255,7 +255,7 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/products" \
     "name": "Cat6 Ethernet Cable (Blue)",
     "unit": "Meter",
     "parentGroup": { "identifiers": { "com.example.id": "network-cables" } },
-    "defaultVatCode": { "identifiers": { "percentage": "25" } }
+    "vatClass": { "identifiers": { "com.heads.seedID": "vat-class-standard" } }
   }'
 ```
 
@@ -272,7 +272,7 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/products" \
     "name": "Marble Tile 30x30",
     "unit": "SquareMeter",
     "parentGroup": { "identifiers": { "com.example.id": "floor-tiles" } },
-    "defaultVatCode": { "identifiers": { "percentage": "25" } }
+    "vatClass": { "identifiers": { "com.heads.seedID": "vat-class-standard" } }
   }'
 ```
 
@@ -289,7 +289,7 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/products" \
     "name": "Fountain Cola",
     "unit": "Liter",
     "parentGroup": { "identifiers": { "com.example.id": "fountain-drinks" } },
-    "defaultVatCode": { "identifiers": { "percentage": "12" } }
+    "vatClass": { "identifiers": { "com.heads.seedID": "vat-class-food" } }
   }'
 ```
 
@@ -306,7 +306,7 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/products" \
     "name": "Repair Service (Hourly)",
     "unit": "Hour",
     "parentGroup": { "identifiers": { "com.example.id": "services" } },
-    "defaultVatCode": { "identifiers": { "percentage": "25" } }
+    "vatClass": { "identifiers": { "com.heads.seedID": "vat-class-standard" } }
   }'
 ```
 
@@ -323,7 +323,7 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/products" \
     "name": "Electricity (Spot Price)",
     "unit": "KilowattHour",
     "parentGroup": { "identifiers": { "com.example.id": "energy" } },
-    "defaultVatCode": { "identifiers": { "percentage": "25" } }
+    "vatClass": { "identifiers": { "com.heads.seedID": "vat-class-standard" } }
   }'
 ```
 
@@ -344,7 +344,7 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/product-groups" 
     "name": "Deli Meats",
     "instanceType": "Food",
     "unit": "Kilogram",
-    "defaultVatCode": { "identifiers": { "percentage": "12" } }
+    "vatClass": { "identifiers": { "com.heads.seedID": "vat-class-food" } }
   }'
 ```
 
@@ -388,7 +388,7 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/products" \
     "name": "Pre-Sliced Salami 150g",
     "unit": "Piece",
     "parentGroup": { "identifiers": { "com.example.id": "deli-meats" } },
-    "defaultVatCode": { "identifiers": { "percentage": "12" } }
+    "vatClass": { "identifiers": { "com.heads.seedID": "vat-class-food" } }
   }'
 ```
 

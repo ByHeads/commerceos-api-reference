@@ -895,7 +895,7 @@ GET /v1/trade-orders/com.example.orderId=ORD-001/items/{itemId}/instances
 Order amounts are calculated automatically based on:
 
 1. **Product price** (from price list matching seller/currency)
-2. **VAT code** (from product or product group)
+2. **VAT class** (the product's own or its group's) and the VAT rule for it in the selling store's VAT area
 3. **Quantity or instance count**
 4. **Discounts** (if any)
 
@@ -1040,7 +1040,7 @@ POST /v1/trade-orders
 ### Notes
 
 - **Clearing manual amounts:** There is no direct API to clear a manual unit amount. To revert to computed pricing, cancel and recreate the item, or handle it at the domain level.
-- **VAT calculation:** The VAT percentage is determined by the product's VAT code configuration. `unitAmountInclVat` is calculated automatically.
+- **VAT calculation:** The VAT percentage comes from the product's VAT class (own or inherited) and the rule for it in the seller's VAT area. `unitAmountExclVat` is the net manual price you write; `unitAmountInclVat` is read-only and derived. See [VAT](vat.md#vat-areas-and-the-reference-pack).
 - **Interaction with discounts:** If you also apply a `manualDiscount` to the item, the discount operates on top of the manual unit amount.
 - **Order recalculation:** Setting `unitAmountExclVat` triggers automatic recalculation of all order totals.
 
@@ -1967,7 +1967,7 @@ GET /v1/trade-orders/com.example.orderId=ORD-001~with(status,items.unitAmountInc
      "name": "Smartphone X",
      "instanceType": "MobileDevice",
      "status": "Active",
-     "defaultVatCode": {"identifiers": {"percentage": "25"}}
+     "vatClass": {"identifiers": {"com.heads.seedID": "vat-class-standard"}}
    }
    ```
 
@@ -2157,7 +2157,7 @@ PUT /v1/products/com.example.sku=IPHONE-15-PRO
   "name": "iPhone 15 Pro 256GB",
   "instanceType": "MobileDevice",
   "status": "Active",
-  "defaultVatCode": {"identifiers": {"percentage": "25"}},
+  "vatClass": {"identifiers": {"com.heads.seedID": "vat-class-standard"}},
   "classification": "Goods"
 }
 
@@ -2167,7 +2167,7 @@ PUT /v1/products/com.example.sku=PLAN-UNLIMITED-24
   "name": "Unlimited 24-Month Plan",
   "instanceType": "MobilePlan",
   "status": "Active",
-  "defaultVatCode": {"identifiers": {"percentage": "25"}},
+  "vatClass": {"identifiers": {"com.heads.seedID": "vat-class-standard"}},
   "classification": "Services"
 }
 
@@ -2176,7 +2176,7 @@ PUT /v1/products/com.example.sku=CASE-IPHONE-15
 {
   "name": "iPhone 15 Protective Case",
   "status": "Active",
-  "defaultVatCode": {"identifiers": {"percentage": "25"}},
+  "vatClass": {"identifiers": {"com.heads.seedID": "vat-class-standard"}},
   "classification": "Goods"
 }
 ```

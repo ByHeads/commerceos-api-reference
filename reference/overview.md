@@ -23,7 +23,7 @@ This reference explains how to integrate with CommerceOS at a practical level. I
 - [Products](working-with/products.md) — Catalog management, variants, GTIN/PLU, categories, assortments
 - [Assortments](working-with/assortments.md) — One assortment or many across stores and companies, assortment owners and contexts, what makes a product sell
 - [Prices](working-with/prices.md) — Price creation, validity periods, seller/buyer scoping
-- [VAT](working-with/vat.md) — Tax codes, rates, net/gross calculations
+- [VAT](working-with/vat.md) — VAT classes, areas and rules, prices including VAT, net/gross formulas
 - [Customers](working-with/customers.md) — People, companies, stores, addresses, contact methods
 - [Orders](working-with/orders.md) — Trade orders, items, instances (IMEI), discounts, payments
 - [Stock](working-with/stock.md) — Stock places, transactions, adjustments, shipments
@@ -48,7 +48,7 @@ The API organizes resources into logical groups. Each group maps to OAuth2 scope
 |-------|-------------|-------|----------|
 | Organization | People, companies, and stores used across orders and inventory | [Customers guide](working-with/customers.md) | [Examples](../guide/examples/organization.md) |
 | Products | Catalog items, categories, groups/families, and pricing metadata | [Products guide](working-with/products.md) | [Examples](../guide/examples/products.md) |
-| Pricing | Price rules, validity periods, and currency handling | [Prices guide](working-with/prices.md), [VAT guide](working-with/vat.md) | [Examples](../guide/examples/pricing.md) |
+| Pricing | Prices (net or including VAT), validity periods, currency handling, VAT classes, areas and rules | [Prices guide](working-with/prices.md), [VAT guide](working-with/vat.md) | [Examples](../guide/examples/pricing.md) |
 | Orders | Trade orders, items, payments, returns, and the trade records logging what was done to them | [Orders guide](working-with/orders.md), [Trade Records](trade-records.md) | [Examples](../guide/examples/orders.md) |
 | Inventory | Stock places, stock transactions, and adjustment reasons | [Stock guide](working-with/stock.md) | [Examples](../guide/examples/inventory.md) |
 | POS | Terminals, profiles, carts and sessions, receipts, and payment methods | [Receipts](receipts.md), [POS Carts guide](working-with/pos-carts.md) | [Examples](../guide/examples/pos.md) |
@@ -324,7 +324,7 @@ Most resources return essential fields only. Non-essential fields are accessed v
 
 **Non-essential fields** (require `~with`):
 - Relations: `categories`, `prices`
-- Extended properties: `hidden`, `plu`, `defaultVatCode`
+- Extended properties: `hidden`, `plu`, `vatClass`
 
 ```bash
 # Include specific non-essential fields
