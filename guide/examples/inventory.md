@@ -182,8 +182,6 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/stock-places/co
 
 ## Stock Entries (set target stock)
 
-> **Availability:** v26.1.11 and later. Earlier builds read the current level from the `place` alone, regardless of the submission's `stock`.
-
 Stock entries are the **target-based** counterpart to stock adjustments. Submit a desired physical quantity at one or more `(product, place)` pairs, and the server reads the current level, computes the delta, and writes a stock-adjustment record under the hood. Use this when you have a known *target* inventory (e.g. a reconciled count or an upstream source-of-truth) rather than a known *movement*. See the [Stock Entries reference](../../reference/stock-entries.md) for the full field list and error matrix.
 
 ```bash
@@ -521,9 +519,7 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-counts/afte
 
 Stock transfers (movements between logical stocks — see the [Stock & Inventory Guide](./stock-inventory-guide.md#part-5-stock-transfers--moving-stock-between-logical-stocks) for the full lifecycle) support `/before/` and `/after/`.
 
-> **Availability:** v26.1.11 and later. Earlier builds accepted store-to-store transfers and same-stock transfers with a `200`.
->
-> **Heads up — two rules on create.** `POST /v1/stock-transfers` now rejects a transfer whose `receiver` is a different agent from `sender` (`400`, `"details": "Stock transfers between different agents are not supported."`) and a transfer whose `senderStock` and `receiverStock` resolve to the same stock (`400`, `"details": "A stock transfer must be between two different stocks."`). The second also rules out the old shortcut of omitting both stocks, since both then default to the agent's default stock — every create needs at least one of `senderStock` / `receiverStock` set to a non-default stock. See [5.1 Creating a Stock Transfer](./stock-inventory-guide.md#51-creating-a-stock-transfer).
+> **Heads up — two rules on create.** `POST /v1/stock-transfers` rejects a transfer whose `receiver` is a different agent from `sender` (`400`, `"details": "Stock transfers between different agents are not supported."`) and a transfer whose `senderStock` and `receiverStock` resolve to the same stock (`400`, `"details": "A stock transfer must be between two different stocks."`). The second also rules out omitting both stocks, since both then default to the agent's default stock — every create needs at least one of `senderStock` / `receiverStock` set to a non-default stock. See [5.1 Creating a Stock Transfer](./stock-inventory-guide.md#51-creating-a-stock-transfer).
 
 ```bash
 # Default mode: transfers created at or after the given ISO timestamp

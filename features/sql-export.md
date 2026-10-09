@@ -64,10 +64,9 @@ GET /v1/products~map(my-sql-export-type)
 Accept: sql
 ```
 
-From the release after v26.1.11 the same short name also works as a file extension, selecting the format without a
+The same short name also works as a file extension, selecting the format without a
 header — `GET /v1/products.sql~map(my-sql-export-type)`. It goes on the path segment, ahead of any operators. See
-[Format by path suffix](../reference/overview.md#format-by-path-suffix); earlier builds select the format from
-`Accept` only.
+[Format by path suffix](../reference/overview.md#format-by-path-suffix).
 
 ### 2.2 Serializer Parameters
 

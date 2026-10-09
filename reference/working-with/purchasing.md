@@ -1,9 +1,5 @@
 # Working with Purchasing: Purchase Orders, Deliveries and Returns
 
-> **Availability:** v26.2.1 and later. Not in v26.1.x.
->
-> Sections marked **long-standing** are in every current release and need no such caveat.
-
 This guide covers the buying side of a trade order end to end: placing a **purchase order** with a supplier, booking the goods that arrive with `/v1/deliveries`, and sending goods back with `/v1/returns`. The two documents are records in their own right — they carry the supplier's paperwork numbers, they can be counted and corrected before they are posted, and posting them is what moves stock.
 
 ---
@@ -102,7 +98,7 @@ Two consequences worth knowing before you size a key:
 
 A purchase order is a trade order created with the supplier as `supplier` and sole seller and your receiving store as `customer`. Everything on [Working with Orders](orders.md) applies to it; this section covers what is specific to buying.
 
-### The Receiving Store Is the `customer` — long-standing
+### The Receiving Store Is the `customer`
 
 **Make the store that receives the goods the `customer`. One purchase order per receiving store.**
 
@@ -116,7 +112,7 @@ GET /v1/products/com.example.sku=WIDGET~just(stockLevels)
 
 The company has no stock of its own for the units to land in. `buyers` on the order reads the customer (`[{ "@type": "company", … }]`) and is read-only, so the customer is the only way to say where the goods go.
 
-### Purchase Price per Line: `unitAmountExclVat` — long-standing
+### Purchase Price per Line: `unitAmountExclVat`
 
 Put your agreed purchase price on each line as `unitAmountExclVat`, and give each line an identifier of your own. Purchase prices are written net: `unitAmountExclVat` is always excluding VAT.
 
@@ -154,7 +150,7 @@ Response `200`, and the amounts read back (no VAT configured in this example, so
 
 The purchasing members in the example (`requestedArrivalTime`, `customersReference`, `customersExternalNotes`, `receiverNotes`) are described in [Purchasing Fields on Trade Orders](#purchasing-fields-on-trade-orders).
 
-### Your Purchase Order Number: `identifiers.customersId` — long-standing
+### Your Purchase Order Number: `identifiers.customersId`
 
 `identifiers.customersId` is **the customer's number for the order — your purchase order number.** It is issued on creation from the `incomingTradeOrderSerial` on `/v1/config/root-order` when the customer sits under the root organization node, the same condition that governs `receiversId` on a delivery. "Incoming" is from the goods' point of view: an order whose goods come in to you.
 
@@ -189,7 +185,7 @@ GET /v1/trade-orders/com.example.orderId=PO-1~just(identifiers,customersId,suppl
 | `supplierDeliverySerial` | goods receipts | `delivery.identifiers.receiversId` |
 | `supplierReturnSerial` | supplier returns | `return.identifiers.returnersId` |
 
-`incomingTradeOrderSerial` is long-standing; the other two ship with the deliveries surface. Setting them needs the `config` scope. Curl versions are in [Configuration Examples → Order Numbering Serials](../../guide/examples/configuration.md#order-numbering-serials-v1configroot-order).
+Setting them needs the `config` scope. Curl versions are in [Configuration Examples → Order Numbering Serials](../../guide/examples/configuration.md#order-numbering-serials-v1configroot-order).
 
 ### Lifecycle of a Purchase Order
 
@@ -200,7 +196,7 @@ GET /v1/trade-orders/com.example.orderId=PO-1~just(identifiers,customersId,suppl
 | Receive 8 of 10 WIDGET (GADGET not yet) | a delivery approved | `["Committed", "Fulfilled"]`, `deliveryDiscrepancy: ["Underdelivery", "ZeroDelivery"]` | WIDGET 8 |
 | Receive the rest | a second delivery approved | `["Fulfilled"]`, `deliveryDiscrepancy: ["None"]` | WIDGET 10, GADGET 5 |
 
-- **Approving a purchase order moves no stock and needs none.** Nothing about the expected goods shows in `stockLevels` — `totalQuantity`, `reservedQuantity` and `availableQuantity` all stay `"0"`. There is no "on order" quantity in the API; what is on its way is read from the open orders ([Finding Purchase Orders](#finding-purchase-orders--long-standing-except-deliverydiscrepancy)).
+- **Approving a purchase order moves no stock and needs none.** Nothing about the expected goods shows in `stockLevels` — `totalQuantity`, `reservedQuantity` and `availableQuantity` all stay `"0"`. There is no "on order" quantity in the API; what is on its way is read from the open orders ([Finding Purchase Orders](#finding-purchase-orders)).
 - **Progress per line** is `statusDetails` on the order item (non-essential):
 
   ```json
@@ -239,7 +235,7 @@ PATCH /v1/trade-orders/com.example.orderId=PO-1   { "overdeliveryPolicy": "Refus
                            { … "'Warn'" … }, { … "'Reject'" … } ], … }
 ```
 
-### Finding Purchase Orders — long-standing, except `deliveryDiscrepancy`
+### Finding Purchase Orders
 
 Four orders for the same supplier and store — `PO-OPEN` `["Committed"]`, `PO-PART` `["Committed", "Fulfilled"]`, `PO-DONE` `["Fulfilled"]`, `PO-NEW` `["New"]`:
 
@@ -286,7 +282,7 @@ PATCH /v1/deliveries/com.example.deliveryId=GR-CLOSE/actions   { "approve": true
 
 Result: order `status: ["Cancelled", "Fulfilled"]`, `deliveryDiscrepancy: ["None"]`, the line's `statusDetails` `[{ "quantity": "2", "status": "Cancelled" }, { "quantity": "8", "status": "Fulfilled" }]`, store stock still 8, and a further `POST /v1/deliveries` from the order is `400` `"The order has no committed items to deliver."` Setting the policy at order creation gives the same end state on the first short delivery. See [gotcha 54](../common-gotchas.md#54-trycancel-on-a-partly-received-order-is-a-silent-200).
 
-### Receive Everything Without a Document: `tryFulfill` — long-standing
+### Receive Everything Without a Document: `tryFulfill`
 
 `PATCH /v1/trade-orders/com.example.orderId=PO-1/actions { "tryFulfill": true }` on a `Committed` purchase order → `200`; the order reads `["Fulfilled"]`, `deliveryDiscrepancy: ["None"]`, `deliveries: []`, and the store's stock goes 0 → 10. A later `POST /v1/deliveries` from it is `400` `"The order has no committed items to deliver."`
 

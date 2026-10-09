@@ -188,28 +188,28 @@ The API is organized around resource families like Agents, Products, Orders, Inv
 | Scope | Concepts |
 |-------|----------|
 | **org** | People, companies, and stores in your organization; identifiers and contact data live here. |
-| **products** | Catalog items, categories, groups/families, and pricing metadata used by ordering and stock. Also brands, batches, package classes, age restrictions, hazard classes and dangerous goods, commodity codes and GS1 series; `products:read` reads those from v26.2.1. |
-| **stock** | Stock places, stock transactions, and adjustment reasons tied to products and stores. Also the logical stocks, stock entries, placement rules, stock counts and stock transfers; `stock:read` reads those from v26.2.1, before that they took `stock:write`. |
-| **orders.sales** / **orders.payments** | Trade orders and trade order items, plus payment orders for capturing order payments. Each has a `:write` and, from v26.2.1, a `:read` half. |
-| **discounts.system** / **discounts.manual** | Discount rules with their effects, phases, reasons and coupons, and the manual discounts a cashier can give. `:write`, and `:read` from v26.2.1. See [Discount Rules](../guide/examples/discount-rules.md). |
-| **periods** | Trade periods, seasons and campaigns. `:write`, and `:read` from v26.2.1. |
-| **logistics** | Picking orders and picking records, shipment orders, supply routes and delivery terms. `logistics:read` reads the last three from v26.2.1. |
-| **payment-records** / **shipment-records** | What was actually paid and shipped against an order. `:write`, and `:read` from v26.2.1. |
+| **products** | Catalog items, categories, groups/families, and pricing metadata used by ordering and stock. Also brands, batches, package classes, age restrictions, hazard classes and dangerous goods, commodity codes and GS1 series. |
+| **stock** | Stock places, stock transactions, and adjustment reasons tied to products and stores. Also the logical stocks, stock entries, placement rules, stock counts and stock transfers. |
+| **orders.sales** / **orders.payments** | Trade orders and trade order items, plus payment orders for capturing order payments. Each has a `:write` and a `:read` half. |
+| **discounts.system** / **discounts.manual** | Discount rules with their effects, phases, reasons and coupons, and the manual discounts a cashier can give. See [Discount Rules](../guide/examples/discount-rules.md). |
+| **periods** | Trade periods, seasons and campaigns. |
+| **logistics** | Picking orders and picking records, shipment orders, supply routes and delivery terms. |
+| **payment-records** / **shipment-records** | What was actually paid and shipped against an order. |
 | **trade-records** | The ledger's log of what was actually done to an order — reservations, deliveries, returns, cancellations. `trade-records:read` reads it; `trade-records:write` additionally opens external identifiers and registered dynamic properties on a record, and includes the reads. See [`trade-records.md`](trade-records.md). |
-| **pos** | Terminals, profiles, functions, devices, tiles and tile sets, templates, printers, and currency denominations for in-store flows. Tiles, templates, printers and denominations take `pos:write` before v26.2.1; `pos:read` reads them from v26.2.1. |
-| **pos.carts** / **pos.supervisor** | What a till is doing: a terminal's session, its active and parked carts and their lines (`pos.carts:read`, `pos.carts:write`), and the supervisor's control of a self-checkout lane (`pos.supervisor:write`, no read half). v26.2.1 and later. See [POS Carts](working-with/pos-carts.md). |
+| **pos** | Terminals, profiles, functions, devices, tiles and tile sets, templates, printers, and currency denominations for in-store flows. |
+| **pos.carts** / **pos.supervisor** | What a till is doing: a terminal's session, its active and parked carts and their lines (`pos.carts:read`, `pos.carts:write`), and the supervisor's control of a self-checkout lane (`pos.supervisor:write`, no read half). See [POS Carts](working-with/pos-carts.md). |
 | **prices** | Price definitions, validity windows, and currency-scoped pricing. |
-| **supply-chains** | Trade relationships, delivery terms, and payment terms between agents. Delivery terms are also readable under `logistics:read` from v26.2.1. |
-| **users** | User accounts and credentials for access and identity. `users:read` is read-only and covers users plus local, retail and Entra ID credentials; **there is no `users:write`** — every write, and everything to do with roles and permissions, needs `admin`. `admin:read` (v26.2.1 and later) reads users, systems, OAuth2 clients and every credential collection with secrets masked. See [Users → Scopes](users.md#scopes). |
+| **supply-chains** | Trade relationships, delivery terms, and payment terms between agents. Delivery terms are also readable under `logistics:read`. |
+| **users** | User accounts and credentials for access and identity. `users:read` is read-only and covers users plus local, retail and Entra ID credentials; **there is no `users:write`** — every write, and everything to do with roles and permissions, needs `admin`. `admin:read` reads users, systems, OAuth2 clients and every credential collection with secrets masked. See [Users → Scopes](users.md#scopes). |
 | **retail** | Receipts, payment methods, payment cards/means, Z/X and cash register reports, return reasons, and mobile device/plans. See [`receipts.md`](receipts.md) for BI/analytics usage. |
 | **geo** | Currencies, languages, countries, and cities for localization. |
 | **media** | Images and other media assets attached to products and agents. |
-| **integrations** | Payment, shipment, wallet, loyalty and EPI integrations with their configurations. `integrations` is the single full-access scope; `integrations:read` (v26.2.1 and later) lists them without the configuration bodies. |
-| **links** | Shortened links. `:write`, and `:read` from v26.2.1. |
+| **integrations** | Payment, shipment, wallet, loyalty and EPI integrations with their configurations. `integrations` is the single full-access scope; `integrations:read` lists them without the configuration bodies. |
+| **links** | Shortened links. |
 | **config** | System settings and serial number sequences. |
 | **advanced** | Mapped types and sync webhooks for custom data transformations and integrations. See [`mapped-types.md`](mapped-types.md), [`mapped-types-dry-run.md`](mapped-types-dry-run.md), and [`sync-webhooks.md`](sync-webhooks.md). |
 
-> **Note:** Scopes control what API clients can access. Every `:write` scope has a `:read` twin that exposes the same collections read-only. `me`, `advanced`, `config` and `kv` have no read variant; `integrations` and `admin` have restricted ones. Before v26.2.1 eight write scopes have no read twin and four read scopes stop short of their write twin. See [Credentials → Every write scope has a read twin](credentials.md#every-write-scope-has-a-read-twin) for the full table, and your OAuth2 client configuration for assigned scopes.
+> **Note:** Scopes control what API clients can access. Every `:write` scope has a `:read` twin that exposes the same collections read-only. `me`, `advanced`, `config` and `kv` have no read variant; `integrations` and `admin` have restricted ones. See [Credentials → Every write scope has a read twin](credentials.md#every-write-scope-has-a-read-twin) for the full table, and your OAuth2 client configuration for assigned scopes.
 
 ---
 
@@ -292,8 +292,6 @@ PUT /people
 The person is now reachable as both `com.myapp.userId=123` and `com.myapp.crmId=CRM-9981`; no other member changes. See [The `@value` Write Envelope](resource-patterns.md#the-value-write-envelope).
 
 **The identifier you are adding has to be unowned.** Every identifier in one `identifiers` object must refer to the same object, so a `com.myapp.crmId` that already belongs to a *different* person is refused with a `400` `failed indexing` and nothing is written — see [Error types](#error-types) and [gotcha 49](common-gotchas.md#49-identifiers-that-name-two-different-objects-are-refused).
-
-> **Availability:** v26.1.11 and later. Earlier v26.1.x builds answered `200` here and created a third person carrying both identifiers.
 
 ---
 
@@ -384,8 +382,6 @@ A `POST`, `PATCH` or `PUT` with an **array** body is committed in chunks of 200 
 
 ### A Write That Reaches Nothing Writable Answers `204`
 
-> **Availability:** ships in the release after v26.1.11. Not in v26.1.10 or v26.1.11.
-
 A write can be addressed correctly, parsed, accepted — and still reach nothing that can be written. The answer then is **`204 No Content`, with no body at all**, and that is how a client tells a dropped write from an applied one without a read-back: an applied write echoes the new value with `200`.
 
 Same route, adjacent leaf, same request shape:
@@ -474,13 +470,9 @@ curl -u ":MySecretKey" -H "Accept: text/plain" example.app.heads.com/api/v1/prod
 
 **Shorthand values:** The Accept header supports shorthand values like `Accept: json` or `Accept: ndjson`. Every shorthand in the table above is also the format's path suffix — see [Format by path suffix](#format-by-path-suffix).
 
-> **Availability:** the `csv`, `txt` and `html` shorthands ship in the release after v26.1.11. Not in v26.1.10 or v26.1.11, where `json`, `ndjson` and `sql` are the only three.
-
 **Content-Type defaults for input:** When sending data via POST/PUT/PATCH, if no Content-Type header is provided, `application/json` is assumed.
 
 ### Format by Path Suffix
-
-> **Availability:** ships in the release after v26.1.11. Not in v26.1.10 or v26.1.11.
 
 A declared extension on the **last path segment** selects the format, ahead of whatever the `Accept` header asks for:
 
@@ -497,9 +489,9 @@ The extensions are `.json`, `.ndjson`, `.csv`, `.sql`, `.txt` and `.html` — th
 
 **The `Accept` entry naming the same type supplies the parameters.** `/v1/products.csv` with `Accept: text/csv;delimiter=|` is pipe-delimited. Parameters sitting on some *other* type's entry are ignored, because that entry is not the one that won: `Accept: application/json;stream=true` with `.csv` is a buffered CSV, not a streamed one. Put the parameters on the entry for the format the suffix selects.
 
-**Every extension doubles as a short name** in `Accept` and `Content-Type`: `csv`, `html` and `txt` join `json`, `ndjson` and `sql`, which already worked.
+**Every extension doubles as a short name** in `Accept` and `Content-Type`: `csv`, `html`, `txt`, `json`, `ndjson` and `sql`.
 
-**`text/plain` and `text/html` now take parameters like every other format.** `;stream=true` streams, and `;stream=1` is the same `400` any other format answers with — see [Accept parameter tolerance](#accept-parameter-tolerance). Earlier builds ignored a parameter on these two silently, so a header that looked accepted did nothing.
+**`text/plain` and `text/html` take parameters like every other format.** `;stream=true` streams, and `;stream=1` is the same `400` any other format answers with — see [Accept parameter tolerance](#accept-parameter-tolerance).
 
 **An unrecognised suffix stays part of the name.** `/v1/products.xml` is a `404 not found` — nothing is stripped, and the request is read as asking for a resource with a dot in its name. `?format=` remains reserved and answers `404` as before.
 
@@ -772,8 +764,6 @@ This is framing, not a new error type: no new `@type`, no new members. A client 
 
 **A `.ndjson` path suffix does not reach the framing.** The table above reads the `Accept` header, and only that: a request that asked for NDJSON by [path suffix](#format-by-path-suffix) — `/v1/products.ndjson~take(5)` — gets its *data* as NDJSON but its *errors* as indented JSON, where the same failure under `Accept: application/x-ndjson` is a single line. Send the header as well as the suffix when line-framed errors are what your reader depends on.
 
-> **Availability:** ships in the release after v26.1.11. Not in v26.1.10 or v26.1.11.
-
 **Every error response carries a `Content-Type`.** There is no need to sniff the body to find out what an error response contains.
 
 **`Error-Info` is unaffected by framing.** Every error response also carries the same document as compact, single-line JSON in the `Error-Info` response header, identically on every content type.
@@ -820,9 +810,7 @@ Three details worth knowing before you write the switch:
     }
     ```
 
-    This reaches top-level collections, nested references (`owner`, `customerAgent`, `product` on an order item) and path lookups alike. A single-object `POST` of an identifier that is already taken still answers `409 conflict`, as before. Some nested references are resolved by the parent resource rather than by the collection, and those answer the parent's ordinary `400 bad request` with `details` reading `Could not establish an identity of type agent from the data included in the "customerAgent" member of the input object: the index refers to more than one object`. To find out which objects the identifiers actually point at, ask for each one on its own: `GET /v1/people~where(identifiers/com.example.memberId=M-9)~just(identifiers)`.
-
-    > **Availability:** v26.1.11 and later. Every earlier v26.1.x build answered `200` and created a *third* object carrying both identifiers, so both identifiers then had two owners and a lookup by either returned the new record — which is where "we found duplicates after upserting with two ids" comes from. Repair it by stripping the duplicated identifier off the extra record: `PATCH /v1/people/<key> { "identifiers": { "com.example.memberId": null } }`. See [gotcha 49](common-gotchas.md#49-identifiers-that-name-two-different-objects-are-refused).
+    This reaches top-level collections, nested references (`owner`, `customerAgent`, `product` on an order item) and path lookups alike. A single-object `POST` of an identifier that is already taken still answers `409 conflict`, as before. Some nested references are resolved by the parent resource rather than by the collection, and those answer the parent's ordinary `400 bad request` with `details` reading `Could not establish an identity of type agent from the data included in the "customerAgent" member of the input object: the index refers to more than one object`. To find out which objects the identifiers actually point at, ask for each one on its own: `GET /v1/people~where(identifiers/com.example.memberId=M-9)~just(identifiers)`. See [gotcha 49](common-gotchas.md#49-identifiers-that-name-two-different-objects-are-refused).
 - **`forbidden` is in the schema and never on the wire.** Nothing in the API raises it, so no response carries it — it is declared, which is why a generated client has the type and a schema browser lists it. A token that is short a scope does not get refused: the resources its scopes do not cover are simply absent from the graph it can see, so a read or a write against one is a `404` whatever the path spelling, and a write that landed on a read-only twin is a `200` that persists nothing. **Confirm a write by reading the value back, not by its status** — see [gotcha 41](common-gotchas.md#41-a-write-under-a-read-only-scope-is-a-silent-200), and ask [`/v1/scopes`](#checking-what-a-key-can-do-v1scopes) what the key actually holds. If a `403` does reach your client it came from something in front of the API — a gateway, proxy or load balancer — and it will not carry an error body in the shape above.
 - **`failedCoercions` is a list, not a message.** This is the one type that carries **no `details` member at all** — its `error` string says only that *something* could not be converted, and everything specific is in the list. (Its sibling refusal for a value outside a named vocabulary is a `bad request`, which does the opposite: the specifics are in `details`.) Each entry describes one value that could not be converted — `success`, `targetType`, `inputValue`, `inputType`, `path` (where in the body it sat) and `message` — so it is the fastest way to find which member was wrong, and reading it is the whole point of the type. Three things to know before you rely on the shape:
     - **A member typed as a fixed set of values contributes one entry per value it would have accepted**, each naming that value in `targetType`. Sending `"status": "Nonsense"` to a product returns three entries at `path` `/status`, for `'Active'`, `'Inactive'` and `'Pending'` — so the list doubles as the vocabulary you missed. That is where to look when the message itself names nothing: a *free-string* member checked against a named vocabulary is a `bad request` whose `details` spells the values out, while a fixed-set member is refused here first and says it in the body instead.
@@ -838,8 +826,6 @@ Three details worth knowing before you write the switch:
       Row two is the one to read carefully. A **lone object** sent to a collection is wrapped into a one-element list before anything is validated, so it reads `:0/amount` and not `/amount`. Only a `PATCH` or `PUT` against an already-addressed resource — row one — produces the bare `/member` form. A reader who takes "`:index` for an element of an array" literally will expect `/amount` for row two and go looking in the wrong place.
 
       **Coercion stops at the first failure, and that is deliberate.** `[bad, ok, bad]` reports `:0/status`; `[ok, bad, bad]` reports `:1/status`. Fix the one it names and re-send — the index that comes back next time is how you tell you made progress. So the list enumerates every bad *member* of the first bad element, not every bad element.
-
-      > **Availability:** ships in the release after v26.1.11. Not in v26.1.10 or v26.1.11. Earlier builds spelled `path` from a sibling identifier's name, so `identifiers/status` appeared even in a body carrying no identifiers, and gave array elements no prefix at all — which made every element of a bulk write report the same path.
     - **`inputType` names the kind of the value where `inputValue` only shows it.** It is the JSON type of what arrived — `string`, `number`, `boolean`, `null`, `array`, `object` — or, for a value the server produced itself that a JSON body could never have carried, `date-time` or `decimal`. `inputValue` is serialized, so a date and the ISO text of that same date look identical in it; `inputType` is what tells the two apart:
 
       ```json
@@ -847,8 +833,6 @@ Three details worth knowing before you write the switch:
       ```
 
       Related, and the reason a `date-time` shows up here at all: a server-produced date written into a `string` member is stored as its ISO 8601 text rather than refused. Only a date, and only into string members — a JSON body cannot carry a date, so nothing a client sends behaves differently.
-
-      > **Availability:** ships in the release after v26.1.11. Not in v26.1.10 or v26.1.11.
 
 **Treat an unrecognized `@type` as a plain error rather than as a parse failure.** New types can be added, so the forward-compatible default branch reports `error` — the one member every type is guaranteed to have — along with `details` when it is present. Three values will never turn up as an HTTP error body: `mid-stream error`, which appears only *inside* a committed `200` (see [Streaming → Error handling](../features/streaming.md#4-error-handling)); `error` itself, which is the base every type above inherits from rather than something the API emits on its own; and `forbidden`, which nothing raises.
 

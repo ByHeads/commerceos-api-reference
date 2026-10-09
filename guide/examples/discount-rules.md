@@ -29,7 +29,7 @@ A discount rule defines **when** and **how** discounts apply. Key properties:
 | `effects[].minimumResultingPrice` | Floor price after discount (prevents negative prices). The lowest per-unit value the effect may leave, in the rule's own base. Works alongside the per-product cap `maxDiscountPercentage` — see [Discount Caps and Vouchers](#discount-caps-and-vouchers) and [Products → Maximum Discount Percentage](../../reference/working-with/products.md#maximum-discount-percentage-maxdiscountpercentage). |
 | `includesTax` | Whether the discount applies to tax-inclusive prices (`true`) or pre-tax prices (`false`). The same flag exists on prices and on fixed surcharge rules, where it says whether `amount` is gross — see [Prices That Include VAT](../../reference/working-with/prices.md#prices-that-include-vat) and [Surcharge Rules](./surcharge-rules.md). |
 | `status` | `Active`, `Inactive` or `Pending`. The status decides whether or not the rule fires at price-evaluation time. |
-| `ignoresProductMaxDiscount` | Boolean. If true, this rule is exempt from the product max discount cap (the rule's own minimum resulting price still applies). v26.1.11 and later — see [Discount Caps and Vouchers](#discount-caps-and-vouchers). |
+| `ignoresProductMaxDiscount` | Boolean. If true, this rule is exempt from the product max discount cap (the rule's own minimum resulting price still applies). See [Discount Caps and Vouchers](#discount-caps-and-vouchers). |
 | `coupon` | Optional precondition. When set, the rule fires only if the cart presents a code that resolves to one of the coupons in `coupon.include` (and not in `coupon.exclude`). Without this field, the rule is automatic — it fires whenever its other conditions match. See [Example 17: Coupon-Bound Rule](#example-17-coupon-bound-rule-activated-only-by-a-code) and [Discount Coupons](./discount-coupons.md) for full coupon mechanics. |
 | `reason` | A reference to explain why the discount was applied (shown on receipts). |
 
@@ -1006,7 +1006,7 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/discount-rules/co
 
 > **Warning: `PerApplication` is unsupported on a fixed price effect.** The API accepts `"multiplicity": "PerApplication"` on this effect type without complaint, but price recalculation then fails with a `500` the moment a matching product is in a cart. Always send `"PerUnit"`.
 
-The effect type also has a collection of its own, `GET /v1/fixed-price-rule-effects`. Note that the route name has no `discount` in it, unlike `/v1/package-discount-rule-effects` and `/v1/fixed-reduction-discount-rule-effects`. All three sit in the `discounts.system:write` scope together with `/v1/discount-rules`, and read-only under `discounts.system:read` on v26.2.1 and later (not in v26.2.0 or v26.1.x, where discount rules have no read scope).
+The effect type also has a collection of its own, `GET /v1/fixed-price-rule-effects`. Note that the route name has no `discount` in it, unlike `/v1/package-discount-rule-effects` and `/v1/fixed-reduction-discount-rule-effects`. All three sit in the `discounts.system:write` scope together with `/v1/discount-rules`, and read-only under `discounts.system:read`.
 
 ---
 
@@ -1264,8 +1264,6 @@ Discounts can be capped at three levels: per product, per rule and per effect. T
 
 ### Per-Product Cap: `maxDiscountPercentage`
 
-> **Availability:** v26.1.10 and later.
-
 `maxDiscountPercentage` (decimal, optional) is set on a product node: "The maximum discount percentage allowed on this product node. When set, discounts exceeding this percentage are capped." It is inherited down the product hierarchy — a value on a product group or family applies to every product under it that does not set one of its own.
 
 The cap applies to **automatic** discounts, i.e. to what discount rules do. Manual discounts entered at the till are not capped at recalculation — the cap is enforced where the discount is entered. A fixed price or package share that would take a product below its cap is raised to the cap, exactly as `minimumResultingPrice` raises it to the floor.
@@ -1273,8 +1271,6 @@ The cap applies to **automatic** discounts, i.e. to what discount rules do. Manu
 See [Products → Maximum Discount Percentage](../../reference/working-with/products.md#maximum-discount-percentage-maxdiscountpercentage) for setting it on a product or a group.
 
 ### Per-Rule Exemption: `ignoresProductMaxDiscount`
-
-> **Availability:** v26.1.11 and later.
 
 `ignoresProductMaxDiscount` (boolean) on a discount rule: "If true, this rule is exempt from the product max discount cap (the rule's own minimum resulting price still applies)". Use it for a rule that must be allowed to go deeper than the product cap — a clearance rule, say — without lifting the cap for every other rule.
 

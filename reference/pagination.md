@@ -253,12 +253,6 @@ Compound sorting is not a workaround: **there is no compound sort.** `~orderBy` 
 is read as a single member name that no type declares, and `?orderby=status,name` fails with `details` of
 `Invalid sort key 'status,name': field not found`.
 
-> **Availability:** the up-front refusal ships in the release after v26.1.11. Not in v26.1.10 or v26.1.11, where a
-> first page under `?limit=2&orderby=status,name` could answer `200` carrying an `X-Cursor-Next` — and the request
-> replaying that token was the one refused, with `Cursor pagination with compound sort not yet supported`. The first
-> request now fails on the sort key itself, and a page whose sort key the cursor layer cannot carry mints no token
-> rather than an unusable one. Composite cursors remain unsupported.
-
 **Two layers refuse it, and they do not refuse it the same way.** The operator form is rejected by the ordinary
 unknown-key rule, which carries the ordinary exception: with no items to sort the check
 [short-circuits](operators-catalog.md#orderbyselectordesc) and any key is accepted. The cursor layer has no such
@@ -283,13 +277,6 @@ value into the next request, and it is replayed as a value rather than re-read a
 of the query (`limit`, a filter such as `status=Active`) survives a `?` in the resumed-from value. Nothing about the
 sort field's *content* constrains a walk; only its uniqueness and its presence do.
 
-> **Availability:** ships in the release after v26.1.11. Not in v26.1.10 or v26.1.11. In those builds a walk sorted
-> on such a field stopped at the first value holding one of these characters and reported `X-Has-More: false` — a
-> partial read claiming to be a complete one. Product names carrying a comma, an ampersand or parentheses are routine,
-> so any walk sorted on `name` was exposed to it. If you built a walk that avoids punctuation in the sort field, or
-> sorts on a surrogate column to dodge it, that workaround still works and is no longer necessary once you are on a
-> build that has this.
-
 **The pagination headers require a buffered JSON response.** `Link`, `X-Cursor-Next` and `X-Has-More` are emitted only
 for `application/json` without `;stream=true`. A streamed body starts before the headers could be computed, and the
 line-oriented formats (`application/x-ndjson`, `text/csv`, `application/sql`) are not in a shape the header
@@ -298,8 +285,8 @@ post-processing can annotate — so neither gets them, streamed or not. This is 
 An `after` token *is* still honored in every format — the response holds at most `limit` items starting after the
 token — but with no next-cursor header there is nothing to continue from. **Walk the pages with buffered JSON**, then
 re-request a page in the export format if you need the rows as NDJSON or CSV. See
-[`features/streaming.md`](../features/streaming.md). On a build that selects the format by path suffix (the release
-after v26.1.11 — see [Format by path suffix](overview.md#format-by-path-suffix)) the same rule follows the suffix:
+[`features/streaming.md`](../features/streaming.md). When the format is selected by path suffix (see
+[Format by path suffix](overview.md#format-by-path-suffix)) the same rule follows the suffix:
 `/v1/products.json?limit=2&orderby=name` carries the headers, and `.csv`, `.ndjson` or any other non-JSON suffix does
 not.
 
@@ -315,12 +302,6 @@ GET /v1/products?limit=50&orderby=name&fields=status
 Naming the sort field yourself (`fields=name,status`) changes nothing — it is already there, so nothing is added and
 nothing is stripped. Nor does naming it in a *second* `fields` parameter: `fields=status&fields=name` is one
 projection of both members, and `name` comes back on every item.
-
-> **Availability:** the repeated-`fields` case ships in the release after v26.1.11. Not in v26.1.10 or v26.1.11,
-> where a sort field named only in a later `fields` occurrence was mistaken for the API's own addition and stripped
-> from the response — `?limit=1&orderby=name&fields=status&fields=name` came back with `status` alone. When no
-> occurrence names the sort field, the response is exactly the projection you asked for on every build; nothing
-> extra leaks in.
 
 **A nested sort selector is no different.** Walking on `orderby=identifiers/key` places no constraint on how narrow a
 `fields=` list may be — the sort value is fetched under a name of its own and removed again, so the projection never
@@ -458,11 +439,6 @@ carries `"organizationNumber": null`. The member's presence is the point; its va
   the sort field still exists.
 
 ### Repeated query parameters
-
-> **Availability:** ships in the release after v26.1.11. Not in v26.1.10 or v26.1.11 — those builds answered `200`
-> to a repeated `orderby`, `limit`, `offset` or `after`, and resolved the two occurrences differently in different
-> layers, so `?orderby=name&orderby=status` paged by one field while sorting by the other, producing pages that
-> repeat and skip items with nothing in the response to say so.
 
 **`orderby`, `limit`, `offset`, `after` and `format` may each be given once.** Each of them names one thing, so a
 request carrying any of them twice is refused with a `400` whose `details` name the parameter and the count:

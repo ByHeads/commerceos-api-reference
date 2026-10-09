@@ -44,8 +44,6 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/pos-terminals/p
 
 ## POS Carts, Sessions and Supervisor Control
 
-> **Availability:** v26.2.1 and later. Not in v26.2.0 or v26.1.x.
-
 Everything hangs off the terminal. The API adds, changes and removes lines and parks, resumes and discards carts; it never starts or completes a sale. Full contract: [Working with POS Carts](../../reference/working-with/pos-carts.md).
 
 ```bash
@@ -251,8 +249,6 @@ GET /v1/pos-functions/posFunctionId=void-sale/name       # 200  "Void Sale"
 > **A `404` on a leaf means "no such member"; a `200 null` does not.** The four members a subtype narrows — `cartVisibility`, `reason`, `returnReason` and `paymentMethod` — are declared on every function and carried by one subtype each, so on a function that is not that subtype they answer `200 null` rather than `404`. Reading `null` there tells you this function does not carry the member; reading `404` tells you nothing does. (`DELETE` distinguishes neither — it never answers `404`, so it is not a probe; see [What a `DELETE` reports](../../reference/overview.md#what-a-delete-reports).)
 
 ### The order function: collect in store and ship to customer
-
-> **Availability:** the four store members (`shipToCustomerStores`, `collectInStoreStores`, `shipToCustomerCurrentStore`, `collectInStoreCurrentStore`) are v26.1.11 and later. The three label members are long-standing.
 
 The "Add to order" tile invokes a function of subtype `order function`. It is what lets a cashier turn cart lines into a customer order — collected in a store or shipped to the customer, paid now or later — and its members decide which stores the cashier may order from and which labels the order gets. What the resulting order looks like through the API is in [Working with Orders → Orders Placed at the Till](../../reference/working-with/orders.md#orders-placed-at-the-till-collect-in-store-and-ship-to-customer).
 
@@ -506,8 +502,6 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/pos-slips/{key}~j
 ```
 
 ### Which order line an action moved (`tradeOrderItemEffects`)
-
-> **Availability:** ships in the release after v26.1.11. Not in v26.1.10 or v26.1.11.
 
 Each entry in `actions[]` carries `tradeOrderItemEffects` — an array of effects, each naming an `affectedItem` (a trade order item) together with `affectedQuantity` and `affectedAmount`. It is the member that says *which line* an action moved, and by how much.
 

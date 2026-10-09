@@ -174,16 +174,13 @@ Filter objects by predicate conditions.
 
 **A predicate may open with its operator, naming no path:**
 
-> **Availability:** ships in the release after v26.1.11. Not in v26.1.10 or v26.1.11 — those builds answered `400`
-> with `details` of `Invalid predicate syntax: missing or invalid field name`.
-
 An expression starting with a comparison operator compares the value piped into the operator, so `~where(=Martin)` is
-shorthand for `~where($this=Martin)` — the long form, which worked before and still does. It is the form for a
+shorthand for `~where($this=Martin)`, the long form. It is the form for a
 pipeline that has already narrowed to scalars, where no member is left to name: `/v1/people/*givenName` reads the
 member from every element and yields strings. On a collection of objects, keep naming the member. Every comparison
 operator takes the form, wherever predicates are accepted — `~where`, `~either`, `~count`, `~first` and a sync
-webhook's `while` clause. `~where(=)` compares against the empty string (a `400` in earlier builds); a bare `!` is
-still a `400`, because negation needs a path. See
+webhook's `while` clause. `~where(=)` compares against the empty string; a bare `!` is a `400`, because negation
+needs a path. See
 [A predicate may open with its operator](operators.md#a-predicate-may-open-with-its-operator).
 
 **Examples:**
@@ -249,7 +246,7 @@ The third example expresses `(status=Inactive OR name=~Apple) AND name=~Pro`. Op
 
 #### ~orderBy(selector[:desc])
 
-> **Note (v26.1+):** the `/before/` and `/after/` time-relative endpoints already return results in timestamp order, so chaining `~orderBy(timestamp)` after them is redundant. For every other query — including `~where(timestamp...)` filters, plain collection listings, and any sort by a non-timestamp field — `~orderBy(...)` is still required when you want a specific order.
+> **Note:** the `/before/` and `/after/` time-relative endpoints already return results in timestamp order, so chaining `~orderBy(timestamp)` after them is redundant. For every other query — including `~where(timestamp...)` filters, plain collection listings, and any sort by a non-timestamp field — `~orderBy(...)` is still required when you want a specific order.
 
 Sort a collection by a selector (ascending by default).
 
@@ -802,7 +799,7 @@ GET /v1/products~where(gtin=7312345678901)~first
 - Returns `null` if collection is empty
 - Returns a single object, not an array
 - **Short-circuits the scan** like `~take(1)`: an upstream `~where` stops being evaluated as soon as one item matches. Keep the filter on the left of `~first`. See [Limiters stop the scan early](operators.md#limiters-stop-the-scan-early).
-- **A predicate may be given in parentheses**, selecting the first matching item, with the same syntax as [`~where`](#wherepredicates) — including the no-path form (`~first(=Martin)`) that ships in the release after v26.1.11. *Empty* parentheses stay a `404`.
+- **A predicate may be given in parentheses**, selecting the first matching item, with the same syntax as [`~where`](#wherepredicates) — including the no-path form (`~first(=Martin)`). *Empty* parentheses stay a `404`.
 
 ---
 
@@ -844,7 +841,7 @@ GET /v1/products~where(status=Active)~count
 - Returns `0` for empty collections
 - Returns a number, not an array
 - **Consumes the whole collection** — unlike `~take`/`~first` there is nothing to short-circuit, since every matching item has to be seen to be counted. Use `~where(...)~take(1)~count` when all you need to know is whether *any* item matches: the limiter stops the scan at the first one, so the answer is `1` or `0` and costs at most one match.
-- **A predicate may be given in parentheses**, filtering before the count: `~count(=Jean)` over a collection of strings counts only the items equal to `Jean` ([predicate syntax](#wherepredicates) — the no-path spelling ships in the release after v26.1.11). *Empty* parentheses stay a `404`
+- **A predicate may be given in parentheses**, filtering before the count: `~count(=Jean)` over a collection of strings counts only the items equal to `Jean` ([predicate syntax](#wherepredicates)). *Empty* parentheses stay a `404`
 - Use `~count~toString` for `text/plain` output
 - **Only a collection gets counted. Everything else answers `1`** — a single object, a scalar, and a `null` alike, since one value is one thing. So a count cannot tell you whether a lookup found anything: `products/com.example.sku=REAL~count` and `products/com.example.sku=NOPE~count` are both `1`, where the second request without the `~count` is the `200 null` that says the record is not there ([gotcha 39](common-gotchas.md#39-a-null-in-a-response-does-not-prove-the-field-exists)). Only an *empty collection* counts `0`, so `/gtin~count` is `0` on a product with no barcodes while `/parentGroup~count` is `1` on one with no parent group. **Count a collection; read anything else back and look at it**
 
@@ -934,7 +931,7 @@ GET /v1/products?orderby=name&limit=10
 ```
 Both produce identical results because `orderBy` is applied before `take` in the canonical pipeline.
 
-**Each of `orderby`, `limit`, `offset`, `after` and `format` may be given once.** From the release after v26.1.11 a request repeating one of them answers `400`; v26.1.10 and v26.1.11 answered `200` and resolved the occurrences inconsistently. Repeated `fields` and repeated filters are unaffected — see [Repeated query parameters](pagination.md#repeated-query-parameters).
+**Each of `orderby`, `limit`, `offset`, `after` and `format` may be given once.** A request repeating one of them answers `400`. Repeated `fields` and repeated filters are unaffected — see [Repeated query parameters](pagination.md#repeated-query-parameters).
 
 **Best practice:** For maximum clarity, prefer explicit operators when order matters:
 ```

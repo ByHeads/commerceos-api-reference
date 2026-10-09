@@ -136,12 +136,12 @@ GET /v1/products~where(status=Pending)~orderBy(createdAt:desc)~take(100)
 | `keywords` | string | Search keywords |
 | `plu` | string[] | Price look-up codes |
 | `hidden` | boolean | Visibility flag. The till refuses a hidden product |
-| `hiddenInPos` | boolean | On products and families: the till refuses the product while it is set (v26.1.5 and later). Not in the default response; ask with `~with(hiddenInPos)`. See [What Makes a Product Show Up and Sell](assortments.md#what-makes-a-product-show-up-and-sell) |
+| `hiddenInPos` | boolean | On products and families: the till refuses the product while it is set. Not in the default response; ask with `~with(hiddenInPos)`. See [What Makes a Product Show Up and Sell](assortments.md#what-makes-a-product-show-up-and-sell) |
 | `instanceType` | string | Variant type (e.g., "MobileDevice", "Apparel") |
 | `instanceProperties` | object | Pre-defined variant values (e.g., size, color) |
 | `vatClass` | reference | The product's VAT class, own or inherited. Not in the default read: `~with(vatClass)`. `null` clears the product's own class — see [Assigning VAT to products](vat.md#assigning-vat-to-products) |
 | `vatRates` | array (read-only) | Treatment and rate per VAT area for the class in effect. `~with(vatRates)` |
-| `maxDiscountPercentage` | decimal | Cap on automatic discounts for this node, inherited by the nodes under it (v26.1.10 and later) — see [Maximum Discount Percentage](#maximum-discount-percentage-maxdiscountpercentage) |
+| `maxDiscountPercentage` | decimal | Cap on automatic discounts for this node, inherited by the nodes under it — see [Maximum Discount Percentage](#maximum-discount-percentage-maxdiscountpercentage) |
 | `parentGroup` | reference | Parent product group |
 | `assortmentContexts` | array | Per-owner settings; see [Assortments](assortments.md) |
 | `assortmentOwners` | array | The owners this product has been assigned to; see [Assortments](assortments.md) |
@@ -491,9 +491,9 @@ An assortment context is what one owner records about one product: its own artic
 | `owner` | The agent (company, store, supplier) this context belongs to. The address of the context; cannot be changed |
 | `articleNumber` | The owner's own article number |
 | `primarySupplier` | The company this owner buys the product from |
-| `discontinued` | A flag per owner (v26.1.9 and later) |
+| `discontinued` | A flag per owner |
 
-`minimumOrderQuantity` is no longer a member of the context (removed in v26.1.5). A write is accepted and dropped.
+`minimumOrderQuantity` is not a member of the context. A write is accepted and dropped.
 
 ### The Short Version
 
@@ -607,12 +607,10 @@ PATCH /v1/product-groups/com.example.groupId=SUMMER-2024-APPAREL
 
 ### Maximum Discount Percentage (`maxDiscountPercentage`)
 
-> **Availability:** v26.1.10 and later.
-
 `maxDiscountPercentage` (decimal, optional) is a member of every product node: "The maximum discount percentage allowed on this product node. When set, discounts exceeding this percentage are capped."
 
 - **It is inherited down the hierarchy.** A value on a product group or family applies to every product under it that does not set one of its own, so one PATCH on a group caps a whole range.
-- **It caps automatic discounts** — what [discount rules](../../guide/examples/discount-rules.md) do. A rule that would take the product deeper than the cap is clamped to it, unless the rule sets `ignoresProductMaxDiscount: true` (v26.1.11 and later).
+- **It caps automatic discounts** — what [discount rules](../../guide/examples/discount-rules.md) do. A rule that would take the product deeper than the cap is clamped to it, unless the rule sets `ignoresProductMaxDiscount: true`.
 - **Manual discounts entered at the till are exempt** at recalculation; the cap is enforced where the discount is entered.
 
 ```bash

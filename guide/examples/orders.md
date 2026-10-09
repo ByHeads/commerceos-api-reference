@@ -109,8 +109,6 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/deliveries" \
 ```
 
 > **Receiving a purchase order.** What arrives against a purchase order is booked as a delivery on `/v1/deliveries`, and what goes back to the supplier as a return on `/v1/returns` — both documents with their own numbers and their own approval step. A purchase order can also carry references, notes and under/overdelivery policies. The one-request receipt above is for an integration that already knows the counted quantities; the step-by-step recipe, the "one open delivery per order line" warning and the rest are in [Working with Purchasing](../../reference/working-with/purchasing.md).
->
-> **Availability:** deliveries, the one-request receipt and the purchasing members ship in v26.2.1 and later, not in v26.1.x. The purchase-order shape, `unitAmountExclVat`, `customersId` and the `status=~` filter are long-standing.
 
 ```bash
 # Order actions - approve order (use tryApprove, not confirm)
@@ -228,8 +226,6 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/trade-records/{ke
 
 ## Reading Orders Without Write Access
 
-> **Availability:** v26.2.1 and later. Not in v26.2.0 or v26.1.x, where reading a trade order or a payment order takes the write scope.
-
 `orders.sales:read` reads trade orders and their items and opens no write. `orders.payments:read` does the same for payment orders. An order refers to agents, products and a currency, and each of those comes back only when the key can read it:
 
 | The key holds | The order reads | Each item reads |
@@ -328,15 +324,9 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/trade-relations
 
 ## Shipment Orders
 
-> **Note:** `POST /v1/shipment-orders` creates only an identifier shell — the body is dropped. A shipment order is created from an approved trade order by the `createShipment` action on v26.1.12 and earlier; v26.2.1 and later has no `createShipment` (sending it is dropped) and books outbound goods as a delivery on `/v1/deliveries`. `tryFulfill` never creates one. Read them and `release` them.
+> **Note:** `POST /v1/shipment-orders` creates only an identifier shell — the body is dropped. There is no `createShipment` action (sending it is dropped); outbound goods are booked as a delivery on `/v1/deliveries`. `tryFulfill` never creates one. Read them and `release` them.
 
 ```bash
-# v26.1.12 and earlier: create the shipment order from an approved order. A second send changes
-# nothing while the order already has a New shipment order
-curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-2024-001/actions" \
-  -H "Content-Type: application/json" \
-  -d '{"createShipment": true}'
-
 # List all shipment orders
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/shipment-orders"
 
@@ -887,8 +877,6 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/trade-orders" \
 
 ## Orders Placed at the Till: Collect in Store and Ship to Customer
 
-> **Availability:** `deliveryAddresses` on an order line is v26.1.10 and later; the order function's store lists are v26.1.11 and later. The rest is long-standing.
-
 A cashier's "Add to order" turns cart lines into a customer order that is **collected in a store** or **shipped to the customer**, from a store the cashier picks, **paid now** or **paid later**. It is an ordinary trade order; the delivery mode is on the **line**, in `deliveryAddresses` (`[]` = collected in the line's `seller` store; one address = shipped there), and the order-level `deliveryAddresses` is a union that cannot tell the two apart. See [Working with Orders → Orders Placed at the Till](../../reference/working-with/orders.md#orders-placed-at-the-till-collect-in-store-and-ship-to-customer).
 
 ```bash
@@ -952,7 +940,7 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/trade-order-ite
 
 **What the till does afterwards:**
 - **Collect in store** — the customer picks up at the line's `seller` store; the till takes the remaining payment, the order goes `Fulfilled`, a second receipt with the full amount is written, the picking order disappears from the order. Nothing for the integration to write; do not `tryFulfill` it from the API.
-- **Ship to customer** — the integration ships from the `seller` store to `deliveryAddresses[0]` on the line and sends `tryFulfill`. On v26.1.12 and earlier `createShipment` + `release` is the alternative; v26.2.1 and later books a delivery.
+- **Ship to customer** — the integration ships from the `seller` store to `deliveryAddresses[0]` on the line and sends `tryFulfill`; outbound goods are booked as a delivery on `/v1/deliveries`.
 - **Cancel** — `tryCancel` on a `Reserved` (pay-later) till order is a `200` that changes nothing; the till cancels it, and the order then reads `Unreserved`.
 
 The stores the cashier may pick and the labels the tile applies are configured on the tile's order function — see [POS → The order function](pos.md#the-order-function-collect-in-store-and-ship-to-customer).
@@ -967,7 +955,7 @@ The stores the cashier may pick and the labels the tile applies are configured o
 - **Item mutations**: While the API may accept POST/PATCH/DELETE to `/items`, the intended pattern is to set all items at creation. `unitAmountExclVat` can be PATCHed on editable items.
 - **Action names**: Use `tryApprove`/`tryCancel`, not `confirm`/`cancel`
 - **Payments**: Can be created directly via `POST /v1/payment-orders`, or via the trade order actions `createPayment` / `createWalletPayment`
-- **Shipments**: `POST /v1/shipment-orders` returns an identifier shell with the body dropped. On v26.1.12 and earlier the trade order action `{"createShipment": true}` creates one from the approved order; v26.2.1 and later has no `createShipment`. `tryFulfill` never creates one. `release` is the only write a shipment order takes
+- **Shipments**: `POST /v1/shipment-orders` returns an identifier shell with the body dropped. There is no `createShipment` trade order action. `tryFulfill` never creates one. `release` is the only write a shipment order takes
 - **Purchasing**: Receiving against a purchase order and returning to a supplier are separate documents — see [Working with Purchasing](../../reference/working-with/purchasing.md)
 - **createPayment requires currency**: The `createPayment` action requires a `currency` field; omitting it throws "Currency not found."
 - **Till orders**: the delivery mode of an order placed at the till is on the line's `deliveryAddresses` (`[]` = collect in the line's `seller` store, one address = ship there), never on the order-level list, which is a union. The till's open carts are `New` orders without a `suppliersId` — filter with `~where(identifiers/suppliersId)`

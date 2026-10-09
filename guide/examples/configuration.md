@@ -438,8 +438,6 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/shortened-links"
 
 ## Key-Value Store (`/v1/kv`)
 
-> **Availability:** v26.1.11 and later.
-
 A place to keep integration state the schema has no home for — a sync cursor, a feature flag, a small settings document. Entries live under a [namespaced key](../../reference/primitives.md#namespaced-key) and are addressed as `/v1/kv/{namespaced-key}/{entry}`. Each entry is a JSON document whose sub-paths can be read, written and deleted individually. Reaching any of it needs the `kv` scope.
 
 ```bash
@@ -499,8 +497,6 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/kv/com.example.se
 **An intermediate has to exist, and has to be an object.** Writing `.../config/a/b` when `a` is a string, or `.../config/x/y` when `x` does not exist, is a `404`. Create the object first.
 
 **The key itself must be a well-formed namespaced key.** `PUT /v1/kv/com.test` is a `404` — a path segment outside the shape does not route at all, unlike the same key in a request body ([namespaced key](../../reference/primitives.md#namespaced-key)).
-
-> **Earlier builds handled sub-paths differently.** Before v26.1.11 an entry was written and read only as a whole: writing a sub-path answered `204` and stored nothing, writing a field that did not exist yet was a `404`, `DELETE` on a sub-path answered `200 "Deleted 1 items"` while deleting nothing, and reading a missing sub-path was a `404`. An array body anywhere under `/v1/kv` stored only its last element while echoing the whole array back — that fix reaches every dynamically typed non-collection target, a mapped type's `body` included, so a note elsewhere telling you to "send one value, not an array" for such a member no longer applies.
 
 ---
 
@@ -567,8 +563,6 @@ The numbers the platform stamps on purchasing documents come from serials named 
 | `customerDeliverySerial` | outbound deliveries | `delivery.identifiers.sendersId` |
 | `supplierReturnSerial` | supplier returns | `return.identifiers.returnersId` |
 
-> **Availability:** the two trade order serials are long-standing. The delivery and return serials ship in v26.2.1 and later. Not in v26.1.x.
-
 ```bash
 # Create a serial: PO-00001, PO-00002, ...
 curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/serials" \
@@ -594,7 +588,7 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/trade-orders/cust
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/deliveries/receiversId=GR-00001"
 ```
 
-The issued order numbers are read-only — a `PATCH` on `identifiers.customersId` or `suppliersId` is a `200` that changes nothing. The delivery and return numbers are writable, so a document created outside the numbered node can be given one by hand. See [Working with Purchasing → Your Purchase Order Number](../../reference/working-with/purchasing.md#your-purchase-order-number-identifierscustomersid--long-standing).
+The issued order numbers are read-only — a `PATCH` on `identifiers.customersId` or `suppliersId` is a `200` that changes nothing. The delivery and return numbers are writable, so a document created outside the numbered node can be given one by hand. See [Working with Purchasing → Your Purchase Order Number](../../reference/working-with/purchasing.md#your-purchase-order-number-identifierscustomersid).
 
 ---
 

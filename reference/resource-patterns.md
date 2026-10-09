@@ -199,27 +199,7 @@ A spelling that is not a bare type name is refused too, even when the name insid
 
 One wrong type is not refused. A *sibling* that happens to declare everything the element declares is accepted, built as the element, and whatever it declared on top of that is dropped — a `200` with no signal. See [gotcha 47](common-gotchas.md#47-a-declared-type-key-is-not-always-one-you-can-write), which is also where the exact messages are.
 
-**Naming the exact element type is accepted, and does nothing.** `{"@type": "stock"}` on a store's `stocks`, or `{"@type": "label"}` on `labels`, is the type the array already holds, so the annotation is redundant rather than wrong. **Narrowing to a subtype works and is the one case where the annotation carries information**: where the array's element type has subtypes, the annotation picks which one to create — `{"effects": [{"@type": "percentage discount rule effect", "percentage": "5"}]}` on a discount rule creates a `percentage discount rule effect`. An element type with no subtypes, such as `stock`, can only ever be annotated with its exact name.
-
-> **Availability:** ships in the release after v26.1.11. Not in v26.1.10 or v26.1.11. On v26.1.10 and v26.1.11 the exact-type annotation on a nested element **adds the element twice**, which on a store's `stocks` surfaces as a `500`:
->
-> ```bash
-> PUT /v1/stores/com.example.storeId=T1
-> {"@type": "store", "identifiers": {"com.example.storeId": "T1"}, "name": "Store T1",
->  "stocks": [{"@type": "stock", "identifiers": {"com.example.warehouseCode": "T1-EXPO"}, "name": "EXPO"}]}
->
-> # v26.1.10 / v26.1.11, on a store that already owns a stock
-> → 500 {"@type": "internal error", "error": "Internal server error.",
->        "details": "Owner is already set and cannot be changed."}
-> #   GET /v1/stores/com.example.storeId=T1/stocks~count → 1   (unchanged)
->
-> # The same element without `@type`
-> → 200      …/stocks~count → 2
-> ```
->
-> From the release after v26.1.11 the annotated `PUT` is a `200`, the count is `2`, and repeating it leaves it at `2`.
-
-Since every `GET` response carries `@type` on nested elements, any read-modify-write that echoes a response back hits this. **On v26.1.x builds, strip `@type` from nested elements before writing.** See [gotcha 51](common-gotchas.md#51-echoing-type-on-a-nested-element-double-adds-it-on-v261x-builds).
+**Naming the exact element type is accepted, and does nothing.** `{"@type": "stock"}` on a store's `stocks`, or `{"@type": "label"}` on `labels`, is the type the array already holds, so the annotation is redundant rather than wrong. **Narrowing to a subtype works and is the one case where the annotation carries information**: where the array's element type has subtypes, the annotation picks which one to create — `{"effects": [{"@type": "percentage discount rule effect", "percentage": "5"}]}` on a discount rule creates a `percentage discount rule effect`. An element type with no subtypes, such as `stock`, can only ever be annotated with its exact name. Since every `GET` response carries `@type` on nested elements, a read-modify-write that echoes a response back sends such an annotation: the `PUT` is a `200`, and repeating it is idempotent.
 
 ### `remove` Is Idempotent
 
@@ -313,8 +293,6 @@ Those two requests do exactly the same thing. With no overlap between the identi
 
 The envelope works on elements of a top-level collection `PUT`/`POST` and in the body of a direct `PATCH` on a single entity, on create and on update alike.
 
-> **If you tried this form before and nothing happened.** On top-level collection writes the envelope used to be dropped before the write was applied: the element was still matched or created from the outer `identifiers`, the response was still `200`, and the enveloped payload was silently discarded. That is fixed — both paths now apply it. Any workaround built around it (splitting the write into a create plus a follow-up `PATCH`, say) still works and is simply no longer necessary.
-
 ### The outer object wins
 
 The two halves are merged before the write, with the outer object taking precedence. If the same member appears both as an outer sibling and inside `@value`, **the outer one is applied** and the enveloped one is discarded:
@@ -374,8 +352,6 @@ Here the envelope buys nothing on its own — it is equivalent to sending `{"tit
 ---
 
 ## Write Envelopes: `@if`, `@resolveValue` and `@value`
-
-> **Availability:** ships in the release after v26.1.11. Not in v26.1.10 or v26.1.11.
 
 The `@value` envelope above is one member of a small family. A **write envelope** is a JSON object placed where a value is expected in a `POST`/`PUT`/`PATCH` body, carrying one or more *directive keys* — keys starting with `@`, other than the `@type` and `@self` annotations. It works on a member at any depth, on a collection element (the `{"identifiers": …, …}` object of a bulk body), and on the body of a direct member `PATCH`.
 
@@ -491,8 +467,6 @@ A skipped write's payload is **not** validated: `{"@if": "false", "@value": {"ti
 - **A directive inside `identifiers`** → `'@if' is not allowed inside the identifying member 'identifiers': identification must be unconditional.`
 
 **An envelope that reduces to `{}` is written as `{}`.** `{"givenName": {"@if": "!$this"}}` with the condition true carries nothing to write, and the empty object goes to the member: on a scalar member that is an ordinary `failed coercion` naming the member, and on an entity — `PATCH /v1/people/<key> {"@if": "true"}` — it is a `200` that changes nothing.
-
-> **Earlier builds.** An unknown directive key used to answer `201` with the key silently dropped, which turned a typo in `@if` into an unconditional write. `@ref` was among the keys accepted and dropped that way.
 
 ### Not envelope positions
 
@@ -700,9 +674,9 @@ One context per owner, with writable nested fields:
 | `owner` | Owning agent | Read-only. The address of the context |
 | `articleNumber` | Custom article number for this owner | Settable; `null` clears it |
 | `primarySupplier` | Primary supplier company | Settable; `null` clears it |
-| `discontinued` | Discontinued flag for this owner (v26.1.9 and later) | Settable |
+| `discontinued` | Discontinued flag for this owner | Settable |
 
-`minimumOrderQuantity` is no longer a member (removed in v26.1.5); a write is accepted and dropped.
+`minimumOrderQuantity` is not a member; a write is accepted and dropped.
 
 What the collection accepts:
 
@@ -835,7 +809,7 @@ Assortment contexts link products to owning agents with owner-specific metadata.
 | `owner` | Owning agent (company, store, supplier) |
 | `articleNumber` | Owner-specific article number |
 | `primarySupplier` | Primary supplier (company reference) |
-| `discontinued` | Discontinued flag for this owner (v26.1.9 and later) |
+| `discontinued` | Discontinued flag for this owner |
 
 ### Common Interactions (Examples)
 
@@ -943,7 +917,7 @@ GET /v1/stores/com.example.storeId=T1/stocks/com.example.warehouseCode=T1-EXPO
 → the stock, as the record
 ```
 
-A value that names **no** stock, or one owned by a different agent, is not a `404` — it is `200 null`, the same answer a member array gives for an element that is merely possible rather than present. `~count` on that path answers `1` whether or not anything is there, so it cannot be used as an existence check; read the value itself. See [gotcha 39](common-gotchas.md#39-a-null-in-a-response-does-not-prove-the-field-exists). This holds on every build.
+A value that names **no** stock, or one owned by a different agent, is not a `404` — it is `200 null`, the same answer a member array gives for an element that is merely possible rather than present. `~count` on that path answers `1` whether or not anything is there, so it cannot be used as an existence check; read the value itself. See [gotcha 39](common-gotchas.md#39-a-null-in-a-response-does-not-prove-the-field-exists).
 
 ### Nested Relation Navigation
 
@@ -1086,7 +1060,7 @@ For serialized products (devices, SIM cards), use `instances` instead of `quanti
 | `fulfillReturn` | Fulfills a committed return |
 | `cancelReturn` | Cancels a return |
 
-On v26.1.12 and earlier there is one more, `createShipment`, which creates a shipment order from the approved order's shippable lines; it is removed on v26.2.1 and later, where a body that sends it is dropped. See [Working with Orders → Available Actions](working-with/orders.md#available-actions) for the full contract on each.
+There is no `createShipment` action; a body that sends it is dropped. See [Working with Orders → Available Actions](working-with/orders.md#available-actions) for the full contract on each.
 
 #### createPayment Constraints
 

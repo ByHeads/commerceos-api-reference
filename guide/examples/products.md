@@ -398,8 +398,6 @@ curl -u ":banana" "https://example.app.heads.com/api/v1/products/com.myapp.sku=S
 
 ### Maximum Discount Percentage
 
-> **Availability:** v26.1.10 and later.
-
 `maxDiscountPercentage` (decimal, optional) caps the automatic discount on a product node: "The maximum discount percentage allowed on this product node. When set, discounts exceeding this percentage are capped." It is inherited like the VAT class — a value on a group or family applies to every product under it — and it caps what [discount rules](./discount-rules.md#discount-caps-and-vouchers) do; manual discounts at the till are exempt at recalculation.
 
 ```bash

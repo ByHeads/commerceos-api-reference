@@ -13,7 +13,7 @@ Read the [scope story](#scopes) before you start — it determines what a given 
 | You want to | Scope you need |
 |---|---|
 | Read users, and read local / retail / Entra ID credentials | `users:read` |
-| Read users, systems, OAuth2 clients and every credential collection, secrets masked | `admin:read` (v26.2.1 and later; not in v26.2.0 or v26.1.x) |
+| Read users, systems, OAuth2 clients and every credential collection, secrets masked | `admin:read` |
 | Anything else in this area — create a user, attach credentials, set a password, define a role, assign a role | `admin` |
 
 **There is no `users:write` scope.** User provisioning is an administrative operation, not something an ordinary integration key can do. A key scoped to `products:write` and `orders.sales:write` cannot create a user, and the failure arrives as an authorization error rather than a validation error — check the scope before you debug the request body.
@@ -182,7 +182,7 @@ The API authorizes a request from the **scopes carried by the credential that ma
 | Scope on the credential | What it can reach here |
 |---|---|
 | `users:read` | `GET` on `/v1/users`, `/v1/local-credentials`, `/v1/retail-credentials`, `/v1/entraid-credentials` (plus read-only agents/people/companies/stores) |
-| `admin:read` | `GET` on `/v1/users`, `/v1/systems`, `/v1/oauth2-clients` and all eight credential collections, secrets masked. No roles, permissions, role assignments or auth providers, and no writes. v26.2.1 and later; see [Credentials → The two restricted twins](credentials.md#the-two-restricted-twins-integrationsread-and-adminread) |
+| `admin:read` | `GET` on `/v1/users`, `/v1/systems`, `/v1/oauth2-clients` and all eight credential collections, secrets masked. No roles, permissions, role assignments or auth providers, and no writes. See [Credentials → The two restricted twins](credentials.md#the-two-restricted-twins-integrationsread-and-adminread) |
 | `admin` | Everything in this area, read and write |
 | `read:api` (legacy, broad) | Expands to a fixed set of read scopes, `users:read` among them — but not `admin` |
 | `write:api` (legacy, broad) | Expands to every fine-grained scope, `admin` included |

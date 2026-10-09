@@ -192,8 +192,7 @@ it (`~just(name)` alone) the cursor is minted only if the sort value can be read
 [`reference/pagination.md`](../reference/pagination.md#cursor-pagination).
 
 One more thing about the request itself: `limit`, `orderby`, `offset`, `after` and `format` may each be given only
-once. From the release after v26.1.11 a repeat is a `400` naming the parameter, where v26.1.10 and v26.1.11 answered
-`200` and paged by one occurrence while sorting by the other — see
+once. A repeat is a `400` naming the parameter — see
 [Repeated query parameters](../reference/pagination.md#repeated-query-parameters). Repeated `fields` and repeated
 filters are fine.
 
@@ -780,7 +779,7 @@ Body: {"givenName": "John"}
 | `application/sql` | SQL statements | Database export (requires mapped type) |
 | `application/vnd.ms-sqlserver.csv` | SQL Server CSV | SQL Server bulk import format |
 
-> **Note:** From the release after v26.1.11 a declared file extension on the last path segment picks the same formats without a header — `/v1/products.csv`, `.ndjson`, `.json`, `.sql`, `.txt`, `.html` — and each extension doubles as a short name in `Accept`. See [Format by path suffix](../reference/overview.md#format-by-path-suffix).
+> **Note:** A declared file extension on the last path segment picks the same formats without a header — `/v1/products.csv`, `.ndjson`, `.json`, `.sql`, `.txt`, `.html` — and each extension doubles as a short name in `Accept`. See [Format by path suffix](../reference/overview.md#format-by-path-suffix).
 
 > **Note:** SQL formats (`application/sql`, `application/vnd.ms-sqlserver.csv`) require a mapped type that produces `SqlStatement[]` output.
 

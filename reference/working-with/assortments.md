@@ -1,7 +1,5 @@
 # Working with Assortments
 
-> **Availability:** `assortmentOwner`, `assortmentOwners`, `assortmentContexts` and the default owner on create are in every current release. `discontinued` on an assortment context is v26.1.9 and later. `hiddenInPos` is v26.1.5 and later. `minimumOrderQuantity` on an assortment context was removed in v26.1.5; it exists on v26.1.0.1 and earlier only.
-
 This guide covers how a tenant runs one assortment for the whole chain, one per company or region, one per store, or a mix. It explains how a store finds its assortment, what decides where a new product lands, what makes a product show up in the back office and sell at the till, and how to read, edit and remove assortment entries.
 
 ---
@@ -541,7 +539,7 @@ PATCH /v1/products/com.example.sku=P1/assortmentContexts/com.example.companyId=N
 | `owner` | agent | The address of the context. Cannot be changed |
 | `articleNumber` | string | The owner's own number for the node. `null` clears it |
 | `primarySupplier` | company | Who this owner buys the node from. `null` clears it |
-| `discontinued` | boolean | A flag per owner. v26.1.9 and later |
+| `discontinued` | boolean | A flag per owner |
 
 | Fact | Detail |
 |---|---|
@@ -551,7 +549,7 @@ PATCH /v1/products/com.example.sku=P1/assortmentContexts/com.example.companyId=N
 | The till still sells a discontinued product in an ordinary sale | |
 | The till refuses to put a discontinued product on a customer order (collect in store, ship to customer) | The flag on a group counts for the products under it |
 | The flag on a group is not shown on the contexts of the products under it | They read `false` |
-| `minimumOrderQuantity` is gone (v26.1.5 and later) | A write is accepted and dropped; naming it in `~just` reads `null` |
+| `minimumOrderQuantity` is not a member of the context | A write is accepted and dropped; naming it in `~just` reads `null` |
 
 `discontinued` is a member of the context, not of the product. `GET /v1/products~where(discontinued)` does not find discontinued products; filter through the context of a named owner as in [Forms that work](#forms-that-work).
 
@@ -658,17 +656,15 @@ GET /v1/products/{id}~just(name,assortmentOwners~just(name),assortmentContexts~j
 
 ### Which stores a read key reaches
 
-> **Availability:** the last column is v26.2.1 and later. Before v26.2.1 (v26.2.0, v26.1.12 and earlier) an agent read scope next to `org:read` widens the listing to every store.
+| Key | Request | Answer |
+|---|---|---|
+| `org:read` alone, key on company `NORTH` | `GET /v1/stores` | the stores of `NORTH` |
+| `org:read` plus one of `supply-chains:read`, `suppliers:read`, `customers:read`, `users:read`; or `read:api`. Key on company `NORTH` | `GET /v1/stores` | the stores of `NORTH` |
+| the same, key on a store or without a node | `GET /v1/stores` | `[]` |
+| the same, key on store `N1` | `GET /v1/stores/{S1}` | `200 null` |
+| the same plus `products:read`, key on store `N1` | `GET /v1/stores/{S1}/assortmentOwner/assortment` | `200 null` |
 
-| Key | Request | Before v26.2.1 | v26.2.1 and later |
-|---|---|---|---|
-| `org:read` alone, key on company `NORTH` | `GET /v1/stores` | the stores of `NORTH` | the stores of `NORTH` |
-| `org:read` plus one of `supply-chains:read`, `suppliers:read`, `customers:read`, `users:read`; or `read:api`. Key on company `NORTH` | `GET /v1/stores` | every store | the stores of `NORTH` |
-| the same, key on a store or without a node | `GET /v1/stores` | every store | `[]` |
-| the same, key on store `N1` | `GET /v1/stores/{S1}` | the store | `200 null` |
-| the same plus `products:read`, key on store `N1` | `GET /v1/stores/{S1}/assortmentOwner/assortment` | the list | `200 null` |
-
-On v26.2.1 and later a key on a store still reads its own store and the assortment it uses at `/v1/store` and `/v1/store/assortmentOwner/assortment`, and any store still resolves where another resource refers to it. Listing or addressing every store takes `supply-chains:write`. See [Credentials → A read scope on the org or geo side resolves, it does not list](../credentials.md#a-read-scope-on-the-org-or-geo-side-resolves-it-does-not-list).
+A key on a store reads its own store and the assortment it uses at `/v1/store` and `/v1/store/assortmentOwner/assortment`, and any store resolves where another resource refers to it. Listing or addressing every store takes `supply-chains:write`. See [Credentials → A read scope on the org or geo side resolves, it does not list](../credentials.md#a-read-scope-on-the-org-or-geo-side-resolves-it-does-not-list).
 
 ### Traps
 

@@ -125,14 +125,12 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/people/*givenName
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/people/*givenName~count(=Jean)"
 ```
 
-> **Availability:** the no-field-name predicate ships in the release after v26.1.11. Not in v26.1.10 or v26.1.11 —
-> those builds answered `400 Invalid predicate syntax: missing or invalid field name`, and the long form
-> `~where($this=Martin)` was the only spelling. It still works.
+> The long form `~where($this=Martin)` is an equivalent spelling.
 >
-> Use it once the pipeline has narrowed to scalars and there is no member left to name; on a collection of objects,
+> Use the no-field-name predicate once the pipeline has narrowed to scalars and there is no member left to name; on a collection of objects,
 > keep naming the member (`/v1/people~where(givenName=Martin)`). Every comparison operator takes the form — `=`,
 > `!=`, `>`, `<`, `>=`, `<=`, `=~`, `!~` — wherever predicates are accepted. Two edges: `~where(=)` means "equals the
-> empty string" (a `400` before), and a bare `!` is still a `400` because negation needs a path (`~where(!done)`).
+> empty string", and a bare `!` is a `400` because negation needs a path (`~where(!done)`).
 > See [Predicates](../../reference/operators.md#a-predicate-may-open-with-its-operator).
 
 ---

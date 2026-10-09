@@ -167,10 +167,6 @@ GET /v1/products~where(status=Active)~where(hidden=false)
 
 #### A predicate may open with its operator
 
-> **Availability:** ships in the release after v26.1.11. Not in v26.1.10 or v26.1.11 — those builds answered `400`
-> with `details` of `Invalid predicate syntax: missing or invalid field name` to a predicate written with no field
-> name in front of the comparison.
-
 A pipeline that has already narrowed to scalars has no member left to name. `/v1/people/*givenName` reads the member
 from every element, so what reaches the filter is a collection of strings and `~where(givenName=Martin)` has nothing
 to resolve. Write the comparison with nothing in front of it and it compares the value flowing into the operator:
@@ -197,9 +193,9 @@ accepted: `~where`, `~either`, `~count`, `~first`, and the
 **On a collection of objects, keep naming the member.** `/v1/people~where(=Martin)` compares whole person objects
 against a string, which nothing equals; `/v1/people~where(givenName=Martin)` is the request you want.
 
-**Two edges.** `~where(=)` means "equals the empty string" — the same reading `~where(name=)` has always had, and a
-`400` in earlier builds. A bare `!` is still a `400`: negation needs a path (`~where(!done)`), and `~where($this)` and
-`~where()` remain the spellings for a truthiness test on the piped value.
+**Two edges.** `~where(=)` means "equals the empty string", the same reading `~where(name=)` has. A bare `!` is a
+`400`: negation needs a path (`~where(!done)`), and `~where($this)` and `~where()` are the spellings for a truthiness
+test on the piped value.
 
 #### `~either` (OR filtering)
 
@@ -235,7 +231,7 @@ GET /v1/products~either(status=Inactive,name=~Apple)~where(name=~Pro)
 
 ### Ordering & Pagination
 
-> **Note (v26.1+):** the `/before/` and `/after/` time-relative endpoints already return results in timestamp order, so chaining `~orderBy(timestamp)` after them is redundant. For every other query — including `~where(timestamp...)` filters, plain collection listings, and any sort by a non-timestamp field — `~orderBy(...)` is still required when you want a specific order.
+> **Note:** the `/before/` and `/after/` time-relative endpoints already return results in timestamp order, so chaining `~orderBy(timestamp)` after them is redundant. For every other query — including `~where(timestamp...)` filters, plain collection listings, and any sort by a non-timestamp field — `~orderBy(...)` is still required when you want a specific order.
 
 - `~orderBy(field)` or `~orderBy(field:desc)` - Order objects by selector value (single selector only; there is no compound sort, and a comma-separated multi-field sort key is a `400`). Any member the resource declares can be sorted on, including one that is empty on some or all items — see [what you can sort on](operators-catalog.md#orderbyselectordesc). The selector has to name a member: `$this` means the item itself, so `~orderBy($this)` is `~order` under another spelling and is a `400` over a collection of resources.
 - `~order(asc)` / `~order(desc)` - Sort a collection of **scalars** by the items themselves — the operator for a string or number collection such as a person's `languages`, where there is no member to sort on. Over a collection of resources it is a `400` telling you to name one with `~orderBy` instead. `~order`, `~order()` and `~order(asc)` all mean the ascending default ([details](operators-catalog.md#orderascdesc)).
@@ -360,10 +356,8 @@ Standard query parameters are translated to operators:
 | `orderby=field` | `~orderBy(field)` | `?orderby=name` → `~orderBy(name)` |
 | `orderby=field:desc` | `~orderBy(field:desc)` | `?orderby=name:desc` → `~orderBy(name:desc)` |
 
-**`orderby`, `limit`, `offset`, `after` and `format` may each be given once.** From the release after v26.1.11 a
-request repeating one of them is a `400` naming the parameter and the count; v26.1.10 and v26.1.11 answered `200` and
-resolved the two occurrences inconsistently in different layers. Repeated `fields` and repeated filters are unaffected
-and still repeat — see [Repeated query parameters](pagination.md#repeated-query-parameters).
+**`orderby`, `limit`, `offset`, `after` and `format` may each be given once.** A request repeating one of them is a
+`400` naming the parameter and the count. Repeated `fields` and repeated filters are unaffected and repeat — see [Repeated query parameters](pagination.md#repeated-query-parameters).
 
 **`format=` is reserved and not implemented.** It is not a way to choose a response format, and no value works — `?format=json`, `ndjson`, `csv`, `txt`, `html` and anything else are all **404**. Being reserved is what makes it a 404 rather than a filter: an unrecognised parameter falls through to a `~where` clause (see below), while `format=` is rewritten to `~format(...)`, an operator that does not exist. The rewrite is visible in the 404's own `url` field, which is the only thing distinguishing it from any other unknown-operator 404:
 
@@ -374,7 +368,7 @@ GET /v1/products?format=csv&limit=1
        "url": "/v1/products~format(csv)~take(1)"}   // ← the rewrite
 ```
 
-Choose a response format with the `Accept` header instead — see [Response Formats](overview.md#response-formats-accept-header). From the release after v26.1.11 a declared file extension on the last path segment selects one too (`/v1/products.csv`) — see [Format by path suffix](overview.md#format-by-path-suffix).
+Choose a response format with the `Accept` header instead — see [Response Formats](overview.md#response-formats-accept-header). A declared file extension on the last path segment selects one too (`/v1/products.csv`) — see [Format by path suffix](overview.md#format-by-path-suffix).
 
 **Fields edge cases:** `fields=none` maps to `~just()` with empty args. `fields=all,extra` emits `~withAll` and `~with(extra)`. `fields=default` is a no-op.
 

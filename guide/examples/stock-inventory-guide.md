@@ -168,8 +168,6 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/stocks/com.exam
 > **Note:** The `default` field is read-only. You cannot create a second default stock — each store has exactly one.
 
 > **Scope note:** `/v1/stocks` reads under `stock:read`; creating or changing a stock takes `stock:write`. Stock counts, stock transfers and their records read under `stock:read` as well. A write under `stock:read` is refused or silently dropped, see [gotcha 41](../../reference/common-gotchas.md#41-a-write-under-a-read-only-scope-is-a-silent-200).
->
-> **Availability:** v26.2.1 and later. Before v26.2.1 (v26.2.0, v26.1.12 and earlier) `/v1/stocks`, stock counts and stock transfers are a `404` under `stock:read`, which there covers stock places, adjustments and transactions only; reading them takes `stock:write`.
 
 ### 2.2 Creating Stock Places (Physical Locations)
 
@@ -865,8 +863,6 @@ Each stock count record item shows the actual posted change:
 
 ## Part 5: Stock Transfers — Moving Stock Between Logical Stocks
 
-> **Availability:** v26.1.11 and later. Earlier builds accepted store-to-store transfers and same-stock transfers with a `200`.
-
 The API describes a `stock transfer` as:
 
 > A logical instruction to move stock between two different logical stocks of the same agent, optionally backed by a shipment for physical movement. Transfers between agents are not supported yet
@@ -884,7 +880,7 @@ Example: moving 10 units from the Stockholm store's default stock into its consi
 Start by finding the agent's stocks, so you can name a non-default one:
 
 ```bash
-# All logical stocks (stock:read is enough to list them; before v26.2.1 this takes stock:write)
+# All logical stocks (stock:read is enough to list them)
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stocks"
 
 # Or just the ones belonging to this agent
@@ -1114,8 +1110,6 @@ Action types:
 | `Cancel` | Reserved stock was released back to sender |
 
 ### 5.4 Inter-Store Transfers
-
-> **Availability:** v26.1.11 and later. Earlier builds accepted a store-to-store transfer and answered `200`.
 
 **Transfers between different agents are not supported.** A `POST /v1/stock-transfers` whose `receiver` names a different agent from `sender` — store to store, warehouse to store, store to warehouse — is refused:
 
@@ -1404,8 +1398,6 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-count-obse
 ```
 
 ### 6.5 Tracking in Stock Transfers
-
-> **Availability:** v26.1.11 and later. Earlier builds accepted store-to-store transfers and same-stock transfers with a `200`.
 
 Stock transfer items support an `instances` field for tracked products. The create rules from [5.1](#51-creating-a-stock-transfer) apply here too: one agent on both sides, and two different stocks — so name at least one non-default stock.
 
@@ -1816,8 +1808,6 @@ Inherits from `stock transaction` (has `timestamp`, `owner`).
 
 ### Stock Transfer
 
-> **Availability:** v26.1.11 and later — for the `receiver`, `senderStock` and `receiverStock` rules below. Earlier builds accepted a different agent as `receiver`, and the same stock on both sides, with a `200`.
-
 "A logical instruction to move stock between two different logical stocks of the same agent, optionally backed by a shipment for physical movement. Transfers between agents are not supported yet"
 
 | Field | Type | Required on Create | Read-Only | Description |
@@ -1944,7 +1934,7 @@ Inherits from `stock transaction` (has `timestamp`, `owner`).
 
 - **Multi-stock-place in a single store is not fully supported.** Create exactly one stock place per store for now and designate it as the sole `stockRoot`.
 
-- **A stock transfer must stay within one agent and move between two *different* stocks** (v26.1.11 and later; earlier builds answered `200`). A different agent as `receiver` is a `400` with `"Stock transfers between different agents are not supported."`; the same stock on both sides is a `400` with `"A stock transfer must be between two different stocks."` Since both stocks default to the agent's default stock, **omitting both is now the second error** — always name at least one non-default stock. For movement between agents, use paired adjustments (decrease at source, increase at destination), or [deliveries and returns](../../reference/working-with/purchasing.md) for supplier goods. See [5.4 Inter-Store Transfers](#54-inter-store-transfers).
+- **A stock transfer must stay within one agent and move between two *different* stocks.** A different agent as `receiver` is a `400` with `"Stock transfers between different agents are not supported."`; the same stock on both sides is a `400` with `"A stock transfer must be between two different stocks."` Since both stocks default to the agent's default stock, **omitting both is the second error** — always name at least one non-default stock. For movement between agents, use paired adjustments (decrease at source, increase at destination), or [deliveries and returns](../../reference/working-with/purchasing.md) for supplier goods. See [5.4 Inter-Store Transfers](#54-inter-store-transfers).
 
 - **A bare `{ "key": "…" }` object is not a reference.** Anywhere you point at an existing item — `sender`, `receiver`, `senderStock`, `product`, `parent` — the reference must be `{ "identifiers": { "key": "…" } }` (or an external id inside `identifiers`). A bare `{ "key": … }` silently resolves to a *new* placeholder object instead of failing, which on a stock transfer surfaces as the puzzling "between different agents" `400` for what looks like the same store on both sides.
 
@@ -1958,7 +1948,7 @@ Inherits from `stock transaction` (has `timestamp`, `owner`).
 
 | Endpoint | Methods | Description |
 |----------|---------|-------------|
-| `/v1/stocks` | GET, POST, PATCH | Logical stock containers (`GET` under `stock:read`, writes under `stock:write`; before v26.2.1 `stock:write` only) |
+| `/v1/stocks` | GET, POST, PATCH | Logical stock containers (`GET` under `stock:read`, writes under `stock:write`) |
 | `/v1/stock-places` | GET, POST, PATCH | Physical locations |
 | `/v1/stock-places/{id}/entries` | GET | Current stock levels at a location |
 | `/v1/stock-places/{id}/transactions` | GET | Adjustments affecting a location |

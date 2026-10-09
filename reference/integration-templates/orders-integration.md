@@ -94,20 +94,12 @@ Trade order status is a read-only string array that reflects the current state o
 │ Committed │ ──────────────►│ Cancelled │
 └─────┬─────┘                └───────────┘
       │
-      ├─── tryFulfill ─────────────────► ┌───────────┐
-      │                                  │ Fulfilled │  seller's stock debited; no shipment order
-      │                                  └───────────┘
-      │
-      └─── createShipment ─────────────► ┌───────────────────────────────────────────┐
-           (v26.1.12 and earlier only)    │  Shipment Order                            │
-                                          │  (separate resource with its own status)   │
-                                          │  - status: New → Released → Transiting →   │
-                                          │            Acquired (+ Partially* variants)│
-                                          │  - action: release                         │
-                                          └───────────────────────────────────────────┘
+      └─── tryFulfill ─────────────────► ┌───────────┐
+                                         │ Fulfilled │  seller's stock debited; no shipment order
+                                         └───────────┘
 ```
 
-**Note:** Stock reservation is controlled via the `reservedUntil` field on orders or items. Setting `reservedUntil` reserves stock until the specified time **and** moves the order/item status to `Reserved`. `tryFulfill` fulfils the order directly and creates no shipment order. A shipment order is a separate resource, created from the approved order by `createShipment` on v26.1.12 and earlier and not at all on v26.2.1 and later. See [Shipment Orders](#shipment-orders).
+**Note:** Stock reservation is controlled via the `reservedUntil` field on orders or items. Setting `reservedUntil` reserves stock until the specified time **and** moves the order/item status to `Reserved`. `tryFulfill` fulfils the order directly and creates no shipment order. A shipment order is a separate resource with its own status (`New` → `Released` → `Transiting` → `Acquired`, plus `Partially*` variants) and one action, `release`; no trade order action creates one. See [Shipment Orders](#shipment-orders).
 
 ### Status Reference
 
@@ -137,12 +129,6 @@ Each item has `statusDetails`, one row per phase the line is split across, each 
 | `cancelReturn` | Cancel a previously-committed return |
 | `changeInvoiceAddress` | Update invoice address |
 | `changeDeliveryAddress` | Update delivery address |
-
-That is the whole set on v26.2.1 and later. Earlier releases have one more, `createShipment`:
-
-> **Availability: v26.1.12 and earlier.** Approve the order, send `{"createShipment": true}`, then `release` the shipment order it created. `tryFulfill` is the alternative that fulfils the order without a shipment order.
->
-> **Availability: v26.2.1 and later.** `createShipment` is removed and sending it is dropped: `200`, no shipment order. Outbound goods are booked as a delivery on `/v1/deliveries`.
 
 ### Required Fields for Order Creation
 
@@ -461,8 +447,6 @@ Content-Type: application/json
 
 The 980 units land in the store's stock; the order reads `["Committed", "Fulfilled"]` with `deliveryDiscrepancy: ["Underdelivery"]` and 20 still `Committed` for a later delivery. Always send your own identifier on the delivery — a retry without one creates a second document expecting the same goods. See [Working with Purchasing → A Receipt in One Request](../working-with/purchasing.md#a-receipt-in-one-request) and [Safe Receiving](../working-with/purchasing.md#safe-receiving).
 
-> **Availability:** deliveries and the purchasing members (`requestedArrivalTime` above) ship in v26.2.1 and later. Not in v26.1.x. The purchase-order shape itself is long-standing.
-
 ---
 
 ## Phase 2: Payment Handling
@@ -621,13 +605,9 @@ PATCH /v1/trade-orders/com.acme.order-id=WEB-2024-123456/actions
 
 ### Shipment Orders
 
-A shipment order comes from the trade order's `createShipment` action, on the releases that have it. `tryFulfill` fulfils the order directly and raises no shipment order, and `POST /v1/shipment-orders` does not create a usable shipment: the collection has no `create` operation, so a body carrying `shipper`, `recipient`, `items` and the rest is **dropped**, and what comes back is an identifier shell with none of the fields you sent.
+No write on the API creates a shipment order. `tryFulfill` fulfils the order directly and raises no shipment order, and `POST /v1/shipment-orders` does not create a usable shipment: the collection has no `create` operation, so a body carrying `shipper`, `recipient`, `items` and the rest is **dropped**, and what comes back is an identifier shell with none of the fields you sent. `createShipment` is not a trade order action: sending `{"createShipment": true}` is dropped — `200`, no shipment order. Outbound goods are booked as a delivery on `/v1/deliveries`.
 
-> **Availability: v26.1.12 and earlier.** Approve the order, send `{"createShipment": true}`, then `release` the shipment order it created. `tryFulfill` is the alternative that fulfils the order without a shipment order.
->
-> **Availability: v26.2.1 and later.** `createShipment` is removed and sending it is dropped: `200`, no shipment order. Outbound goods are booked as a delivery on `/v1/deliveries`.
-
-A shipment order created by `createShipment` is populated with:
+A shipment order carries:
 - `sender` and `receiver` from the trade order
 - `source` and `destination` from the order's addresses
 - `carrier` configured at the store/order level
@@ -1199,26 +1179,20 @@ PATCH /v1/trade-orders/com.acme.order-id=PAYMENT-FLOW-001/actions
 }
 ```
 
-To ship through a shipment order instead, on v26.1.12 and earlier:
+Where the order has a shipment order, releasing it is what marks it shipped:
 
 ```bash
-# Step 1: Create the shipment order from the approved order (a second send changes nothing while one is New)
-PATCH /v1/trade-orders/com.acme.order-id=PAYMENT-FLOW-001/actions
-{
-  "createShipment": true
-}
-
-# Step 2: Get the shipment key
+# Step 1: Get the shipment key
 GET /v1/trade-orders/com.acme.order-id=PAYMENT-FLOW-001/shipments~just(identifiers)
 
-# Step 3: Release shipment (mark as shipped)
+# Step 2: Release shipment (mark as shipped)
 PATCH /v1/shipment-orders/{shipment-key}/actions
 {
   "release": true
 }
 ```
 
-> **Note:** `release` is the only write a shipment order takes, and it is what marks the shipment as shipped. `POST /v1/shipment-orders` creates only an identifier shell. v26.2.1 and later has no `createShipment` — sending it is dropped — and books outbound goods as a delivery on `/v1/deliveries`.
+> **Note:** `release` is the only write a shipment order takes, and it is what marks the shipment as shipped. `POST /v1/shipment-orders` creates only an identifier shell. There is no `createShipment` — sending it is dropped — and outbound goods are booked as a delivery on `/v1/deliveries`.
 
 ### Verification Queries
 

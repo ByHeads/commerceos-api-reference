@@ -204,7 +204,7 @@ Both members are read-only. To see what produced each move — which action, whe
 | `currency` | CurrencyRef | Yes | Transaction currency |
 | `items` | OrderItem[] | Yes | Line items (non-empty array) |
 
-**Two numbers the platform puts into `identifiers`.** Besides your own namespaced identifiers, an order can carry `identifiers.customersId` — the customer's number for the order — and `identifiers.suppliersId` — the supplier's. Each is issued on creation when the party is one of your own agents under the root organization node and `/v1/config/root-order` names a serial for it: `incomingTradeOrderSerial` for `customersId` (your purchase order number), `outgoingTradeOrderSerial` for `suppliersId` (your sales order number). Both are indexes — `GET /v1/trade-orders/customersId=PO-00001` — and both are **read-only**: a `PATCH` on either is a `200` that changes nothing. The top-level `customersId` / `suppliersId` members (non-essential) carry the same number with its `owner`. See [Working with Purchasing → Your Purchase Order Number](purchasing.md#your-purchase-order-number-identifierscustomersid--long-standing).
+**Two numbers the platform puts into `identifiers`.** Besides your own namespaced identifiers, an order can carry `identifiers.customersId` — the customer's number for the order — and `identifiers.suppliersId` — the supplier's. Each is issued on creation when the party is one of your own agents under the root organization node and `/v1/config/root-order` names a serial for it: `incomingTradeOrderSerial` for `customersId` (your purchase order number), `outgoingTradeOrderSerial` for `suppliersId` (your sales order number). Both are indexes — `GET /v1/trade-orders/customersId=PO-00001` — and both are **read-only**: a `PATCH` on either is a `200` that changes nothing. The top-level `customersId` / `suppliersId` members (non-essential) carry the same number with its `owner`. See [Working with Purchasing → Your Purchase Order Number](purchasing.md#your-purchase-order-number-identifierscustomersid).
 
 ### Order Fields (Optional)
 
@@ -214,8 +214,6 @@ Both members are read-only. To see what produced each move — which action, whe
 | `labels` | Label[] | Assigned labels (add/remove semantics) |
 
 **Purchasing members.** A trade order used as a purchase order carries a further set of optional members. All are non-essential — fetch them with `~with(...)` — and all are settable on create and via `PATCH`.
-
-> **Availability:** v26.2.1 and later. Not in v26.1.x.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -255,10 +253,6 @@ An unknown value for either policy is a coercion `400`. The trade relationship c
 | `deliveries` | Delivery[] | Non-essential — the goods receipts raised against this order. See [Working with Purchasing](purchasing.md#deliveries) |
 | `returns` | Return[] | Non-essential — the supplier returns raised against this order. See [Working with Purchasing](purchasing.md#returns) |
 
-> **Availability:** v26.2.1 and later. Not in v26.1.x.
->
-> Applies to `deliveryDiscrepancy`, `deliveries` and `returns` only; the rest of this table is long-standing.
-
 ### Order Item Fields
 
 | Field | Type | Required | Description |
@@ -272,7 +266,7 @@ An unknown value for either policy is a coercion `400`. The trade relationship c
 | Field | Type | Description |
 |-------|------|-------------|
 | `unitAmountExclVat` | decimal | Manual unit price excluding VAT (see [Manual Unit Amounts](#manual-unit-amounts)) |
-| `deliveryAddresses` | Address[] (at most one) | Where this line ships to. `[]` means the line is collected in the `seller` store; one address means it ships there. Inherits the order's delivery address unless set. Writable on `PATCH /v1/trade-order-items/{key}` while the line is `New` or `Reserved`; ignored once `Committed`; two addresses answer `400`. Non-essential — see [Orders placed at the till](#orders-placed-at-the-till-collect-in-store-and-ship-to-customer). v26.1.10 and later |
+| `deliveryAddresses` | Address[] (at most one) | Where this line ships to. `[]` means the line is collected in the `seller` store; one address means it ships there. Inherits the order's delivery address unless set. Writable on `PATCH /v1/trade-order-items/{key}` while the line is `New` or `Reserved`; ignored once `Committed`; two addresses answer `400`. Non-essential — see [Orders placed at the till](#orders-placed-at-the-till-collect-in-store-and-ship-to-customer) |
 
 ### Order Item Fields (Read-Only)
 
@@ -464,11 +458,9 @@ See the [Orders examples guide](../../guide/examples/orders.md#click-and-collect
 
 ### Orders Placed at the Till: Collect in Store and Ship to Customer
 
-> **Availability:** `deliveryAddresses` on an order line is v26.1.10 and later; the store lists on the order function are v26.1.11 and later. Orders placed at the till, and the rest of what this section reads, are long-standing.
-
 A cashier can turn the lines in a cart into a customer order with the till's "Add to order" tile. The cashier picks a **delivery mode** — collect in store or ship to the customer — the **store** the goods come from, and a **payment mode** — pay now or pay later. The result is an ordinary trade order on `/v1/trade-orders`, so an order-management, warehouse or e-commerce integration reads it like any other. What differs is how you recognise one, how you tell the two delivery modes apart, which store hands the goods over, and what the till does to the order afterwards.
 
-The cart itself, before the cashier completes it, is readable and changeable at `/v1/pos-terminals/{id}/cart` from v26.2.1; its `draftOrder` is the numberless `New` order described under [Finding and polling till orders](#finding-and-polling-till-orders). See [Working with POS Carts](pos-carts.md).
+The cart itself, before the cashier completes it, is readable and changeable at `/v1/pos-terminals/{id}/cart`; its `draftOrder` is the numberless `New` order described under [Finding and polling till orders](#finding-and-polling-till-orders). See [Working with POS Carts](pos-carts.md).
 
 This is a different thing from the [click-and-collect order](#click-and-collect-order) above, which an integration **creates** through the API with `reservedUntil`. A till order is created by the till, has no expiry, and is finished either at the till or by the integration, depending on its delivery mode.
 
@@ -579,7 +571,7 @@ PATCH /v1/trade-orders/suppliersId=1000001/actions
 
 `200 {"@type": "trade order actions"}`. Read back: `status ["Fulfilled"]`, line Fulfilled, `balanceAmount "0"`, a second trade record with one `Fulfill` action, `pickingOrders []`, `shipments []` — `tryFulfill` raises no shipment order (see [Where Shipment Orders Come From](#where-shipment-orders-come-from)). What `tryFulfill` books against the seller's stock level for a line the till created is being confirmed; read the product's `stockLevels` at the seller store after fulfilment rather than assuming it moved, and count the units out with a stock adjustment if it did not.
 
-On v26.1.12 and earlier, `{"createShipment": true}` followed by `release` on the shipment order is the alternative; v26.2.1 and later books a delivery instead. Both are described under [Where Shipment Orders Come From](#where-shipment-orders-come-from); neither has been measured on a till-created order.
+Booking a delivery on `/v1/deliveries` is the alternative, described under [Where Shipment Orders Come From](#where-shipment-orders-come-from); it has not been measured on a till-created order.
 
 #### Cancelling a till order
 
@@ -588,7 +580,7 @@ On v26.1.12 and earlier, `{"createShipment": true}` followed by `release` on the
 | API `{"tryCancel": true}` | `Reserved` (pay later, not picked up) | `200`, **nothing changes** — the order stays `Reserved` and the reservation is kept, as the [`tryCancel` preconditions](#cancel-order-trycancel) say |
 | Till, cancel the order or a line | `Reserved` | `status ["Unreserved"]`, line `statusDetails` Unreserved, a second trade record with one `Unreserve` action, a POS slip (`slipKind "order"`, action `Unreserve`), the reservation released from the stock level, `balanceAmount "0"` while `totalAmount` stays |
 | API `{"tryCancel": true}` | `Committed`, paid now, not yet shipped | Not measured. A wholly `Committed` order is cancelled; what happens to the prepayment's `Debited` payment order through the API has not been checked. Do not assume a refund |
-| Till | `Committed`, paid now | On v26.1.11 the till refuses: "Cannot cancel an order with a prepaid amount." From v26.1.12 the till cancels with a refund, referenced to the original payment where the method supports it and otherwise paid out, documented on a receipt (Sweden) or a `prepayment-refund` slip (Norway) |
+| Till | `Committed`, paid now | The till cancels with a refund, referenced to the original payment where the method supports it and otherwise paid out, documented on a receipt (Sweden) or a `prepayment-refund` slip (Norway) |
 
 `Unreserved` is the status of a pay-later till order cancelled at the till. Map it to "cancelled" in an external system, alongside `Cancelled` — see [the orders integration template](../integration-templates/orders-integration.md#status-mapping-to-external-system).
 
@@ -1137,16 +1129,6 @@ PATCH /v1/trade-orders/{identifier}/actions
 | `changeDeliveryAddress` | Address object | Updates delivery address |
 | `changeInvoiceAddress` | Address object | Updates invoice address |
 
-That table is the whole set on v26.2.1 and later. Earlier releases have one more:
-
-> **`createShipment`** — whether it is a trade order action depends on the release.
->
-> **Availability: v26.1.12 and earlier.** Approve the order, send `{"createShipment": true}`, then `release` the shipment order it created. `tryFulfill` is the alternative that fulfils the order without a shipment order.
->
-> **Availability: v26.2.1 and later.** `createShipment` is removed and sending it is dropped: `200`, no shipment order. Outbound goods are booked as a delivery on `/v1/deliveries`.
->
-> On the releases that have it, it creates one shipment order from the order's shippable lines — the `Committed`, physical ones — unless the order already has a shipment order in status `New`, in which case it does nothing. See [Where Shipment Orders Come From](#where-shipment-orders-come-from).
-
 ### Approve Order (tryApprove)
 
 ```bash
@@ -1244,7 +1226,7 @@ PATCH /v1/trade-orders/com.example.orderId=ORD-001/actions
 - Fulfills every eligible item on the order, committing `New`, `Reserved` and `Unreserved` items first as needed
 - For physical product instances, performs a physical move from each item's source place to its destination place
 - Lines that are not eligible are left where they are, so a partly fulfilled order keeps both statuses (see [Status Behavior](#status-behavior))
-- On a **purchase order** it receives everything ordered into the customer store's stock with no delivery document — the shortcut for goods that arrived exactly as ordered. See [Working with Purchasing](purchasing.md#receive-everything-without-a-document-tryfulfill--long-standing)
+- On a **purchase order** it receives everything ordered into the customer store's stock with no delivery document — the shortcut for goods that arrived exactly as ordered. See [Working with Purchasing](purchasing.md#receive-everything-without-a-document-tryfulfill)
 
 ### Change Addresses
 
@@ -1424,21 +1406,9 @@ GET /v1/trade-orders/com.example.orderId=ORD-001/shipments
 
 ### Where Shipment Orders Come From
 
-A shipment order comes from the trade order's `createShipment` action, on the releases that have it. Nothing else creates one: **`tryFulfill` fulfils the order directly and raises no shipment order** — the order reads `Fulfilled`, the sold units leave the seller's stock, and `GET …/shipments` stays `[]` (the physical count at the source place moves only when the buyer has a destination place, see [gotcha 57](../common-gotchas.md#57-tryfulfill-leaves-physicalquantity-alone-unless-the-buyer-has-a-place)) — and `POST /v1/shipment-orders` does not create a usable shipment: the collection has no `create`, so a body carrying `shipper`, `recipient`, `items` and the rest is **dropped** and all you get back is an identifier shell with none of the fields you sent.
+No write on the API creates a shipment order. **`tryFulfill` fulfils the order directly and raises no shipment order** — the order reads `Fulfilled`, the sold units leave the seller's stock, and `GET …/shipments` stays `[]` (the physical count at the source place moves only when the buyer has a destination place, see [gotcha 57](../common-gotchas.md#57-tryfulfill-leaves-physicalquantity-alone-unless-the-buyer-has-a-place)) — and `POST /v1/shipment-orders` does not create a usable shipment: the collection has no `create`, so a body carrying `shipper`, `recipient`, `items` and the rest is **dropped** and all you get back is an identifier shell with none of the fields you sent.
 
-> **Availability: v26.1.12 and earlier.** Approve the order, send `{"createShipment": true}`, then `release` the shipment order it created. `tryFulfill` is the alternative that fulfils the order without a shipment order.
->
-> **Availability: v26.2.1 and later.** `createShipment` is removed and sending it is dropped: `200`, no shipment order. Outbound goods are booked as a delivery on `/v1/deliveries`.
-
-```bash
-# v26.1.12 and earlier: create the shipment order from the approved order's shippable lines
-PATCH /v1/trade-orders/com.example.orderId=ORD-001/actions
-{"createShipment": true}
-
-GET /v1/trade-orders/com.example.orderId=ORD-001/shipments
-```
-
-It creates one shipment order from the lines that are `Committed` and physical, unless the order already has a shipment order in status `New` — then it does nothing, so sending it twice leaves one shipment. With no shippable line it creates nothing and still answers `200`. The lines must share buyer, seller, source and destination; a mix is refused. What you can do with a shipment order afterwards is read it and release it.
+`createShipment` is not a trade order action: sending `{"createShipment": true}` is dropped — `200`, no shipment order. Outbound goods are booked as a delivery on `/v1/deliveries`. What you can do with a shipment order is read it and release it.
 
 ### Releasing Shipments
 
@@ -1798,7 +1768,7 @@ PATCH /v1/trade-orders/com.example.orderId=ORD-001/actions
 | Get items | GET | `/v1/shipment-orders/{id}/items` | Line items |
 | Release shipment | PATCH | `/v1/shipment-orders/{id}/actions` | Release shipment (`{"release": true}`) |
 
-> **Note:** There is no create operation on this collection: `POST /v1/shipment-orders` returns an identifier shell with the body dropped. A shipment order is created from an approved trade order by `{"createShipment": true}` on v26.1.12 and earlier; v26.2.1 and later has no `createShipment`, and `tryFulfill` never creates one on any release — see [Where Shipment Orders Come From](#where-shipment-orders-come-from).
+> **Note:** There is no create operation on this collection: `POST /v1/shipment-orders` returns an identifier shell with the body dropped. There is no `createShipment` action on a trade order, and `tryFulfill` never creates one — see [Where Shipment Orders Come From](#where-shipment-orders-come-from).
 
 ---
 
@@ -2355,7 +2325,7 @@ PATCH /v1/trade-orders/com.example.orderId=ORD-MOBILE-2024-001/actions
 {"tryFulfill": true}
 ```
 
-> **Note:** To ship through a shipment order instead, on v26.1.12 and earlier send `{"createShipment": true}` to the approved order and `release` the shipment order it creates — `release` is the only write a shipment order takes. v26.2.1 and later has no `createShipment` — see [Where Shipment Orders Come From](#where-shipment-orders-come-from).
+> **Note:** There is no `createShipment` action: outbound goods are booked as a delivery on `/v1/deliveries` — see [Where Shipment Orders Come From](#where-shipment-orders-come-from). `release` is the only write a shipment order takes.
 
 ### Step 8: Verify Final State
 

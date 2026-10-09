@@ -255,7 +255,7 @@ Company Stock Roots
 
 ### Shipment Order Fields
 
-Shipment orders are created from an approved trade order by `createShipment` on v26.1.12 and earlier; `tryFulfill` does not create one on any release. Over the API they are **read and released** — see [Shipment Orders](#shipment-orders). The following fields are exposed:
+No write on the API creates a shipment order: `tryFulfill` does not create one, and `POST /v1/shipment-orders` creates only an identifier shell. Over the API they are **read and released** — see [Shipment Orders](#shipment-orders). The following fields are exposed:
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -900,27 +900,17 @@ Stock roots determine where an agent's inventory is managed:
 
 ## Shipment Orders
 
-Shipment orders track physical delivery of products. Over the API they are created from an approved trade order (on the releases that have `createShipment`), read, and released. `status` is an array with values `New`, `Released`, `Transiting`, `Acquired` (plus partial summaries).
+Shipment orders track physical delivery of products. Over the API they are read and released. `status` is an array with values `New`, `Released`, `Transiting`, `Acquired` (plus partial summaries).
 
 ### Where Shipment Orders Come From
 
-A shipment order comes from the trade order's `createShipment` action, and from nothing else:
+No write on the API creates a shipment order:
 
 - **`tryFulfill` does not create one.** It fulfils the order directly: the order reads `Fulfilled`, the sold units leave the seller's stock, and the order's `shipments` stay empty. The physical count at the source place moves only when the buyer has a destination place — see [gotcha 57](../common-gotchas.md#57-tryfulfill-leaves-physicalquantity-alone-unless-the-buyer-has-a-place).
 - **`POST /v1/shipment-orders` does not build a shipment from your body.** Posting explicit fields (`sender`, `receiver`, `source`, `items`, …) creates an identifier shell only — the body is dropped, and the resulting resource carries none of the values you sent.
+- **`createShipment` is not a trade order action.** Sending `{"createShipment": true}` is dropped: `200`, no shipment order. Outbound goods are booked as a delivery on `/v1/deliveries`.
 
-> **Availability: v26.1.12 and earlier.** Approve the order, send `{"createShipment": true}`, then `release` the shipment order it created. `tryFulfill` is the alternative that fulfils the order without a shipment order.
->
-> **Availability: v26.2.1 and later.** `createShipment` is removed and sending it is dropped: `200`, no shipment order. Outbound goods are booked as a delivery on `/v1/deliveries`.
-
-```bash
-# v26.1.12 and earlier: one shipment order from the approved order's shippable lines.
-# Does nothing if the order already has a shipment order in status New
-PATCH /v1/trade-orders/com.example.orderId=ORD-001/actions
-{"createShipment": true}
-```
-
-Once it exists, your integration's job is to **find it, read it, and release it**:
+Where a shipment order exists, your integration's job is to **find it, read it, and release it**:
 
 ```bash
 # Find the shipments belonging to an order
@@ -1076,7 +1066,7 @@ International Commercial Terms define when responsibility transfers. Delivery te
 
 ### The Eleven Codes, and a Collection for Each
 
-Each Incoterm code has a collection of its own, alongside two broader ones. All thirteen are under `logistics:write`, and readable under `logistics:read` on v26.2.1 and later (not in v26.2.0 or v26.1.x). `supply-chains:read` reads only the two broad collections, `/v1/delivery-terms` and `/v1/incoterm-delivery-terms`; the eleven code collections are a `404` under it.
+Each Incoterm code has a collection of its own, alongside two broader ones. All thirteen are under `logistics:write`, and readable under `logistics:read`. `supply-chains:read` reads only the two broad collections, `/v1/delivery-terms` and `/v1/incoterm-delivery-terms`; the eleven code collections are a `404` under it.
 
 | Code | Name | Responsibility transfer | Collection |
 |------|------|------------------------|------------|
@@ -1661,52 +1651,34 @@ WH-STORAGE:
   IPHONE-15-PRO: physical=50, available=49, reserved=1
 ```
 
-### Step 5: Create the Shipment Order
-
-On v26.1.12 and earlier, create the shipment order from the approved order, then find it:
+### Step 5: Fulfil the Order
 
 ```bash
 PATCH /v1/trade-orders/com.example.orderId=ORD-CUST-2024-001/actions
-{"createShipment": true}
-
-GET /v1/shipment-orders~where(orders/com.example.orderId=ORD-CUST-2024-001)
+{"tryFulfill": true}
 ```
 
-> **Note:** Source, items and delivery terms come from the trade order; `POST /v1/shipment-orders` with explicit fields would create an identifier shell with the body dropped. v26.2.1 and later has no `createShipment`: fulfil with `tryFulfill` instead, which debits the seller's stock at fulfilment and creates no shipment order — see [Where Shipment Orders Come From](#where-shipment-orders-come-from).
+> **Note:** `tryFulfill` debits the seller's stock at fulfilment and creates no shipment order. There is no `createShipment`, and `POST /v1/shipment-orders` with explicit fields creates an identifier shell with the body dropped — see [Where Shipment Orders Come From](#where-shipment-orders-come-from).
 
-### Step 6: Release Shipment
-
-```bash
-PATCH /v1/shipment-orders/com.example.shipmentId=SHIP-2024-001/actions
-{"release": true}
-```
-
-**Stock after release:**
+**Stock after fulfilment:**
 ```
 WH-STORAGE:
   IPHONE-15-PRO: physical=49, available=49
 ```
 
-> **Note:** Further shipment progression (tracking, delivery confirmation) is handled by external integrations. The shipment order resource only supports the `release` action.
+> **Note:** Tracking and delivery confirmation are handled by external integrations, or booked as a delivery on `/v1/deliveries`.
 
-### Step 7: Verify Final State
+### Step 6: Verify Final State
 
 ```bash
-# Check shipment
-GET /v1/shipment-orders/com.example.shipmentId=SHIP-2024-001~withAll
+# Check the order
+GET /v1/trade-orders/com.example.orderId=ORD-CUST-2024-001~just(identifiers,status,shipments)
 
 # Response
 {
-  "identifiers": {"com.example.shipmentId": "SHIP-2024-001"},
-  "status": ["Released"],
-  "sender": {"@type": "company", "name": "Telecom AB"},
-  "receiver": {"@type": "person", "givenName": "Customer", "familyName": "Name"},
-  "orders": [{"identifiers": {"com.example.orderId": "ORD-CUST-2024-001"}}],
-  "carrier": {"@type": "company", "name": "PostNord"},
-  "records": [
-    {"timestamp": "2024-12-15T10:00:00Z", "actions": {"create": {}}},
-    {"timestamp": "2024-12-15T10:30:00Z", "actions": {"release": {}}}
-  ]
+  "identifiers": {"com.example.orderId": "ORD-CUST-2024-001"},
+  "status": ["Fulfilled"],
+  "shipments": []
 }
 
 # Check final stock
@@ -1833,11 +1805,11 @@ POST /v1/stock-adjustments  # Second request (may fail)
 |----------|---------------|
 | 1 | Create trade order |
 | 2 | Approve order (reserves stock) |
-| 3 | Create the shipment order (`{"createShipment": true}`) — v26.1.12 and earlier; v26.2.1 and later has no `createShipment` |
+| 3 | Fulfil the order (`{"tryFulfill": true}`); there is no `createShipment` |
 | 4 | Release shipment (decrements stock) |
 | 5 | (External: fulfillment/tracking via integrations) |
 
-`tryFulfill` is the alternative that fulfils the order without a shipment order: the seller's stock is debited at fulfilment and there is nothing to release. The physical count at the source place moves only when the buyer has a destination place — see [gotcha 57](../common-gotchas.md#57-tryfulfill-leaves-physicalquantity-alone-unless-the-buyer-has-a-place) and [Where Shipment Orders Come From](#where-shipment-orders-come-from).
+`tryFulfill` fulfils the order without a shipment order: the seller's stock is debited at fulfilment and there is nothing to release. The physical count at the source place moves only when the buyer has a destination place — see [gotcha 57](../common-gotchas.md#57-tryfulfill-leaves-physicalquantity-alone-unless-the-buyer-has-a-place) and [Where Shipment Orders Come From](#where-shipment-orders-come-from).
 
 ### Instance Tracking
 

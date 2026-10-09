@@ -8,8 +8,6 @@ Every submission appears in the regular stock-adjustment audit trail and is cros
 
 ## Overview
 
-> **Availability:** v26.1.11 and later. Earlier builds read the current level from the place alone, regardless of the submission's `stock` — see [What `physicalQuantity` is measured against](#what-physicalquantity-is-measured-against).
-
 ### When to use it
 
 | Use case | Use this |
@@ -68,11 +66,7 @@ Once the submission is committed, the same record is readable via `/v1/stock-adj
 
 ### Entry object fields
 
-> **Availability:** ships in the release after v26.1.11. Not in v26.1.10 or v26.1.11.
->
-> That release declares the element as a typed `stock entry target` in the OpenAPI document and the `/v1/elements` schema endpoints, and validates it as one (see [Entry validation](#entry-validation)). Earlier builds accept the same fields and described the element in prose only. The `physicalQuantity` semantics in the table are those of v26.1.11 and later — see [What `physicalQuantity` is measured against](#what-physicalquantity-is-measured-against).
-
-Each element of `entries` is a **`stock entry target`**:
+Each element of `entries` is a **`stock entry target`**, declared as such in the OpenAPI document and the `/v1/elements` schema endpoints and validated as one (see [Entry validation](#entry-validation)):
 
 | Field | Type | Required | Description |
 |---|---|---|---|
@@ -93,15 +87,13 @@ Unrecognised keys on an entry — a `direction`, or a typo such as `physicalQty`
 
 ### What `physicalQuantity` is measured against
 
-> **Availability:** v26.1.11 and later. Earlier builds read the current level from the place alone, regardless of the submission's `stock`.
-
 The resource takes absolute targets and writes the delta needed to reach them. The "current level" it subtracts from is the quantity that is both **at the entry's `place`** and **in the submission's `stock`** (the owner's default stock when `stock` is omitted):
 
 - **One stock per place.** The number is the place's level, exactly as before. An owner set up this way sees no difference.
 - **Several logical stocks at one place.** The place's total is the **sum over the stocks living there**, and each stock is addressed by its own submission (its own `stock` value). Two submissions targeting the same place with different `stock` values do **not** correct each other: driving `(SKU-001, WH-001)` to 40 in the default stock and to 10 in a display stock leaves the place holding 50.
 - **Units held on open customer orders count as present.** Units reserved or committed to a customer order have left the *available* figure but are still on the shelf until the order fulfils, so the resource counts them. A store holding 7 with 2 committed on an open order reads 7 — a caller echoing the physical count 7 writes nothing. Once the order fulfils the level is 5, and an echo of 5 is a no-op. A cancelled order returns its units, and an echo of 7 is again a no-op. Open orders do not suppress the sync: a genuine shrink while an order is open still writes — 6 echoed against the held 7 writes −1.
 - **Units on a committed supplier order do not count.** They are the mirror image — expected, but not on the shelf yet.
-- **A stock transfer moves logical stock only.** A transfer whose receiver is a different owner puts nothing at the receiving owner's place, so an echo of the receiving store's post-transfer balance still writes the full quantity in as an increase, on top of the transferred quantity that is already in the stock. This was true before v26.1.11 as well. (From v26.1.11, `/v1/stock-transfers` refuses to create a transfer between different agents — see [Inter-Store Transfers](../guide/examples/stock-inventory-guide.md#54-inter-store-transfers) — so this concerns balances moved on earlier builds.)
+- **A stock transfer moves logical stock only.** A transfer whose receiver is a different owner puts nothing at the receiving owner's place, so an echo of the receiving store's post-transfer balance still writes the full quantity in as an increase, on top of the transferred quantity that is already in the stock. `/v1/stock-transfers` refuses to create a transfer between different agents — see [Inter-Store Transfers](../guide/examples/stock-inventory-guide.md#54-inter-store-transfers).
 
 Sign and direction rules are unaffected — see [No direction on stock entries](#no-direction-on-stock-entries).
 
@@ -214,9 +206,7 @@ The owner mismatch is checked atomically — one offending entry fails the entir
 
 ### Entry validation
 
-> **Availability:** ships in the release after v26.1.11. Not in v26.1.10 or v26.1.11.
-
-Each element of `entries` is validated as a typed `stock entry target` before the submission is processed. Earlier builds rejected the same values further into processing, with a different message.
+Each element of `entries` is validated as a typed `stock entry target` before the submission is processed.
 
 | Trigger | HTTP | Body marker |
 |---|---|---|
@@ -230,8 +220,6 @@ Unrecognised keys on an entry (`direction`, a typo such as `physicalQty`) are **
 ---
 
 ## Anti-Patterns
-
-> **Availability:** v26.1.11 and later — applies to the two `stock` bullets; the rest of this list predates that release.
 
 - **Don't expect submissions with different `stock` values to correct each other.** The current level is read per `(place, stock)`. Driving the same `(product, place)` in the default stock and again in a display stock lands two independent levels whose sum is the place's total; neither submission "fixes" the other. Address each stock with its own submission and echo that stock's count, not the place's. See [What `physicalQuantity` is measured against](#what-physicalquantity-is-measured-against).
 - **Don't omit `stock` once the owner has more than one.** An omitted `stock` silently resolves to the owner's default stock — no error, no warning. A count taken in a display or consignment stock that is posted without `stock` is applied to the default stock instead.

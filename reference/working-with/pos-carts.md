@@ -1,7 +1,5 @@
 # Working with POS Carts, Sessions and Supervisor Control
 
-> **Availability:** v26.2.1 and later. Not in v26.2.0 or v26.1.x: there neither the members below nor the three scopes exist.
-
 This guide covers what a till is doing right now and how an integration takes part in it: reading a terminal's session, adding and changing the lines of its cart, setting the customer and the receipt note, parking, resuming and discarding carts, and controlling a self-checkout lane as a supervisor would.
 
 ---
@@ -149,13 +147,13 @@ GET /v1/pos-terminals/posTerminalName=Kassa%201/session
 | Member | Values | Notes |
 |---|---|---|
 | `mode` | `Manned`, `Self-checkout` | The profile's mode. Absent when the terminal has no profile |
-| `status` | `age-restriction`, `locked`, `paying`, `loyalty-pending`, `reward-pending`, `help-requested`, `alert`, `shopping`, `receipt`, `completing`, `available` | The first that applies, in that order. `available` on a fresh or reset till, `shopping` with lines in the cart, `locked` under a supervisor lock. v26.2.2 and later add `card-reading`, between `alert` and `shopping`: a self-checkout whose start screen asks for the payment method is reading the customer's card. Treat a value outside this list as possible |
+| `status` | `age-restriction`, `locked`, `paying`, `loyalty-pending`, `reward-pending`, `help-requested`, `alert`, `card-reading`, `shopping`, `receipt`, `completing`, `available` | The first that applies, in that order. `available` on a fresh or reset till, `shopping` with lines in the cart, `locked` under a supervisor lock, `card-reading` on a self-checkout whose start screen asks for the payment method and is reading the customer's card. Treat a value outside this list as possible |
 | `locked`, `lockReason` | `true` with `manual`, `spot-check`, `cancelled`, `printer-error` or `age-restriction` | Only ever set on a self-checkout. `lockReason` is absent when not locked |
 | `helpRequested` | boolean | The customer asked for help at the lane |
 | `ageRestrictionPending`, `pendingAgeRestriction`, `ageRestrictionReasons` | `true`, `18`, `"Alcohol"` | See [Age control](#age-control). The last two are absent when no line is restricted |
 | `sessionActive` | boolean | A self-checkout customer's session. Lines added through the API do not start one |
 | `frozen`, `currentTask` | `true` and a task name | While a task is queued at the till. Cart writes are refused, see [A frozen terminal](#a-frozen-terminal) |
-| `cardAcquisitionStatus` | `Pending`, `Acquired`, `Failed`, `Idle` | The lane's card tap ahead of the amount. `Pending` while one is in flight, `Acquired` or `Failed` once it has ended. Often absent. On v26.2.1 it reads `Idle` after `unclog`. Test for `Pending`: every other value, and absence, mean no tap is in flight |
+| `cardAcquisitionStatus` | `Pending`, `Acquired`, `Failed`, `Idle` | The lane's card tap ahead of the amount. `Pending` while one is in flight, `Acquired` or `Failed` once it has ended. Often absent. Test for `Pending`: every other value, and absence, mean no tap is in flight |
 | `alert` | `{ message, customerMessage, tone }` | When the lane shows an alert. Absent otherwise |
 | `turnedOn` | boolean | Started for the day |
 | `cart` | the cart's default projection | Absent when there is none |
@@ -177,7 +175,7 @@ The default projection:
 | `identifiers` | The key only. The parking id is not an identifier |
 | `state` | `Active` or `Parked` |
 | `terminal`, `site` | The terminal that holds the cart, active or parked, and its store |
-| `currency` | The cart's currency: `{"@type": "currency", "identifiers": {"key": "…", "currencyCode": "SEK"}}`. v26.2.2 and later. On v26.2.1 it is absent |
+| `currency` | The cart's currency: `{"@type": "currency", "identifiers": {"key": "…", "currencyCode": "SEK"}}` |
 | `itemCount`, `pieceCount` | Lines, and units across them |
 | `totalAmountInclVat`, `totalAmountExclVat`, `vatAmount`, `discountAmountInclVat` | |
 | `paidAmount`, `prepaidAmount`, `roundingAmount`, `balanceAmount`, `balanced` | |
@@ -275,7 +273,7 @@ The answer is `201` with the line:
 - `unit` is the till's unit label in the API user's language: `""` for a product without a unit, `"st"` for pieces under a Swedish user.
 - `pendingInput` names what the till still needs before the line can be sold: `tracking` (a serial number), `weight`, `price`, `domain`.
 - `orderItem` is the line of the cart's draft order.
-- `unitAmountExclVat` is the unit price without VAT, before discounts: `"799.2"` beside `unitAmountInclVat: "999"` on a line with 25 % VAT. v26.2.2 and later. On v26.2.1 it does not render as a number.
+- `unitAmountExclVat` is the unit price without VAT, before discounts: `"799.2"` beside `unitAmountInclVat: "999"` on a line with 25 % VAT.
 - `unitAmountInclVat` written on a line is a manual price including VAT; the net is derived from the product's rate. A regular price can carry the gross the same way, with `includesTax: true` — see [Prices That Include VAT](prices.md#prices-that-include-vat).
 
 A cart the till has worked on can hold other line types, told apart by `@type` and read-only through the API: `POS payment item`, `POS pick item`, `POS wallet item`.
@@ -322,14 +320,14 @@ Either `PATCH` that line's `unitAmountInclVat`, or give it a `manualNotes` first
 | a `package` that matches nothing | `400` `The package must match exactly one product package.` |
 | any `@type` other than `POS trade item` | `400` `Only a POS trade item can be created through the API; a POS payment item is created at the till.` |
 | a product under a trade restriction for the terminal's store | `409` with the till's restriction message |
-| any line, on a self-checkout whose profile has `scoStartScreen` `Payment method` or `Tap card`, before the customer has chosen how to pay at the lane | `409` with the till's text, "Choose how to pay before you scan." The cart stays `null`. v26.2.2 and later |
+| any line, on a self-checkout whose profile has `scoStartScreen` `Payment method` or `Tap card`, before the customer has chosen how to pay at the lane | `409` with the till's text, "Choose how to pay before you scan." The cart stays `null` |
 
 **Opening the cart.** The first line on a terminal without a cart opens one, as a scan on an empty till does, and `session.status` goes from `available` to `shopping`.
 
 - A **refused** first line opens nothing: the terminal's `cart` stays `null`.
 - A terminal **without a profile** cannot open a cart: `409` `The terminal has no profile, so it cannot open a cart.`
 - There is no other way to open one. `PATCH …/cart` on a terminal without a cart answers `200 null` and changes nothing.
-- A **self-checkout that asks for the payment method first** opens no cart until the customer has chosen at the lane. Until then `session.sessionActive` is `false` and `status` is `available` or `card-reading`. v26.2.2 and later.
+- A **self-checkout that asks for the payment method first** opens no cart until the customer has chosen at the lane. Until then `session.sessionActive` is `false` and `status` is `available` or `card-reading`.
 
 ### Changing a line
 
@@ -426,7 +424,7 @@ PATCH /v1/pos-terminals/posTerminalName=Kassa%201/cart
 | a `customer` that matches nothing | `400` `The customer was not found; pass a reference to an existing one, e.g. { "identifiers": { "key": "…" } }.` Nothing is attached |
 | `{"manualNotes": "Called ahead, picks up at 17:00"}` | `200`, the receipt note. `null` clears it |
 | `{"visibility": "Everywhere"}` | `200`. One of `This terminal`, `This store`, `Everywhere`; the same values and the same rule as when parking. `null` clears it |
-| `{"visibility": "<any other string>"}` | `400` `visibility takes one of 'This terminal', 'This store', 'Everywhere', or null to clear it.`, `info.invalidItem`. v26.2.2 and later. On v26.2.1 the same request answers `500` |
+| `{"visibility": "<any other string>"}` | `400` `visibility takes one of 'This terminal', 'This store', 'Everywhere', or null to clear it.`, `info.invalidItem` |
 
 - Unlike `product` on a line, `customer` does **not** take the bare form `{ "com.example.customerId": "…" }`. Use `{ "identifiers": { … } }`.
 - A customer cannot be detached while the cart holds lines of existing orders: `409`.
@@ -451,7 +449,7 @@ PATCH /v1/pos-terminals/posTerminalName=Kassa%201/session/actions
 | Value | Effect |
 |---|---|
 | `"This terminal"`, `"This store"`, `"Everywhere"` | Parks with that visibility |
-| `true` | Parks with the cart's current visibility. **A cart that never had one is parked for this terminal only**: the store's other terminals do not list it under `resumableCarts`. From v26.2.2 they cannot resume it either (`409`) |
+| `true` | Parks with the cart's current visibility. **A cart that never had one is parked for this terminal only**: the store's other terminals do not list it under `resumableCarts`, and cannot resume it (`409`) |
 | any other string | `400` `parkCart takes true or one of 'This terminal', 'This store', 'Everywhere'.` |
 | `false`, `null` | `200`, nothing happens |
 
@@ -490,7 +488,7 @@ Which carts a terminal may resume is its `resumableCarts`:
 
 | Refusal | Answer |
 |---|---|
-| a cart parked for another terminal of the same store: parked there as `This terminal`, or with `true` and no visibility | `409` `The cart is parked for another terminal.` Nothing moves. v26.2.2 and later. On v26.2.1 the resume goes through, `200`, and the cart moves |
+| a cart parked for another terminal of the same store: parked there as `This terminal`, or with `true` and no visibility | `409` `The cart is parked for another terminal.` Nothing moves |
 | a cart parked `This store`, resumed in another store | `409` `Can only resume a cart from a different node if its visibility is 'Everywhere' and it exclusively has new sales.` |
 | a cart that is not parked (active somewhere, or already resumed) | `409` `The cart is not parked.` |
 | a key that matches no cart | `400` `failed indexing`, `Found no matching 'POS cart' using this index.` |
@@ -511,8 +509,9 @@ Refused with `409`:
 - an empty cart ("Cart is empty")
 - payments in the cart ("Cart has external side effects that must be resolved first")
 - a frozen terminal
-- a pending card tap, on v26.2.1 only (`A card acquisition is pending at the terminal; empty the cart at the till, which cancels it.`). From v26.2.2 the discard goes through and releases the card at the payment terminal
 - a loyalty session (`The cart has a loyalty session; discard it at the till, which cancels the session.`)
+
+A pending card tap does not refuse it: the discard goes through and releases the card at the payment terminal.
 
 With payments in the cart, a pending card tap or a loyalty session, `parkCart` stays open, and so does the supervisor's `unclog`. A supervisor lock does **not** stop a discard.
 
@@ -539,9 +538,9 @@ Every action takes `true`; `lock` also takes a reason.
 | `{"resetSession": true}` | `200`; the active cart is gone, `status: "available"`, `locked: false`, `sessionActive: false`, `helpRequested: false`. A cart already parked at the lane stays parked. Works under a supervisor lock |
 | `{"unclog": true}` | `200`; the cart is **parked** (with the visibility it had, usually none, and a new `parkingId`) and `status` is `available`. It also clears a queued task and the alert, and ends a pending card tap. The way out of a lane the till cannot clear |
 
-`resetSession` is refused with `409` when the cart holds payments, the terminal is frozen, or the cart has a loyalty session; on v26.2.1 also while a card tap is pending. `unclog` is the action for those cases.
+`resetSession` is refused with `409` when the cart holds payments, the terminal is frozen, or the cart has a loyalty session. `unclog` is the action for those cases.
 
-**A cart that `unclog` parked is resumable at that lane only**, unless it carried a wider visibility: another terminal's `resumeCart` answers `409` `The cart is parked for another terminal.` v26.2.2 and later. On v26.2.1 the other terminal resumes it directly. To continue the sale at another terminal, send three requests:
+**A cart that `unclog` parked is resumable at that lane only**, unless it carried a wider visibility: another terminal's `resumeCart` answers `409` `The cart is parked for another terminal.` To continue the sale at another terminal, send three requests:
 
 1. `{"resumeCart": {"identifiers": {"key": "<cart key>"}}}` to the lane's `/session/actions`
 2. `{"parkCart": "This store"}` to the lane's `/session/actions`
@@ -583,10 +582,7 @@ Not held back by it: reads, `unlock`, `denyAgeRestriction`, `confirmAgeRestricti
 
 The till cancels a loyalty session when it empties a cart. The API cannot: while the cart has a loyalty session, `discardCart` and `resetSession` answer `409`. `parkCart` and `unclog` stay open.
 
-A pending card tap (`session.cardAcquisitionStatus` is `"Pending"`):
-
-- v26.2.1: `discardCart`, `resetSession` and a `DELETE` of the last line answer `409`. `parkCart` and `unclog` stay open.
-- v26.2.2 and later: all of them go through, and the card is released at the payment terminal. A `DELETE` of the last line on a self-checkout with an active session keeps the card for that session.
+A pending card tap (`session.cardAcquisitionStatus` is `"Pending"`) stops nothing: `discardCart`, `resetSession`, a `DELETE` of the last line, `parkCart` and `unclog` all go through, and the card is released at the payment terminal. A `DELETE` of the last line on a self-checkout with an active session keeps the card for that session.
 
 ---
 

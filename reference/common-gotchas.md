@@ -1085,9 +1085,7 @@ Related: [gotcha 39](#39-a-null-in-a-response-does-not-prove-the-field-exists) (
 
 ## 41. A Write Under a Read-Only Scope Is a Silent `200`
 
-Every resource family comes as a pair: a read-only collection under `<area>:read` and a writable twin under `<area>:write`, both mounted at the same path. Which one a request lands on is decided by the scopes the token holds — and **being on the wrong one is not an error**.
-
-> **Availability:** every family has the pair on v26.2.1 and later. Before v26.2.1 only some do: orders, payment orders, discount rules, manual discounts, trade periods, payment and shipment records and shortened links have no read scope there. The behaviour below is the same on both. See [Credentials → Every write scope has a read twin](credentials.md#every-write-scope-has-a-read-twin).
+Every resource family comes as a pair: a read-only collection under `<area>:read` and a writable twin under `<area>:write`, both mounted at the same path. Which one a request lands on is decided by the scopes the token holds — and **being on the wrong one is not an error**. See [Credentials → Every write scope has a read twin](credentials.md#every-write-scope-has-a-read-twin).
 
 ```bash
 # The token holds trade-records:read only
@@ -1462,8 +1460,6 @@ Related: [gotcha 47](#47-a-declared-type-key-is-not-always-one-you-can-write), [
 
 ## 49. Identifiers That Name Two Different Objects Are Refused
 
-> **Availability:** v26.1.11 and later.
-
 Every identifier in one `identifiers` object has to refer to the **same** object. Send two that are already owned by two different records and the request is refused with `400 failed indexing` — no new type of error, the one a reference that resolves to nothing has always produced — and the transaction chunk that holds the offending element is rolled back — 200 items by default — while chunks before it stay committed. Send `X-Transaction-Count: all` when the whole request must stand or fall together. See [transaction chunking](../features/streaming.md#3-transaction-chunking).
 
 ```bash
@@ -1492,12 +1488,6 @@ Could not establish an identity of type agent from the data included in the "cus
 of the input object: the index refers to more than one object
 ```
 
-**Why this matters more than a new refusal usually does.** Every v26.1.x release before this one answered `200` to that request and created a **third** object carrying both identifiers. Both identifiers then had two owners, and a lookup by either returned a merged result. If an integration has ever "found duplicates after upserting with two ids", this is what it hit. Data created that way is repaired by taking the duplicated identifier off the extra object:
-
-```bash
-PATCH /v1/people/<key>   {"identifiers": {"com.example.memberId": null}}
-```
-
 To find out which objects a pair of identifiers actually refers to, ask about each one on its own:
 
 ```bash
@@ -1512,8 +1502,6 @@ Related: [gotcha 40](#40-a-malformed-identifier-key-is-dropped-and-every-retry-t
 
 ## 50. A Typo in a Directive Key Is a `400`, Not a Silent Unconditional Write
 
-> **Availability:** ships in the release after v26.1.11. Not in v26.1.10 or v26.1.11.
-
 A [write envelope](resource-patterns.md#write-envelopes-if-resolvevalue-and-value) makes a write conditional. Its keys are matched **case-sensitively** against exactly three names, and anything else that starts with `@` — other than the `@type` and `@self` annotations — is refused:
 
 ```bash
@@ -1527,7 +1515,7 @@ POST /v1/people   {"givenName": "x", "familyName": "y", "@If": "!$this"}
        "suggestion": "…"}
 ```
 
-Earlier builds answered `201` and dropped the unrecognised key, which is the dangerous outcome: a set-if-unset turns into an unconditional overwrite and the status says `created`. `@ref` is an unknown key like any other — there is no document-local reference directive.
+`@ref` is an unknown key like any other — there is no document-local reference directive.
 
 Two more ways to write a condition that is not one:
 
@@ -1538,38 +1526,13 @@ Full rules: [Resource Patterns → Write Envelopes](resource-patterns.md#write-e
 
 ---
 
-## 51. Echoing `@type` on a Nested Element Double-Adds It on v26.1.x Builds
+## 51. Echoing `@type` on a Nested Element (retired)
 
-> **Availability:** fixed in the release after v26.1.11. The fault below is in v26.1.10 and v26.1.11.
-
-Every `GET` response carries `@type` on its nested elements, so a read-modify-write that sends a response back unchanged writes a redundant type annotation. On v26.1.x that annotation makes the element be added **twice**, which on a store's `stocks` surfaces as a `500`:
-
-```bash
-# WRONG on v26.1.x - the store already owns one stock
-PUT /v1/stores/com.example.storeId=T1
-{"@type": "store", "identifiers": {"com.example.storeId": "T1"}, "name": "Store T1",
- "stocks": [{"@type": "stock", "identifiers": {"com.example.warehouseCode": "T1-EXPO"}, "name": "EXPO"}]}
-
-→ 500 {"@type": "internal error", "error": "Internal server error.",
-       "details": "Owner is already set and cannot be changed."}
-#   …/stocks~count is still 1 — nothing was added
-
-# RIGHT - drop @type from the nested element
-"stocks": [{"identifiers": {"com.example.warehouseCode": "T1-EXPO"}, "name": "EXPO"}]
-→ 200      …/stocks~count → 2
-```
-
-The `@type` on the **root** object is fine; it is the nested element that has to lose it. **Strip `@type` from nested elements on every v26.1.x build**, which also costs nothing on later ones, where the annotated `PUT` is a `200` and repeating it is idempotent.
-
-A *narrowing* annotation — one that names a subtype of what the array holds, such as `{"@type": "percentage discount rule effect"}` on a discount rule's `effects` — is a different thing and works on every build. It is only the redundant exact-type spelling that is affected, and `stock` has no subtypes, so on `stocks` that is the only annotation there is.
-
-Related: [gotcha 47](#47-a-declared-type-key-is-not-always-one-you-can-write), [Resource Patterns → The Element Type Is Implied](resource-patterns.md#the-element-type-is-implied).
+Retired: described a pre-26.2.2 difference.
 
 ---
 
 ## 52. Two Open Deliveries on One Order Line Share the Same Units
-
-> **Availability:** v26.2.1 and later. Not in v26.1.x.
 
 Every `New` delivery created from an order expects the order's *currently open* quantity. Create two before approving either and both expect the same units — and the first approval settles them for both:
 
@@ -1597,8 +1560,6 @@ Related: [Working with Purchasing → Safe Receiving](working-with/purchasing.md
 ---
 
 ## 53. `approve` on an Uncounted Delivery Posts Nothing and Spends the Document
-
-> **Availability:** v26.2.1 and later. Not in v26.1.x.
 
 A delivery created from an order starts with every line at `quantity "0"`. `approve` does not check that anything was counted — it posts what is there, and what is there is nothing:
 
@@ -1634,8 +1595,6 @@ The same `200`-and-nothing answers a `New` order. `DELETE /v1/trade-orders/{id}`
 
 **Close the remainder with the underdelivery policy instead:** set `underdeliveryPolicy: "Cancel"` on the order, create a delivery from it (it expects only the 2 still open), and approve it uncounted. The order then reads `["Cancelled", "Fulfilled"]` — 8 fulfilled, 2 cancelled — and a further delivery from it is refused with `"The order has no committed items to deliver."`
 
-> **Availability:** the silent `200` is long-standing. `underdeliveryPolicy` and deliveries ship in v26.2.1 and later, not in v26.1.x.
-
 Related: [Working with Purchasing → Cancelling, and Closing the Rest of a Partly Received Order](working-with/purchasing.md#cancelling-and-closing-the-rest-of-a-partly-received-order), [Orders → Cancel Order](working-with/orders.md#cancel-order-trycancel).
 
 ---
@@ -1659,7 +1618,7 @@ Measured on four orders for one supplier and store — `["Committed"]`, `["Commi
 
 A delivery's `status` is also an array, but a delivery has one status at a time, so `~where(status=Delivered)` is enough there.
 
-Related: [Orders → Status Behavior](working-with/orders.md#status-behavior), [Working with Purchasing → Finding Purchase Orders](working-with/purchasing.md#finding-purchase-orders--long-standing-except-deliverydiscrepancy), [Operators → `~where`](operators-catalog.md#wherepredicates).
+Related: [Orders → Status Behavior](working-with/orders.md#status-behavior), [Working with Purchasing → Finding Purchase Orders](working-with/purchasing.md#finding-purchase-orders), [Operators → `~where`](operators-catalog.md#wherepredicates).
 
 ---
 
@@ -1720,7 +1679,7 @@ GET /v1/trade-orders/suppliersId=1000000~just(items~just(deliveryAddresses,selle
 # [{"deliveryAddresses": [], "seller": {"name": "Shade Stockholm"}}]   <- collected in Shade Stockholm
 ```
 
-Measured on a collect-in-store and a ship-to-customer order from the same till: both list one address at order level; only the shipped one carries it on the line. Same on an API-created order after a line's `deliveryAddresses` is set: the order-level list then reads two addresses. v26.1.10 and later, when a line got its own `deliveryAddresses`.
+Measured on a collect-in-store and a ship-to-customer order from the same till: both list one address at order level; only the shipped one carries it on the line. Same on an API-created order after a line's `deliveryAddresses` is set: the order-level list then reads two addresses.
 
 Related: [Orders → Orders Placed at the Till](working-with/orders.md#orders-placed-at-the-till-collect-in-store-and-ship-to-customer), [Orders → Order Addresses](working-with/orders.md#order-addresses).
 
@@ -1746,7 +1705,7 @@ GET /v1/trade-orders~where(suppliersId)~take(50)    # matches everything - the m
 GET /v1/trade-orders~where(items~count)~take(50)    # a cart with lines in it has items
 ```
 
-From v26.2.1 the cart behind such an order is at `/v1/pos-terminals/{id}/cart`, and the order is its `draftOrder`: see [Working with POS Carts](working-with/pos-carts.md).
+The cart behind such an order is at `/v1/pos-terminals/{id}/cart`, and the order is its `draftOrder`: see [Working with POS Carts](working-with/pos-carts.md).
 
 Related: [Orders → Finding and polling till orders](working-with/orders.md#finding-and-polling-till-orders), [Orders integration → Status Mapping](integration-templates/orders-integration.md#status-mapping-to-external-system).
 
@@ -2035,8 +1994,6 @@ Related: [Assortments → Scopes](working-with/assortments.md#scopes), [gotcha 4
 
 ## 73. A `POST` to a Cart's `items` Does Not Necessarily Create the Line It Answers
 
-> **Availability:** v26.2.1 and later. Not in v26.2.0 or v26.1.x.
-
 The answer is the line the units landed on. The same product and package merge into the last line, so the second `POST` answers `201` with the **same key** and a higher `quantity`. A product sold one line per unit comes back as the **last** of several new lines: `quantity: 3` answers one line with `quantity: "1"`, and the cart has three more.
 
 ```bash
@@ -2052,8 +2009,6 @@ Related: [POS Carts → What a POST answers](working-with/pos-carts.md#what-a-po
 ---
 
 ## 74. A Priced Add That Would Merge Is a `409`, Not a Silently Dropped Price
-
-> **Availability:** v26.2.1 and later. Not in v26.2.0 or v26.1.x.
 
 A `POST` with `unitAmountInclVat` whose units would merge into the last line is refused, and nothing changes: `409`, `info.mergedInto` names the line. The line keeps its price.
 
@@ -2072,8 +2027,6 @@ Related: [POS Carts → What a POST answers](working-with/pos-carts.md#what-a-po
 
 ## 75. An Array Body to a Cart's `items` Answers `200` with an Array; a Single Object Answers `201`
 
-> **Availability:** v26.2.1 and later. Not in v26.2.0 or v26.1.x.
-
 `POST …/cart/items` with `[ {…} ]` answers `200` and an array of the lines the units landed on. The same line as a single object answers `201` and the line. A client that treats only `201` as "added" misses every array write.
 
 Related: [POS Carts → What a POST answers](working-with/pos-carts.md#what-a-post-answers-the-line-the-units-landed-on).
@@ -2081,8 +2034,6 @@ Related: [POS Carts → What a POST answers](working-with/pos-carts.md#what-a-po
 ---
 
 ## 76. A Parked Cart Is Read-Only, and Every Write to It Is a `409`
-
-> **Availability:** v26.2.1 and later. Not in v26.2.0 or v26.1.x.
 
 `PATCH …/parkedCarts/{key}`, `POST …/parkedCarts/{key}/items`, and `PATCH` and `DELETE` on its lines all answer `409` `The cart is parked; resume it at a terminal before changing it.` with `info.state: "Parked"`. Resume the cart at a terminal with `{"resumeCart": {…}}`, change it there as that terminal's `cart`, and park it again.
 
@@ -2092,9 +2043,7 @@ Related: [POS Carts → A parked cart is read-only](working-with/pos-carts.md#a-
 
 ## 77. `parkCart: true` on a Cart That Never Had a Visibility Parks It for That Terminal Only
 
-> **Availability:** v26.2.1 and later. Not in v26.2.0 or v26.1.x.
-
-`true` parks with the cart's current visibility. A cart that never had one is parked without any, and the store's other terminals do not list it under `resumableCarts`. From v26.2.2 they cannot resume it either (`409`).
+`true` parks with the cart's current visibility. A cart that never had one is parked without any, and the store's other terminals do not list it under `resumableCarts`. They cannot resume it either (`409`).
 
 ```bash
 # WRONG when another till must pick it up
@@ -2110,8 +2059,6 @@ Related: [POS Carts → Park](working-with/pos-carts.md#park).
 
 ## 78. The POS `actions` Objects Read Back Empty
 
-> **Availability:** v26.2.1 and later. Not in v26.2.0 or v26.1.x.
-
 A `PATCH` to `…/session/actions` or `…/supervisor/actions` answers `200 {"@type": "POS session actions"}` or `{"@type": "POS supervisor actions"}` and nothing else. A `GET` on them answers the same. The `200` does not say what happened: read `…/session` or `…/cart` afterwards.
 
 Related: [POS Carts → Routes](working-with/pos-carts.md#routes).
@@ -2119,8 +2066,6 @@ Related: [POS Carts → Routes](working-with/pos-carts.md#routes).
 ---
 
 ## 79. A Missing POS Cart Scope Is a `200 null`, Never a `403`
-
-> **Availability:** v26.2.1 and later. Not in v26.2.0 or v26.1.x.
 
 Without `pos.carts:read` a terminal's `session` and `cart` read `null` and its `parkedCarts` `[]`. Without `pos.carts:write` a `PATCH` to `…/session/actions` answers `200 null` and nothing happens, and a `POST` to `…/cart/items` answers `400` `failed indexing`. Without `pos.supervisor:write`, `…/supervisor` reads `null` and its actions answer `200 null`.
 
@@ -2131,8 +2076,6 @@ Related: [POS Carts → Scopes](working-with/pos-carts.md#scopes), [gotcha 41](#
 ---
 
 ## 80. Adding a Cart Line Needs `products:read` Beside `pos.carts:write`
-
-> **Availability:** v26.2.1 and later. Not in v26.2.0 or v26.1.x.
 
 A key with only the two cart scopes cannot resolve the product, and every `POST` answers `400` `Invalid product match. Must match exactly one existing product.` although the product exists.
 
@@ -2151,8 +2094,6 @@ Related: [POS Carts → Scopes](working-with/pos-carts.md#scopes).
 
 ## 81. The Till's Refusal Texts Come in the API User's Language
 
-> **Availability:** v26.2.1 and later. Not in v26.2.0 or v26.1.x.
-
 Where the till words a `409`, `details` and `info.reasons` carry the text in the API user's preferred language. "Cart is empty" arrives as `"Varukorgen är tom"` under a Swedish user. Match on the status and on the keys of `info` (`reasons`, `mergedInto`, `state`, `status`, `lockReason`, `mode`), not on the wording.
 
 Related: [POS Carts → Refusals](working-with/pos-carts.md#refusals).
@@ -2160,8 +2101,6 @@ Related: [POS Carts → Refusals](working-with/pos-carts.md#refusals).
 ---
 
 ## 82. `lock` Takes Three Reasons, and a Second `lock: true` Overwrites the First
-
-> **Availability:** v26.2.1 and later. Not in v26.2.0 or v26.1.x.
 
 `lock` takes `true` (= `manual`), `"manual"`, `"spot-check"` or `"cancelled"`. The lane sets `age-restriction` and `printer-error` itself; sending either is a `400`. And locking a lane that is already locked `spot-check` with `{"lock": true}` answers `200` and changes the reason to `manual`. Read `session.lockReason` before locking if the reason matters.
 
@@ -2173,8 +2112,6 @@ Related: [POS Carts → Supervisor Control](working-with/pos-carts.md#supervisor
 
 ## 83. `unlock` and `confirmAgeRestriction` Do Not Resume the Payment the Lock Interrupted
 
-> **Availability:** v26.2.1 and later. Not in v26.2.0 or v26.1.x.
-
 Both answer `200` and clear the lock or the age control. The payment that was under way when the lane locked does not continue: the customer presses Pay again at the lane. Do not wait for a receipt after an `unlock`.
 
 Related: [POS Carts → Age control](working-with/pos-carts.md#age-control).
@@ -2182,8 +2119,6 @@ Related: [POS Carts → Age control](working-with/pos-carts.md#age-control).
 ---
 
 ## 84. The API Never Opens or Completes a Sale
-
-> **Availability:** v26.2.1 and later. Not in v26.2.0 or v26.1.x.
 
 No request creates a cart. The first **accepted** line opens it; a refused first line opens nothing, and `PATCH …/cart` on a terminal without a cart is a `200 null` that changes nothing. Payment is the till's: after Pay, `cart` reads `null` and the sale is under `/v1/receipts`.
 
@@ -2193,8 +2128,6 @@ Related: [POS Carts → Overview](working-with/pos-carts.md#overview), [Receipts
 
 ## 85. A Supervisor Lock Freezes the Cart's Contents, Not Its Lifecycle
 
-> **Availability:** v26.2.1 and later. Not in v26.2.0 or v26.1.x.
-
 While a self-checkout lane is locked, adding, changing and removing lines and changing the cart's customer or note answer `409` `The terminal is locked by a supervisor.` But `parkCart`, `resumeCart`, `discardCart` and `resetSession` go through. A lock is therefore not a guarantee that the cart is still there when you unlock.
 
 Related: [POS Carts → What a lock blocks](working-with/pos-carts.md#what-a-lock-blocks).
@@ -2202,8 +2135,6 @@ Related: [POS Carts → What a lock blocks](working-with/pos-carts.md#what-a-loc
 ---
 
 ## 86. `false` on a POS Action Is a Silent `200`
-
-> **Availability:** v26.2.1 and later. Not in v26.2.0 or v26.1.x.
 
 `{"parkCart": false}`, `{"discardCart": false}` and any action sent as `null` answer `200` and do nothing. So does an action whose state already holds: `unlock` on an unlocked lane, `confirmAgeRestriction` with nothing pending. Only a string outside the allowed values is a `400`. A `200` from an action is not evidence that anything changed.
 
