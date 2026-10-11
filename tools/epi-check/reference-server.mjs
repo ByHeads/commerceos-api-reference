@@ -31,11 +31,8 @@ export const METHOD_ID = "com.epicheck.reference";
 export const CANCEL_WAIT_MS = 2000;
 
 const CONFIG_SCHEMA = {
-    title: "Reference",
-    members: {
-        merchantId: { type: "string" },
-        mode: { type: "'TEST' or 'LIVE'" },
-    },
+    schema: { "reference configuration": { description: "Reference", members: { merchantId: { type: "string" }, mode: { type: "'TEST' or 'LIVE'" } } } },
+    configurationType: "reference configuration",
 };
 
 const TERMINALS = [

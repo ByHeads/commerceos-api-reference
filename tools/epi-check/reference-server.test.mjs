@@ -42,13 +42,13 @@ test("once installed, test reads the configuration behind the context id through
     const own = await startReferenceServer();
     try {
         const call = hash => fetch(`${own.url}/test`, { method: "POST", headers: { ...jsonHeaders, "x-epi-context-config-hash": hash } }).then(r => r.json());
-        await fetch(`${own.url}/install`, { method: "POST", body: JSON.stringify({ cosBaseUrl: cos.url, tokenUrl: `${cos.url}/oauth2/v1/token`, ...CLIENT, scope: "kv" }) });
+        await fetch(`${own.url}/install`, { method: "POST", body: JSON.stringify({ cosBaseUrl: cos.url, tokenUrl: `${cos.url}/oauth2/v1/token`, ...CLIENT, scope: "me" }) });
         assert.equal(await call("hash-1"), true);
         assert.deepEqual(lines, ["POST /oauth2/v1/token 200", "GET /api/v1/context/config/AB12 200"]);
         assert.equal(await call("hash-2"), false, "the hash CommerceOS answers is not the one in the header");
-        await fetch(`${own.url}/install`, { method: "POST", body: JSON.stringify({ cosBaseUrl: cos.url, tokenUrl: `${cos.url}/oauth2/v1/token`, clientId: "nobody", clientSecret: "x", scope: "kv" }) });
+        await fetch(`${own.url}/install`, { method: "POST", body: JSON.stringify({ cosBaseUrl: cos.url, tokenUrl: `${cos.url}/oauth2/v1/token`, clientId: "nobody", clientSecret: "x", scope: "me" }) });
         assert.equal(await call("hash-1"), false, "no token, no configuration");
-        await fetch(`${own.url}/install`, { method: "POST", body: JSON.stringify({ cosBaseUrl: "http://127.0.0.1:1", tokenUrl: "http://127.0.0.1:1/oauth2/v1/token", ...CLIENT, scope: "kv" }) });
+        await fetch(`${own.url}/install`, { method: "POST", body: JSON.stringify({ cosBaseUrl: "http://127.0.0.1:1", tokenUrl: "http://127.0.0.1:1/oauth2/v1/token", ...CLIENT, scope: "me" }) });
         assert.equal(await call("hash-1"), false, "an unreachable CommerceOS");
         await fetch(`${own.url}/uninstall`, { method: "POST" });
         assert.equal(await call("hash-1"), true, "nothing to read before an install");
@@ -58,12 +58,12 @@ test("once installed, test reads the configuration behind the context id through
     }
 });
 
-test("config-schema is a form description with members, no headers needed", async () => {
+test("config-schema answers named types and the configuration type, no headers needed", async () => {
     const response = await fetch(`${server.url}/config-schema`);
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), {
-        title: "Reference",
-        members: { merchantId: { type: "string" }, mode: { type: "'TEST' or 'LIVE'" } },
+        schema: { "reference configuration": { description: "Reference", members: { merchantId: { type: "string" }, mode: { type: "'TEST' or 'LIVE'" } } } },
+        configurationType: "reference configuration",
     });
 });
 

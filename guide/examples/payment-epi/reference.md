@@ -11,10 +11,12 @@ server stub and a client from them.
 | Document | Direction | Holds |
 |---|---|---|
 | [`epi-openapi.yaml`](./epi-openapi.yaml) | CommerceOS calls your integration | the ten routes under your `baseUrl`, the context headers, the config-schema format, every step of the payment stream, every DTO |
-| [`commerceos-openapi.yaml`](./commerceos-openapi.yaml) | your integration calls CommerceOS | the token endpoint, the configuration behind a context id, the key-value store, the payment-order completion, and the OAuth2 scope each call needs |
+| [`commerceos-openapi.yaml`](./commerceos-openapi.yaml) | your integration calls CommerceOS | the token endpoint, the configuration behind a context id, your key-value store, the payment-order completion, and the OAuth2 scope each call needs |
 
 Open them in any OpenAPI viewer (`npx @redocly/cli preview-docs guide/examples/payment-epi/epi-openapi.yaml`),
 or generate a server stub from the first and a client from the second.
+
+> **Availability:** the configuration schema of section 4, the context hash of section 3 and the key-value store of section 8 as described here ship after v26.2.2.
 
 This page holds what a schema cannot: the order of calls, what the cashier sees, the ledger effect
 of each action, and what CommerceOS does when a stream drops. A JSON example under an HTML comment
@@ -40,7 +42,7 @@ CommerceOS calls these endpoints outside a payment. *Bare* calls carry no contex
 |---|---|---|---|---|
 | `POST {baseUrl}/install` | bare | install payload, below, sent as `text/plain;charset=UTF-8`: parse it as JSON whatever the header says | any 2xx | the `install` action on the integration. On success the status becomes `Active`. A later install usually sends the same client again, and it can carry a new one: always store the client it sends, and drop any cached token |
 | `POST {baseUrl}/uninstall` | bare | empty | any 2xx. A failure is logged and ignored | the `uninstall` action. The status becomes `Inactive` |
-| `GET {baseUrl}/config-schema` | bare | none | form description, section 4 | an administrator opens the configuration form |
+| `GET {baseUrl}/config-schema` | bare | none | your configuration schema, section 4 | an administrator opens the configuration form |
 | `POST {baseUrl}/test` | contextful | none | JSON `true` | the `test` method, once per configured node |
 | `GET {baseUrl}/methods` | contextful | none | `MethodDto[]` | the `configure` action on a configuration |
 | `GET {baseUrl}/terminals` | contextful | none | `TerminalDto[]` | an administrator lists the terminals of a configuration |
@@ -55,13 +57,15 @@ The answer of `GET {baseUrl}/methods` for one method as the Piggy Bank sample se
 ```
 ```json
 { "cosBaseUrl": "https://example.app.heads.com", "tokenUrl": "https://example.app.heads.com/oauth2/v1/token",
-  "clientId": "epi-check", "clientSecret": "epi-check-secret", "scope": "me geo:read orders.sales:write orders.payments:write payment-records:write kv" }
+  "clientId": "epi-check", "clientSecret": "epi-check-secret", "scope": "me geo:read orders.sales:write orders.payments:write payment-records:write payment-means:read com.epicheck.state:write" }
 ```
 
 `scope` is the space-separated scope list of the OAuth2 client, as CommerceOS holds it. A client that
-the back office creates for an integration has `me geo:read orders.sales:write orders.payments:write payment-records:write kv`. The order of the scopes in
-the string is not fixed: read it as a set.
-Send it, or the subset section 8 names, as `scope` in the token request. The `test` method on the API answers
+the back office creates for an integration has `me geo:read orders.sales:write orders.payments:write payment-records:write payment-means:read`,
+and the administrator adds `<store>:write` when your integration keeps state in a key-value store (section 8). The order of the scopes in
+the string is not fixed: read it as a set. What an integration needs is `me`, `orders.payments:write` and its store scope.
+Send the string, or that subset, as `scope` in the token request, and read `scope` in the answer: a requested scope that the
+client lacks is left out without an error (section 8). An install changes none of the client's scopes. The `test` method on the API answers
 `{ integrationName, configurationTests: { "<node name>": "success" | "fail" } }`. A non-2xx or a thrown error is `fail`.
 
 **The payment method record.** `configure` creates one payment method per item of your `GET /methods`
@@ -107,62 +111,97 @@ Every contextful call carries three headers; CommerceOS always sends all three. 
 | Header | Value | Use |
 |---|---|---|
 | `X-EPI-Context-Config-Id` | the four-character id of the configuration | look the configuration up (section 4) |
-| `X-EPI-Context-Config-Hash` | the configuration id followed by three characters of a hash of the configuration values, for example `tWBlI--` | cache key. A changed configuration has a new value |
+| `X-EPI-Context-Config-Hash` | a SHA-256 of the configuration values, URL-safe base64, 43 characters: the `configurationHash` of the configuration (section 8) | cache key. A changed configuration has a new value |
 | `X-EPI-Debug-Info` | JSON with `nodeName`, `baseUrl`, `name` | logging only. `nodeName` is the node of the call, for example the store of the till. The configuration can sit on a parent of that node |
 
 CommerceOS sends this context; the conformance tool reads the same values from the EPI configuration
 on your CommerceOS and sends them. `debugInfo` is the value of the third header:
 ```json
-{ "configId": "v5EX", "configHash": "v5EXNSP",
+{ "configId": "v5EX", "configHash": "bjEusL05DLltlCH0iSqcWFAkurTdVlG7bHRMg9uaf0k",
   "debugInfo": { "nodeName": "Shade AB", "baseUrl": "https://piggy.example.com/piggy", "name": "Piggy" } }
 ```
 
 
 ## 4. Configuration
 
-`GET {baseUrl}/config-schema` answers a *form description*: the fields that a Heads administrator
+`GET {baseUrl}/config-schema` answers your *configuration schema*: the fields that a Heads administrator
 fills in for your integration on an organization node, for example a merchant id and an
-environment. It is not a JSON Schema. It is written in the same format as the type declarations of
-the CommerceOS API: an object with `title`, `description` and `members`, where each member has a
-`type` written as a short string. The formal shape is `ConfigSchema` in [`epi-openapi.yaml`](./epi-openapi.yaml).
+environment. It is not a JSON Schema. It is written in the notation of the type declarations of
+the CommerceOS API: `schema` is a map of types by name, each with a `description` and `members`,
+and `configurationType` names the type that the administrator's configuration is an instance of.
+Each member has a `type` written as a short string. The formal shape is `ConfigSchema` in [`epi-openapi.yaml`](./epi-openapi.yaml).
 
 ```json
-{ "title": { "en-US": "Piggy Bank", "sv-SE": "Piggy Bank" },
-  "description": { "en-US": "Merchant account at Piggy Bank" },
-  "members": {
-    "merchantId":  { "type": "string",           "title": { "en-US": "Merchant id" } },
-    "environment": { "type": "'TEST' or 'LIVE'", "title": { "en-US": "Environment" }, "description": { "en-US": "TEST until go-live" } },
-    "timeoutSeconds": { "type": "number?" },
-    "terminal": { "type": "object", "title": { "en-US": "Terminal" },
-                  "members": { "host": { "type": "string" }, "port": { "type": "number" } } } } }
+{ "schema": {
+    "piggy configuration": {
+      "description": { "en-US": "Merchant account at Piggy Bank", "sv-SE": "Handlarkonto hos Piggy Bank" },
+      "members": {
+        "merchantId":     { "type": "string", "title": { "en-US": "Merchant id", "sv-SE": "Handlar-id" } },
+        "environment":    { "type": "'TEST' or 'LIVE'", "title": { "en-US": "Environment" }, "description": { "en-US": "TEST until go-live" } },
+        "apiKey":         { "type": "secret", "title": { "en-US": "API key" } },
+        "timeoutSeconds": { "type": "number?", "description": "Timeout in seconds" },
+        "terminal":       { "type": "piggy terminal?", "title": { "en-US": "Terminal" } },
+        "certificate":    { "type": "string?", "title": { "en-US": "Client certificate" }, "multiline": true } } },
+    "piggy terminal": {
+      "description": "A terminal",
+      "members": { "host": { "type": "string", "description": "Host" }, "port": { "type": "number?", "description": "Port" } } } },
+  "configurationType": "piggy configuration" }
 ```
 
-**The `type` string.** One base type, an optional union of quoted values, and an optional `?`.
+`configurationType` must name one of the types. A type's `description` is optional: CommerceOS
+fills in the type name. A nested group of fields is a member whose `type` is another type of the
+schema, `terminal` above; a list of groups is `piggy terminal[]`. A member has no `members` of its
+own. A type name may contain spaces, and must not be the name of a type of the CommerceOS API
+(`secret`, `string`, `product`): such a schema is refused.
+
+**The `type` string.** One base and an optional `?`.
 
 | Write | Meaning | The administrator gets |
 |---|---|---|
 | `string`, `number`, `boolean` | a scalar | a text field, a number field, a checkbox |
-| `'TEST' or 'LIVE'` | one of the quoted values. Two or more, joined by ` or ` (the back office reads every quoted value, so `|` and `,` also work) | a text field whose placeholder lists the values. The value is checked on save |
-| `object` with `members` | a nested group of fields | the nested fields, as a group |
-| `object` without `members`, `string[]`, `number[]`, `object[]` | free-form JSON | a JSON text editor |
-| any of the above plus a trailing `?` | optional. Without `?` a field is required, and the form shows *Required* until it has a value | |
+| `secret` | a string that CommerceOS masks outside your integration: `********` in the back office and on the administrative API, in clear on your read of section 8 | a password field. The stored value never reaches the browser, and saving the form with the field untouched keeps it |
+| `'TEST' or 'LIVE'` | one of the quoted values. Two or more, joined by ` or ` only; `'fast' or 'slow' or null` for an optional one | a drop-down |
+| `piggy terminal` | an instance of another type of the schema | a card with that type's fields |
+| `piggy terminal[]` | a list of them | a card with an *Add* button, one numbered card per row with a remove button |
+| `string[]`, `number[]` | a list of scalars | one input per row, with add and remove |
+| `object`, `object[]` | free-form JSON | a JSON text area |
+| any of the above plus a trailing `?` | optional. Without `?` (or `or null`) the member is required: the form shows *Required* until it has a value, and CommerceOS refuses a configuration without it | |
 
-Nothing else is accepted: no named types, no `(read-only)`, no ` and `. The CommerceOS API uses the
-same notation in its own type declarations with a larger grammar; a config schema uses this subset.
+Nothing else: no `(read-only)`, no ` and `, and neither `|` nor `,` separates the values of a
+union. The CommerceOS API uses the same notation in its own type declarations with a larger
+grammar; a config schema uses this subset.
 
-**`title` and `description`** are a string or a map from locale to string, for example
-`{ "en-US": "The API key", "sv-SE": "API-nyckeln" }`. The back office picks the exact locale, then
-the same language, then `en-US`, then the first value. When a member has a `description`, it is
-the field label and `title` becomes the placeholder. Answer `"members": {}` when your integration
-needs no configuration: the Mock integration that Heads hosts does exactly that.
+**Texts.** A type's `description` and a member's `title` and `description` are a string or a map
+from locale to string, for example `{ "en-US": "The API key", "sv-SE": "API-nyckeln" }`. CommerceOS
+keeps them as you declare them, and the back office shows the administrator's language: the exact
+locale, then the same language, then `en-US`, then the first value. The label of a field is `title`,
+else `description`, else the member name; when a member has both, the description sits behind an
+info icon beside the label.
+
+**`multiline`** on a `string` member makes the field a block of text, for a PEM certificate. A
+`secret` is always a single-line password field, so a multi-line secret, a PEM private key for
+example, loses its line breaks when pasted: accept a single-line form of it, or type it `string`
+with `multiline` when administrators may see it.
+
+Answer `"members": {}` on the configuration type when your integration needs no configuration: the
+back office then shows "The integration needs no configuration." instead of a form. The Mock
+integration that Heads hosts does exactly that.
 
 **What happens with the values.** They are stored as an *EPI configuration* on the organization node,
-as a plain object keyed like `members`. Read them back per section 8, cache by
+as a plain object keyed like the members of your configuration type. Read them back per section 8:
+the answer carries the values in clear, `secret` members included, with `configurationType` and the
+`schema` as CommerceOS holds it, where a stored value that your declaration leaves out gets an
+inferred member (`string?`, `number?`, `boolean?`, `string[]?`, or `secret?` when the name contains
+`secret`, `password`, `token`, `apiKey`, `privateKey` or `certificate`, in any case). Cache by
 `X-EPI-Context-Config-Hash`, and validate them in `POST /test`: that is the administrator's check
 that the configuration works against your provider. The Piggy Bank sample does exactly this: its
 `/test` reads the configuration through the context id, caches it by hash, and answers `422` with an error body that
 names the problem when `merchantId` is empty or `environment` is not `TEST` or `LIVE`. The conformance tool plays the CommerceOS
 side of that read, serving the configuration named in its profile.
+
+Type your provider credentials `secret`. CommerceOS stores them, masks them for administrators in
+the back office and on the administrative API, and shows them to your integration alone. A
+credential that must never be stored by CommerceOS stays in your integration's environment.
 
 ## 5. The payment stream
 
@@ -359,27 +398,32 @@ the client.
 | Call | Scope | Use |
 |---|---|---|
 | `POST {tokenUrl}` | — | client-credentials token. Cache it until `expires_in` |
-| `GET /v1/context/config/{configId}` | `me` | the configuration for a context id (section 4) |
-| `GET`, `PUT`, `DELETE /v1/kv/{container}/{key}` | `kv` | a key-value store for your own state. `container` is a namespaced key such as `com.example.payments`. No route lists the keys of a container: `GET /v1/kv/{container}` answers 200 with an empty `kvp set`, whatever it holds. Keep your own index if you need one |
+| `GET /v1/context/config/{configId}` | `me` | the configuration for a context id (section 4): `configuration` in clear, `configurationHash`, `configurationType` and `schema`. An id that is not a configuration of yours answers 200 with the body `null` |
+| `GET`, `PUT`, `PATCH`, `DELETE /v1/context/{store}/{key}` | `{store}:write` (`{store}:read` reads only) | your key-value store, for your own state. `store` is its name, three dot-separated parts such as `com.example.piggy`. A Heads administrator creates the store and puts the scope on your client; until both are done, every key answers 404. A write replaces what is at the path, `PATCH` included; a body of `null` deletes; a key never written reads `200 null`. No route lists the keys: `GET /v1/context/{store}` answers `{}` whatever it holds, so keep your own index |
 | `PATCH /v1/payment-orders/{paymentKey}` with `{ "records": [ ... ] }` | `orders.payments:write` | complete an asynchronous payment, for example from a callback of your provider |
 
 ```bash
 # Token
 curl -X POST "https://example.app.heads.com/oauth2/v1/token" \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "grant_type=client_credentials&client_id=<client id>&client_secret=<client secret>&scope=me%20kv%20orders.payments:write"
-# → { "access_token": "...", "expires_in": 3600, ... }
+  -d "grant_type=client_credentials&client_id=<client id>&client_secret=<client secret>&scope=me%20com.example.piggy:write%20orders.payments:write"
+# → { "access_token": "...", "expires_in": 3600, "scope": "me orders.payments:write com.example.piggy:write", ... }
 
 # The configuration for the context id of an incoming call
 curl -X GET -H "Authorization: Bearer <access token>" "https://example.app.heads.com/api/v1/context/config/EPI1"
-# → { "configuration": { ... }, "configurationHash": "..." }
+# → { "configuration": { ... }, "configurationHash": "...", "configurationType": "piggy configuration", "schema": { ... } }
 
-# Key-value store: write, read, delete
-curl -X PUT -H "Authorization: Bearer <access token>" "https://example.app.heads.com/api/v1/kv/com.example.payments/session-pay-P1" \
+# Your key-value store: write, read, delete
+curl -X PUT -H "Authorization: Bearer <access token>" "https://example.app.heads.com/api/v1/context/com.example.piggy/session-pay-P1" \
   -H "Content-Type: application/json" -d '{ "providerSessionId": "S-123", "state": "pending" }'
-curl -X GET -H "Authorization: Bearer <access token>" "https://example.app.heads.com/api/v1/kv/com.example.payments/session-pay-P1"
-curl -X DELETE -H "Authorization: Bearer <access token>" "https://example.app.heads.com/api/v1/kv/com.example.payments/session-pay-P1"
+curl -X GET -H "Authorization: Bearer <access token>" "https://example.app.heads.com/api/v1/context/com.example.piggy/session-pay-P1"
+curl -X DELETE -H "Authorization: Bearer <access token>" "https://example.app.heads.com/api/v1/context/com.example.piggy/session-pay-P1"
 ```
+
+Read `scope` in the token answer. A requested scope that your client lacks is left out without an
+error, so a missing store scope shows up as a 404 on the first state call, not at the token. A
+request without `scope` gets every scope the client holds. A request naming a scope that does not
+exist fails whole with `400 invalid_scope`.
 
 Complete an asynchronous payment. `paymentKey` is the key from `PUT {baseUrl}/payments/{paymentKey}`:
 
@@ -466,7 +510,7 @@ The cents of the amount select the outcome: [Build a payment integration](../pay
 | The stream closes cleanly with no final step | Shows nothing. No dialog, no payment line, the sale stays open. Verified on a till 2026-09-22 | Never close a stream without a final step. On an exception, send `Fail` first |
 | A `Complete` that CommerceOS refuses (an Authorize-only answer under `debitSynchronously`, or a transaction it cannot record) | The raw dialog `¿Error: Payment was requested to be synchronously debited, but it was not.?`, no payment order, and the next attempt reuses the same `paymentKey`, so a resume repeats the refused answer and the cashier is stuck. A platform fix that turns this into a `Fail` step is proposed; with it the next attempt is a new key | Never send such a `Complete`. The tool refuses a non-capturing `Complete` under the flag |
 | The connection drops before a final step | Shows the raw dialog `¿TypeError: terminated?`. The payment order is not marked failed. On the cashier's next attempt with direction `Payment`: no order yet, same `paymentKey` again; an order `Debited` for the tender amount, attached without a new call; an order `Debited` for another amount, attached and the cashier told to tender the rest; a non-debited order, a fresh key | Treat a second `PUT` with a known `paymentKey` as a resume: answer the same `processorsId` and the same transactions, never a second charge. The conformance scenario `P10` checks it. When the session behind the key still waits for the customer, continue that session on the new stream, with `Wait` steps, and never open a second session. The new stream starts without a cancel button: if the customer can still cancel, send `Cancellable` again before the first `Wait`. A later `Wait` never hides the button |
-| Your integration restarts while a payment waits at the provider | Shows `¿TypeError: terminated?`. The cashier's next attempt gets a fresh `paymentKey` while no order is debited, so CommerceOS never asks again about the old one. Once you debit the old order, the next pay attempt on that sale attaches it and shows `Recovered an earlier unrecorded payment of <amount> and added it to the cart. Check the remaining balance and tender it separately.`, in English on every till, and fails that attempt. The cashier tenders the rest again. Verified on a till 2026-09-28 | Keep a list of the payments that have a provider session and no outcome, outside memory. The key-value store cannot list keys (section 8), so keep the list yourself. On start, stop each open session at the provider, so that no later card tap charges a sale that no one waits for, and complete each charged one with `PATCH /v1/payment-orders/{key}` |
+| Your integration restarts while a payment waits at the provider | Shows `¿TypeError: terminated?`. The cashier's next attempt gets a fresh `paymentKey` while no order is debited, so CommerceOS never asks again about the old one. Once you debit the old order, the next pay attempt on that sale attaches it and shows `Recovered an earlier unrecorded payment of <amount> and added it to the cart. Check the remaining balance and tender it separately.`, in English on every till, and fails that attempt. The cashier tenders the rest again. Verified on a till 2026-09-28 | Keep a list of the payments that have a provider session and no outcome, outside memory. Your key-value store cannot list keys (section 8), so keep the list yourself. On start, stop each open session at the provider, so that no later card tap charges a sale that no one waits for, and complete each charged one with `PATCH /v1/payment-orders/{key}` |
 | A stream call or a transactions call fails (network error, non-2xx) | Makes no retry. The cashier sees the error and starts the payment again by hand. Data after a final step is ignored | On the stream route, treat a second `PUT` with a known `paymentKey` as a resume (see below). On the transactions route, treat every call as new: CommerceOS never retries it, and two equal partial refunds arrive identical (section 6). Send exactly one final step, then close |
 | A repeated `records` item in `PATCH /v1/payment-orders/{key}` (same `transactionId.id` on the same order) | A repeat of the identical record is a no-op. A record that reuses the id with any field changed is refused | Repeat a callback with the same body, or not at all. Give every distinct transaction its own id |
 | A `records` item after the order is `Debited` | Has no state guard. A late `Debit` or `Authorize` beyond the remaining amount answers 400 (`Amount must agree with designated instance.`, or with a `token`, `Designated instance must be a subset of available instance.`). A `Credit` up to the debited amount is accepted and adds `Credited` | Post the completion once. Do not post a `Debit` for a sale that the stream already completed |

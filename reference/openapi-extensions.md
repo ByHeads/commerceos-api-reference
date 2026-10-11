@@ -31,7 +31,7 @@ The CommerceOS API OpenAPI specification uses vendor extensions (`x-*` propertie
 **Behavior:**
 - Each tag appears in exactly **one** group (highest-priority scope wins if a resource belongs to multiple scopes)
 - Groups are sorted alphabetically by name
-- Utility tags (Utilities, System, Key-value store, Schema introspection, Administration) are placed in their own groups
+- Utility tags (Utilities, System, Schema introspection) are placed in their own groups; key value stores sit in the Configuration group
 
 ---
 
@@ -230,16 +230,16 @@ Both approaches trigger the replace handler with an empty whitelist, removing al
 
 **Structure:** A string describing the key type, typically in brackets like `"[string]"` or `"[namespaced key]"`.
 
-**Example:** The `kvp store` type (key-value store) uses this extension:
+**Example:** The `key value store` type uses this extension for the keys of a store:
 
 ```json
 {
-  "kvp store": {
+  "key value store": {
     "type": "object",
     "additionalProperties": {
-      "allOf": [{ "$ref": "#/components/schemas/kvp set" }],
+      "allOf": [{ "$ref": "#/components/schemas/dynamic" }],
       "nullable": true,
-      "x-additionalPropertiesName": "[namespaced key]",
+      "x-additionalPropertiesName": "[string]",
       "examples": []
     }
   }

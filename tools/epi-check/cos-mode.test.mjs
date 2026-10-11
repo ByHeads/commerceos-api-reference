@@ -42,7 +42,7 @@ test("C1 passes on a healthy integration: four read calls, four sub-steps, Basic
     assert.equal(outcome.record.baseUrl, "http://epi.example/cos");
     assert.equal(outcome.record.methods[0].identifiers.methodId, "com.mock.one");
     assert.equal(outcome.node, "Shade AB");
-    assert.deepEqual(outcome.context, { configId: "v5EX", configHash: "v5EXNSP", debugInfo: { nodeName: "Shade AB", baseUrl: "http://epi.example/cos", name: "Mock" } });
+    assert.deepEqual(outcome.context, { configId: "v5EX", configHash: "bjEusL05DLltlCH0iSqcWFAkurTdVlG7bHRMg9uaf0k", debugInfo: { nodeName: "Shade AB", baseUrl: "http://epi.example/cos", name: "Mock" } });
 });
 
 test("C1 passes with a D1 warning when assignedTerminals answers the known 500, and fails on any other 500", async () => {

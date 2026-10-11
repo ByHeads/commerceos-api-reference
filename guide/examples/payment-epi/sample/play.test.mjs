@@ -4,8 +4,8 @@ import { startPiggyServer } from "./server.mjs";
 import { play, transactionTable } from "./play.mjs";
 
 const clock = () => new Date("2026-01-01T00:00:00Z");
-// No cosBaseUrl: the bank skips the key-value callback, so the test touches nothing outside.
-const install = { cosBaseUrl: "", tokenUrl: "", clientId: "test", clientSecret: "test", scope: "kv" };
+// No cosBaseUrl: the bank skips the state callback, so the test touches nothing outside.
+const install = { cosBaseUrl: "", tokenUrl: "", clientId: "test", clientSecret: "test", scope: "me com.example.piggy:write" };
 
 test("play 10.00 ends with Complete and prints the transaction table", async () => {
     const piggy = await startPiggyServer({ idPrefix: "PB-", now: clock });
@@ -58,7 +58,7 @@ test("play against a closed port is a transport error", async () => {
     await assert.rejects(play({ amount: "10.00", base: "http://127.0.0.1:1/piggy", print: () => {}, install }), /fetch failed/);
 });
 
-test("play 10.04 --cos: the bank writes its session to the stand-in's key-value store, and the output shows it", async () => {
+test("play 10.04 --cos: the bank writes its session to its store on the stand-in, and the output shows it", async () => {
     const piggy = await startPiggyServer({ idPrefix: "PB-", now: clock, waitMs: 200 });
     const lines = [];
     try {
@@ -67,7 +67,7 @@ test("play 10.04 --cos: the bank writes its session to the stand-in's key-value 
         assert.ok(lines.includes("Test: true"), lines.join("\n"));
         assert.ok(lines.includes("[cos] GET /api/v1/context/config/EPI1 200"), lines.join("\n"));
         assert.ok(lines.includes("[cos] POST /oauth2/v1/token 200"), lines.join("\n"));
-        assert.ok(lines.some(line => /^\[cos\] PUT \/api\/v1\/kv\/com\.example\.piggy\/pay-\d+ 200$/.test(line)), lines.join("\n"));
+        assert.ok(lines.some(line => /^\[cos\] PUT \/api\/v1\/context\/com\.example\.piggy\/pay-\d+ 200$/.test(line)), lines.join("\n"));
         assert.equal(lines.filter(line => line.startsWith("[cos] PUT")).length, 2, "waiting, then settled");
     } finally {
         await piggy.close();

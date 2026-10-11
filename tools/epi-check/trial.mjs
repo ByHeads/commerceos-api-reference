@@ -72,7 +72,7 @@ Rules:
    runs their conformance tool in local mode against your endpoint; that tool is your acceptance
    test. In local mode the tool starts a stand-in CommerceOS and does what an administrator does:
    it installs your integration (the install payload points at the stand-in, which answers the
-   token endpoint, the configuration behind the context id and the key-value store), saves the
+   token endpoint, the configuration behind the context id and your key-value store), saves the
    configuration above on a node, and reads your methods. Then it runs the scenarios.
 5. Do not invent behavior that the documents do not state. When the documents leave something
    open or contradict each other, choose the reading that makes the conformance scenarios pass,

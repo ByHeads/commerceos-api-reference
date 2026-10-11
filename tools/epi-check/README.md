@@ -17,7 +17,7 @@ The contract it checks: [Payment EPI reference](../../guide/examples/payment-epi
 
 | Area | Passes when |
 |---|---|
-| Lifecycle | CommerceOS shows the integration as `Active` with at least one configured node and one method, its `test` reports `success` for every configured node, `assignedTerminals` answers 200 (see the D1 note below), and the EPI configuration of the node gives the context the run sends (C1). Then, at the integration with that context: `POST /test` returns `true`, so the integration reads its real configuration through the real CommerceOS. `GET /config-schema` returns a form description with `members`. `GET /methods` returns at least one method with a unique `methodId`. `GET /terminals` returns a list, and each terminal is readable at `/terminals/{id}` |
+| Lifecycle | CommerceOS shows the integration as `Active` with at least one configured node and one method, its `test` reports `success` for every configured node, `assignedTerminals` answers 200 (see the D1 note below), and the EPI configuration of the node gives the context the run sends (C1). Then, at the integration with that context: `POST /test` returns `true`, so the integration reads its real configuration through the real CommerceOS. `GET /config-schema` returns `schema` (named types) and `configurationType`. `GET /methods` returns at least one method with a unique `methodId`. `GET /terminals` returns a list, and each terminal is readable at `/terminals/{id}` |
 | Payment stream | `PUT /payments/{key}` answers a 200 `text/event-stream`, with zero or more intermediate steps and exactly one final step, which is the last event. A `Complete` result echoes `methodId`, `amount` and `currencyCode`, and each transaction echoes the request `token` and carries only known actions. Every request from a till carries `debitSynchronously: true`, so every Payment scenario but the two reservation-flow ones (P2, P3) sends it, and a `Complete` under it must capture, with a `Debit` action; CommerceOS refuses the answer otherwise. A Payout under it completes with `["Authorize","Debit"]` |
 | Resume and repeats | The identical `PUT` for a completed key answers the same `processorsId` and the same transactions, no new charge. Every `Credit` call is a new transaction, also when its body equals an earlier one: P12 sends two equal partial refunds and expects two different `transactionId`s. A `processorsId` that a later scenario repeats fails it: CommerceOS refuses a reused id |
 | Transactions | `POST /payments/{key}/transactions` for capture, release and refund returns a transaction with `transactionId` and `timestamp`. The order status derived from all transactions equals the expected set. For a key that never completed it answers 404 with an error body |
@@ -33,7 +33,7 @@ fails, the other nineteen are skipped with its reason and the run exits 1. Every
 a run carries a run id (`pay-<runId>-P1`), so running the tool twice against the same integration never
 repeats a key that your integration stored; `--now <iso>` pins the id, and two pinned runs against the
 same integration state write byte-identical reports. The tool does not delete anything: a `--cos` run
-leaves the key-value entries that your integration wrote for its scenario keys, one per payment
+leaves the keys that your integration wrote in its store for its scenario keys, one per payment
 scenario. Delete them, or let your integration expire them. The tool calls your integration directly, so a
 run creates no payment order, payment record or receipt on the CommerceOS.
 
@@ -148,7 +148,7 @@ node --test 'tools/epi-check/*.test.mjs'
 
 The tests use the same stand-in as local mode (`cos-stub.mjs`): the four API routes the tool reads,
 under Basic auth, plus what an installed integration calls back (the token endpoint, the configuration
-behind a context id, the key-value store), answered by the sample's `cos.mjs` behind it, which the tool
+behind a context id, your key-value store), answered by the sample's `cos.mjs` behind it, which the tool
 imports rather than copies so the sample folder stays self-contained. The installed integration is the
 reference server (`reference-server.mjs`), a complete integration on `node:http` with switchable
 defects; installed, it reads its configuration through the CommerceOS that installed it, so `L2` is real

@@ -471,7 +471,7 @@ A skipped write's payload is **not** validated: `{"@if": "false", "@value": {"ti
 ### Not envelope positions
 
 - **Index objects.** A directive inside `identifiers` is the refusal above; identification is never conditional.
-- **Dynamic targets.** In a `kv` document or a `dynamic` member the object is *data*, not an envelope: `PUT /v1/kv/com.example.x/doc {"@value": 1, "@if": "anything"}` stores and reads back exactly `{"@value": 1, "@if": "anything"}`.
+- **Dynamic targets.** In a key-value store document or a `dynamic` member the object is *data*, not an envelope: `PUT /v1/context/com.example.x/doc {"@value": 1, "@if": "anything"}` stores and reads back exactly `{"@value": 1, "@if": "anything"}`.
 
 ### Worth stating
 

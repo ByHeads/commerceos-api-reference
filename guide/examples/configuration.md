@@ -1,6 +1,6 @@
 # Configuration & Reference Data Examples
 
-Curl examples for countries, languages, templates, mapped types, dynamic properties, payment methods, discount/return reasons, delivery/payment terms, sales channels, customer groups, sync webhooks, shortened links, the key-value store, config API, order numbering serials, and EPI integrations.
+Curl examples for countries, languages, templates, mapped types, dynamic properties, payment methods, discount/return reasons, delivery/payment terms, sales channels, customer groups, sync webhooks, shortened links, key-value stores, config API, order numbering serials, and EPI integrations.
 
 **Base URL:** `https://example.app.heads.com/api/v1`
 **API Key:** `banana` (passed via Basic Auth with empty username: `-u ":banana"`)
@@ -436,67 +436,87 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/shortened-links"
 
 ---
 
-## Key-Value Store (`/v1/kv`)
+## Key-Value Stores
 
-A place to keep integration state the schema has no home for — a sync cursor, a feature flag, a small settings document. Entries live under a [namespaced key](../../reference/primitives.md#namespaced-key) and are addressed as `/v1/kv/{namespaced-key}/{entry}`. Each entry is a JSON document whose sub-paths can be read, written and deleted individually. Reaching any of it needs the `kv` scope.
+> **Availability:** ships after v26.2.2.
+
+A key-value store keeps state the schema has no home for: a sync cursor, a feature flag, a small settings document, or the state an integration needs between calls. A store has a name of exactly three dot-separated parts, a [namespaced key](../../reference/primitives.md#namespaced-key) such as `com.example.settings`, and holds keys with any JSON value, no schema, each key written and read apart from the others. Sub-paths of a value can be read, written and deleted individually.
+
+Two routes reach a store. An administrator with the `config` scope creates, lists and deletes stores under `/v1/key-value-stores`, and reads and writes their keys there. A client that holds the store's own scope, `com.example.settings:write` (reads and writes) or `com.example.settings:read` (reads), reaches the keys under `/v1/context/com.example.settings/<key>`: that is the route for an integration, whose OAuth2 client the administrator gives the scope. Nothing else grants it, and the integration cannot create the store itself.
 
 ```bash
-# Store a document
-curl -X PUT -u ":banana" "https://example.app.heads.com/api/v1/kv/com.example.settings/config" \
+# Create a store. PUT with {} creates it, and leaves an existing one as it is
+curl -X PUT -u ":banana" "https://example.app.heads.com/api/v1/key-value-stores/com.example.settings" \
   -H "Content-Type: application/json" \
-  -d '{"a": "123", "b": 1}'
+  -d '{}'
+# → { "@type": "key value store", "identifiers": { "name": "com.example.settings" } }
 
-# Read the whole entry back
-curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/kv/com.example.settings/config"
-# → {"a": "123", "b": 1}
+# List the stores, or read one. Neither lists the keys
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/key-value-stores"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/key-value-stores/com.example.settings"
+# → 200 null when there is no such store
 
-# Write one field. 200 "dsa", and the entry now reads {"a": "dsa", "b": 1}
-curl -X PUT -u ":banana" "https://example.app.heads.com/api/v1/kv/com.example.settings/config/a" \
+# A key, on the administrator's route
+curl -X PUT -u ":banana" "https://example.app.heads.com/api/v1/key-value-stores/com.example.settings/cursor" \
   -H "Content-Type: application/json" \
-  -d '"dsa"'
+  -d '{"since": "2026-10-11T00:00:00Z"}'
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/key-value-stores/com.example.settings/cursor"
 
-# A field that is not there yet is created by writing it
-curl -X PUT -u ":banana" "https://example.app.heads.com/api/v1/kv/com.example.settings/config/f" \
+# Delete the store and every key in it
+curl -X DELETE -u ":banana" "https://example.app.heads.com/api/v1/key-value-stores/com.example.settings"
+# → { "deletedCount": 1, "info": "Deleted 1 items" }
+```
+
+The keys, with a token or key that holds `com.example.settings:write`:
+
+```bash
+# A store never lists its keys: keep your own index
+curl -X GET -H "Authorization: Bearer <token>" "https://example.app.heads.com/api/v1/context/com.example.settings"
+# → {}
+
+# Store a document. The answer echoes the body
+curl -X PUT -H "Authorization: Bearer <token>" "https://example.app.heads.com/api/v1/context/com.example.settings/config" \
   -H "Content-Type: application/json" \
-  -d '"new"'
+  -d '{"n": 1, "nested": {"a": "b"}, "list": [1, 2, 3]}'
 
-# Any depth, as long as the intermediates are there. Create the branch once...
-curl -X PUT -u ":banana" "https://example.app.heads.com/api/v1/kv/com.example.settings/config/x" \
+# Read the whole document back, or one sub-path
+curl -X GET -H "Authorization: Bearer <token>" "https://example.app.heads.com/api/v1/context/com.example.settings/config"
+curl -X GET -H "Authorization: Bearer <token>" "https://example.app.heads.com/api/v1/context/com.example.settings/config/nested/a"
+# → "b"
+
+# Write one leaf. Siblings and ancestors are left alone: the document now reads nested.a = "c"
+curl -X PUT -H "Authorization: Bearer <token>" "https://example.app.heads.com/api/v1/context/com.example.settings/config/nested/a" \
   -H "Content-Type: application/json" \
-  -d '{"y": {"z": 1, "keep": true}}'
+  -d '"c"'
 
-# ...then one leaf at a time. Siblings and ancestors are left alone
-curl -X PUT -u ":banana" "https://example.app.heads.com/api/v1/kv/com.example.settings/config/x/y/z" \
+# PATCH does the same as PUT: the document is now {"m": 2}
+curl -X PATCH -H "Authorization: Bearer <token>" "https://example.app.heads.com/api/v1/context/com.example.settings/config" \
   -H "Content-Type: application/json" \
-  -d '2'
-
-# PATCH on a sub-path does the same thing as PUT
-curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/kv/com.example.settings/config/x/y/z" \
-  -H "Content-Type: application/json" \
-  -d '3'
-
-# Remove a key - DELETE, or PUT with a body of null
-curl -X DELETE -u ":banana" "https://example.app.heads.com/api/v1/kv/com.example.settings/config/a"
+  -d '{"m": 2}'
 
 # An array body is stored whole, and the operators read it like a collection
-curl -X PUT -u ":banana" "https://example.app.heads.com/api/v1/kv/com.example.settings/config/list" \
+curl -X PUT -H "Authorization: Bearer <token>" "https://example.app.heads.com/api/v1/context/com.example.settings/list" \
   -H "Content-Type: application/json" \
-  -d '[3, 4, 5]'
-curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/kv/com.example.settings/config/list~count"   # → 3
-curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/kv/com.example.settings/config/list?limit=1"
+  -d '[{"a": 1}, {"a": 2}, {"a": 3}]'
+curl -X GET -H "Authorization: Bearer <token>" "https://example.app.heads.com/api/v1/context/com.example.settings/list~count"   # → 3
+curl -X GET -H "Authorization: Bearer <token>" "https://example.app.heads.com/api/v1/context/com.example.settings/list?limit=1"  # → [{"a": 1}]
 
-# A sub-path holding nothing answers like a missing entry
-curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/kv/com.example.settings/config/missing"
+# Remove a key: DELETE, or PUT with a body of null
+curl -X DELETE -H "Authorization: Bearer <token>" "https://example.app.heads.com/api/v1/context/com.example.settings/config"
+# → { "deletedCount": 1, "info": "Deleted 1 items" }
+
+# A key never written, or deleted, answers 200 null, not 404
+curl -X GET -H "Authorization: Bearer <token>" "https://example.app.heads.com/api/v1/context/com.example.settings/config"
 # → 200  null
 ```
 
-**A write replaces what is at the path — nothing merges.** This is the rule to hold on to, and it is unchanged. `PATCH /v1/kv/com.example.settings/config` with `{"f": 1}` replaces the whole document with `{"f": 1}`; `PUT .../config/a` with `{"b": 2}` replaces `a` entirely. To update one field, write that field's own leaf.
+**A write replaces what is at the path — nothing merges.** This is the rule to hold on to. `PATCH /v1/context/com.example.settings/config` with `{"m": 2}` replaces the whole document with `{"m": 2}`; `PUT .../config/nested` with `{"b": 2}` replaces `nested` entirely. To update one field, write that field's own leaf.
 
-**Array elements are not addressable for writes.** `.../config/list/0` is a `404`; replace the whole array instead. `POST` to an array-valued key is not an append either — it replaces the array with the posted value wrapped in an array — so use `PUT`.
+**`null` deletes.** `PUT` with a body of `null` answers `200 null` and the key is gone, the same as `DELETE`.
 
-**An intermediate has to exist, and has to be an object.** Writing `.../config/a/b` when `a` is a string, or `.../config/x/y` when `x` does not exist, is a `404`. Create the object first.
+**The name is three parts, and one name is a panel or a store.** `PUT /v1/key-value-stores/com.test` is a `404`: a name of two or four parts does not route at all, unlike the same key in a request body ([namespaced key](../../reference/primitives.md#namespaced-key)). A name that a config panel already holds is a `409` `state conflict`, `A config panel is named com.example.settings`.
 
-**The key itself must be a well-formed namespaced key.** `PUT /v1/kv/com.test` is a `404` — a path segment outside the shape does not route at all, unlike the same key in a request body ([namespaced key](../../reference/primitives.md#namespaced-key)).
+**What a store scope can and cannot do.** `com.example.settings:read` alone answers a write with `403` `This key-value store is read-only`. A client with `com.example.settings:write` cannot create or delete the store: `DELETE /v1/context/com.example.settings` is a `403` `Store scopes cannot create or delete stores`, and `/v1/key-value-stores` is a `404` for it. A store the client has no scope for is a `404` on every key, and so is a store nobody has created yet, whatever scope the client holds: create the store first.
 
 ---
 
@@ -609,7 +629,8 @@ Installing an EPI integration requires a **confidential OAuth2 client** associat
 
 | Field | Value |
 |-------|-------|
-| **Scopes** | `me`, `geo:read`, `orders.sales:write`, `orders.payments:write`, `payment-records:write`, `kv` |
+| **Scopes** | `me`, `geo:read`, `orders.sales:write`, `orders.payments:write`, `payment-records:write`, `payment-means:read` |
+| **State store scope** | `<store>:write`, for example `com.example.piggy:write`: added by the administrator when the integration keeps state in a [key-value store](#key-value-stores). An install changes none of the client's scopes |
 | **Grant Type** | `client_credentials` |
 | **Access Token Lifetime** | 3600 seconds (1 hour) |
 | **Refresh Token Lifetime** | 2592000 seconds (30 days) |
@@ -640,7 +661,7 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/users" \
     "agent": {"identifiers": {"key": "<integration-db-key>"}},
     "oauth2Clients": [{
       "identifiers": {"clientID": "mock-integration-client"},
-      "scopes": ["me", "geo:read", "orders.sales:write", "orders.payments:write", "payment-records:write", "kv"],
+      "scopes": ["me", "geo:read", "orders.sales:write", "orders.payments:write", "payment-records:write", "payment-means:read", "com.example.mock:write"],
       "secret": "your-secure-client-secret",
       "accessTokenLifetimeSeconds": 3600,
       "refreshTokenLifetimeSeconds": 2592000,
@@ -649,6 +670,13 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/users" \
       "node": {"identifiers": {"com.heads.seedID": "ourcompany"}}
     }]
   }'
+
+# 2b) Create the key-value store for the integration's own state, once. The scope
+# com.example.mock:write on the client above is what lets the integration reach it;
+# leave both out for an integration that keeps no state. The integration cannot create it.
+curl -X PUT -u ":banana" "https://example.app.heads.com/api/v1/key-value-stores/com.example.mock" \
+  -H "Content-Type: application/json" \
+  -d '{}'
 
 # 3) Install the integration
 # The install action sends installation payload to the integration's baseUrl
@@ -662,7 +690,8 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/epi-integration
 #   curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/epi-integrations/name=Mock/identifiers/key"
 # Then, get the node (agent) key:
 #   curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/companies/com.heads.seedID=ourcompany/identifiers/key"
-# Then use those keys:
+# Then use those keys. The answer carries identifiers.contextConfigId, schema (the integration's
+# types, read-only), configurationType and configuration with every secret member masked as ********.
 curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/epi-configurations" \
   -H "Content-Type: application/json" \
   -d '{

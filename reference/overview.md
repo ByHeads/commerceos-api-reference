@@ -209,7 +209,7 @@ The API is organized around resource families like Agents, Products, Orders, Inv
 | **config** | System settings and serial number sequences. |
 | **advanced** | Mapped types and sync webhooks for custom data transformations and integrations. See [`mapped-types.md`](mapped-types.md), [`mapped-types-dry-run.md`](mapped-types-dry-run.md), and [`sync-webhooks.md`](sync-webhooks.md). |
 
-> **Note:** Scopes control what API clients can access. Every `:write` scope has a `:read` twin that exposes the same collections read-only. `me`, `advanced`, `config` and `kv` have no read variant; `integrations` and `admin` have restricted ones. See [Credentials → Every write scope has a read twin](credentials.md#every-write-scope-has-a-read-twin) for the full table, and your OAuth2 client configuration for assigned scopes.
+> **Note:** Scopes control what API clients can access. Every `:write` scope has a `:read` twin that exposes the same collections read-only. `me`, `advanced` and `config` have no read variant; `integrations` and `admin` have restricted ones. See [Credentials → Every write scope has a read twin](credentials.md#every-write-scope-has-a-read-twin) for the full table, and your OAuth2 client configuration for assigned scopes.
 
 ---
 
@@ -273,7 +273,7 @@ GET /v1/products/com.example.nope=ORD-1        # 200  null — well formed, noth
 
 The two *are* distinguishable, just not in a way that names the write as the cause. **The check that works is to read the identifiers back off the write's own response** and confirm the key is present before treating it as assigned — the response body above already shows the difference, at no extra request.
 
-**In a URL segment the same key behaves differently.** A malformed key in a path does not route at all, so `PUT /v1/kv/com.test` is a `404` where the identical key in a body is a silent `200`. Position, not payload, decides which you get.
+**In a URL segment the same key behaves differently.** A malformed key in a path does not route at all, so `PUT /v1/key-value-stores/com.test` is a `404` where the identical key in a body is a silent `200`. Position, not payload, decides which you get.
 
 **One resource rejects it instead, and only one.** [`sync-webhooks`](sync-webhooks.md#per-webhook-configuration-store) validates the keys of its `secrets` and `variables` maps and answers `400` naming the offending key, failing the whole request and persisting nothing — so a payload mixing valid and invalid keys lands none of it. Every other resource in the API, `identifiers` on all of them included, takes the lenient path above. Treat the webhook behaviour as the exception rather than the rule.
 

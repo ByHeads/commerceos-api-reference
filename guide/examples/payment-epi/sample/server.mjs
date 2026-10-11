@@ -22,7 +22,7 @@ export const money = (amount, { locale, currencyCode }) =>
 
 export const METHOD_ID = "com.example.piggy";
 export const BASE_PATH = "/piggy";
-export const KV_CONTAINER = "com.example.piggy";
+export const STORE = "com.example.piggy";
 
 const METHOD = {
     methodId: METHOD_ID,
@@ -34,7 +34,7 @@ const TERMINALS = [
     { terminalId: "PB-T1", methodId: METHOD_ID, name: "Piggy Bank terminal 1" },
     { terminalId: "PB-T2", methodId: METHOD_ID, name: "Piggy Bank terminal 2" },
 ];
-const CONFIG_SCHEMA = { title: "Piggy Bank", members: { merchantId: { type: "string" }, environment: { type: "'TEST' or 'LIVE'" } } };
+const CONFIG_SCHEMA = { schema: { "piggy configuration": { description: "Merchant account at Piggy Bank", members: { merchantId: { type: "string", title: "Merchant id" }, environment: { type: "'TEST' or 'LIVE'", title: "Environment", description: "TEST until go-live" } } } }, configurationType: "piggy configuration" };
 
 const errorBody = (message, code) => ({ errors: [{ ...(code ? { code } : {}), message }] });
 
@@ -108,6 +108,7 @@ export function startPiggyServer({ port = 0, now = () => new Date(), waitMs = 30
         if (hash && configByHash.has(hash)) return configByHash.get(hash);
         const response = await fetch(cosApi(`/context/config/${encodeURIComponent(id)}`), { headers: { authorization: await bearer(), accept: "application/json" }, signal: AbortSignal.timeout(2000) });
         if (!response.ok) throw new Error(`config ${response.status}`);
+        // The answer also carries configurationType and schema, the form the administrator filled in; the bank needs neither.
         const { configuration = {}, configurationHash } = await response.json();
         configByHash.set(configurationHash ?? hash, configuration);
         return configuration;
@@ -119,15 +120,17 @@ export function startPiggyServer({ port = 0, now = () => new Date(), waitMs = 30
         ...(["TEST", "LIVE"].includes(configuration.environment) ? [] : ["environment must be TEST or LIVE"]),
     ];
 
-    // Section 8: a key-value write that records the waiting session under the payment key. A failure is logged only.
+    // Section 8: a write to the integration's key-value store on CommerceOS that records the waiting session under
+    // the payment key. The store com.example.piggy is created by an administrator, and the client's scope
+    // com.example.piggy:write lets the bank write to it. A failure is logged only.
     async function writeState(paymentKey, state) {
         if (!installation?.cosBaseUrl) return;
         try {
             const headers = { authorization: await bearer(), "content-type": "application/json", accept: "application/json" };
-            const response = await fetch(cosApi(`/kv/${KV_CONTAINER}/${encodeURIComponent(paymentKey)}`), { method: "PUT", headers, body: JSON.stringify(state), signal: AbortSignal.timeout(2000) });
-            log(`kv ${paymentKey} ${response.status}`);
+            const response = await fetch(cosApi(`/context/${STORE}/${encodeURIComponent(paymentKey)}`), { method: "PUT", headers, body: JSON.stringify(state), signal: AbortSignal.timeout(2000) });
+            log(`state ${paymentKey} ${response.status}`);
         } catch (error) {
-            log(`kv ${paymentKey} not written: ${error.message} from ${installation.tokenUrl}`);
+            log(`state ${paymentKey} not written: ${error.message} from ${installation.tokenUrl}`);
         }
     }
 
@@ -217,7 +220,7 @@ export function startPiggyServer({ port = 0, now = () => new Date(), waitMs = 30
         // Section 2, bare calls: install stores the handshake, uninstall forgets it.
         if (route === "POST /install") { installation = await readJson(request); return json(response, 200); }
         if (route === "POST /uninstall") { installation = null; return json(response, 200); }
-        // Section 4: the configuration form, not a JSON Schema.
+        // Section 4: the configuration schema, named types in the notation of the CommerceOS API; not a JSON Schema.
         if (route === "GET /config-schema") return json(response, 200, CONFIG_SCHEMA);
         // The customer's phone taps a waiting session. Not part of the contract: it is the Piggy Bank's own door.
         if ((match = /^POST \/tap\/([^/]+)$/.exec(route))) {

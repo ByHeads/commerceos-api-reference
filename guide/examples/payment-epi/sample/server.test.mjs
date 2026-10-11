@@ -27,12 +27,12 @@ test("a contextful call without the config id header answers 400 with an error b
     }
 });
 
-test("a .04 payment records its session in the key-value store with a bearer token, then completes", async () => {
+test("a .04 payment records its session in its store with a bearer token, then completes", async () => {
     const lines = [];
     const cos = await startCosStandIn({ clientId: "c", clientSecret: "s", log: line => lines.push(line) });
     const piggy = await startPiggyServer({ idPrefix: "PB-", now: clock, waitMs: 200 });
     try {
-        const install = { cosBaseUrl: cos.url, tokenUrl: `${cos.url}/oauth2/v1/token`, clientId: "c", clientSecret: "s", scope: "kv" };
+        const install = { cosBaseUrl: cos.url, tokenUrl: `${cos.url}/oauth2/v1/token`, clientId: "c", clientSecret: "s", scope: "me com.example.piggy:write" };
         await fetch(`${piggy.url}/install`, { method: "POST", headers: context, body: JSON.stringify(install) });
         const response = await fetch(`${piggy.url}/payments/pay-9`, { method: "PUT", headers: context, body: JSON.stringify(init("10.04")) });
         const steps = await events(response);
@@ -40,8 +40,8 @@ test("a .04 payment records its session in the key-value store with a bearer tok
         assert.deepEqual(steps[1].result.transactions[0].actions, ["Authorize", "Debit"]);
         await new Promise(resolve => setTimeout(resolve, 100));
         // The stand-in answers 200 only with its own bearer token, so two 200 lines prove the token flow.
-        assert.deepEqual(lines.filter(line => line.startsWith("PUT ")), ["PUT /api/v1/kv/com.example.piggy/pay-9 200", "PUT /api/v1/kv/com.example.piggy/pay-9 200"]);
-        assert.deepEqual(cos.kv.get("com.example.piggy/pay-9"), { sessionId: "PB-1", state: "settled" });
+        assert.deepEqual(lines.filter(line => line.startsWith("PUT ")), ["PUT /api/v1/context/com.example.piggy/pay-9 200", "PUT /api/v1/context/com.example.piggy/pay-9 200"]);
+        assert.deepEqual(cos.store.get("com.example.piggy/pay-9"), { sessionId: "PB-1", state: "settled" });
     } finally {
         await piggy.close();
         await cos.close();

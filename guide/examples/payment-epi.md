@@ -11,6 +11,8 @@ This page gets you from nothing to a working integration in one sitting. The con
 
 > **See also:** [Examples Index](../examples.md) | [Configuration](./configuration.md) § EPI Integrations
 
+> **Availability:** your configuration schema as named types with `secret` members, and your key-value store under `/v1/context/<store>`, ship after v26.2.2. The [reference](./payment-epi/reference.md) names the sections.
+
 ---
 
 ## 1. The picture
@@ -91,9 +93,9 @@ curl -X POST http://127.0.0.1:8787/piggy/tap/PB-mucmciak-3
 # PB-mucmciak-4  Authorize+Debit  10.04   SEK           tok-10.04  2026-09-22T11:56:53.521Z
 ```
 
-The server log adds `kv pay-... not written`: the bank records the waiting session in the CommerceOS
-key-value store, and no CommerceOS runs on your machine. `--cos` starts a stand-in for that side. It
-answers the token endpoint, the configuration behind a context id and the key-value store, and every
+The server log adds `state pay-... not written`: the bank records the waiting session in its
+key-value store on CommerceOS, and no CommerceOS runs on your machine. `--cos` starts a stand-in for that side. It
+answers the token endpoint, the configuration behind a context id and the store, and every
 call to it shows as a `[cos]` line:
 
 ```bash
@@ -102,13 +104,13 @@ node play.mjs 10.04 --cos
 # [cos] GET /api/v1/context/config/EPI1 200
 # Test: true
 # Method com.example.piggy (Piggy Bank)
+# → Wait {"message":"Waiting for the customer's phone","params":["PB-mv3ru4gr-1"]}
+#   tap:    curl -X POST http://localhost:8787/piggy/tap/PB-mv3ru4gr-1
 # [cos] POST /oauth2/v1/token 200
-# → Wait {"message":"Waiting for the customer's phone","params":["PB-mucmppuu-1"]}
-#   tap:    curl -X POST http://127.0.0.1:8787/piggy/tap/PB-mucmppuu-1
-# [cos] PUT /api/v1/kv/com.example.piggy/pay-1790078826817 200
+# [cos] PUT /api/v1/context/com.example.piggy/pay-1791720017198 200
 # → Complete {...}
 # [cos] POST /oauth2/v1/token 200
-# [cos] PUT /api/v1/kv/com.example.piggy/pay-1790078826817 200
+# [cos] PUT /api/v1/context/com.example.piggy/pay-1791720017198 200
 ```
 
 The first three lines are the configuration round trip: the bank fetches a token with the client it
@@ -130,7 +132,7 @@ makes back. Generate a server stub from the first and a client from the second w
 |---|---|---|
 | `POST /install` | bare | any 2xx. The body holds the OAuth2 client that your integration uses to call CommerceOS back |
 | `POST /uninstall` | bare | any 2xx |
-| `GET /config-schema` | bare | a form description: the fields that an administrator fills in per store |
+| `GET /config-schema` | bare | your configuration schema: the fields that an administrator fills in per organization node, as named types (reference, section 4) |
 | `POST /test` | contextful | JSON `true` |
 | `GET /methods` | contextful | the payment methods that you offer, `MethodDto[]`. `configure` copies them into method records; the administrator adds the rest (reference, section 2) |
 | `GET /terminals` | contextful | the terminals that this configuration knows, `TerminalDto[]` |
@@ -146,7 +148,7 @@ Heads administrator creates a confidential OAuth2 client for the integration and
 `install`. CommerceOS sends `cosBaseUrl`, `tokenUrl`, `clientId`, `clientSecret` and `scope` in the
 body of `POST /install`. Store them. Your integration gets a client-credentials token from
 `tokenUrl` and sends it as a bearer token on every call to CommerceOS. The client is limited to
-what an integration needs: the configuration behind a context id, a key-value store for your own
+what an integration needs: the configuration behind a context id, its key-value store for your own
 state, and payment orders and payment records, for example to complete a payment that ends
 asynchronously (reference, section 8). A second install usually sends the same client again, and it
 can carry a new one: always store the client that the latest install sent.
@@ -162,7 +164,7 @@ identifies the caller. Protect the endpoint at the network level. How you do tha
 | `sample/bank.mjs` | the in-memory bank: sessions, a ledger, and `tap(sessionId)` for the customer's phone |
 | `sample/server.mjs` | the integration: the ten routes, the header check, the configuration read behind `/test`, the stream, transactions and cancel |
 | `sample/play.mjs` | the CommerceOS side: install, methods, one payment, every step printed |
-| `sample/cos.mjs` | a stand-in for the calls back: token, the configuration behind a context id, key-value store, payment-order completion |
+| `sample/cos.mjs` | a stand-in for the calls back: token, the configuration behind a context id, the integration's key-value store, payment-order completion |
 
 The header check. Every route below this line is contextful, so one test covers them all.
 
@@ -173,8 +175,9 @@ if (typeof request.headers["x-epi-context-config-id"] !== "string") {
 }
 ```
 
-The configuration round trip. `GET /config-schema` declares two fields, `merchantId` and `environment`. An
-administrator fills them in, and `POST /test` reads them back through the context id and checks them.
+The configuration round trip. `GET /config-schema` declares one type, `piggy configuration`, with two
+members, `merchantId` and `environment`. An administrator fills them in, and `POST /test` reads them
+back through the context id and checks them.
 The same helper serves a payment route that needs the merchant id.
 
 ```js
@@ -262,7 +265,7 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/users" \
     "agent": {"identifiers": {"key": "<integration key>"}},
     "oauth2Clients": [{
       "identifiers": {"clientID": "piggy-integration-client"},
-      "scopes": ["me", "geo:read", "orders.sales:write", "orders.payments:write", "payment-records:write", "kv"],
+      "scopes": ["me", "geo:read", "orders.sales:write", "orders.payments:write", "payment-records:write", "payment-means:read", "com.example.piggy:write"],
       "secret": "<a secret you generate>",
       "accessTokenLifetimeSeconds": 3600,
       "refreshTokenLifetimeSeconds": 2592000,
@@ -271,6 +274,14 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/users" \
       "node": {"identifiers": {"com.heads.seedID": "ourcompany"}}
     }]
   }'
+
+# The key-value store for the integration's own state (reference, section 8), created once. The
+# scope com.example.piggy:write on the client above is what lets the integration reach it; an
+# integration that keeps no state needs neither. The integration cannot create the store itself,
+# and install changes none of the client's scopes.
+curl -X PUT -u ":banana" "https://example.app.heads.com/api/v1/key-value-stores/com.example.piggy" \
+  -H "Content-Type: application/json" \
+  -d '{}'
 ```
 
 ```bash
@@ -285,10 +296,12 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/payment-integra
 #   curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/payment-integrations/name=Piggy/identifiers/key"
 #   (the answer is a JSON string with its quotes: paste the 32 characters between them)
 #   curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/companies/com.heads.seedID=ourcompany/identifiers/key"
-# The configuration object holds the fields that your /config-schema describes. The answer
-# carries identifiers.contextConfigId (a top-level contextConfigId is null or absent), a
-# four-character id that CommerceOS generates: it is the value of
-# X-EPI-Context-Config-Id on every later contextful call for this node.
+# The configuration object holds the members of the configuration type that your /config-schema
+# declares. The answer carries identifiers.contextConfigId (a top-level contextConfigId is null or
+# absent), a four-character id that CommerceOS generates: it is the value of
+# X-EPI-Context-Config-Id on every later contextful call for this node. It also carries schema
+# (your types, read-only), configurationType, and configuration with every secret member masked
+# as ********: only your integration reads a secret in clear (reference, section 4).
 curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/epi-configurations" \
   -H "Content-Type: application/json" \
   -d '{
@@ -411,11 +424,11 @@ Heads certifies your installed integration with the tool in `--cos` mode, throug
 - [ ] A request your integration cannot take on the stream route is a 200 stream with one `Fail` step, never a non-2xx: CommerceOS discards the body there (reference, section 7).
 - [ ] A repeated `PUT` for a completed `paymentKey` answers the same `processorsId` and the same transactions, and `processorsId` is unique for all time.
 - [ ] `POST /test` answers per node: it reads the configuration of the context id and checks it.
-- [ ] State lives in the CommerceOS key-value store or in your database, never only in memory.
+- [ ] State lives in your key-value store on CommerceOS, under `/v1/context/<store>`, or in your database, never only in memory.
 - [ ] A restart never loses a charge: you keep a list of the payments that have a provider session and no outcome, and on start you stop each open one at the provider and complete each charged one with `PATCH /v1/payment-orders/{key}` (reference § 11).
 - [ ] Each provider outcome maps to one step, and two causes never share a step (reference § 5, "When a real provider owns the outcome").
 - [ ] You know which refunds your provider allows for each merchant. Where it cannot refund without the card, your method declares `supports.reversal: false` with `supports.outgoing: true`, and the *Refund* action becomes a refund with the card (flows § 3).
-- [ ] Your provider credentials live in your integration's environment, not in the configuration: the configuration schema has no secret field type, so an administrator can read every value.
+- [ ] Your provider credentials are typed `secret` in your configuration schema: administrators see them masked in the back office and on the administrative API, and only your integration reads them (reference § 4). A credential that must never be stored by CommerceOS stays in your integration's environment.
 - [ ] `POST /payments/{paymentKey}/transactions` treats every call as a new transaction. CommerceOS never retries it, and two equal partial refunds of one line arrive with the same token and body: both must be paid. Refuse a call that asks for more than the payment has left, with a non-2xx and an error body: the cashier sees `<code>: <message>`.
 - [ ] Every stream ends with exactly one final step, also on an exception. A stream that closes without one shows the cashier nothing at all.
 - [ ] Every call to your provider has a timeout, and a timeout ends the stream with `Fail`.
@@ -439,7 +452,8 @@ paths. Use `/v1/payment-integrations` for a payment provider, and `/v1/epi-integ
 |---|---|
 | EPI | External Partner Interface: the Heads specification of the HTTP calls between CommerceOS and an integration. You build an integration that follows it |
 | payment integration | the CommerceOS record of one provider: a name, a `baseUrl`, a status, and its payment methods |
-| EPI configuration | the values of one integration on one organization node, for example a merchant id. The form comes from `/config-schema` |
+| EPI configuration | the values of one integration on one organization node, for example a merchant id. The form comes from your configuration schema, `/config-schema` |
+| key-value store | the place for your integration's own state on CommerceOS, `/v1/context/<store>/<key>`, named like `com.example.piggy` and created by a Heads administrator, who gives your client the scope `com.example.piggy:write` |
 | context | the three headers on a contextful call. They name the configuration that the call runs under |
 | organization node | a company, a store or another level of the organization tree. A configuration on a node applies to the nodes below it |
 | payment order | what CommerceOS wants paid: an amount, a currency, a payer and a payee. Its key is the `paymentKey` of the stream call |

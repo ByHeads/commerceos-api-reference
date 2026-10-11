@@ -9,7 +9,7 @@ The JSON examples in [`../reference.md`](../reference.md) quote these files, so 
 |---|---|
 | C1 | CommerceOS shows the integration as `Active` with a configured node and a method, its `test` reports `success` for every configured node, `assignedTerminals` answers 200 (the known 500 of platform defect D1 is a warning), and the EPI configuration of the node gives the context the other scenarios send |
 | L2 | `POST /test` answers `true` under the node's real configuration, read through the real CommerceOS |
-| L3 | `GET /config-schema` answers a form description with `members` |
+| L3 | `GET /config-schema` answers `schema` (named types) and `configurationType` |
 | L4 | `GET /methods` answers at least one method with a unique `methodId` |
 | L5 | `GET /terminals` answers a list, and each terminal is readable at `/terminals/{id}` |
 | P1 | One-step sale: `Complete` with `["Authorize","Debit"]` |

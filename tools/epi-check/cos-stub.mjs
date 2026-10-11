@@ -3,7 +3,7 @@
 // It plays both halves of CommerceOS on one URL. The four read routes the tool uses (the integration
 // record, `test`, `assignedTerminals`, the EPI configuration list) are answered here, under Basic auth
 // with the key; everything else, which is what an installed integration calls back (the token endpoint,
-// `GET /api/v1/context/config/{id}`, the key-value store, payment-order completion), is forwarded to the
+// `GET /api/v1/context/config/{id}`, the integration's key-value store, payment-order completion), is forwarded to the
 // sample's CommerceOS stand-in (guide/examples/payment-epi/sample/cos.mjs). The tool imports that file
 // instead of keeping a copy: the sample folder must stay self-contained for a partner who copies it.
 //
@@ -26,8 +26,9 @@ import { createHash, randomBytes } from "node:crypto";
 import { startCosStandIn } from "../../guide/examples/payment-epi/sample/cos.mjs";
 
 export const KEY = "opensesame";
-export const CLIENT = { clientId: "epi-check", clientSecret: "epi-check-secret", scope: "me geo:read orders.sales:write orders.payments:write payment-records:write kv" };
-export const HASH = "v5EXNSP";
+export const CLIENT = { clientId: "epi-check", clientSecret: "epi-check-secret", scope: "me geo:read orders.sales:write orders.payments:write payment-records:write payment-means:read com.epicheck.state:write" };
+/** The sha256-base64url of `{"merchantId":"M-0001"}`, the stub's default configuration: what X-EPI-Context-Config-Hash carries. */
+export const HASH = "bjEusL05DLltlCH0iSqcWFAkurTdVlG7bHRMg9uaf0k";
 /** An EPI configuration of another integration, always in the list: the tool must filter by integration name. */
 const NOISE = { identifiers: { key: "2dc0", contextConfigId: "HgI1" }, node: { identifiers: { key: "node-shade" }, name: "Shade AB" }, integration: { identifiers: { key: "221c", name: "Voucher" }, status: "Active" } };
 
@@ -162,7 +163,7 @@ export const LOCAL_TITLE = "Local stand-in: installed, test success per node, me
  */
 export async function startLocalCos({ baseUrl, configuration = {}, timeoutMs = 10000 }) {
     const client = { ...CLIENT, clientId: "epi-check-local", clientSecret: randomBytes(12).toString("hex") };
-    const configurationHash = `${LOCAL.contextConfigId}${createHash("sha256").update(JSON.stringify(configuration)).digest("base64url").slice(0, 3)}`;
+    const configurationHash = createHash("sha256").update(JSON.stringify(configuration)).digest("base64url");
     const stub = await startCosStub({ client, configuration, configurationHash, timeoutMs });
     const node = { name: LOCAL.node, key: "node-local", contextConfigId: LOCAL.contextConfigId, configurationHash, configuration };
     const spec = { baseUrl, status: "Inactive", nodes: [node], methods: [], tests: "live" };

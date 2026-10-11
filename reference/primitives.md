@@ -570,7 +570,7 @@ uk.co.acme.customerId    # A co.uk domain reversed is already 3 segments
 | Where the key appears | A key outside the format |
 |---|---|
 | A request **body** (`identifiers`, on any resource) | Silently discarded — `200`, and nothing is stored |
-| A **URL segment** (`/v1/kv/com.test`, `/v1/products/com.a.b.c=X`) | `404` — the request does not route |
+| A **URL segment** (`/v1/key-value-stores/com.test`, `/v1/products/com.a.b.c=X`) | `404` — the request does not route |
 | `~orderBy(identifiers/…)` / `~distinctBy(identifiers/…)` | `400`, naming the key |
 | `~where(identifiers/…)` / `~just(identifiers/…)` | `200`, passed through untouched |
 | `sync-webhooks` `secrets` / `variables` keys | `400`, naming the key — the whole request fails and nothing persists |

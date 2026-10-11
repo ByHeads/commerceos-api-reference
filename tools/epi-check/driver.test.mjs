@@ -25,7 +25,8 @@ test("install, uninstall and configSchema are bare calls with no context headers
     assert.equal(await driver.install({ cosBaseUrl: "http://cos", tokenUrl: "http://cos/t", clientId: "c", clientSecret: "s", scope: "epi" }), undefined);
     assert.equal(await driver.uninstall(), undefined);
     const schema = await driver.configSchema();
-    assert.equal(typeof schema.members, "object");
+    assert.equal(typeof schema.schema, "object");
+    assert.equal(schema.configurationType, "reference configuration");
     assert.equal(recorded.length, 3);
     for (const call of recorded) {
         const names = Object.keys(call.init.headers).map(h => h.toLowerCase());

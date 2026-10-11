@@ -3,11 +3,12 @@ openapi: "3.1.0"
 info:
   title: "CommerceOS for payment integrations: the routes that your integration calls"
   version: "1.0.0"
-  description: "The four things a payment integration does on CommerceOS, with the OAuth2 client it received in the install payload: get a token, read the configuration behind a context id, keep its own state in the key-value store, and complete a payment asynchronously. Every call carries Authorization: Bearer <token>, content-type application/json and accept application/json. The scopes of the client bound what it can do; a client created in the back office for an integration has me geo:read orders.sales:write orders.payments:write payment-records:write kv (a seeded one also payment-means:read), and these routes need me, kv and orders.payments:write. Other resources, such as payment integrations and payment terminals, are not available to the client. The full CommerceOS API is documented at {cosBaseUrl}/api-docs."
+  description: "The four things a payment integration does on CommerceOS, with the OAuth2 client it received in the install payload: get a token, read the configuration behind a context id, keep its own state in its key-value store, and complete a payment asynchronously. Every call carries Authorization: Bearer <token>, content-type application/json and accept application/json. The scopes of the client bound what it can do; a client created in the back office for an integration has me geo:read orders.sales:write orders.payments:write payment-records:write payment-means:read, and the administrator adds {store}:write for the integration's key-value store. These routes need me, orders.payments:write and that store scope. Other resources, such as payment integrations and payment terminals, are not available to the client. The full CommerceOS API is documented at {cosBaseUrl}/api-docs."
 tags:
   - name: "Token"
   - name: "Configuration"
   - name: "Key-value store"
+    description: "Your integration's own state, under /v1/context/{store}/{key}. The store is created by a Heads administrator; the scope {store}:write is written with the store's name, for example com.example.piggy:write."
   - name: "Payment orders"
 servers:
   - url: "{cosBaseUrl}/api"
@@ -53,7 +54,7 @@ paths:
       tags:
         - "Configuration"
       summary: "The configuration behind a context id"
-      description: "On a contextful call whose X-EPI-Context-Config-Hash you have not seen: read the values an administrator saved against your config schema, and cache them by configurationHash."
+      description: "On a contextful call whose X-EPI-Context-Config-Hash you have not seen: read the values an administrator saved against your config schema, in clear, and cache them by configurationHash, which is the header's value. The answer also carries configurationType and the schema as CommerceOS holds it. An id that is not a configuration of your integration answers 200 with the body null, not 404."
       parameters:
         - name: "configId"
           in: "path"
@@ -76,14 +77,14 @@ paths:
             "application/json":
               schema:
                 "$ref": "#/components/schemas/CosErrorBody"
-  "/v1/kv/{container}/{key}":
+  "/v1/context/{store}/{key}":
     get:
       tags:
         - "Key-value store"
-      summary: "Read a value"
-      description: "Your own state, for example a provider session behind a paymentKey, so that a restart of your integration loses nothing. container is a namespaced key such as com.example.payments. A missing entry answers 200 with null, not 404. A sub-path of a stored document is addressable on its own: /v1/kv/{container}/{key}/state."
+      summary: "Read a value of your store"
+      description: "Your own state, for example a provider session behind a paymentKey, so that a restart of your integration loses nothing. store is the name of your key-value store, three dot-separated parts such as com.example.piggy; a Heads administrator creates it and puts {store}:write on your client ({store}:read reads only). A key never written answers 200 with null, not 404; a store your client has no scope for answers 404. A sub-path of a stored document is addressable on its own: /v1/context/{store}/{key}/state. GET /v1/context/{store} answers {} whatever the store holds: no route lists the keys, so keep your own index. Write the key in the path URL-encoded."
       parameters:
-        - name: "container"
+        - name: "store"
           in: "path"
           required: true
           schema:
@@ -95,7 +96,7 @@ paths:
             type: "string"
       security:
         - oauth2:
-            - "kv"
+            - "{store}:write"
       responses:
         "200":
           description: "The stored JSON value."
@@ -111,10 +112,10 @@ paths:
     put:
       tags:
         - "Key-value store"
-      summary: "Write a value"
-      description: "Any JSON value. The answer echoes it."
+      summary: "Write a value of your store"
+      description: "Any JSON value. The answer echoes it. A write replaces what is at the path, nothing merges: PATCH does the same as PUT. A body of null deletes the key."
       parameters:
-        - name: "container"
+        - name: "store"
           in: "path"
           required: true
           schema:
@@ -131,7 +132,43 @@ paths:
             schema: {}
       security:
         - oauth2:
-            - "kv"
+            - "{store}:write"
+      responses:
+        "200":
+          description: "The stored JSON value."
+          content:
+            "application/json":
+              schema: {}
+        "4XX":
+          description: "A failed call: a non-2xx status with a CommerceOS error body; the reason is in details."
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/CosErrorBody"
+    patch:
+      tags:
+        - "Key-value store"
+      summary: "The same as PUT: a write replaces"
+      description: "Identical to PUT. Nothing merges: to change one field, write that field's own sub-path."
+      parameters:
+        - name: "store"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+        - name: "key"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema: {}
+      security:
+        - oauth2:
+            - "{store}:write"
       responses:
         "200":
           description: "The stored JSON value."
@@ -147,10 +184,10 @@ paths:
     delete:
       tags:
         - "Key-value store"
-      summary: "Delete a value"
-      description: "After the payment is settled and you no longer need the state."
+      summary: "Delete a value of your store"
+      description: "After the payment is settled and you no longer need the state. The answer is 200 with deletedCount, also for a key that was not there."
       parameters:
-        - name: "container"
+        - name: "store"
           in: "path"
           required: true
           schema:
@@ -162,7 +199,7 @@ paths:
             type: "string"
       security:
         - oauth2:
-            - "kv"
+            - "{store}:write"
       responses:
         "200":
           description: "Deleted."
@@ -216,16 +253,59 @@ components:
           tokenUrl: "https://example.app.heads.com/oauth2/v1/token"
           scopes:
             me: "Read the configuration behind a context id (and the integration's own user)."
-            kv: "Read, write and delete values in the key-value store."
+            "{store}:write": "Read, write and delete the keys of the key-value store named {store}, for example com.example.piggy:write. Granted by the administrator who created the store; {store}:read reads only."
             "orders.payments:write": "Add payment records to a payment order."
             "geo:read": "In the default client. Not needed by these routes."
             "orders.sales:write": "In the default client. Not needed by these routes."
             "payment-records:write": "In the default client. Not needed by these routes."
+            "payment-means:read": "In the default client. Not needed by these routes."
   schemas:
     DecimalDto:
       type: "string"
       pattern: "^(-?\\d+(\\.\\d+)?|Missing)$"
       description: "A decimal number as a string, never a JSON number. CommerceOS sends a whole amount without decimals (\"15\", not \"15.00\") and a fraction without trailing zeros (\"10.04\", but \"298.5\" for 298.50); accept both and compare numerically. In a specification item CommerceOS may send the literal \"Missing\" for a quantity or amount it does not know; do not parse it as a number. Answer in either numeric form."
+    LocalizableString:
+      description: "A string, or a map from locale to string, for example {\"en-US\": \"The API key\", \"sv-SE\": \"API-nyckeln\"}. The back office picks the exact locale, then any key of the same language, then en-US, then the first value. An empty string counts as missing."
+      oneOf:
+        - type: "string"
+        - type: "object"
+          additionalProperties:
+            type: "string"
+    ConfigTypeString:
+      description: "The type of one configuration member, written as in the CommerceOS API's own type declarations: one base and an optional trailing ? for optional. Bases: string, number, boolean; secret (a string that CommerceOS masks for administrators and shows in clear only to your integration); a union of quoted values such as 'TEST' or 'LIVE' (two or more, joined by or only; add or null for an optional one); the name of another type of the schema (a nested group of fields), or that name followed by [] (a list of them); string[] or number[] (a list of scalars); object or object[] (free-form JSON). Nothing else: no (read-only), no and, and no name that is also a type of the CommerceOS API (secret, string, product, ...). A member without ? or or null is required: the form shows Required until it has a value, and the configuration is refused without it."
+      type: "string"
+      pattern: "^\\S.*$"
+    ConfigMember:
+      description: "One configuration member. The administrator sees title as the label, else description, else the member name; with both, the description sits behind an info icon beside the label. A member has no nested members: a group is a member typed with another type of the schema."
+      type: "object"
+      properties:
+        type:
+          "$ref": "#/components/schemas/ConfigTypeString"
+        title:
+          "$ref": "#/components/schemas/LocalizableString"
+          description: "The label of the field."
+        description:
+          "$ref": "#/components/schemas/LocalizableString"
+          description: "Help text, shown behind an info icon when title is present, else as the label."
+        multiline:
+          type: "boolean"
+          description: "On a string member: edited as a block of text, for a PEM certificate for example. A secret is always a single-line password field."
+      required:
+        - "type"
+    ConfigType:
+      description: "One type of the configuration schema: a description and its members. The type named by configurationType is what the administrator's configuration is an instance of; the other types are the groups its members refer to."
+      type: "object"
+      properties:
+        description:
+          "$ref": "#/components/schemas/LocalizableString"
+          description: "What the type is. Optional: CommerceOS fills in the type name."
+        members:
+          type: "object"
+          additionalProperties:
+            "$ref": "#/components/schemas/ConfigMember"
+          description: "The members, keyed by the property name that the stored configuration object uses. Empty on the configuration type when your integration needs no configuration."
+      required:
+        - "members"
     TokenRequest:
       description: "The form body of POST {tokenUrl}, application/x-www-form-urlencoded."
       type: "object"
@@ -241,7 +321,7 @@ components:
           description: "clientSecret from the install payload."
         scope:
           type: "string"
-          description: "scope from the install payload, or the subset you need, space-separated. Always send it: a token requested without scope is valid and carries no scopes, so every later call fails."
+          description: "scope from the install payload, or the subset you need, space-separated: me, orders.payments:write and the <store>:write scope of your key-value store. A request without scope gets every scope the client holds. A requested scope the client lacks is left out of the token without an error, so read scope in the answer: a missing store scope shows up as 404 on the first state call, not at the token. A scope that does not exist, such as the retired kv, fails the whole request with 400 invalid_scope."
       required:
         - "grant_type"
         - "client_id"
@@ -266,22 +346,31 @@ components:
         - "access_token"
         - "expires_in"
     ContextConfig:
-      description: "The configuration behind a context id, as an administrator saved it against your config schema. The element also carries node (the organization node) and a configure action."
+      description: "The configuration behind a context id, as an administrator saved it against your config schema, in clear: secret members included. The body is null, with status 200, for an id that is not a configuration of your integration."
       type: "object"
       properties:
+        "@type":
+          type: "string"
+          description: "EPI configuration assignment."
         configuration:
           type: "object"
           additionalProperties: true
-          description: "The values, keyed as your config schema's members. Absent when the administrator has saved nothing yet."
+          description: "The values, keyed as the members of your configuration type. Absent when the administrator has saved nothing yet."
         configurationHash:
           type: "string"
-          description: "Equals the X-EPI-Context-Config-Hash header of the calls that run under this configuration. Cache by it."
-        node:
+          description: "A SHA-256 of the stored values, URL-safe base64, 43 characters. It equals the X-EPI-Context-Config-Hash header of every call that runs under this configuration, and it changes with any value, secrets included. Cache by it."
+        configurationType:
+          type: "string"
+          description: "The name of the type that configuration is an instance of, as your config schema declared it."
+        schema:
           type: "object"
-          additionalProperties: true
-          description: "The organization node that holds the configuration."
+          additionalProperties:
+            "$ref": "#/components/schemas/ConfigType"
+          description: "The types of your config schema as CommerceOS holds them, with a member added to the configuration type for every stored value your declaration leaves out (inferred as string?, number?, boolean?, string[]? or secret? when the name looks like a secret)."
       required:
         - "configurationHash"
+        - "configurationType"
+        - "schema"
     PaymentOrderStatus:
       description: "One flag of a payment order's status. The status is a set, recomputed from the records on every read: New (part of the amount is not yet authorized, annulled, debited or credited), Authorized (reserved, not captured), Annulled (a reservation was released), Debited (captured), Credited (refunded)."
       type: "string"

@@ -5,14 +5,14 @@
 //   node play.mjs <amount> [--base http://localhost:8787/piggy] [--payout] [--cos]
 //
 // `--cos` starts the CommerceOS stand-in of cos.mjs in-process and installs the bank against it,
-// so that the bank's calls back (the configuration read behind /test, the key-value store; section 8)
+// so that the bank's calls back (the configuration read behind /test, its key-value store; section 8)
 // land somewhere and show in the output as `[cos]` lines. Exit 0 when the stream ends with a final step, 1 on a transport error.
 import { startCosStandIn, CLIENT } from "./cos.mjs";
 
 const DEFAULT_BASE = "http://localhost:8787/piggy";
 
 /** The install payload CommerceOS hands over. Without `--cos`, the bank logs a failed callback and carries on. */
-const INSTALL = { cosBaseUrl: "http://localhost:5000", tokenUrl: "http://localhost:5000/oauth2/v1/token", ...CLIENT, scope: "me geo:read orders.sales:write orders.payments:write payment-records:write kv" };
+const INSTALL = { cosBaseUrl: "http://localhost:5000", tokenUrl: "http://localhost:5000/oauth2/v1/token", ...CLIENT, scope: "me geo:read orders.sales:write orders.payments:write payment-records:write payment-means:read com.example.piggy:write" };
 
 const customer = { type: "Person", key: "person-0001", givenName: "Anna", familyName: "Lindqvist", fullName: "Anna Lindqvist", email: "anna.lindqvist@example.com" };
 const store = { type: "Organization", key: "org-0001", fullName: "Sample Store AB" };
@@ -111,7 +111,7 @@ async function playAgainst({ amount, base, payout, print, install, standIn }) {
     }
     if (!final) throw new Error("The stream ended without a final step");
     // The bank writes "settled" to the store after the final step. Give that write two seconds to land.
-    if (standIn && sessionId) await until(() => standIn.kv.get(`com.example.piggy/${paymentKey}`)?.state === "settled", 2000);
+    if (standIn && sessionId) await until(() => standIn.store.get(`com.example.piggy/${paymentKey}`)?.state === "settled", 2000);
     return final;
 }
 

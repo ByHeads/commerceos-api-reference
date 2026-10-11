@@ -1076,7 +1076,7 @@ POST /v1/products
 Three related points:
 
 - **Four segments is the likely mistake, not one.** It is what you get by nesting a namespace a level deeper (`com.acme.orders.id`), and it reads as more than satisfying a "reverse domain notation" rule rather than less. It is also what reversing a `co.uk` or `com.au` domain gives you before you have named anything: `uk.co.acme.customerId`.
-- **A path segment fails loudly instead.** The same key in a URL does not route — `PUT /v1/kv/com.test` is a `404` where the identical key in a body is a silent `200`.
+- **A path segment fails loudly instead.** The same key in a URL does not route — `PUT /v1/key-value-stores/com.test` is a `404` where the identical key in a body is a silent `200`.
 - **One resource is strict.** `sync-webhooks` rejects a bad `secrets` or `variables` key with a `400` naming it, and persists nothing from that request. Do not generalise from it — `identifiers` on every resource, that resource included, takes the lenient path.
 
 Related: [gotcha 39](#39-a-null-in-a-response-does-not-prove-the-field-exists) (a `null` is not proof a field exists), [gotcha 49](#49-identifiers-that-name-two-different-objects-are-refused) (a well-formed key that another record already owns is refused with `failed indexing` rather than dropped), [External Identifiers](overview.md#external-identifiers).

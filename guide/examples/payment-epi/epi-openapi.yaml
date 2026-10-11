@@ -288,7 +288,7 @@ components:
       required: true
       schema:
         type: "string"
-      description: "The configuration id followed by three characters of a hash of the configuration values, for example tWBlI--. A changed configuration has a new value, so it is your cache key."
+      description: "A SHA-256 of the configuration values, URL-safe base64, 43 characters: the configurationHash that GET /v1/context/config/{configId} answers. A changed configuration has a new value, so it is your cache key."
     DebugInfo:
       name: "X-EPI-Debug-Info"
       in: "header"
@@ -334,7 +334,7 @@ components:
           description: "The OAuth2 client secret. CommerceOS refuses to install an integration whose client has no secret."
         scope:
           type: "string"
-          description: "The scopes of that client, space-separated, as CommerceOS holds them. A client created in the back office for an integration has: me geo:read orders.sales:write orders.payments:write payment-records:write kv; a seeded one also has payment-means:read. Send the string back as scope in the token request. Your integration needs me, kv and orders.payments:write."
+          description: "The scopes of that client, space-separated, as CommerceOS holds them. A client created in the back office for an integration has: me geo:read orders.sales:write orders.payments:write payment-records:write payment-means:read, and the administrator adds <store>:write when the integration keeps state in a key-value store. Send the string back as scope in the token request, or the subset you need: me, orders.payments:write and your store scope. An install changes none of the client's scopes, and a token never carries a scope the client lacks."
       required:
         - "cosBaseUrl"
         - "tokenUrl"
@@ -1143,42 +1143,52 @@ components:
           additionalProperties:
             type: "string"
     ConfigTypeString:
-      description: "The type of one configuration field, written as in the CommerceOS API's own type declarations. Base types: string, number, boolean, object (give it members), and any array type such as string[] or object[]. A union of quoted values: 'TEST' or 'LIVE' (two or more; the recommended separator is or, and | or , are also read). A trailing ? makes the field optional. Nothing else is accepted: no named types, no (read-only), no and. Only string, number, boolean and quoted unions are validated on save; arrays and object are stored as entered."
+      description: "The type of one configuration member, written as in the CommerceOS API's own type declarations: one base and an optional trailing ? for optional. Bases: string, number, boolean; secret (a string that CommerceOS masks for administrators and shows in clear only to your integration); a union of quoted values such as 'TEST' or 'LIVE' (two or more, joined by or only; add or null for an optional one); the name of another type of the schema (a nested group of fields), or that name followed by [] (a list of them); string[] or number[] (a list of scalars); object or object[] (free-form JSON). Nothing else: no (read-only), no and, and no name that is also a type of the CommerceOS API (secret, string, product, ...). A member without ? or or null is required: the form shows Required until it has a value, and the configuration is refused without it."
       type: "string"
-      pattern: "^(string|number|boolean|object|[A-Za-z]+\\[\\]|'[^']+'(\\s*(or|\\||,)\\s*'[^']+')*)\\??$"
+      pattern: "^\\S.*$"
     ConfigMember:
-      description: "One configuration field. The back office shows description as the label when present, else title, and title as the placeholder. A field whose type has no trailing ? is required: the form shows 'Required' until it has a value."
+      description: "One configuration member. The administrator sees title as the label, else description, else the member name; with both, the description sits behind an info icon beside the label. A member has no nested members: a group is a member typed with another type of the schema."
       type: "object"
       properties:
         type:
           "$ref": "#/components/schemas/ConfigTypeString"
         title:
           "$ref": "#/components/schemas/LocalizableString"
-          description: "The field label, or the placeholder when description is present."
+          description: "The label of the field."
         description:
           "$ref": "#/components/schemas/LocalizableString"
-          description: "Help text. When present it is the label the administrator sees."
-        members:
-          type: "object"
-          additionalProperties:
-            "$ref": "#/components/schemas/ConfigMember"
-          description: "For type object: the nested fields, rendered as a group."
+          description: "Help text, shown behind an info icon when title is present, else as the label."
+        multiline:
+          type: "boolean"
+          description: "On a string member: edited as a block of text, for a PEM certificate for example. A secret is always a single-line password field."
       required:
         - "type"
-    ConfigSchema:
-      description: "The answer of GET /config-schema: a form description, not a JSON Schema. It has the shape of the CommerceOS API's own type declarations: title, description and members, each member with a type string. The back office renders one field per member when an administrator edits the configuration of your integration on an organization node, and stores the values. Your integration reads them back through GET /v1/context/config/{configId} and validates them in POST /test. members may be empty when the integration needs no configuration."
+    ConfigType:
+      description: "One type of the configuration schema: a description and its members. The type named by configurationType is what the administrator's configuration is an instance of; the other types are the groups its members refer to."
       type: "object"
       properties:
-        title:
-          "$ref": "#/components/schemas/LocalizableString"
-          description: "The title of the configuration form."
         description:
           "$ref": "#/components/schemas/LocalizableString"
-          description: "Help text under the title."
+          description: "What the type is. Optional: CommerceOS fills in the type name."
         members:
           type: "object"
           additionalProperties:
             "$ref": "#/components/schemas/ConfigMember"
-          description: "The fields, keyed by the property name that the stored configuration object uses."
+          description: "The members, keyed by the property name that the stored configuration object uses. Empty on the configuration type when your integration needs no configuration."
       required:
         - "members"
+    ConfigSchema:
+      description: "The answer of GET /config-schema: the types of your configuration, written in the notation of the CommerceOS API's own type declarations, not a JSON Schema. schema is a map of types by name, and configurationType names the one that the administrator fills in for your integration on an organization node; a nested group is a member typed with another type of the map. The back office renders one field per member of the configuration type and stores the values. Your integration reads them back through GET /v1/context/config/{configId}, which also echoes the schema, and validates them in POST /test. A type name may contain spaces and must not be the name of a CommerceOS API type."
+      type: "object"
+      properties:
+        schema:
+          type: "object"
+          additionalProperties:
+            "$ref": "#/components/schemas/ConfigType"
+          description: "The types by name. configurationType must be one of them."
+        configurationType:
+          type: "string"
+          description: "The name of the type that the configuration is an instance of, one of the keys of schema."
+      required:
+        - "schema"
+        - "configurationType"

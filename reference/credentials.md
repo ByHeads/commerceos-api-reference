@@ -261,7 +261,7 @@ Every `:write` scope has a `:read` twin that exposes the same collections read-o
 | `integrations` | `integrations:read` | restricted: see [below](#the-two-restricted-twins-integrationsread-and-adminread) |
 | `admin` | `admin:read` | restricted: see [below](#the-two-restricted-twins-integrationsread-and-adminread) |
 
-`me`, `advanced`, `config`, `kv` and `pos.supervisor:write` have no read variant. `org:read`, `suppliers:read`, `customers:read`, `users:read` and `payment-means:read` are read-only families with no write scope of their own. `deliveries:*` and `returns:*` are pairs too; they are covered in [Working with Purchasing → Scopes](working-with/purchasing.md#scopes).
+`me`, `advanced`, `config` and `pos.supervisor:write` have no read variant. `org:read`, `suppliers:read`, `customers:read`, `users:read` and `payment-means:read` are read-only families with no write scope of their own. `deliveries:*` and `returns:*` are pairs too; they are covered in [Working with Purchasing → Scopes](working-with/purchasing.md#scopes).
 
 Two things a read twin never gets are the members of a write scope that are not collections: `/v1/stock-reset` under `stock:write`, and the `renderTemplate` operator under `pos:write`.
 

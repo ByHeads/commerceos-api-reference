@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { startCosStandIn, orderStatus } from "./cos.mjs";
 
 const token = async (cos, clientId = "play", clientSecret = "play-secret") => {
-    const form = new URLSearchParams({ grant_type: "client_credentials", client_id: clientId, client_secret: clientSecret, scope: "kv" });
+    const form = new URLSearchParams({ grant_type: "client_credentials", client_id: clientId, client_secret: clientSecret, scope: "me com.example.piggy:write" });
     return fetch(`${cos.url}/oauth2/v1/token`, { method: "POST", body: form });
 };
 const bearer = async cos => `Bearer ${(await (await token(cos)).json()).access_token}`;
@@ -23,15 +23,17 @@ test("the token endpoint answers the install client and refuses another", async 
     }
 });
 
-test("the key-value store round-trips a value and the configuration answers the context id", async () => {
+test("the store round-trips a value and the configuration answers the context id", async () => {
     const lines = [];
     const cos = await startCosStandIn({ log: line => lines.push(line) });
     try {
         const headers = { authorization: await bearer(cos), "content-type": "application/json" };
-        const url = `${cos.url}/api/v1/kv/com.example.piggy/pay-1`;
+        const url = `${cos.url}/api/v1/context/com.example.piggy/pay-1`;
         assert.equal((await fetch(url, { method: "PUT", headers, body: JSON.stringify({ state: "pending" }) })).status, 200);
         assert.deepEqual(await (await fetch(url, { headers })).json(), { state: "pending" });
-        assert.equal((await fetch(url, { method: "DELETE", headers })).status, 200);
+        const deleted = await fetch(url, { method: "DELETE", headers });
+        assert.equal(deleted.status, 200);
+        assert.deepEqual(await deleted.json(), { deletedCount: 1, info: "Deleted 1 items" });
         const missing = await fetch(url, { headers });
         assert.equal(missing.status, 200, "like CommerceOS, a missing entry is not a 404");
         assert.equal(await missing.json(), null);
@@ -39,8 +41,25 @@ test("the key-value store round-trips a value and the configuration answers the 
         assert.equal(malformed.status, 400, "a malformed body is answered, not thrown");
         assert.match((await malformed.json()).errors[0].message, /JSON/);
         const config = await (await fetch(`${cos.url}/api/v1/context/config/EPI1`, { headers })).json();
-        assert.deepEqual(config, { configuration: { merchantId: "M-0001", environment: "TEST" }, configurationHash: "cos-sim-1" });
-        assert.deepEqual(lines.slice(0, 3), ["POST /oauth2/v1/token 200", "PUT /api/v1/kv/com.example.piggy/pay-1 200", "GET /api/v1/kv/com.example.piggy/pay-1 200"]);
+        assert.deepEqual(config, { "@type": "EPI configuration assignment", configuration: { merchantId: "M-0001", environment: "TEST" }, configurationHash: "GoX_BCsLy-8XeQboK40yk1Aw-S4W43l5zxk4l4XigA0", configurationType: "piggy configuration", schema: { "piggy configuration": { description: "Merchant account at Piggy Bank", members: { merchantId: { type: "string", title: "Merchant id" }, environment: { type: "'TEST' or 'LIVE'", title: "Environment", description: "TEST until go-live" } } } } });
+        assert.deepEqual(lines.slice(0, 3), ["POST /oauth2/v1/token 200", "PUT /api/v1/context/com.example.piggy/pay-1 200", "GET /api/v1/context/com.example.piggy/pay-1 200"]);
+    } finally {
+        await cos.close();
+    }
+});
+
+test("a write replaces the value, PATCH the same as PUT; PUT null deletes; the store itself lists nothing", async () => {
+    const cos = await startCosStandIn();
+    try {
+        const headers = { authorization: await bearer(cos), "content-type": "application/json" };
+        const url = `${cos.url}/api/v1/context/com.example.piggy/pay-2`;
+        const write = (method, value) => fetch(url, { method, headers, body: JSON.stringify(value) }).then(r => r.json());
+        assert.deepEqual(await write("PUT", { sessionId: "PB-1", state: "waiting" }), { sessionId: "PB-1", state: "waiting" }, "the body is echoed");
+        assert.deepEqual(await write("PATCH", { state: "settled" }), { state: "settled" }, "PATCH echoes too");
+        assert.deepEqual(await (await fetch(url, { headers })).json(), { state: "settled" }, "replaced, not merged: sessionId is gone");
+        assert.equal(await write("PUT", null), null);
+        assert.equal(await (await fetch(url, { headers })).json(), null, "a null write is a delete");
+        assert.deepEqual(await (await fetch(`${cos.url}/api/v1/context/com.example.piggy`, { headers })).json(), {}, "a store never lists its keys");
     } finally {
         await cos.close();
     }
