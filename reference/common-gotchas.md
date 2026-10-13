@@ -2158,7 +2158,7 @@ POST /v1/receipts
 
 `tryFulfill` answers the same text after `Could not fulfill order.`. The same refusal meets a product whose class has no rule in the seller's area — a class of your own before you gave it a rule, or a tenant that has not installed a VAT area yet.
 
-**The fix is a class on the group, once:** `PATCH /v1/product-groups/{id}` with `{"vatClass": {"identifiers": {"com.heads.seedID": "vat-class-standard"}}}`, and every product under it inherits. Installing the Swedish area with its rules is `POST /v1/vat-areas` with `[{"identifiers": {"com.heads.seedID": "vat-area-se"}}]`. To find the products at risk before the till does:
+**The fix is a class on the group, once:** `PATCH /v1/product-groups/{id}` with `{"vatClass": {"identifiers": {"com.heads.seedID": "vat-class-standard"}}}`, and every product under it inherits. That mends the receipt and every order created from then on; an order that already holds the line keeps its VAT when it is sent again, so create a new order under a new identifier. Installing the Swedish area with its rules is `POST /v1/vat-areas` with `[{"identifiers": {"com.heads.seedID": "vat-area-se"}}]`. To find the products at risk before the till does:
 
 ```bash
 GET /v1/products~where(vatClass=null)~just(identifiers,name)

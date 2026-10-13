@@ -64,7 +64,7 @@ Agents (vatId) ─ VAT registrations
 | **VAT class** | A country-neutral classification of products: Food, Books, Standard rate. Set on products, families and groups through `vatClass`. |
 | **VAT area** | A territory with one set of rules: Sweden, Norway, Åland. Has a taxing country, a time zone and an EU VAT scope. |
 | **VAT rule** | How one class is treated in one area over a period: a treatment, a percentage or an exemption reason, `from` and `to`. |
-| **VAT rate default** | Which class a bare percentage stands for in an area (25 → Standard rate in Sweden). Used when the platform is given only a percentage, as in migrated or imported data. |
+| **VAT rate default** | Which class a bare percentage stands for in an area (25 → Standard rate in Sweden). |
 | **VAT registration** | An agent's VAT number. The home registration is what `vatId` reads and writes; further registrations each name a country. |
 | **Treatment** | How a line is taxed: `Standard`, `ZeroRated`, `Exempt`, `OutsideScope`, and on sales across a border `ReverseCharge`, `IntraEuSupply`, `Export`. |
 | **Reference pack** | The classes, areas, rules and rate defaults Heads ships for SE, NO, DK, FI and AX. Addressed by `com.heads.seedID`. |
@@ -79,11 +79,11 @@ Agents (vatId) ─ VAT registrations
 
 - A **VAT class** is a country-neutral classification of products. One list serves every area. A class has `supplyKind` `Goods` (the default) or `Services`; cross-border VAT treats the two differently.
 - A **VAT area** is a territory with one set of rules. It has a `taxingCountry`, an IANA `timeZone` (the midnight a rate change takes effect at) and `euVatScope`, the supply kinds under EU VAT in the area: `["Goods","Services"]` for a member state, `["Services"]` for Åland, empty outside the EU. Empty means the taxing country's EU membership decides.
-- A **VAT rule** says how one class is treated in one area over a period: `treatment` `Standard` (with a positive `percentage`), `ZeroRated` (taxable at 0 %), `Exempt` or `OutsideScope` (no VAT; `exemptionReason` carries a VATEX code such as `VATEX-EU-G`), with `from` and `to` instants, open when omitted. At most one rule covers a class in an area at any instant. **A rate change is a new rule**: close the current one with `to`, create the next with `from` on the same instant. A rule's other fields are fixed once created.
+- A **VAT rule** says how one class is treated in one area over a period: `treatment` `Standard` (with a `percentage` from 0 to 100), `ZeroRated` (taxable at 0 %), `Exempt` or `OutsideScope` (no VAT; `exemptionReason` may carry a VATEX code such as `VATEX-EU-G`), with `from` and `to` instants, open when omitted. At most one rule covers a class in an area at any instant. **A rate change is a new rule**: close the current one with `to`, create the next with `from` on the same instant. A rule's other fields are fixed once created.
 - A **VAT rate default** says which class a bare percentage stands for in an area. One per area and percentage.
 - A **VAT registration** is an agent's VAT number. The home registration (no country) is what `vatId` reads and writes; further registrations each name the country they apply in.
 - **Products** get a class through `vatClass` on a product, family or group. A product without a class, own or inherited, cannot be sold. `vatRates` on a product shows the treatment and rate it carries in each area right now.
-- **How a sale is taxed.** The rule for the line's class in the area of the place the sale is supplied from (the store's stock root, its address, its country, the country's `vatArea`; a tenant with a single area falls back to it), at the receipt's or delivery's timestamp. Goods shipped to another area or country are `Export` or `IntraEuSupply` at 0 % with a VATEX reason, decided by the areas' `euVatScope` (a destination country with no area by its EU membership). The treatment the line ended up with is stamped on the receipt item and VAT group.
+- **How a sale is taxed.** The rule for the line's class in the area of the place the sale is supplied from (the place supplied from, else the store's stock root through its place chain, else the store's main or delivery address, else the place supplied to; a tenant with a single area falls back to it), at the receipt's or delivery's timestamp. Goods shipped to another area or country are `Export` or `IntraEuSupply` at 0 % with a VATEX reason, decided by the areas' `euVatScope` (a destination country with no area by its EU membership). The treatment the line ended up with is stamped on the receipt item and VAT group.
 - **The reference pack.** Heads ships classes, areas, rules and rate defaults for SE, NO, DK, FI and AX. A tenant installs an area from it with one request; the platform re-applies the pack at every start, so pack rows that are still as shipped cannot be deleted.
 
 Treatments a client can **read** on receipts and reports: `Standard`, `ZeroRated`, `Exempt`, `ReverseCharge`, `IntraEuSupply`, `Export`, `OutsideScope`. Treatments a client can **write** on a rule: `Standard`, `ZeroRated`, `Exempt` and `OutsideScope` only; any other value is `400 Invalid data format`.
@@ -120,8 +120,8 @@ All five VAT collections are under `products:read` / `products:write`, with read
 | `vatArea` | VAT area reference | yes, required on create | Rendered expanded with its essentials |
 | `vatClass` | VAT class reference | yes, required on create | Rendered expanded with its essentials |
 | `treatment` | `Standard`, `ZeroRated`, `Exempt`, `OutsideScope` | yes | |
-| `percentage` | decimal string | yes | Required and positive for `Standard`; absent otherwise |
-| `exemptionReason` | string | yes | A VATEX code for `Exempt` and `OutsideScope`; not allowed on `Standard` |
+| `percentage` | decimal string | yes | Required for `Standard`, 0 to 100 inclusive; `0` or absent otherwise, reads `0` |
+| `exemptionReason` | string | yes | Optional on `Exempt` and `OutsideScope`, a VATEX code such as `VATEX-EU-G`; refused on `Standard` and `ZeroRated` |
 | `from`, `to` | date-time or `null` | yes | Period; `null` means open in that direction |
 
 `vatArea`, `vatClass`, `treatment`, `percentage`, `exemptionReason` and `from` are fixed at creation. `to` can only be moved earlier, and not into the past. See [Changing a rate](#changing-a-rate).
@@ -289,7 +289,7 @@ GET /v1/vat-classes/com.heads.seedID=vat-class-food
  {"@type":"VAT class","identifiers":{"@type":"common identifiers","key":"dd589674daf2e0f58b3406f6f717fa14","com.heads.seedID":"vat-class-passenger-transport"},"name":"Persontransport","supplyKind":"Services"}]
 ```
 
-`supplyKind` reads `null` unless it is `Services`.
+`supplyKind` is `null` when unset, which means goods; the pack sets it on its three Services classes only.
 
 ### Creating Your Own Class
 
@@ -325,8 +325,8 @@ This creates the area "Sverige" (`SE`, `Europe/Stockholm`, `["Goods","Services"]
 | `vat-area-se` | Sverige | 14 | 25, 12, 6, 0 |
 | `vat-area-no` | Norge | 10 | 25, 15, 12, 0 |
 | `vat-area-dk` | Danmark | 10 | 25, 0 |
-| `vat-area-fi` | Finland | the Finnish rates | 25.5, 14, 13.5, 10, 0 |
-| `vat-area-ax` | Åland | the Finnish rates | 25.5, 14, 13.5, 10, 0 |
+| `vat-area-fi` | Finland | 23 | 25.5, 14, 13.5, 10, 0 |
+| `vat-area-ax` | Åland | 23 | 25.5, 14, 13.5, 10, 0 |
 
 A conflict between the pack's rules and rules the tenant already has is a `400`, and nothing is applied. The platform re-applies the pack at every start, so pack rows that are still as shipped cannot be deleted (see the refusals under [VAT Rules](#vat-rules) and [VAT Rate Defaults](#vat-rate-defaults)).
 
@@ -341,7 +341,14 @@ POST /v1/vat-areas
   "timeZone": "Europe/Stockholm", "euVatScope": ["Goods", "Services"]}]
 ```
 
-Writing `taxingCountry` also binds the country to the area for the places in it (see [Countries, Areas and Terminals](#countries-areas-and-terminals)).
+`taxingCountry` says whose VAT the area charges; it does not bind the country's places to the area. Bind the country yourself, under `geo:write`:
+
+```http
+PATCH /v1/countries/countryCode=SE
+{"vatArea": {"identifiers": {"com.example.id": "own"}}}
+```
+
+Until the country is bound, a store in it reaches the area only while it is the tenant's single area; with two or more areas its lines are refused with `400 No VAT rate applies to …`.
 
 ### Reading
 
@@ -403,7 +410,7 @@ POST /v1/vat-rules
   "treatment": "Standard", "percentage": "25"}]
 ```
 
-Omit `from` and `to` for a rule that is open at both ends. An `Exempt` or `OutsideScope` rule carries an `exemptionReason` (a VATEX code) instead of a percentage.
+Omit `from` and `to` for a rule that is open at both ends. An `Exempt` or `OutsideScope` rule has no percentage and may carry an `exemptionReason` (a VATEX code).
 
 ### Changing a Rate
 
@@ -420,7 +427,7 @@ POST /v1/vat-rules
   "treatment": "Standard", "percentage": "24", "from": "2026-12-31T23:00:00Z"}]
 ```
 
-Shortening `to` is the one change allowed on a pack rule. When a rate change is enacted, the pack's own successor rows arrive with a later platform release; if they overlap a rule you created yourself the pack is not applied, so a tenant that pre-empts a change should expect to reconcile its own rule against the pack's at that point.
+Shortening `to` is the one change allowed on a pack rule, and it has a price. The pack checks its rows at every start of the platform; a pack rule that ends earlier than shipped counts as changed, and the pack then applies nothing for the tenant: the back office warns `The VAT reference pack (version 2) could not be applied: Reference pack row vat-rule-se-standard: the tenant's rule differs in its end; reconcile it by hand.`, and installing another pack area answers `400` with the same `Reference pack row …` text. The change cannot be undone through the API: `to` only moves earlier, and a started rule cannot be deleted. The block ends no earlier than a platform release that ships the same change. That release clears your rule only if its `to` is not earlier than the pack's, the area's local midnight as in the example above; an end even an hour earlier keeps the pack blocked for good. The release's successor row also overlaps the rule you created, and the pack stays blocked until you delete yours, which you can do only before it starts. The pack then creates its own row at the next start; if the change takes effect before that start, the class has no rule in between and its lines are refused. Pre-empt a rate change only when you must, and never one the pack already ships.
 
 What a `PATCH` or `DELETE` on a rule does:
 
@@ -431,6 +438,7 @@ What a `PATCH` or `DELETE` on a rule does:
 | `to` earlier than the stored end, not before now, after `from` | `200` (the way to end a rule) |
 | `to` before now | `400 A VAT rule cannot be closed in the past.` |
 | `to` later than the stored end | `400 A VAT rule can only be shortened.` |
+| `to` after now but at or before `from` (a rule that has not started) | `400 A VAT rule cannot end before it starts; remove it instead.` |
 | `to: null` on a closed rule | `400 A VAT rule's end can only be moved earlier.` |
 | `DELETE` of a rule that has started | `400 A VAT rule that has started cannot be removed; close it instead.` |
 | `DELETE` of a rule that has not started | `200` |
@@ -444,8 +452,10 @@ All `400`:
 |---------|-----------|
 | No `treatment` | `A VAT rule needs a treatment.` |
 | `Standard` without `percentage` | `A Standard VAT rule needs a percentage.` |
+| `Standard` with a `percentage` below 0 or above 100 | `A VAT percentage must be between 0 and 100.` |
 | `Exempt` with a `percentage` | `A Exempt VAT rule has no percentage.` |
 | `Standard` with an `exemptionReason` | `A Standard VAT rule has no exemption reason.` |
+| `ZeroRated` with an `exemptionReason` | `A ZeroRated VAT rule has no exemption reason.` |
 | A treatment outside the four | `Invalid data format` (a `failed coercion` body naming the four values) |
 | A period another rule of the same class and area covers | `A VAT rule for Haircuts in Sverige already covers part of the period.` |
 
@@ -453,7 +463,7 @@ All `400`:
 
 ## VAT Rate Defaults
 
-A rate default says which class a bare percentage stands for in an area. The platform uses it when it is given only a percentage, as in migrated or imported data. One per area and percentage.
+A rate default says which class a bare percentage stands for in an area. One per area and percentage.
 
 ```bash
 GET /v1/vat-rate-defaults~where(vatArea/identifiers/com.heads.seedID=vat-area-se)
@@ -584,7 +594,7 @@ POST /v1/receipts
 → 400 No VAT rate applies to Docs unclassed; the line cannot be posted until a VAT rule covers it.
 ```
 
-`tryFulfill` answers the same text after `Could not fulfill order.`. The fix is a `vatClass` on the product or on one of its groups.
+`tryFulfill` answers the same text after `Could not fulfill order.`. The fix is a `vatClass` on the product or on one of its groups. That mends the receipt and every order created from then on. An order that already holds the line keeps the VAT it was priced with: sending the same order again does not price it again, and neither does writing a line's `unitAmountExclVat` with the value it has. Create a new order, under a new identifier, once the class is in place. A different `unitAmountExclVat` on any of the order's lines (`PATCH /v1/trade-order-items/{key}`) also prices the whole order again.
 
 ---
 
@@ -688,8 +698,8 @@ On a Z report (`/v1/z-reports`), `vatSummation` is a map by rate and sums everyt
 
 ## Countries, Areas and Terminals
 
-- **`country.vatArea`** is the area the country's places are taxed in. Not in the default read: `GET /v1/countries/countryCode=SE~with(vatArea)` reads `"vatArea": {... "com.heads.seedID": "vat-area-se", "name": "Sverige" ...}`. Written under `geo:write`. Installing a pack area or writing `taxingCountry` on an area binds the country.
-- **A terminal's fiscal jurisdiction** is the taxing country of its store's VAT area. `POS profile.legalJurisdiction` has no effect: it reads `null`, and a write is accepted and discarded.
+- **`country.vatArea`** is the area the country's places are taxed in. Not in the default read: `GET /v1/countries/countryCode=SE~with(vatArea)` reads `"vatArea": {... "com.heads.seedID": "vat-area-se", "name": "Sverige" ...}`. Written under `geo:write`. Installing a pack area binds its country when the country has no area yet; writing `taxingCountry` on an area does not — write this member.
+- **A terminal's fiscal jurisdiction** is the taxing country of its store's VAT area.
 - **Moving a terminal with receipts to another jurisdiction is refused.** `PATCH /v1/countries/{code}` with `vatArea`, `PATCH /v1/vat-areas/{key}` with `taxingCountry` and `PATCH /v1/pos-terminals/{key}` with `associatedNode` answer `409 POS terminal '<name>' has issued receipts under its jurisdiction.` when a terminal that has issued receipts would end up under another taxing country. Terminals without receipts move with `200`.
 
 ---
@@ -708,15 +718,16 @@ On a Z report (`/v1/z-reports`), `vatSummation` is a map by rate and sums everyt
 | Close a rule | PATCH | `/v1/vat-rules/{id}` with `{"to": ...}` | `products:write` |
 | List rate defaults | GET | `/v1/vat-rate-defaults` | `products:read` |
 | Create a rate default | POST | `/v1/vat-rate-defaults` | `products:write` |
-| Home VAT number | PATCH | `/v1/companies/{id}` with `{"vatId": ...}` | `org:write` |
+| Home VAT number | PATCH | `/v1/companies/{id}` with `{"vatId": ...}` | `supply-chains:write` |
 | Other registrations | POST | `/v1/vat-registrations` | `products:write` |
 | An agent's registrations | GET | `/v1/vat-registrations~where(holder=<key>)` | `products:read` |
 | Set a product's class | PATCH | `/v1/products/{id}` with `{"vatClass": ...}` | `products:write` |
 | Set a group's class | PATCH | `/v1/product-groups/{id}` with `{"vatClass": ...}` | `products:write` |
 | A product's class and rates | GET | `/v1/products/{id}~with(vatClass,vatRates)` | `products:read` |
 | A country's area | GET | `/v1/countries/{code}~with(vatArea)` | `geo:read` |
-| Receipt VAT groups | GET | `/v1/receipts/{id}~with(vatGroups)` | `receipts:read` |
-| Receipt item stamps | GET | `/v1/receipts/{id}/items~with(vatArea,vatTreatment,vatExemptionReason,supplyKind)` | `receipts:read` |
+| Bind a country to an area | PATCH | `/v1/countries/{code}` with `{"vatArea": ...}` | `geo:write` |
+| Receipt VAT groups | GET | `/v1/receipts/{id}~with(vatGroups)` | `retail:read` |
+| Receipt item stamps | GET | `/v1/receipts/{id}/items~with(vatArea,vatTreatment,vatExemptionReason,supplyKind)` | `retail:read` |
 
 ---
 
@@ -724,11 +735,11 @@ On a Z report (`/v1/z-reports`), `vatSummation` is a map by rate and sums everyt
 
 | Status | Where | Cause | Resolution |
 |--------|-------|-------|------------|
-| 400 `No VAT rate applies to <product>; the line cannot be posted until a VAT rule covers it.` | `POST /v1/receipts`, `tryApprove`, `tryFulfill` | The product has no class, own or inherited, or its class has no rule in the seller's area | Set `vatClass` on the product or its group; give your own class a rule |
+| 400 `No VAT rate applies to <product>; the line cannot be posted until a VAT rule covers it.` | `POST /v1/receipts`, `tryApprove`, `tryFulfill` | The product has no class, own or inherited, or its class has no rule in the seller's area | Set `vatClass` on the product or its group, or give your own class a rule; then create a new order (an existing order sent again keeps its VAT) |
 | 400 `A VAT rule for <class> in <area> already covers part of the period.` | `POST /v1/vat-rules` | Overlapping period | Close the current rule first |
 | 400 `A VAT rule's <field> is fixed at creation; close the rule and create the next.` | `PATCH /v1/vat-rules/{id}` | Editing a rule's rate | Close and create |
 | 400 `A VAT rule that has started cannot be removed; close it instead.` | `DELETE /v1/vat-rules/{id}` | | Set `to` |
-| 400 `The VAT reference pack ships this rule and restores it at the next start.` | `DELETE` of a pack rule | | Shorten `to` instead |
+| 400 `The VAT reference pack ships this rule and restores it at the next start.` | `DELETE` of a pack rule | | Leave the rule; shorten `to` only to pre-empt a change (see [Changing a Rate](#changing-a-rate)) |
 | 400 `Sverige already has a default class for 12%.` | `POST /v1/vat-rate-defaults` | One default per area and percentage | Change the existing default's `vatClass` |
 | 400 `A supply kind is 'Goods' or 'Services', not '<value>'.` | class `supplyKind`, area `euVatScope` | | |
 | 400 `Unknown IANA time zone: '<zone>'.` | area `timeZone` | | |
@@ -757,6 +768,8 @@ GET /v1/vat-rules~where(vatArea/identifiers/com.heads.seedID=vat-area-se)~just(i
 ```
 
 Idempotent; put it at the start of every deployment script.
+
+A tenant with an area of its own binds the area's country in the same phase: `PATCH /v1/countries/countryCode=SE` with `{"vatArea": {"identifiers": {"com.example.id": "own"}}}` (see [Countries, Areas and Terminals](#countries-areas-and-terminals)).
 
 ### Phase 2: Classes on Groups
 
@@ -905,7 +918,7 @@ The order's `totalAmount` is `1265`; the lines read as in [VAT in Trade Orders](
 "totalTaxAmount": "215"
 ```
 
-The loaf and the novel share one group: same area, treatment and rate. When the food rate returns to 12 % on 2028-01-01 the loaf's shelf price stays `53` and its net becomes `47.32`; the novel stays `150` net and goes to `168` on the shelf; and the two land in separate groups.
+The loaf and the novel share one group: same area, treatment and rate. When the food rate returns to 12 % on 2028-01-01 the loaf's shelf price stays `53` and its net becomes `47.32`; the novel is books, taxed at 6 % with no end date, so it stays `150` net and `159` on the shelf; and the two land in separate groups, one at 12 % and one at 6 %.
 
 ---
 
@@ -917,7 +930,7 @@ The loaf and the novel share one group: same area, treatment and rate. When the 
 2. **A product with no class cannot be sold.** `vatClass: null` and `vatRates: []` on a product mean a `400 No VAT rate applies to …` at the receipt or the order action. Set the class on the group.
 3. **Say which basis a price is in.** `includesTax: true` for a shelf price, `false` (the default) for net. A gross amount sent without the flag is taxed again.
 4. **A rate change is a new rule.** Close with `to`, create the next with `from` on the same instant. Nothing else on a rule changes.
-5. **Pack rows cannot be deleted.** Shorten a pack rule's `to`, or change a pack default's `vatClass`; the pack restores the row at the next start otherwise.
+5. **Pack rows cannot be deleted.** Shorten a pack rule's `to`, or change a pack default's `vatClass`; the pack restores the row at the next start otherwise. Shortening a pack rule's `to` stops the pack from applying, at least until a release ships the same change (see [Changing a Rate](#changing-a-rate)).
 6. **Group receipts by area, treatment and rate**, not by rate alone: two groups can share a percentage.
 7. **`vatClass` is not in the default read.** Ask with `~with(vatClass)` on products, families and groups; it reads the class in effect, inherited or own.
 8. **A rate default maps a percentage to a class, not to a product kind.** A bare 12 in Sweden is `vat-class-reduced-12`; food is `vat-class-food`.
@@ -927,9 +940,10 @@ The loaf and the novel share one group: same area, treatment and rate. When the 
 | Mistake | Result | Fix |
 |---------|--------|-----|
 | A gross amount sent without `includesTax: true` | Taxed again | Set the flag |
-| A product under no classed group and with no class of its own | `400 No VAT rate applies to …` | `vatClass` on the group |
+| A product under no classed group and with no class of its own | `400 No VAT rate applies to …` | `vatClass` on the group, then create a new order |
 | Editing a rule's percentage | `400 … fixed at creation` | Close the rule, create the next |
-| Deleting a pack rule or default | `400 The VAT reference pack ships …` | Shorten `to`; change `vatClass` |
+| Deleting a pack rule or default | `400 The VAT reference pack ships …` | Change a pack default's `vatClass`; shorten a pack rule's `to` only to pre-empt a change (see [Changing a Rate](#changing-a-rate)) |
+| Shortening a pack rule's `to` ahead of a release | The pack applies nothing; another pack area cannot be installed | None through the API before a release ships the same change; see [Changing a Rate](#changing-a-rate) |
 | Reading `vatClass` without `~with` | The member is absent and looks unset | `~with(vatClass,vatRates)` |
 | Summing receipt VAT by percentage alone | Two groups at 0 % collapse | Key by area, treatment, percentage and exemption reason |
 | A second home registration through `/v1/vat-registrations` | `400 … its vatId changes the number.` | Write `vatId` on the agent |
