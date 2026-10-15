@@ -66,6 +66,7 @@ The investment in BI integration pays off through:
 ```
 Receipt
   ├── identifiers ────────────────── key, receiptID
+  ├── checkoutId ─────────────────── The POS checkout the receipt came out of (null on imported receipts)
   ├── seller (Agent) ─────────────── Store/company
   ├── buyer (Agent) ──────────────── Customer (if known)
   ├── posTerminal (POSTerminal) ──── Terminal that created receipt
@@ -89,6 +90,7 @@ Receipt
   │     ├── vatTreatment ─────────── Standard, ZeroRated, Exempt, ReverseCharge, IntraEuSupply, Export, OutsideScope (non-essential)
   │     ├── vatExemptionReason ───── VATEX code when the treatment carries one, else null (non-essential)
   │     ├── supplyKind ───────────── Goods or Services (non-essential)
+  │     ├── restock ──────────────── Return line: did the units go back into stock? null on sale lines (non-essential)
   │     └── instances[] ──────────── IMEI/serial data (item subpaths currently unsupported)
   ├── payments (Payment[]) ───────── Payment transactions
   │     ├── method ───────────────── Payment method
@@ -109,6 +111,7 @@ Receipt
 |-------|------|-------------|
 | `identifiers.key` | string | Primary key, dedup |
 | `identifiers.receiptID` | string | Human-readable ID, display |
+| `checkoutId` | string | Grouping the Return and Sale receipt of one basket |
 | `timestamp` | datetime | Time dimensions, partitioning |
 | `seller.identifiers` | object | Store/location analysis |
 | `buyer.identifiers` | object | Customer analysis |
@@ -117,6 +120,7 @@ Receipt
 | `totalDiscountAmount` | decimal | Discount analysis |
 | `items[].product` | reference | Product performance |
 | `items[].quantity` | decimal | Units sold |
+| `items[].restock` | boolean, nullable | Stock reconciliation: a return line with `false` never re-entered stock (`~with(restock)`) |
 | `payments[].method` | reference | Payment method mix |
 
 ### Receipt vs Trade Order
@@ -273,6 +277,7 @@ Two things to settle before this feeds a warehouse loader. **An array-valued mem
 **Receipt Level:**
 - [ ] `identifiers.key` — Primary key
 - [ ] `identifiers.receiptID` — Display ID
+- [ ] `checkoutId` — The checkout the receipt came out of; the Return and the Sale receipt of one basket share it, imported receipts have `null`
 - [ ] `timestamp` — Transaction time
 - [ ] `seller.identifiers` — Store reference
 - [ ] `buyer.identifiers` — Customer reference
@@ -296,6 +301,7 @@ Two things to settle before this feeds a warehouse loader. **An array-valued mem
 - [ ] `items[].totalAmount` — Line total (incl. VAT)
 - [ ] `items[].discountAmount` — Discount amount
 - [ ] `items[].vatPercentage` — Tax rate
+- [ ] `items[].restock` — Return line: `true` went back into stock, `false` kept aside, `null` not a return — non-essential, needs `~with(restock)`
 
 Note: receipt item subpaths for `discounts` and `instances` are currently unsupported, so avoid relying on those expansions in receipt exports.
 
@@ -597,7 +603,7 @@ Returns create separate receipts with negative amounts:
 }
 ```
 
-> **Note:** The schema has no `originalReceipt` field. If you need to link returns to original receipts, use a namespaced identifier like `com.acme.originalReceiptKey` in the receipt's identifiers.
+> **Note:** The schema has no `originalReceipt` field. If you need to link returns to original receipts, use a namespaced identifier like `com.acme.originalReceiptKey` in the receipt's identifiers, or walk the return line's `related` array to the sale that owns the matched line (below). A Return receipt and a Sale receipt rung up in the *same* basket share a `checkoutId` and list each other as `checkoutSiblings`; that is the purchase made alongside the return, not the sale it reverses. See [Receipts of One Checkout](../receipts.md#receipts-of-one-checkout-checkoutid-and-checkoutsiblings).
 
 ### Identifying Returns in Analytics
 
@@ -665,6 +671,30 @@ ORDER BY return_value DESC
 ```
 
 > **Note:** Return reasons are captured at the store/POS level and may be stored in your external systems. The receipt schema captures the transaction details but not the reason for return.
+
+**Stock reconciliation from receipts: skip the lines that were not restocked**
+
+A return line carries `restock` — whether the returned units went back into stock, as chosen at the till (the return reason's default unless the cashier changed it); `null` when the line is not a return. It is non-essential, so ask for it:
+
+```bash
+# Return receipts with the restock flag on every line
+GET /v1/receipts~where(totalAmount<0)~with(items~with(product,restock))~take(100)
+```
+
+A returned unit with `restock: false` — damaged, sent back to the supplier, written off — never re-entered stock. A reconciliation that derives on-hand movements from receipt quantities must leave those lines out, or it credits stock the store does not have:
+
+```sql
+-- Units that actually moved on the shelf: sales out, restocked returns back in
+SELECT
+  product_key,
+  SUM(CASE WHEN quantity > 0 THEN quantity ELSE 0 END)                        AS units_sold,
+  SUM(CASE WHEN quantity < 0 AND restock = TRUE THEN ABS(quantity) ELSE 0 END) AS units_restocked,
+  SUM(CASE WHEN quantity < 0 AND restock = FALSE THEN ABS(quantity) ELSE 0 END) AS units_returned_not_restocked
+FROM fact_receipt_item
+GROUP BY product_key
+```
+
+See [Receipts → Return Lines: `restock`](../receipts.md#return-lines-restock).
 
 **Linking a return line back to the sale it reverses**
 
@@ -1022,6 +1052,7 @@ CREATE TABLE fact_receipt_header (
     total_payable_amount DECIMAL(18,2),
     total_paid_amount DECIMAL(18,2),
     transaction_type VARCHAR(10), -- SALE or RETURN
+    checkout_id VARCHAR(36), -- shared by the Return and Sale receipt of one basket; NULL on imported receipts
     loaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -1037,6 +1068,7 @@ CREATE TABLE fact_receipt_item (
     discount_amount DECIMAL(18,2),
     vat_percentage DECIMAL(5,2),
     return_reason_key VARCHAR(64),
+    restock BOOLEAN, -- return lines only: FALSE never re-entered stock; NULL on sale lines
     PRIMARY KEY (receipt_key, line_number)
 );
 

@@ -38,7 +38,32 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/pos-terminals" \
 curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/pos-terminals/posTerminalName=Kassa%202" \
   -H "Content-Type: application/json" \
   -d '{"status": "Inactive"}'
+
+# The plain-paper (A4/Letter) printer and its template, beside receiptPrinter / receiptTemplate,
+# and the customer display's screen and scale
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/pos-terminals/posTerminalName=Kassa%202" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "documentPrinter": {"identifiers": {"com.myapp.printerId": "OFFICE-A4"}},
+    "documentTemplate": {"identifiers": {"templateId": "a4-receipt"}},
+    "secondaryScreenIndex": 2,
+    "customerDisplayScale": 120
+  }'
+
+# None of the printer, template, display or sequence members is in the default body
+# (a plain GET is identifiers, status, profile and associatedNode) - name them
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/pos-terminals/posTerminalName=Kassa%202~just(receiptPrinter,receiptTemplate,documentPrinter,documentTemplate,secondaryScreenIndex,customerDisplayScale,receiptSequence,receiptCopySequence)"
 ```
+
+| Member | Type | Meaning |
+|---|---|---|
+| `documentPrinter` | printer | The plain-paper (A4/Letter) printer. Empty means everything prints on `receiptPrinter`. |
+| `documentTemplate` | template | The template for receipts printed on the `documentPrinter`. Empty means `receiptTemplate`. |
+| `secondaryScreenIndex` | number | The screen index of the customer display (secondary screen). Empty means 1. |
+| `customerDisplayScale` | number | Scale factor of the customer display in percent (0–200), sizing its text, logo and other elements. Empty means 100. |
+| `receiptCopySequence` | serial, read-only | The sequence number for receipt copies printed by the POS terminal; copies carry a sequence of their own. `null` on a new terminal until the till prints its first copy; from then on its own serial, with the prefix `COPY_` in front of the receipt prefix. |
+
+A `pos:read` key reads every one of these, printers and templates included, exactly as a `pos:write` key does. A terminal's `receiptSequence` and `receiptCopySequence` are serials, whose root lies outside the `pos:*` scopes: a key holding only `pos:read` or `pos:write` reads both as `null`, which is indistinguishable from a terminal that has none — the admin key, or a key that also holds the scope serving serials, sees them.
 
 ---
 
@@ -137,7 +162,66 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/pos-profiles" \
 curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/pos-profiles/posProfileId=quick-service" \
   -H "Content-Type: application/json" \
   -d '{"name": "Fast Food Profile"}'
+
+# Everything beyond name is outside the default body (a plain GET is identifiers and name):
+# name the settings you want, or ~withAll
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/pos-profiles/posProfileId=quick-service~just(showProductFamiliesAs,productFamilyInteraction,cartItemCountVisibility,separateOrderCheckout)"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/pos-profiles/posProfileId=quick-service~withAll"
+
+# How a product family opens, whether the cart counts its articles, and orders checked out on their own
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/pos-profiles/posProfileId=quick-service" \
+  -H "Content-Type: application/json" \
+  -d '{"showProductFamiliesAs": "Show as category", "productFamilyInteraction": "Matrix", "cartItemCountVisibility": "Visible", "separateOrderCheckout": true}'
+
+# Per-language titles of the five search categories on the till (a locale left empty shows the shipped text)
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/pos-profiles/posProfileId=quick-service" \
+  -H "Content-Type: application/json" \
+  -d '{"productSearchTitle": {"en-US": "Articles", "sv-SE": "Artiklar"}, "receiptSearchTitle": {"en-US": "Receipts", "sv-SE": "Kvitton"}}'
+
+# The self-checkout's "before you go" step: the products it offers (empty disables the step),
+# its heading and sub-heading, the per-product ceiling and when it is shown
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/pos-profiles/posProfileId=quick-service" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "scoUpsellProducts": [{"identifiers": {"com.example.sku": "BAG-L"}}],
+    "scoUpsellTitle": {"en-US": "Before you go"},
+    "scoUpsellSubtitle": {"en-US": "Would you like to add a bag?"},
+    "scoUpsellMaxQuantity": 5,
+    "scoUpsellPlacement": "After start"
+  }'
+
+# scoUpsellProducts is a collection of product references: list it, replace it, remove one product
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/pos-profiles/posProfileId=quick-service/scoUpsellProducts"
+curl -X PUT -u ":banana" "https://example.app.heads.com/api/v1/pos-profiles/posProfileId=quick-service/scoUpsellProducts" \
+  -H "Content-Type: application/json" \
+  -d '[{"identifiers": {"com.example.sku": "BAG-L"}}, {"identifiers": {"com.example.sku": "BAG-S"}}]'
+curl -X DELETE -u ":banana" "https://example.app.heads.com/api/v1/pos-profiles/posProfileId=quick-service/scoUpsellProducts/com.example.sku=BAG-S"
 ```
+
+### The profile's settings
+
+A profile holds well over a hundred settings; the ones below are the ones a back-office editor shows under the profile's main topic, product families, cart, search and self-checkout. None of them is essential, so a plain `GET` shows none of them: ask with `~with(...)`, `~just(...)` or `~withAll`. A `string` member whose description names its values accepts those values and nothing else: any other value is a `400` naming the vocabulary — see [A Refused Value Names the Values It Would Have Accepted](#a-refused-value-names-the-values-it-would-have-accepted).
+
+| Member | Type | Meaning |
+|---|---|---|
+| `showProductFamiliesAs` | string | How to show product families in the POS: `Show as category` (opens as a sub-tile) or `Show all items` (renders items inline). |
+| `productFamilyInteraction` | string | How a product family opens on the till when `showProductFamiliesAs` is `Show as category`: `Cards` (a flat list of variant cards), `Stepwise` (one variant dimension at a time; the default when unset) or `Matrix` (every dimension at once, confirm to add). |
+| `cartItemCountVisibility` | string | Whether the cart shows a line with the total number of articles: `Visible` or `Hidden` (default). |
+| `separateOrderCheckout` | boolean | Whether a customer order is checked out on its own in the POS: a cart that puts lines on an order (Add to order) cannot sell or return other lines in the same checkout, so the order and the sale never share a receipt. Pay is refused until the cashier puts the remaining lines on the order or removes them. Default `false`. |
+| `productSearchTitle`, `customerSearchTitle`, `customerOrderSearchTitle`, `pickingOrderSearchTitle`, `receiptSearchTitle` | localized text | Title of the product / customer / customer-order / put-aside (picking order) / receipt search category on the till; a locale left empty shows the shipped text. |
+| `scoStartScreen` | string | How a self-checkout lane opens: `Button` (the default), `Scan` (on the first item scanned), `Payment method` (the customer first presses card or one of `scoStartPaymentMethods`) or `Tap card` (the payment terminal waits for a card on the idle screen; the other methods are buttons). With either payment-first screen nothing goes in the cart until a method is chosen. |
+| `scoReceiptMode` | string | How the self-checkout hands over the receipt once a sale completes: `Print` (the paper receipt prints, the default) or `QR first` (the lane shows a QR code for the digital receipt and lets the customer print it or take none). |
+| `receiptOptions` | string[] | The receipt options the cashier may choose between when the receipt options modal is shown: any of `Paper`, `Email`, `SMS` and `No receipt`. Empty offers all of them. An option that cannot be used for the sale at hand, such as email or SMS on a return, is left out regardless. |
+| `scoUpsellProducts` | product references | Products offered on the self-checkout's "before you go" step (typically carrier bags). Empty disables the step. A sub-collection: `GET` and `PUT` on `.../scoUpsellProducts`, `DELETE .../scoUpsellProducts/{product key}`. |
+| `scoUpsellTitle`, `scoUpsellSubtitle` | localized text | Heading and sub-heading of the "before you go" step; the shipped text when empty. |
+| `scoUpsellMaxQuantity` | number | Per-product ceiling of the step's quantity steppers. Empty means 10. |
+| `scoUpsellPlacement` | string | When the step is offered: `After payment` (the first Pay press, the default when unset) or `After start` (right after Start; a customer who begins by scanning is offered once, at payment). Offered at most once per session. |
+
+**`separateOrderCheckout` and the documents a checkout produces.** With the flag on, a basket that puts lines on an order is an order and nothing else: the till never writes a sale receipt and an order out of one checkout, so a receipt feed and an order feed never have to split a mixed basket between them. The receipts that *do* come out of one checkout share a `checkoutId` and list each other as `checkoutSiblings` — see [Receipts of One Checkout](../../reference/receipts.md#receipts-of-one-checkout-checkoutid-and-checkoutsiblings). The order itself is an ordinary trade order; see [Orders Placed at the Till](../../reference/working-with/orders.md#orders-placed-at-the-till-collect-in-store-and-ship-to-customer).
+
+**A `pos:read` key reads every profile setting a `pos:write` key reads** — `~withAll` under either names the same members. The exception is a relation whose root lies outside the `pos:*` scopes: `defaultCurrency`, `rootCategory` and `scoUpsellProducts` are served from the currency, category and product collections, so a key holding only `pos:read` reads them empty; give it the matching read scope (`products:read` for `scoUpsellProducts`) beside `pos:read`.
+
+**A member that reads `null` under `~just()` has not necessarily been stored.** `~just(member)` answers `{"@type": "POS profile", "member": null}` for a member the type does not declare, exactly as it does for one that is declared and unset, and a write naming an undeclared member is a `200` that stores nothing. Two profile settings a back-office editor shows are deliberately not on the API: `benchTiles`, the tile editor's pool of unassigned tiles (a bench tile is never rendered), and a device permission as a tile's `requiredPermission` (the API takes user permissions only). The check that tells the two `null`s apart is `~withAll`: a declared member is a key in that body, an undeclared one is not. See [gotcha 46](../../reference/common-gotchas.md#46-deprecated-does-not-tell-you-whether-a-member-still-works).
 
 > **`functions` is inert — use `tileSets`.** The `functions` member is retained on `POS profile` for backwards compatibility only. It **always reads as an empty array**, whatever the profile is configured with, and a write to it is accepted and discarded: `POST`ing a profile with `functions`, or `PUT`ting the collection directly, returns `200` and stores nothing. There is no configuration under which it returns anything. What decides the buttons a terminal shows is [`tileSets`](#pos-tile-sets). (`DELETE .../functions` is the one request that says so, reporting `deletedCount: 0`.) See [gotcha 46](../../reference/common-gotchas.md#46-deprecated-does-not-tell-you-whether-a-member-still-works).
 
@@ -339,10 +423,10 @@ A profile's `tileSets` is what a terminal renders. A tile set is a grid holding 
 | `@type` | What it does | Carries |
 |---|---|---|
 | `function tile` | Invokes a POS function when pressed | `function` |
-| `product tile` | Adds a product, or opens a category | `productNode` |
-| `POS tile set` | Opens a nested tile set (a sub-menu) | `rows`, `columns`, `tiles` |
+| `product tile` | Adds a product, or opens a category | `productNode`, `defaultDisplayMode` |
+| `POS tile set` | Opens a nested tile set (a sub-menu) | `layout`, `rows`, `columns`, `renderAllEmptyCells`, `tiles` |
 
-Every tile also takes `name`, `icon`, `imageUrl`, `color`, `hotkey`, `visibility` (`Visible` / `Hidden`), `requiredPermission` (only users holding that permission see the tile), and `inputMask` (a scanner pattern that triggers it). On a `function tile` those are the whole appearance of the button — the function it invokes carries none of them; see [A function carries behaviour, not presentation](#a-function-carries-behaviour-not-presentation). Placement is either explicit — `row` and `column`, both 1-indexed, with optional `rowSpan` / `columnSpan` — or automatic: leave the tile set's `rows` and `columns` unset and tiles flow in `order`.
+Every tile also takes `name`, `icon`, `imageUrl`, `color`, `hotkey`, `visibility` (`Visible` / `Hidden`), `requiredPermission` (only users holding that permission see the tile), and `inputMask` (a scanner pattern that triggers it). On a `function tile` those are the whole appearance of the button — the function it invokes carries none of them; see [A function carries behaviour, not presentation](#a-function-carries-behaviour-not-presentation). Placement is decided by the set's `layout`. In `Grid`, only tiles with an explicit `row` and `column` (both 1-indexed, with optional `rowSpan` / `columnSpan`) render, each at its cell inside the set's `rows` × `columns`. In `List` — the default when `layout` is unset — every tile renders in `order`, flowing across the panel and wrapping; `row`, `column`, `rowSpan`, `columnSpan`, `rows` and `columns` are stored and read back, and ignored. See [Layout, empty cells and a product tile's view](#layout-empty-cells-and-a-product-tiles-view).
 
 ### Create a profile with a tile set
 
@@ -356,6 +440,7 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/pos-profiles" \
       "@type": "POS tile set",
       "identifiers": { "tileId": "main" },
       "name": "Main",
+      "layout": "Grid",
       "rows": 2,
       "columns": 5,
       "tiles": [{
@@ -364,6 +449,8 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/pos-profiles" \
         "name": "Card Payment",
         "icon": "CreditCard",
         "hotkey": "F12",
+        "row": 1,
+        "column": 5,
         "order": 1,
         "color": "green",
         "visibility": "Visible",
@@ -418,7 +505,7 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/pos-profiles" \
   }'
 ```
 
-`columns` is set and `rows` is not, so this set auto-flows: tiles fill four to a row in `order`. The second tile is a nested `POS tile set` — a tile that opens a grid of its own rather than doing anything itself.
+This set has no `layout`, so it is a `List`: its tiles render in `order`, flowing across the panel and wrapping, and the `columns` it carries is stored and ignored until its `layout` is `Grid`. The second tile is a nested `POS tile set` — a tile that opens a panel of its own rather than doing anything itself.
 
 > **A nested set is `"@type": "POS tile set"`, the same spelling as the outer one.** There is no separate type for a nested set: the tile-set type is itself a `POS tile`, which is exactly what lets it sit in another set's `tiles`. Anything else there — a shortened `"tile set"`, an invented `"nesting tile"` — is a `400` saying the type key is not defined in the current type schema.
 
@@ -427,6 +514,33 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/pos-profiles" \
 ```bash
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/pos-profiles/posProfileId=kiosk/tileSets/tileId=drinks/tiles~with(order)"
 ```
+
+### Layout, empty cells and a product tile's view
+
+| Member | On | Type | Meaning |
+|---|---|---|---|
+| `layout` | `POS tile set` | string | How the set renders: `List` (every tile in `order`, flowing across the panel and wrapping; the default when unset) or `Grid` (only tiles with an explicit `row` and `column` render, at that cell). `row`/`column`/`rowSpan`/`columnSpan` and `rows`/`columns` take effect in `Grid` only. |
+| `renderAllEmptyCells` | `POS tile set` | boolean, nullable | In `Grid`, whether empty cells are drawn for every configured row (`true`) or only up to the last tile (`false`). `null`, the default: a manned till pads, a self-checkout does not. An explicit `null` puts that default back. |
+| `defaultDisplayMode` | `product tile` | string | The view a tile that opens a category, family or group shows its products in: `Grid` or `List`. Unset keeps the till's current view. Ignored on a tile that adds a single product. |
+
+```bash
+# Switch a set to a grid; put it back to a list; hand the empty-cell decision back to the per-mode default
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/pos-tile-sets/tileId=main" \
+  -H "Content-Type: application/json" -d '{"layout": "Grid", "renderAllEmptyCells": false}'
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/pos-tile-sets/tileId=main" \
+  -H "Content-Type: application/json" -d '{"layout": "List"}'
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/pos-tile-sets/tileId=main" \
+  -H "Content-Type: application/json" -d '{"renderAllEmptyCells": null}'
+
+# The view a category tile opens in
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/pos-product-tiles/tileId=tile-drinks" \
+  -H "Content-Type: application/json" -d '{"defaultDisplayMode": "List"}'
+
+# layout and renderAllEmptyCells are not in a tile set's default body (that is identifiers, name, rows, columns, tiles) - name them
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/pos-tile-sets/tileId=main~just(layout,renderAllEmptyCells,rows,columns)"
+```
+
+The three are on the standalone collections `/v1/pos-tile-sets`, `/v1/pos-product-tiles` and `/v1/pos-function-tiles` as well as on a profile's nested `tileSets`, and a `pos:read` key reads them. `defaultDisplayMode` is declared on every tile "only applicable to product tiles": a function tile takes it without a `400`, and it does nothing there. A value outside the vocabulary is a `400` that names it: `Invalid value 'Nonsense' for enum 'PosTileSetLayout'. Expected 'Grid' or 'List'.` on a tile set, `… for enum 'ProductDisplayMode'. Expected 'Grid' or 'List'.` on a product tile.
 
 ### How the root tile sets are laid out
 
@@ -465,14 +579,34 @@ That matters more than it looks, because most of a profile's settings are member
 
 | Member | Values it names |
 |---|---|
-| `tilesetCategoryPillsVisibility`, `nestedSiblingTilesetsVisibility`, `oskVisibility` | `Hidden`, `Visible` |
+| `tilesetCategoryPillsVisibility`, `nestedSiblingTilesetsVisibility`, `oskVisibility`, `cartItemCountVisibility` | `Hidden`, `Visible` |
 | `mode` | `Manned`, `Self-checkout` |
 | `stockDisplay` | `Always`, `Low`, `Never`, `Out` |
 | `oskKeyboardLayout` | `Auto`, `English`, `Norwegian`, `Swedish` |
 | `cartPlacement` | `Left`, `Right` |
 | `searchGridMode` | `Inline`, `Overlay` |
+| `showProductFamiliesAs` | `Show all items`, `Show as category` |
+| `productFamilyInteraction` | `Cards`, `Matrix`, `Stepwise` |
+| `scoStartScreen` | `Button`, `Payment method`, `Scan`, `Tap card` |
+| `scoReceiptMode` | `Print`, `QR first` |
+| `scoUpsellPlacement` | `After payment`, `After start` |
+| `receiptOptions` (each entry) | `Email`, `No receipt`, `Paper`, `SMS` |
+| `layout` (tile set) | `Grid`, `List` |
+| `defaultDisplayMode` (product tile) | `Grid`, `List` |
 
 The values are comma-separated with `or` before the last, and the whole vocabulary is listed — for a wider member than any of these, see [a wrong unit naming all forty-eight units](./units-of-measure.md#a-wrong-value-is-a-400-that-names-every-unit-there-is).
+
+The members typed as a plain `string` whose description names the values — `showProductFamiliesAs`, `productFamilyInteraction`, `scoStartScreen`, `scoReceiptMode`, `scoUpsellPlacement` and each entry of `receiptOptions` — refuse the same way, with the values in alphabetical order; their message names the member rather than an enum type:
+
+```
+"showProductFamiliesAs": "Nonsense"
+400  details: Invalid value 'Nonsense' for 'showProductFamiliesAs'. Expected 'Show all items' or 'Show as category'.
+
+"receiptOptions": ["Paper", "Fax"]
+400  details: Invalid value 'Fax' for 'receiptOptions'. Expected 'Email', 'No receipt', 'Paper' or 'SMS'.
+```
+
+The refusal is the whole answer: a `PUT` carrying a wrong value creates nothing, and a `PATCH` changes nothing.
 
 **A member whose type is fixed in the schema rather than checked against a vocabulary is refused one step earlier, and its message says nothing at all.** `renderRootTilesetPanel` is a plain boolean; `product.status` and a device's `status` are fixed sets of values. A bad value on any of them never reaches the vocabulary check:
 
@@ -499,7 +633,12 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/pos-slips~take(50
 
 # The flat action summary on one slip
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/pos-slips/{key}~just(actions~just(type,productName,quantity))"
+
+# The checkout the slip came out of, shared with the receipts and slips of the same finalize
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/pos-slips/{key}~just(identifiers,slipKind,checkoutId)"
 ```
+
+A slip carries a read-only `checkoutId`: "The identifier of the checkout that produced this slip, shared with the receipts and slips of the same POS finalize. Null on slips created before the member existed." It is the same value as `checkoutId` on the receipts of that finalize, so a slip and the receipt rung up in the same basket can be matched on it. The receipt side — `checkoutId` in every receipt's default body, `checkoutSiblings` for the other receipts of the checkout — is in [Receipts of One Checkout](../../reference/receipts.md#receipts-of-one-checkout-checkoutid-and-checkoutsiblings).
 
 ### Which order line an action moved (`tradeOrderItemEffects`)
 
@@ -710,6 +849,50 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/devices/com.mya
 ```
 
 > **Note:** Device roles (`/v1/device-roles`) and a device's role assignments (`~with(roleAssignments)` on a device) are not exposed through the API. This is about **devices** only — *user* role assignments are available, at `/v1/users/{id}/roleAssignments`; see [Roles, Permissions and Assignments](../../reference/user-roles.md).
+
+### Scanners and the read-only device collections
+
+Barcode scanners live in collections of their own, and a key holding only `pos:read` reads them, as it reads the printers:
+
+```bash
+# Scanners (USB / HID, and serial) - read-only under pos:read, writable under pos:write
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/barcode-scanners"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/serial-barcode-scanners"
+
+# ESC/POS USB printers, likewise
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/esc-pos-usb-printers"
+```
+
+A write under `pos:read` is a silent `200`, as for every read-only twin — see [gotcha 41](../../reference/common-gotchas.md#41-a-write-under-a-read-only-scope-is-a-silent-200).
+
+### Enrollment tokens
+
+An **enrollment token** is the credential a machine presents on first boot to claim its pre-registered POS terminal and receive a device identity. Its `secret` is write-only: at least 64 characters, stored hashed, never returned by any read. A token names the organization node it can claim terminals under (`orgNode`, the node itself or any descendant), must carry an `expiresAt` at most 30 days ahead, and can be capped with `maxUses` and stopped with `revoked`.
+
+```bash
+# Create a token for a rollout wave (enrollment:write)
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/enrollment-tokens" \
+  -H "Content-Type: application/json" \
+  -d '[{
+    "identifiers": {"com.myapp.tokenId": "stockholm-wave-1"},
+    "name": "Stockholm rollout wave 1",
+    "orgNode": {"identifiers": {"com.heads.seedID": "store1"}},
+    "expiresAt": "2026-10-22T23:00:00.000Z",
+    "secret": "pet_<at least 64 random characters>"
+  }]'
+
+# List the tokens with the node each belongs to (enrollment:read)
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/enrollment-tokens"
+
+# The expiry, the cap, how many new device bindings it has created, and whether it is revoked
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/enrollment-tokens/com.myapp.tokenId=stockholm-wave-1~withAll"
+
+# Stop it
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/enrollment-tokens/com.myapp.tokenId=stockholm-wave-1" \
+  -H "Content-Type: application/json" -d '{"revoked": true}'
+```
+
+The scope `enrollment:read` is "Read access to device enrollment token metadata. Secrets are never returned." — it lists `/v1/enrollment-tokens` with `name` and `orgNode` in the default body and `expiresAt`, `maxUses`, `uses` and `revoked` under `~withAll`, and no `secret` under any projection; the admin key sees the same. `enrollment:write` creates, changes and revokes tokens. A key holding only `pos:read` or `pos:write` does not reach the collection (`404`), and `enrollment:read` reaches nothing else: `/v1/pos-terminals` under it is a `404`. A `POST` without `expiresAt` is `400 enrollment tokens must set expiresAt (at most 30 days ahead)`.
 
 ---
 

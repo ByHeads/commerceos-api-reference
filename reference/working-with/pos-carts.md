@@ -478,6 +478,10 @@ That is `PATCH …/parkedCarts/{key}`, `POST …/parkedCarts/{key}/items`, and `
 
 Sent to the terminal that takes the cart. `200`; the cart becomes that terminal's active cart (`state: "Active"`) and leaves the other terminal's `parkedCarts`. Its `visibility` is cleared; its `parkingId` stays until the next park. A terminal that has a cart of its own parks that one first.
 
+The action's own description:
+
+> Resumes the given parked cart — one of the terminal's `resumableCarts` — at this terminal, parking the terminal's current cart first with its current visibility. Refused (409) when the cart is not parked anywhere, when it is parked for another terminal of the store, when the terminal is frozen, or when the cart was parked at another node without being visible everywhere with only new sales in it.
+
 Which carts a terminal may resume is its `resumableCarts`:
 
 | Parked as | Resumable at |

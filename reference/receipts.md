@@ -207,6 +207,7 @@ When building BI exports, use these stable fields as keys:
 | `identifiers.key` | Immutable | Primary key in data warehouse |
 | `identifiers.receiptID` | Immutable | Human-readable identifier |
 | `timestamp` | Immutable | Partitioning, incremental sync |
+| `checkoutId` | Immutable; `null` on receipts created before the member existed and on imported receipts | Grouping the documents of one POS checkout — the Return and the Sale receipt of a return-and-purchase basket share it. See [Receipts of One Checkout](#receipts-of-one-checkout-checkoutid-and-checkoutsiblings) |
 
 ### Recommended Export Fields
 
@@ -224,6 +225,8 @@ GET /v1/receipts/{id}~withAll
 |-------|------|-------------|
 | `identifiers.key` | string | Database key |
 | `identifiers.receiptID` | string | Printed receipt ID |
+| `checkoutId` | string | The checkout that produced the receipt, shared by every document of one POS finalize; essential, so every plain `GET` and webhook body carries it |
+| `checkoutSiblings` | array | The other receipts of the same checkout (`~with(checkoutSiblings)`) |
 | `seller` | agent | Store or company that sold |
 | `buyer` | agent | Customer |
 | `timestamp` | date-time | Transaction time |
@@ -440,6 +443,30 @@ GET /v1/receipts/receiptID=MPK00000000002/items~first~with(unitAmountAfterDiscou
 
 - **`unitAmount`, `unitAmountExclVat` and `unitAmountInclVat` are pre-discount unit prices.** All three describe the price of one unit before any line discount is applied. The post-discount figures on a line are the line *totals* — `salesAmount` (excluding VAT) and `totalAmount` (including VAT) — and, per unit, `unitAmountAfterDiscountInclVat`. Multiplying one of the first three by `quantity` gives the gross line value, not what the customer actually paid for that line.
 - **A zero-quantity line reports zero.** All four members are derived per unit, and are reported as `0` when the line quantity is zero rather than failing on the division.
+
+---
+
+## Return Lines: `restock`
+
+A return line says whether the returned units went back into stock. `restock` on `receipt item` is read-only, may be `null`, and is **non-essential** — ask for it with `~with(restock)` or `~withAll`:
+
+> Whether the returned units went back into stock, as chosen at the till (the return reason's default unless the cashier changed it); null when this receipt item is not a return
+
+```bash
+# Every line of a return receipt, with the restock flag
+GET /v1/receipts/receiptID=MPK00000000002/items~with(restock)
+
+# Receipt and lines in one request
+GET /v1/receipts/receiptID=MPK00000000002~with(items~with(restock))
+```
+
+| Line | `restock` |
+|---|---|
+| a return the cashier put back into stock | `true` |
+| a return the cashier kept aside (damaged, to the supplier, written off) | `false` |
+| a sale line, on any receipt | `null` |
+
+The value is the cashier's choice at the till, defaulting to the return reason's `restock` directive; a POS profile can lock that choice. It is the same flag the order side records on a trade record's return item as `restock` (see [Trade Records](trade-records.md)); the receipt line is where a consumer that reads receipts only finds it. **A stock reconciliation built from receipts must skip the `restock: false` lines**: those units never re-entered stock, so counting them in from the negative quantity overstates the on-hand figure. The member is served under the read-only receipt scope as well.
 
 ---
 
@@ -705,6 +732,63 @@ Both refer to the same line. Two *independent* picks — "earliest related recei
 
 ---
 
+## Receipts of One Checkout (`checkoutId` and `checkoutSiblings`)
+
+One POS finalize can write more than one document. A return-and-purchase basket is never netted into a single receipt: the till writes a **Return receipt** and a **Sale receipt**, and a checkout that also prints slips writes those beside them. Every document of one finalize shares a `checkoutId`:
+
+> `checkoutId`: The identifier of the checkout that produced this receipt: every document of one POS finalize shares it (the Return and the Sale receipt of a return-and-purchase basket, a receipt and its slips). Null on receipts created before the member existed and on imported receipts.
+
+`checkoutId` is read-only and **essential**: a plain `GET` carries it, and so does every sync-webhook body. The receipts themselves are one hop away through `checkoutSiblings`, which is read-only and **non-essential** — request it with `~with(checkoutSiblings)`, or navigate through it as a path segment:
+
+> `checkoutSiblings`: The other receipts of the same checkout, for example the Return receipt beside the Sale receipt of a return-and-purchase basket. Empty when `checkoutId` is null. Not in the default body: reach it with `~with(checkoutSiblings)` or as a path segment.
+
+```bash
+# The checkout a receipt belongs to (in the default body; projected here for brevity)
+GET /v1/receipts/receiptID=MPK00000000003~just(identifiers,type,checkoutId)
+
+# The other receipts of the same checkout, inlined
+GET /v1/receipts/receiptID=MPK00000000003~with(checkoutSiblings)
+GET /v1/receipts/receiptID=MPK00000000003~just(identifiers,type,checkoutId,checkoutSiblings~just(identifiers,type,checkoutId))
+
+# From the Sale receipt of a return-and-purchase basket: the Return receipt's payments, in one request
+GET /v1/receipts/receiptID=MPK00000000003/checkoutSiblings~where(type=Return)~first/payments
+```
+
+The second projection answers, for a Sale receipt rung up together with a return:
+
+```json
+{
+  "@type": "receipt",
+  "identifiers": {"key": "6fd49a125b41b52109d248fd7cba615d", "receiptID": "MPK00000000003"},
+  "type": "Sale",
+  "checkoutId": "4d0eb5d7-a8fe-40c0-9126-79085e5be659",
+  "checkoutSiblings": [
+    {
+      "@type": "receipt",
+      "identifiers": {"key": "0fd2c710d26a472dba72917d94f6d84b", "receiptID": "MPK00000000002"},
+      "type": "Return",
+      "checkoutId": "4d0eb5d7-a8fe-40c0-9126-79085e5be659"
+    }
+  ]
+}
+```
+
+and the last request answers the Return receipt's `payments` — a `REFUND` payment, `com.heads.store-credit`, `-100` — which is what a return-and-purchase export needs when it has only the Sale receipt in hand.
+
+What to expect at the edges:
+
+| Receipt | `checkoutId` | `checkoutSiblings` | `…/checkoutSiblings~where(type=Return)~first/payments` |
+|---|---|---|---|
+| one of a return-and-purchase basket | the shared id | the other receipt(s) of the basket | the Return receipt's payments |
+| a lone sale or a lone return | its own id | `[]` | `200 null` |
+| created before the member existed, or imported with `POST /v1/receipts` | `null` | `[]` | `200 null` |
+
+Neither member can be written: `POST /v1/receipts` stores no `checkoutId` for an imported receipt, and `PATCH` and `PUT` leave the member alone.
+
+**Siblings are not `related`.** `checkoutSiblings` links the documents rung up *together*; the [`related`](#owner-semantics-across-related) lines on a receipt item link the documents that concern the *same product instance* over time. The Sale receipt beside a Return receipt is the purchase made in the same basket, not the sale the return reverses — for that, walk `related` from the return line. POS slips of the same finalize carry the same `checkoutId` (see [POS Slips](../guide/examples/pos.md#pos-slips)); with the profile setting `separateOrderCheckout` on, a checkout that puts lines on a customer order writes no sale receipt beside the order at all (see [POS Profiles](../guide/examples/pos.md#the-profiles-settings)).
+
+---
+
 ## Item-to-Order Navigation (the `orderItems` member)
 
 A receipt line records what was *rung up*; a trade order line records what was *ordered*. When a sale settles an order — click-and-collect, a webshop order handed over in store, a special order — the two are linked, and `orderItems` on a receipt item names the trade order items that line settles.
@@ -821,6 +905,7 @@ GET /v1/receipts/after/2025-02-01T00:00:00.000Z~take(500)~withAll
 # Step 2: For each receipt, extract:
 # - identifiers.key (primary key)
 # - identifiers.receiptID (display key)
+# - checkoutId (groups the Return and Sale receipt of one basket)
 # - timestamp (partition key)
 # - seller.identifiers (store ID)
 # - buyer.identifiers (customer ID, if known)
@@ -829,6 +914,7 @@ GET /v1/receipts/after/2025-02-01T00:00:00.000Z~take(500)~withAll
 # - payments[] (for payment method analysis)
 # - items[].discounts[] (for discount analysis)
 # - items[].instances[] (for serial/IMEI tracking)
+# - items[].restock (~with(restock): skip false lines in a stock reconciliation)
 ```
 
 ### Streaming Large Exports
