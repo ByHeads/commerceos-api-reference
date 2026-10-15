@@ -167,7 +167,7 @@ The record is then reachable by that identifier as well as by its key:
 GET /v1/trade-records/com.example.recordId=TR-X1
 ```
 
-Identifiers add rather than replace, so an earlier one keeps resolving. Keys must be well-formed — see [External Identifiers](overview.md#external-identifiers), and [gotcha 40](common-gotchas.md#40-a-malformed-identifier-key-is-dropped-and-every-retry-then-creates-another-record) for what a malformed one costs.
+Identifiers add rather than replace, so an earlier one keeps resolving. Keys must be well-formed — see [External Identifiers](overview.md#external-identifiers), and [gotcha 40](common-gotchas.md#40-a-malformed-identifier-key-fails-the-whole-request) for what a malformed one costs.
 
 ### Sync markers
 

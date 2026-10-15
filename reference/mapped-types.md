@@ -345,7 +345,7 @@ Mapped type body:
 
 The core issue is that selectors (e.g., `"sku"`, `"title"`, `"state"`) are resolved with `regularStringsMapping="reference"`, which converts them to REST paths (e.g., `/sku`). The REST pipeline then attempts to navigate these paths against the raw JSON object, but:
 
-1. **Raw JSON lacks type information** — the resolver needs Pillow type descriptors to navigate property paths
+1. **Raw JSON lacks type information** — the resolver needs the API's type descriptors to navigate property paths
 2. **No property descriptors** — `unify()` creates a dynamic Unit without `possibleTypes` or member definitions
 3. **Path resolution fails** — without type context, the pipeline cannot resolve property access
 

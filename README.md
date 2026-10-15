@@ -108,6 +108,7 @@ commerceos-api-reference/
 │   │   ├── customers.md          # Working with customers
 │   │   ├── orders.md             # Working with trade orders
 │   │   ├── pos-carts.md          # POS carts, sessions and supervisor control
+│   │   ├── configuration-store.md  # /v1/context: config panel values, key-value stores, EPI configurations, scopes, placeholders
 │   │   ├── prices.md             # Working with prices
 │   │   ├── purchasing.md         # Purchase orders, deliveries and supplier returns
 │   │   ├── stock.md              # Working with stock/inventory
@@ -213,7 +214,7 @@ PUT /v1/products
 - `/after`/`/before` time-relative endpoints accept Date-parsable timestamps and the relative `-=`/`+=` shorthand, where the leading number is **hours** — `-=2000` is ~83 days, not 2000 days.
 - Operator chains are literal: `~where(...)~take(N)` stops scanning at the Nth match, while `~take(N)~where(...)` truncates first and then filters (usually returning nothing). Filter before you limit.
 - Product category/group hierarchies do not accept a `parent` field or `/children` endpoints; use `childCategories` on the parent category and `parentGroup` + `members` on product group nodes.
-- Product images are URL-keyed (`identifiers.url`) with no `altText`/`sortOrder` metadata; use URL-only image identifiers.
+- Product images are keyed by `identifiers.url` or by an external identifier, with no `altText`/`sortOrder` metadata. An image refers to a URL or carries its content, sent inline as `data`; CommerceOS then serves it at `contentUrl` (resize with `?w=`/`?h=`/`&fit=`). Documents go under a product's `files` or an agent's `attachments`. See [Working with Products → Images](reference/working-with/products.md#images).
 
 ---
 

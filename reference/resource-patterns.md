@@ -1591,7 +1591,7 @@ Full coverage lives on three dedicated pages — [Users](users.md), [Credentials
 | `inactive` | Deactivation flag (absent when active) | Settable |
 | `labels` | Assigned labels | Add/remove |
 | `roleAssignments` | Role assignments | Add/remove |
-| `config` | User configuration (darkModeActive, preferredLocale) | Settable |
+| `config` | User configuration: `darkModeActive`, and `preferredLocale` as a locale tag (`sv-se`, `en-US`; `sv_SE` is `400 failed coercion`). Stored on create and on a `PATCH` of a user that has none | Settable |
 | `posMode` | POS mode flag | Settable |
 | `hidden` | Advisory flag; collection reads do not filter on it | Settable |
 

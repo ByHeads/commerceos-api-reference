@@ -206,7 +206,7 @@ The API is organized around resource families like Agents, Products, Orders, Inv
 | **enrollment:read** | "Read access to device enrollment token metadata. Secrets are never returned." Lists `/v1/enrollment-tokens` with the agents they belong to, without the secret. |
 | **retail** | Receipts, payment methods, payment cards/means, Z/X and cash register reports, return reasons, and mobile device/plans. See [`receipts.md`](receipts.md) for BI/analytics usage. |
 | **geo** | Currencies, languages, countries, and cities for localization. |
-| **media** | Images and other media assets attached to products and agents. |
+| **media** | Images and files: `images` and `files` on product nodes, `attachments` on agents — content sent inline as `data`, served at `contentUrl`. A write without `media:write` is a silent `200`. See [Working with Products → Images](working-with/products.md#images). |
 | **integrations** | Payment, shipment, wallet, loyalty and EPI integrations with their configurations. `integrations` is the single full-access scope; `integrations:read` lists them without the configuration bodies. |
 | **links** | Shortened links. |
 | **config** | System settings and serial number sequences; config panels (`/v1/config-panels`) and key-value stores (`/v1/key-value-stores`) — the administrator's routes that create, read, write and delete them. See [Configuration examples → Config Panels](../guide/examples/configuration.md#config-panels). |

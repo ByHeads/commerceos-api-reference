@@ -859,4 +859,4 @@ The full order field reference is in [Working with Orders → Field Reference](o
 - [Trade Records](../trade-records.md) — the ledger's log of each move a delivery or return caused on the order; one record per `approve`, and the records do not name the delivery
 - [Configuration Examples → Order Numbering Serials](../../guide/examples/configuration.md#order-numbering-serials-v1configroot-order) — the serials that number purchase orders, goods receipts and returns
 - [Credentials → Scopes](../credentials.md#scope-names)
-- [Common Gotchas 52–55](../common-gotchas.md#52-two-open-deliveries-on-one-order-line-share-the-same-units) — the four purchasing pitfalls
+- [Common Gotchas 52–55](../common-gotchas.md#52-a-second-open-delivery-on-an-order-row-is-refused) — the four purchasing pitfalls

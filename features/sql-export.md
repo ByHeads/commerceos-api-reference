@@ -516,8 +516,6 @@ GO
 - [RFC 4180 - CSV Format](https://tools.ietf.org/html/rfc4180)
 - [SQL Server BULK INSERT](https://learn.microsoft.com/en-us/sql/t-sql/statements/bulk-insert-transact-sql)
 - [SQL Server MERGE](https://learn.microsoft.com/en-us/sql/t-sql/statements/merge-transact-sql)
-- Source: `polyjuice-pillow-lib/src/sql.ts`
-- Tests: `commerceos-api/test/pillow.sql-serializers.test.ts`
 
 ---
 

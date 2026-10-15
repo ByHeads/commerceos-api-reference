@@ -1048,15 +1048,20 @@ Full rules: [What you can sort on](operators-catalog.md#orderbyselectordesc).
 
 ---
 
-## 40. A Malformed Identifier Key Is Dropped, and Every Retry Then Creates Another Record
+## 40. A Malformed Identifier Key Fails the Whole Request
 
-An identifier key that is not [exactly three dot-separated segments](overview.md#external-identifiers) is discarded on write. The request is a `200`, every other member lands, and the key is simply absent. Nothing in the status, and nothing in an error, says so.
+An identifier key that is not [exactly three dot-separated segments](overview.md#external-identifiers) is refused on every write path, nested references included. The request is a `400 failed coercion` whose `path` names the key, and nothing from that request is stored:
 
 ```bash
-# WRONG - four segments; the key never reaches storage
+# WRONG - four segments
 POST /v1/products
 [{"identifiers": {"com.example.orders.id": "ORD-1"}, "name": "Widget"}]
-→ 200  {"identifiers": {"key": "3550a3df…"}, "name": "Widget", …}
+→ 400  {"@type": "failed coercion", "failedCoercions": [{"path": ":0/identifiers/^com.example.orders.id", …}]}
+
+# a malformed key on a reference inside the record fails the same way
+POST /v1/products
+[{"identifiers": {"com.example.sku": "W-1"}, "brand": {"identifiers": {"com.example": "B-1"}}}]
+→ 400  {"@type": "failed coercion", "failedCoercions": [{"path": ":0/brand/identifiers/^com.example", …}]}
 
 # RIGHT - three segments
 POST /v1/products
@@ -1064,22 +1069,14 @@ POST /v1/products
 → 200  {"identifiers": {"key": "3550a3df…", "com.example.orderId": "ORD-1"}, "name": "Widget", …}
 ```
 
-**The cost is not the missing key, it is the missing match.** An upsert recognises an incoming record by its identifiers. Discard the only one and there is nothing left to match on, so the same payload creates a new record every time it is sent — a scheduled sync that retries grows the collection without bound:
+**The refusal is the safe outcome.** An upsert recognises an incoming record by its identifiers; a key that was silently dropped would leave nothing to match on, and every retry would create another record. Because the whole request fails instead, a retry with the corrected key creates exactly one.
 
-```bash
-3 × POST [{"identifiers": {"com.example.orders.id": "DUP-1"}, "name": "Dup Probe"}]    → 3 products
-3 × POST [{"identifiers": {"com.example.ordersid":  "DUP-2"}, "name": "Dup Control"}]  → 1 product
-```
-
-**Reading the record back does not diagnose it.** `GET /v1/products/com.example.orders.id=ORD-1` is a `404`, which is also what "not created yet" looks like, so a client polling for its own write sees nothing unusual. Check the **write's own response** instead — if the key you sent is not in the `identifiers` it echoes back, it was refused.
-
-Three related points:
+Two related points:
 
 - **Four segments is the likely mistake, not one.** It is what you get by nesting a namespace a level deeper (`com.acme.orders.id`), and it reads as more than satisfying a "reverse domain notation" rule rather than less. It is also what reversing a `co.uk` or `com.au` domain gives you before you have named anything: `uk.co.acme.customerId`.
-- **A path segment fails loudly instead.** The same key in a URL does not route — `PUT /v1/key-value-stores/com.test` is a `404` where the identical key in a body is a silent `200`.
-- **One resource is strict.** `sync-webhooks` rejects a bad `secrets` or `variables` key with a `400` naming it, and persists nothing from that request. Do not generalise from it — `identifiers` on every resource, that resource included, takes the lenient path.
+- **In an array body the `path` starts with the element's index** (`:0/identifiers/^…`), so a bulk request names the offending record. Fix the one record; the others were not stored either.
 
-Related: [gotcha 39](#39-a-null-in-a-response-does-not-prove-the-field-exists) (a `null` is not proof a field exists), [gotcha 49](#49-identifiers-that-name-two-different-objects-are-refused) (a well-formed key that another record already owns is refused with `failed indexing` rather than dropped), [External Identifiers](overview.md#external-identifiers).
+Related: [gotcha 39](#39-a-null-in-a-response-does-not-prove-the-field-exists) (a `null` is not proof a field exists), [gotcha 49](#49-identifiers-that-name-two-different-objects-are-refused) (a well-formed key that another record already owns is refused with `failed indexing`), [External Identifiers](overview.md#external-identifiers), [A Malformed Identifier Key Is Refused](overview.md#a-malformed-identifier-key-is-refused).
 
 ---
 
@@ -1332,12 +1329,13 @@ GET /v1/pos-profiles/posProfileId=standard/functions
 
 **The check is the same one that catches a [read-only scope](#41-a-write-under-a-read-only-scope-is-a-silent-200): read the member back and compare it against what you sent.** That round-trip, not the `200`, is what tells you a deprecated member is still carrying data — and it is worth doing once, at integration time, rather than discovering it from a terminal that shows no buttons.
 
-Two related points:
+Three related points:
 
 - **This is not a scope problem, so `/v1/scopes` will not find it.** The member is inert for every token, including one holding `write:api`. Gotcha 41's symptom, a different cause.
+- **A member the type does not declare has the same shape, and `~just()` cannot tell you.** A write naming a member the schema does not have is a `200` that stores nothing, and `~just(member)` answers `{"@type": "POS profile", "member": null}` — the same body a declared-but-unset member gives, so a read-back check that looks only at the member you named passes. The one read that tells the two apart is `~withAll`: a declared member is a key in that body, an undeclared one is absent. The settings a back-office POS profile editor shows are on the API, with two exceptions by design: `benchTiles`, the tile editor's pool of unassigned tiles (never rendered, so never on the wire), and a device permission as a tile's `requiredPermission` (the API takes user permissions only). Before concluding a setting is missing, check the OpenAPI document's `POS profile` schema or the `~withAll` body rather than a `~just()` of the name. See [The profile's settings](../guide/examples/pos.md#the-profiles-settings).
 - **A `DELETE` on the inert member does report the truth.** `DELETE /v1/pos-profiles/{id}/functions` answers `{"deletedCount": 0}`, because the count reports removals that reached a setter rather than removals that were attempted — see [What a `DELETE` reports](overview.md#what-a-delete-reports). It is the one response on this member that is not a flat `200`.
 
-Related: [gotcha 41](#41-a-write-under-a-read-only-scope-is-a-silent-200), [gotcha 47](#47-a-declared-type-key-is-not-always-one-you-can-write) — the same "the schema says it exists" trap one level up, on a type rather than a member, [POS tile sets](../guide/examples/pos.md#pos-tile-sets), [The deprecated `manifest`](../guide/examples/product-packages.md#the-deprecated-manifest).
+Related: [gotcha 41](#41-a-write-under-a-read-only-scope-is-a-silent-200), [gotcha 47](#47-a-declared-type-key-is-not-always-one-you-can-write) — the same "the schema says it exists" trap one level up, on a type rather than a member, [POS profiles](../guide/examples/pos.md#the-profiles-settings), [POS tile sets](../guide/examples/pos.md#pos-tile-sets), [The deprecated `manifest`](../guide/examples/product-packages.md#the-deprecated-manifest).
 
 ---
 
@@ -1496,7 +1494,7 @@ GET /v1/people~where(identifiers/com.example.memberId=M-9)~just(identifiers)
 
 **The legitimate case is unaffected.** One identifier that resolves, alongside one no object owns yet, still resolves to that object and *assigns* the new identifier to it — a `200`, the same `identifiers.key` as before, one identifier richer. That is how an external ID is adopted, and it is the point of the [identifier-rewrite form of the `@value` envelope](resource-patterns.md#rewriting-identifiers). What is refused is only the case where the second identifier already belongs to somebody else.
 
-Related: [gotcha 40](#40-a-malformed-identifier-key-is-dropped-and-every-retry-then-creates-another-record), [gotcha 41](#41-a-write-under-a-read-only-scope-is-a-silent-200), [External Identifiers](overview.md#external-identifiers).
+Related: [gotcha 40](#40-a-malformed-identifier-key-fails-the-whole-request), [gotcha 41](#41-a-write-under-a-read-only-scope-is-a-silent-200), [External Identifiers](overview.md#external-identifiers).
 
 ---
 
@@ -1532,30 +1530,20 @@ Retired: described a pre-26.2.2 difference.
 
 ---
 
-## 52. Two Open Deliveries on One Order Line Share the Same Units
+## 52. A Second Open Delivery on an Order Row Is Refused
 
-Every `New` delivery created from an order expects the order's *currently open* quantity. Create two before approving either and both expect the same units — and the first approval settles them for both:
+An order row sits on at most one delivery that is not yet approved. `POST /v1/deliveries` with `order` or `orderItems`, and `POST /v1/deliveries/{key}/items` with `orderItem`, are refused while the committed row is already on an open delivery; the body's `details` names that delivery by its number:
 
 ```bash
 # PO-1: 10 WIDGET ordered and approved
-POST /v1/deliveries  [{"identifiers": {"com.example.deliveryId": "GR-1"}, "order": {…PO-1…}}]   # expects 10
-POST /v1/deliveries  [{"identifiers": {"com.example.deliveryId": "GR-2"}, "order": {…PO-1…}}]   # expects the SAME 10
-
-PATCH /v1/delivery-items/{GR-1 line}  {"quantity": "6"}
-PATCH /v1/delivery-items/{GR-2 line}  {"quantity": "4"}
-
-PATCH /v1/deliveries/com.example.deliveryId=GR-1/actions  {"approve": true}
-→ 200   stock 6.  GR-2 now reads status ["Delivered"], quantity "4" — without having been approved
-
-PATCH /v1/deliveries/com.example.deliveryId=GR-2/actions  {"approve": true}
-→ 200   nothing happens. Stock still 6; the order reads ["Committed", "Fulfilled"], 6 Fulfilled + 4 Committed
+POST /v1/deliveries  [{"identifiers": {"com.example.deliveryId": "GR-1"}, "order": {…PO-1…}}]   # 200, expects 10
+POST /v1/deliveries  [{"identifiers": {"com.example.deliveryId": "GR-2"}, "order": {…PO-1…}}]
+→ {"@type": "internal error", "error": "Internal server error.", "details": "Order row Widget is already on open delivery #GR-1."}
 ```
 
-The 4 units counted on `GR-2` never reach stock, and its document says `Delivered`. With both counted at 10 the effect is the same: stock 10, not 20, both `Delivered`.
+With `order`, the whole request is refused if any committed row of the order is on an open delivery — pick the free rows with `orderItems`. After `GR-1` is approved, the remainder of a partly received row goes on a new delivery, expecting ordered − delivered. A retried `POST` without an identifier of your own is refused the same way instead of creating a duplicate. If a delivery was created by mistake, empty it while it is `New` by removing its lines; the rows are then free again. A delivery cannot be deleted (`DELETE` is a `200` with `deletedCount: 0`).
 
-**Keep at most one `New` delivery per order line.** Approve a delivery before creating the next one from the same order; the next one then expects only what is still open. A delivery created without an identifier of your own is the usual way to end up with two — a retried `POST` without identifiers is a second document, not an update. If a second one exists by mistake, empty it while it is `New` by removing its lines; a delivery cannot be deleted (`DELETE` is a `200` with `deletedCount: 0`).
-
-Related: [Working with Purchasing → Safe Receiving](working-with/purchasing.md#safe-receiving), [gotcha 53](#53-approve-on-an-uncounted-delivery-posts-nothing-and-spends-the-document).
+Related: [Working with Purchasing → Creating a Delivery](working-with/purchasing.md#creating-a-delivery), [Safe Receiving](working-with/purchasing.md#safe-receiving), [gotcha 53](#53-approve-on-an-uncounted-delivery-posts-nothing-and-spends-the-document).
 
 ---
 
@@ -1575,7 +1563,7 @@ The expensive variant is an order with `underdeliveryPolicy: "Cancel"`: an uncou
 
 **Count first. `approve` is final for the document, whatever the counts are.** An integration that already knows the counts sends them in the create body with `sender`, `receiver`, `currency` and `orderItem` lines — see [A Receipt in One Request](working-with/purchasing.md#a-receipt-in-one-request).
 
-Related: [Working with Purchasing → Safe Receiving](working-with/purchasing.md#safe-receiving), [gotcha 52](#52-two-open-deliveries-on-one-order-line-share-the-same-units).
+Related: [Working with Purchasing → Safe Receiving](working-with/purchasing.md#safe-receiving), [gotcha 52](#52-a-second-open-delivery-on-an-order-row-is-refused).
 
 ---
 
@@ -1593,9 +1581,9 @@ GET /v1/trade-orders/com.example.orderId=PO-1~just(status)
 
 The same `200`-and-nothing answers a `New` order. `DELETE /v1/trade-orders/{id}` is a `200` with `deletedCount: 0` on any order; orders are not deletable.
 
-**Close the remainder with the underdelivery policy instead:** set `underdeliveryPolicy: "Cancel"` on the order, create a delivery from it (it expects only the 2 still open), and approve it uncounted. The order then reads `["Cancelled", "Fulfilled"]` — 8 fulfilled, 2 cancelled — and a further delivery from it is refused with `"The order has no committed items to deliver."`
+**Close the remainder with `cancelRemainder` instead:** `PATCH /v1/trade-orders/com.example.orderId=PO-1/actions {"cancelRemainder": true}` cancels the committed, not yet fulfilled part of every line. The order then reads `["Cancelled", "Fulfilled"]` — 8 fulfilled, 2 cancelled — with one new trade record, and a further delivery from it is refused with `"The order has no committed items to deliver."` A repeat is a `200` that posts nothing. One line at a time is `cancelItems` with a `cancelledQuantity` target. The underdelivery policy (`"Cancel"` on the order, then approve a short delivery) still closes the remainder as a side effect of receiving.
 
-Related: [Working with Purchasing → Cancelling, and Closing the Rest of a Partly Received Order](working-with/purchasing.md#cancelling-and-closing-the-rest-of-a-partly-received-order), [Orders → Cancel Order](working-with/orders.md#cancel-order-trycancel).
+Related: [Working with Purchasing → Cancelling, and Closing the Rest of a Partly Received Order](working-with/purchasing.md#cancelling-and-closing-the-rest-of-a-partly-received-order), [Orders → Cancel Order](working-with/orders.md#cancel-order-trycancel), [Orders → Cancel the Remainder](working-with/orders.md#cancel-the-remainder-cancelremainder).
 
 ---
 
@@ -1651,17 +1639,18 @@ Related: [Prices → Customer Groups as Buyers](working-with/prices.md#customer-
 
 ---
 
-## 57. `tryFulfill` Leaves `physicalQuantity` Alone Unless the Buyer Has a Place
+## 57. `tryFulfill` Moves `physicalQuantity` From the Seller's Place to the Buyer's
 
-`tryFulfill` debits the seller's stock, but the ledger behind `physicalQuantity` on a stock place entry is written only when the order has both a source place and a destination place. The destination is the buyer's stock root, or failing that the buyer's main or delivery address; a customer with neither gives the order no destination, and `physicalQuantity` at the source reads the same after the sale as before it. If the physical figure has to follow sales to customers without an address, count the units out with a stock adjustment. Same on every release.
+`tryFulfill` moves the sold units from the item's source place — the seller's stock root — to the item's destination: the buyer's stock root, else the place of the buyer's main or delivery address, else a stock root made for the buyer on the spot. That holds for every buyer, a person with no address included, so `physicalQuantity` at the seller's place goes down by the fulfilled quantity on every sale. Do not count the units out with a stock adjustment or echo the shelf with a stock entry afterwards: the place already reflects the sale, and an echo writes nothing (see [Stock Entries](stock-entries.md#what-physicalquantity-is-measured-against)). A delivery's `approve` and a return's `fulfill` move the goods the same way.
 
 ```bash
-GET /v1/stock-places/{key}~with(entries)                    # physicalQuantity 7
-PATCH /v1/trade-orders/{id}/actions  {"tryFulfill": true}   # 2 sold to a person with no address
-GET /v1/stock-places/{key}~with(entries)                    # physicalQuantity still 7
+GET /v1/stock-places/{key}~with(entries)                    # physicalQuantity 7, availableQuantity 7
+PATCH /v1/trade-orders/{id}/actions  {"tryApprove": true}   # 2 sold to a person with no address: 7 / 5
+PATCH /v1/trade-orders/{id}/actions  {"tryFulfill": true}
+GET /v1/stock-places/{key}~with(entries)                    # physicalQuantity 5, availableQuantity 5
 ```
 
-Related: [Orders → Where Shipment Orders Come From](working-with/orders.md#where-shipment-orders-come-from), [Stock → Where Shipment Orders Come From](working-with/stock.md#where-shipment-orders-come-from), [Stock → Shipment Timing](working-with/stock.md#shipment-timing).
+Related: [Orders → Fulfill Order](working-with/orders.md#fulfill-order-tryfulfill), [Orders → Where Shipment Orders Come From](working-with/orders.md#where-shipment-orders-come-from), [Stock → Where Shipment Orders Come From](working-with/stock.md#where-shipment-orders-come-from), [Stock → Shipment Timing](working-with/stock.md#shipment-timing).
 
 ---
 
@@ -1896,7 +1885,7 @@ GET /v1/stores/com.example.storeId=N1/assortmentOwner
 # "@type": "agent" and no name: a new, empty agent, not the company you meant
 ```
 
-Read the owner back after the write, or `GET` it first. An identifier key that is not exactly three segments gets there too, since the key is dropped ([gotcha 40](#40-a-malformed-identifier-key-is-dropped-and-every-retry-then-creates-another-record)). With a key that cannot create agents, an unknown owner in `assortmentOwners` is a `400` `Found no matching 'agent' using this index.` instead. Current behaviour; it may change.
+Read the owner back after the write, or `GET` it first. An identifier key that is not exactly three segments gets there too, since the key is dropped ([gotcha 40](#40-a-malformed-identifier-key-fails-the-whole-request)). With a key that cannot create agents, an unknown owner in `assortmentOwners` is a `400` `Found no matching 'agent' using this index.` instead. Current behaviour; it may change.
 
 Related: [Assortments → Naming the owners](working-with/assortments.md#naming-the-owners).
 
@@ -2167,6 +2156,156 @@ GET /v1/products~where(vatClass=null)~just(identifiers,name)
 Two things make this one easy to miss. `vatClass` is **not in the default read** of a product or group — ask with `~with(vatClass)`, and it then reads the class in effect, inherited or own. And a product that *looks* classed because its group is, loses the class when it is moved to an unclassed group.
 
 Related: [Working with VAT → Assigning VAT to Products](working-with/vat.md#assigning-vat-to-products), [Working with VAT → VAT Areas and the Reference Pack](working-with/vat.md#vat-areas-and-the-reference-pack), [gotcha 10](#10-products-belong-to-groups-via-parentgroup).
+
+---
+
+## 88. `GET /v1/context/<name>` Is a `404` for a Key-Value Store
+
+A namespaced name directly under `/v1/context` is a config panel's name and nothing else. A key-value store of that name lives under `/v1/context/kv/<store>`, so `GET /v1/context/com.example.state` answers `404` with `No config panel is named com.example.state` even when the store exists and the token holds `com.example.state:write`:
+
+```bash
+GET /v1/context/com.example.state               → 404  No config panel is named com.example.state
+GET /v1/context/kv/com.example.state            → 200  {}        # a store never lists its keys
+GET /v1/context/kv/com.example.state/cursor     → 200  the value, or null when the key was never written
+GET /v1/context/kv                              → 200  the stores this token reaches, by name
+```
+
+Related: [Working with the Configuration Store → Key-Value Stores](working-with/configuration-store.md#key-value-stores), [Configuration → Key-Value Stores](../guide/examples/configuration.md#key-value-stores).
+
+---
+
+## 89. A `read:api` Key Does Not Reach `/v1/context`, and `admin:read` Reads It Masked
+
+`read:api` expands to the read twins of the resource families and nothing under `/v1/context`: every route there is a `404` to such a key. `admin:read` reaches every panel and store, with every `secret` member masked as `********`. Only the panel's own `<name>:read` / `<name>:write` and `admin` read a secret in clear. The consequence for a sync webhook: one whose client reaches its panel only through `admin:read` stops with a configuration error naming the scopes that read in clear, instead of sending `********` as a credential. Give the webhook's client the panel's own scope.
+
+Related: [Working with the Configuration Store → Scopes](working-with/configuration-store.md#scopes), [Sync Webhooks → Configuration for a webhook](sync-webhooks.md#configuration-for-a-webhook-config-panels).
+
+---
+
+## 90. `secrets` and `variables` on a Sync Webhook Are a Silent `200`
+
+A sync webhook has no `secrets` or `variables` members. A write naming them answers `200` and stores nothing — the protocol writes a typed node member by member and drops what the type does not declare — and `~with(secrets,variables)` reads `null`; the sub-resources `/secrets` and `/variables` are `404`. The values belong in a config panel the webhook's client reads in clear, referenced as `<panel>/<member>` from `auth` and `sign`, and as `{<panel>/<member>}` from URL templates and body selectors.
+
+Related: [Sync Webhooks → Configuration for a webhook](sync-webhooks.md#configuration-for-a-webhook-config-panels), [gotcha 46](#46-deprecated-does-not-tell-you-whether-a-member-still-works) (the same silent `200` on any undeclared member).
+
+---
+
+## 91. A Client-Credentials Token Never Carries a Scope Its Client Does Not Hold
+
+The token endpoint narrows the request to the scopes the client holds. The response's `scope` says what was granted; a request naming only scopes the client lacks is still a `200` with an access token, and that token — `"scope": ""` — is `401` on every route, `/v1/me` included. A request without `scope` gets every scope the client holds. A name outside the catalogue (`kv`, a typo) is `400 invalid_scope`, with `error_details` naming it:
+
+```bash
+POST /oauth2/v1/token   grant_type=client_credentials&scope=me%20products:write     # client holds me products:read
+→ 200  {"access_token": "…", "scope": "me"}
+POST /oauth2/v1/token   grant_type=client_credentials&scope=products:write
+→ 200  {"access_token": "…", "scope": ""}        # usable nowhere
+POST /oauth2/v1/token   grant_type=client_credentials&scope=me%20kv
+→ 400  {"error": "invalid_scope", "error_details": "Check the `kv` scope(s)"}
+```
+
+Read `scope` in the token response before using the token; a scope cut from the client disappears from its next token too.
+
+Related: [Credentials → OAuth2 clients](credentials.md#oauth2-clients), [Working with the Configuration Store → Scopes](working-with/configuration-store.md#scopes).
+
+---
+
+## 92. A Cancellation That Would Refund a Till, Integration or Wallet Payment Is a `400`
+
+`tryCancel`, `cancelRemainder`, `cancelItems` and `fulfillReturn` refund the money paid towards the released units themselves, by recording a Credit on each of their payments. When that money has to be refunded where the payment was taken, the action is refused and nothing is cancelled:
+
+```
+400  The cancellation would refund a payment taken in a till (<method>); do it in the POS, where the refund is documented.
+400  The cancellation would refund a payment processed by a payment integration (<method>); do it in the POS, where the refund goes through the integration.
+400  The cancellation would refund a wallet payment (<method>); refund it onto the wallet first, with createWalletPayment and action Credit.
+```
+
+(`return` replaces `cancellation` for `fulfillReturn`.) The gate looks only at the payments behind the released units: cancelling unpaid units credits nothing and is not refused, and a payment recorded from outside is credited whatever its method's flags say. Cancel such an order in the POS, or credit the wallet first with `createWalletPayment` and action `Credit` and then cancel. `cancelReturn` is not gated.
+
+Related: [Orders → Cancel Order](working-with/orders.md#cancel-order-trycancel), [Orders → Cancel Items](working-with/orders.md#cancel-items-cancelitems).
+
+---
+
+## 93. `createPayment` Without `amount` Pays What Is Owed, Not the Line's Amount
+
+`amount` defaults to what is still owed on the listed items, or on the whole order — after earlier payments, credits and cancellations. A second bare call finds nothing owed and is refused; so is an amount beyond what is owed, since the surplus could be settled against nothing:
+
+```bash
+PATCH /v1/trade-orders/{id}/actions  {"createPayment": {"method": {…}, "transactionId": "T-1"}}   → 200   pays the open balance
+PATCH /v1/trade-orders/{id}/actions  {"createPayment": {"method": {…}, "transactionId": "T-2"}}   → 400   Nothing to pay: nothing is owed on the listed items.
+PATCH /v1/trade-orders/{id}/actions  {"createPayment": {"method": {…}, "amount": "999", …}}      → 400   Amount exceeds the unpaid amount (125).
+```
+
+A repeat with the same `transactionId` under the same method is a silent no-op, so a retry is safe. A refund that is not tied to a cancelled or returned unit is `reversePayment`, not a negative `createPayment`.
+
+Related: [Orders → Create Payment](working-with/orders.md#create-payment), [Orders → Reverse a Payment](working-with/orders.md#reverse-a-payment-reversepayment).
+
+---
+
+## 94. A Stock Entry After an Approved Delivery Writes Nothing
+
+Approval of a delivery moves the received units into the receiver's stock **and** onto the receiver's place, and `tryFulfill` moves sold units off the seller's place. A stock entry or a stocktake that then reports the shelf as it is finds the place already at that figure, and books nothing: the submission answers with `items: []`. Do not re-enter received goods to "make the count match" — it already does. A stock entry is for what the ledger does not know about: shrinkage, found goods, a recount that differs.
+
+Related: [Stock Entries → What `physicalQuantity` is measured against](stock-entries.md#what-physicalquantity-is-measured-against), [gotcha 57](#57-tryfulfill-moves-physicalquantity-from-the-sellers-place-to-the-buyers), [Working with Purchasing → Safe Receiving](working-with/purchasing.md#safe-receiving).
+
+---
+
+## 95. A Settled Stock Count Line Reads `counted: true`
+
+When a stock count is approved, every line nobody counted is settled to zero, and such a line reads `counted: true` with `countedQuantity "0"` — the same as a line someone looked at and found empty. Two read-only members tell them apart: `settled` (the zero was posted by approval settlement rather than counted by someone) and `excluded` (the line was excluded from the count, so approval left its stock untouched). A settled line with `expectedQuantity` 0 was never looked at and changed nothing; a settled line with a non-zero `expectedQuantity` is a write-off whose stock was adjusted to zero. Filter before trusting a zero:
+
+```bash
+GET /v1/stock-counts/{key}/items~where(counted=true,!excluded)~either(!settled,expectedQuantity!=0)
+```
+
+Related: [Stock and Inventory Guide → Approving a Stock Count](../guide/examples/stock-inventory-guide.md#44-approving-a-stock-count).
+
+---
+
+## 96. `checkoutId` Is `null` on Imported Receipts and on Receipts From Before the Member Existed
+
+Every document of one POS finalize shares a `checkoutId`, and a receipt's `checkoutSiblings` lists the other receipts of that checkout. Two kinds of receipt have none: a receipt imported with `POST /v1/receipts` (the import stores no `checkoutId`, and `PATCH`/`PUT` cannot set one — the member is read-only) and a receipt created before the member existed. On both, `checkoutId` reads `null`, `checkoutSiblings` is `[]`, and `…/checkoutSiblings~where(type=Return)~first/payments` is `200 null`. Treat the id as nullable in a feed that mixes till receipts with imported history, and do not read an empty `checkoutSiblings` as "a lone sale" — it is also what an imported return answers.
+
+Related: [Receipts → Receipts of One Checkout](receipts.md#receipts-of-one-checkout-checkoutid-and-checkoutsiblings).
+
+---
+
+## 97. `~just` and `fields=` on `identifiers` Leave the External Ids Out Unless Named
+
+On an open object — a config panel's values, a key-value document, an `identifiers` node — a projection answers only what it names: an unnamed key is left out, and a named member without a value reads `null`. So `GET /v1/products/{key}/identifiers~just(key)` answers the key alone, with no `com.example.sku`; name the external id to get it (`~just(key,com.example.sku)`), or read the node without a projection. On a typed element a projection still answers the named members as before.
+
+Related: [Operators → `~just`](operators-catalog.md), [Resource Patterns → Dynamic Properties](resource-patterns.md#dynamic-properties).
+
+---
+
+## 98. A Malformed Identifier Key Fails the Whole Request
+
+A key that is not a namespaced key — exactly three dot-separated segments, no dash in the first, at most 128 characters — is refused on every write, nested references included, with `400 failed coercion` and a `path` that names it (`:0/identifiers/^com.example.orders.id`). Nothing from the request is stored, so a retry creates no duplicate. It is not dropped and it is not a `200`. Gotcha 40 has the shapes.
+
+Related: [gotcha 40](#40-a-malformed-identifier-key-fails-the-whole-request), [Primitives → Namespaced Key](primitives.md#namespaced-key).
+
+---
+
+## 99. A `file` Is Reachable Only Through Its Holder
+
+A file (a datasheet, a certificate, a contract) has no collection of its own. It is reached as `files` on a product node or `attachments` on an agent, and it is created there. Removing a file from its last holder deletes it — its identifier can then be used again — unless the file carries an external identifier, in which case it stays reachable by that identifier. A deleted file's `contentUrl` stops serving. Receipts, exports and shipping labels are never reachable as files.
+
+Related: [Working with Products → Files](working-with/products.md#files), [Working with Products → Images](working-with/products.md#images).
+
+---
+
+## 100. Writes Through the API Leave No Activity History
+
+The back office's activity history shows changes made on a page before it is saved. A write through the API, a sync webhook or the till leaves no history event: a record changed by an integration shows no entry for the change. Keep your own log of what you wrote and when; the API does not keep one for you.
+
+Related: [Platform Takeaways](platform-takeaways.md).
+
+---
+
+## 101. Without `media:write`, an Image or File Write Under a Product Is a Silent `200`
+
+`POST /v1/products/{key}/images`, `POST /v1/products/{key}/files` and `POST /v1/agents/{key}/attachments` need `media:write` beside the product's or agent's own write scope. Without it the write answers `200` and stores nothing — the same shape as [gotcha 41](#41-a-write-under-a-read-only-scope-is-a-silent-200). Read the sub-collection back after the write. An inline image or file is at most 20 MiB; a proxy in front of a hosted tenant may cap the request body lower, so keep each one well under and send fewer per request.
+
+Related: [Working with Products → Images](working-with/products.md#images), [Working with Products → Files](working-with/products.md#files).
 
 ---
 

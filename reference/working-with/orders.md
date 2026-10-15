@@ -484,6 +484,8 @@ The cart itself, before the cashier completes it, is readable and changeable at 
 
 This is a different thing from the [click-and-collect order](#click-and-collect-order) above, which an integration **creates** through the API with `reservedUntil`. A till order is created by the till, has no expiry, and is finished either at the till or by the integration, depending on its delivery mode.
 
+Whether a till order can share its checkout with an ordinary sale is the POS profile's `separateOrderCheckout`: with it on, a cart that puts lines on an order cannot sell or return other lines in the same checkout, so the order and the sale never share a receipt, and a receipt feed never has to split a mixed basket from an order feed. See [POS Profiles → The profile's settings](../../guide/examples/pos.md#the-profiles-settings) and [Receipts of One Checkout](../receipts.md#receipts-of-one-checkout-checkoutid-and-checkoutsiblings).
+
 #### What the till writes
 
 - `identifiers.suppliersId` — the order number, assigned when the cart is completed. The till shows it as "Order #1000000". Every completed till order has one, and so does every order created through the API; the only orders without one are the till's open carts (see [Finding and polling till orders](#finding-and-polling-till-orders)).

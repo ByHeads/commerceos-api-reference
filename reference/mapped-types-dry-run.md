@@ -32,7 +32,7 @@ Authorization: Bearer <token>
 - **Tenant:** the endpoint is stateless. The token's tenant is irrelevant to the result; two identical requests from any two tenants produce byte-identical responses.
 - **Idempotent:** repeating the same request always produces the same output. No DB writes, no audit log, no scheduling.
 
-> `PATCH /v1/mapped-types/dry-run` is also accepted (Pillow's method-dispatch parity treats `PATCH` and `POST` identically here). Use `POST` for clarity.
+> `PATCH /v1/mapped-types/dry-run` is also accepted (the API treats `PATCH` and `POST` identically here). Use `POST` for clarity.
 
 ---
 

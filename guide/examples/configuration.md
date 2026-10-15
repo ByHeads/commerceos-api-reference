@@ -739,7 +739,7 @@ Installing an EPI integration requires a **confidential OAuth2 client** associat
 | Field | Value |
 |-------|-------|
 | **Scopes** | `me`, `geo:read`, `orders.sales:write`, `orders.payments:write`, `payment-records:write`, `payment-means:read` |
-| **State store scope** | `<store>:write`, for example `com.example.piggy:write`: added by the administrator when the integration keeps state in a [key-value store](#key-value-stores). An install changes none of the client's scopes |
+| **State store scope** | `<store>:write`, for example `com.example.piggy:write`: added by the administrator when the integration keeps state in a [key-value store](#key-value-stores). An install changes none of the client's scopes, and creates the store named by each `<name>:write` scope the client holds where no panel or store has that name |
 | **Grant Type** | `client_credentials` |
 | **Access Token Lifetime** | 3600 seconds (1 hour) |
 | **Refresh Token Lifetime** | 2592000 seconds (30 days) |

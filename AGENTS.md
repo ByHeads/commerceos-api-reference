@@ -80,6 +80,7 @@ commerceos-api-reference/
 │   │   ├── customers.md          # Customer management
 │   │   ├── orders.md             # Order lifecycle and operations
 │   │   ├── pos-carts.md          # POS carts, sessions and supervisor control
+│   │   ├── configuration-store.md  # /v1/context: config panel values, key-value stores, EPI configurations, scopes, placeholders
 │   │   ├── prices.md             # Price configuration
 │   │   ├── purchasing.md         # Purchase orders, deliveries and supplier returns
 │   │   ├── products.md           # Product catalog management
@@ -125,6 +126,7 @@ commerceos-api-reference/
 | Provisioning access | [`guide/provisioning-users.md`](guide/provisioning-users.md) |
 | Common pitfalls | [`reference/common-gotchas.md`](reference/common-gotchas.md) |
 | Data transformation | [`reference/mapped-types.md`](reference/mapped-types.md) |
+| Config panels, key-value stores, `/v1/context` | [`reference/working-with/configuration-store.md`](reference/working-with/configuration-store.md) |
 | Curl examples | [`guide/examples.md`](guide/examples.md) |
 | Advanced queries | [`guide/advanced-queries.md`](guide/advanced-queries.md) |
 

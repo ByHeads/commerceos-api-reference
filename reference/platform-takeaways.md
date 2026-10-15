@@ -83,7 +83,7 @@ The `$prior` selector references data from the source context. `"$first"` limits
 
 Agents represent people, companies, or stores:
 
-- `identifiers` - External ID support with reverse-domain keys — exactly three dot-separated segments; anything else is [silently discarded on write](overview.md#a-malformed-identifier-key-is-discarded-not-rejected)
+- `identifiers` - External ID support with reverse-domain keys — exactly three dot-separated segments; anything else is [refused with `400 failed coercion`](overview.md#a-malformed-identifier-key-is-refused)
 - `name` - Full name
 - `nationality`, `languages`, `vatId`
 - `addresses` - Nested object with `main`, `home`, `invoice`, `delivery`, `visiting`
@@ -134,5 +134,6 @@ Resources support user-defined external identifiers:
 - **Credential secrets are write-only.** Reads return `"********"`; writing that placeholder back sets the secret to those eight characters (see [gotcha 33](common-gotchas.md#33-a-read-modify-write-on-credentials-overwrites-the-secret))
 - `DELETE` on a **user** deactivates; `DELETE` on a **credential** purges. Both answer `deletedCount: 1` — the count says a setter ran, not that a record is gone (see [What a `DELETE` reports](overview.md#what-a-delete-reports))
 - **A scope problem answers `200` or `404` — never `403`.** Nothing in the API raises a permission error: a scope the token lacks makes its resources absent rather than refused, so a read or a write against one is a `404`. Every resource family exists twice, read-only under `<area>:read` and writable under `<area>:write`, at the same path, and a write that lands on the read-only twin is a `200` that persists nothing. Confirm a write by reading it back, never by its status (see [gotcha 41](common-gotchas.md#41-a-write-under-a-read-only-scope-is-a-silent-200))
+- **Writes through the API are not audit-logged.** The back office's activity history records changes made on a page; a write through the API, a sync webhook or the till leaves no history event. Keep your own log of what you wrote (see [gotcha 100](common-gotchas.md#100-writes-through-the-api-leave-no-activity-history))
 - **`GET /v1/scopes` is the one request that answers "what can this key do".** It lists the credential's fine-grained scopes with the legacy `read:api`/`write:api` groups already expanded. No status code distinguishes a read-only resource from its writable twin, so probing endpoints cannot answer it (see [Checking what a key can do](overview.md#checking-what-a-key-can-do-v1scopes))
 - **Registering a dynamic property is a write, so it needs the collection's `:write` scope** — and the registry for `receipts` is behind `receipts:write` rather than `retail:write`, and for `picking-orders` behind `logistics:write` rather than `shipment-records:write`. A refusal is a `200` that registers nothing (see [Dynamic Properties](resource-patterns.md#dynamic-properties))
