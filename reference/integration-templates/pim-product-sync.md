@@ -150,7 +150,7 @@ Use reverse-domain notation based on your actual domain:
 
 > **Check the segment count before you commit to a namespace — this one is expensive to get wrong.** A key is recognised only if it is **exactly three** dot-separated segments, so `com.acme.pim-id` works and `com.acme.pim.id` does not. Two shapes reach four segments without looking wrong: nesting a namespace a level deeper (`com.acme.products.id`), and reversing a country-code domain, where the domain alone spends all three (`acme.co.uk` → `uk.co.acme.` leaves nothing to name the identifier with — use `uk.co-acme.pimId` or `com.acme.pimId`).
 >
-> A key outside that shape is **discarded on write with a `200`**, and identifiers are what an upsert matches on — so a product whose only identifier is malformed is not recognised on the next run and is created again, every run, without bound. A `GET` by that key is a `404`, indistinguishable from "not synced yet". Validate by reading the `identifiers` back off the write's own response. Full rules: [A Malformed Identifier Key Is Discarded, Not Rejected](../overview.md#a-malformed-identifier-key-is-discarded-not-rejected).
+> A key outside that shape is **refused with `400 failed coercion`**; nothing is stored, so a retry creates no duplicate. The body names the key: `"failedCoercions": [{"path": ":0/identifiers/^com.acme.pim.id", "message": "The key 'com.acme.pim.id' is not a valid namespaced key", …}]`. Treat that `400` as a configuration error, not a transient one — it will not pass on retry. Full rules: [A Malformed Identifier Key Is Refused](../overview.md#a-malformed-identifier-key-is-refused).
 
 ### Identifier Key Naming
 
@@ -570,6 +570,23 @@ PUT /v1/products/com.acme.pim-id=TSHIRT-PREMIUM-L-WHT
 ```
 
 > **Note:** `instanceProperties` keys must be resolved property names (e.g., `Apparel::size`). Unknown property names are rejected.
+
+**Sizes, colours and attributes the PIM owns.** A PIM does not have to register its value lists in CommerceOS before it syncs. Two members take a value key the list does not have yet and add it to the list as a new value:
+
+- `variantValues` on the family (and on a group, for the families under it): which values the variants take in each dimension whose property takes its values from a list, as arrays of value keys — `{"Apparel::size": ["S", "M", "L"], "Apparel::color": ["Black", "White"]}`. Read, the lists in effect (its own, else the nearest group's); `null` or `[]` clears the family's own list for a dimension. A free-text dimension is refused: `400` `Property '<name>' does not take its values from a list.`
+- `attributes` on the product: the product's values for the tenant-defined attributes of products, by qualified name — `{"Product::season": "SS26", "Product::material": "cotton"}`. A text, number or boolean attribute takes a value of that kind; a list attribute takes a value key. `null` clears one, attributes left out are untouched. Refused, `400`: `Attribute '<name>' not found.`; `Value for <what> must be a numeric string or a number.` for a non-numeric string in a number attribute.
+
+```bash
+# The family's value lists, from the PIM's own vocabulary
+PATCH /v1/product-families/com.acme.family-id=TSHIRT-PREMIUM
+{"variantValues": {"Apparel::size": ["S", "M", "L"], "Apparel::color": ["Black", "White"]}}
+
+# The product's attributes, in the same sync pass as its other fields
+PATCH /v1/products/com.acme.pim-id=TSHIRT-PREMIUM-S-BLK
+{"attributes": {"Product::season": "SS26", "Product::material": "cotton"}}
+```
+
+Neither is in a product's default body; read them with `~with(variantValues)` and `~with(attributes)`. See [Working with Products → Tenant-Defined Attributes](../working-with/products.md#tenant-defined-attributes).
 
 ### Step 4: Assign Products to Categories
 
@@ -1014,14 +1031,22 @@ A product also has to be `Active`, not `hidden` and not `hiddenInPos` to sell at
 
 ### Adding Images to Products
 
-Images are identified by their URL. The only supported identifier field is `url`.
+An image either refers to a URL (`identifiers.url`, fetched by CommerceOS when shown) or carries its content, sent as `data` under your own identifier. Writes need `media:write` beside `products:write`.
 
 ```bash
-# Add primary image
+# Add primary image by URL
 POST /v1/products/com.acme.pim-id=PIM-PROD-00001/images
 {
   "identifiers": {"url": "https://cdn.example.com/products/pim-001-main.jpg"}
 }
+
+# Or send the content: a data: URL or bare base64, JPEG/PNG/WebP/GIF/AVIF/TIFF/SVG, at most 20 MiB.
+# CommerceOS stores it and serves it at contentUrl; mediaType, width and height come from the content
+POST /v1/products/com.acme.pim-id=PIM-PROD-00001/images
+[{"identifiers": {"com.acme.asset-id": "ASSET-001-MAIN"}, "name": "pim-001-main.jpg", "data": "data:image/jpeg;base64,/9j/4AAQ…"}]
+# -> [{"@type": "image", "identifiers": {…}, "name": "pim-001-main.jpg",
+#      "contentUrl": "https://example.app.heads.com/images/<key>.jpeg"}]
+# contentUrl?w=400 resizes; .webp converts; fit=cover|contain|fill|inside|outside
 
 # Add additional images
 POST /v1/products/com.acme.pim-id=PIM-PROD-00001/images
@@ -1035,7 +1060,19 @@ POST /v1/products/com.acme.pim-id=PIM-PROD-00001/images
 }
 ```
 
-> **Note:** Images accept only `identifiers.url`. Fields like `altText` and `sortOrder` are not persisted. Image order is determined by insertion order.
+> **Note:** Fields like `altText` and `sortOrder` are not persisted. Image order is determined by insertion order. Sending `data` again replaces the content; it is never returned.
+
+### Datasheets and Other Documents
+
+Documents go under `files` on the product (a datasheet, a manual, a safety sheet), not under `images`. A file carries `name`, `mediaType` (from the `data:` URL, else the member, else the name's extension, else the content), write-only `data`, `accessControl` (`Public` by default; `Signed` for a link that expires after a day; `Private` for no link), read-only `contentUrl`, and `expiresAt` / `verified` / `verifiedAt`. There is no `/v1/files` collection, and a file that no product or agent holds any more is deleted.
+
+```bash
+POST /v1/products/com.acme.pim-id=PIM-PROD-00001/files
+[{"identifiers": {"com.acme.asset-id": "ASSET-001-DATASHEET"}, "name": "datasheet.pdf", "data": "JVBERi0xLjQK…"}]
+
+GET /v1/products/com.acme.pim-id=PIM-PROD-00001/files~withAll
+DELETE /v1/products/com.acme.pim-id=PIM-PROD-00001/files/com.acme.asset-id=ASSET-001-DATASHEET
+```
 
 ### Query Product Images
 
@@ -1051,9 +1088,10 @@ GET /v1/products/com.acme.pim-id=PIM-PROD-00001/images
 
 | Aspect | Recommendation |
 |--------|----------------|
+| **URL or content** | Send `identifiers.url` when your CDN is the source of truth; send `data` when CommerceOS should serve the file itself (`contentUrl` then resizes and converts on request) |
 | **URL stability** | Use CDN URLs that won't change |
 | **Format** | JPEG for photos, PNG for graphics |
-| **Size** | Optimize for web (< 500KB) |
+| **Size** | Optimize for web (< 500KB); inline content is capped at 20 MiB per image, and a hosted environment may cap the request body at the proxy — keep each image well under, or send fewer per request |
 | **Ordering** | Add images in desired display order |
 
 ### Replacing Images
@@ -1271,7 +1309,7 @@ PUT /v1/prices/com.acme.price-id=PRICE-MISMATCH
 
 ### Pre-Launch
 
-- [ ] **Identifier namespace** — Confirm reverse-domain namespace (e.g., `com.acme.pim-id`), and that every key is **exactly three** dot-separated segments — a malformed key is dropped at `200` and the product is re-created on every run ([why](../overview.md#a-malformed-identifier-key-is-discarded-not-rejected))
+- [ ] **Identifier namespace** — Confirm reverse-domain namespace (e.g., `com.acme.pim-id`), and that every key is **exactly three** dot-separated segments — a malformed key is refused with `400 failed coercion`; nothing is stored, so a retry creates no duplicate ([why](../overview.md#a-malformed-identifier-key-is-refused))
 - [ ] **Field mapping** — Document PIM → CommerceOS field mapping
 - [ ] **VAT mapping** — Map PIM tax classes to CommerceOS VAT classes (seed IDs)
 - [ ] **Category mapping** — Map PIM categories to CommerceOS categories

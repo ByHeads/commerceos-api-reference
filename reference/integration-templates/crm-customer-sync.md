@@ -83,8 +83,11 @@ All agents share these members relevant to CRM sync:
 | `labels` | array | Custom tags for segmentation |
 | `customerGroups` | array | Customer groups **owned** by this agent (not membership) |
 | `preferredCurrency` | reference | Default transaction currency |
-| `nationality` | string | ISO 3166-1 alpha-2 country code |
+| `functionalCurrency` | reference (read-only) | The currency the agent keeps its books in: its own `preferredCurrency`, else the nearest one up its organization; null when none is set. `~with(functionalCurrency)` |
+| `nationality` | string | ISO 3166-1 alpha-2 country code. Plays no part in VAT placement; the address does |
 | `languages` | array | Preferred languages |
+| `addresses.*` | object | Every address member is optional; `{"countryCode": "SE"}` alone is a real address, found by `~where(addresses/main/countryCode=SE)`. An all-empty address reads as `null` |
+| `attachments` | array | Files attached to the agent (contracts, certificates): `name`, `data`, `accessControl`, `contentUrl`, `expiresAt`, `verified`. Scopes `media:read` / `media:write` |
 
 ### Person-Specific Fields
 
@@ -136,7 +139,7 @@ Use reverse-domain notation based on your actual domain:
 
 > **Exactly three segments, and the count is worth checking before you commit.** `com.acme.crm-id` is recognised; `com.acme.crm.id` is not. Two shapes overshoot without looking wrong — nesting a namespace a level deeper (`com.acme.customers.id`), and reversing a country-code domain, where the domain alone uses all three (`acme.co.uk` → `uk.co.acme.` has no segment left for the identifier; use `uk.co-acme.crmId` or `com.acme.crmId`).
 >
-> The cost of getting it wrong is not a missing field. A key outside the shape is **dropped on write at `200`**, and identifiers are what an upsert matches a person against — so a customer whose only identifier is malformed is created again on every sync run rather than updated, and a `GET` by that key is a `404` that looks exactly like "not synced yet". Read the `identifiers` back off the write's own response to confirm the key was accepted. Full rules: [A Malformed Identifier Key Is Discarded, Not Rejected](../overview.md#a-malformed-identifier-key-is-discarded-not-rejected).
+> A key outside the shape is **refused with `400 failed coercion`**; nothing is stored, so a retry creates no duplicate. The body names the key: `"failedCoercions": [{"path": ":0/identifiers/^com.acme.crm.id", "message": "The key 'com.acme.crm.id' is not a valid namespaced key", …}]` — the same for a key inside a reference such as `parent` or `owner`. Treat that `400` as a configuration error, not a transient one. Full rules: [A Malformed Identifier Key Is Refused](../overview.md#a-malformed-identifier-key-is-refused).
 
 ### Identifier Key Naming
 
@@ -414,6 +417,8 @@ POST /v1/trade-relationships
 ```
 
 > **Note**: The `/people/{id}/customerGroups` and `/companies/{id}/customerGroups` endpoints manage group *ownership*, not group *membership*. To add a customer to a group for pricing purposes, use the trade relationship's `groups` member as shown above.
+
+A customer group is itself an agent (`"@type": "customer group"`, listed by `/v1/agents` beside people and companies), so a CRM that mirrors the agent list should expect the type and not treat it as a customer. See [Working with Customers → Customer Groups](../working-with/customers.md#customer-groups).
 
 ### Step 6: Apply Labels (Custom Tags)
 
@@ -974,7 +979,7 @@ For records that fail after all retries:
 
 ### Pre-Launch
 
-- [ ] **Identifier namespace** — Confirm reverse-domain namespace (e.g., `com.acme.crm-id`), and that every key is **exactly three** dot-separated segments — a malformed key is dropped at `200` and the record is re-created on every run ([why](../overview.md#a-malformed-identifier-key-is-discarded-not-rejected))
+- [ ] **Identifier namespace** — Confirm reverse-domain namespace (e.g., `com.acme.crm-id`), and that every key is **exactly three** dot-separated segments — a malformed key is refused with `400 failed coercion`; nothing is stored, so a retry creates no duplicate ([why](../overview.md#a-malformed-identifier-key-is-refused))
 - [ ] **Field mapping** — Document CRM → CommerceOS field mapping
 - [ ] **Dedup strategy** — Define dedup rules (email? phone? national ID?)
 - [ ] **Conflict resolution** — Document which system wins for each field

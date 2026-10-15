@@ -4,14 +4,21 @@ Quick reference for the members available on each resource type.
 
 ---
 
-## Agent Members (inherited by person, company, store)
+## Agent Members (inherited by person, company, store, customer group)
 
 ```
 identifiers, name, nationality, languages, vatId, addresses, contactMethods,
 confirmationAttempts, customerGroups, customerRelations, supplierRelations,
 manufacturerRelations, labels, timeline, stockRoots, assortmentOwner,
-assortmentRoots, assortment, preferredCurrency
+assortmentRoots, assortment, preferredCurrency,
+functionalCurrency (read-only, non-essential), attachments (non-essential)
 ```
+
+`functionalCurrency` is "the currency the agent keeps its books in: its own `preferredCurrency`, else the nearest one up its organization (a store's `owner`, a company's `parent`); null when none is set. Change it through `preferredCurrency`." Ask with `~with(functionalCurrency)`; a write to it answers `200` and changes nothing.
+
+`attachments` holds files (below): documents attached to the agent, such as contracts or certificates. `/v1/agents/{id}/attachments`.
+
+Every member of an `address` is optional; an address with only `countryCode` is a real address. See [Working with Customers → Addresses](working-with/customers.md#addresses).
 
 `vatId` reads and writes the agent's home VAT registration (the one with no country); registrations in other countries live in `/v1/vat-registrations`. See [Working with VAT → VAT Registrations and `vatId`](working-with/vat.md#vat-registrations-and-vatid).
 
@@ -35,6 +42,14 @@ organizationNumber, parent, fiscalYearStart
 owner, organizationNumber, openingHours
 ```
 
+## Customer Group-specific Members
+
+```
+memberMoniker, owner, members
+```
+
+A customer group is a type of agent and reads with `"@type": "customer group"`; `members` are trade relationships. See [Working with Customers → Customer Groups](working-with/customers.md#customer-groups).
+
 ---
 
 ## Product Node Members (inherited by product, category, family, group)
@@ -42,8 +57,11 @@ owner, organizationNumber, openingHours
 ```
 identifiers, name, assortmentOwners, assortmentContexts, gtin, plu, hidden,
 createdBy, createdAt, promotionTitle, promotionBanner, promotionDescription,
-notesForPicking, labels, images, categories, prices, xrefs, application
+notesForPicking, labels, images, files (non-essential), categories, prices, xrefs, application,
+autoGtin (non-essential)
 ```
+
+`files` holds the documents attached to the node, such as datasheets (the `file` type, below). `autoGtin` reads the setting in effect (its own, else the nearest ancestor's) for getting a GTIN from the buyer's own GS1 series when an order is approved; written, the node's own setting, cleared with `null`. See [Working with Products → Getting a GTIN from your own series](working-with/products.md#getting-a-gtin-from-your-own-series).
 
 ## Product/Family/Group Members
 
@@ -68,8 +86,10 @@ you ask for it with `~with(status)` or a `fields=` list.
 ```
 status ('Active', 'Inactive', 'Pending'), instanceProperties, keywords,
 designatedStockPlaces, stockLevels, receiptText, signText,
-vatRates (read-only, non-essential)
+vatRates (read-only, non-essential), attributes (non-essential)
 ```
+
+`attributes` carries the product's values for the tenant-defined attributes of products, by qualified name (`Product::season`); `null` clears one, attributes left out are untouched. See [Working with Products → Tenant-Defined Attributes](working-with/products.md#tenant-defined-attributes).
 
 `vatRates` lists the treatment and percentage the product's class carries in each VAT area right now, one entry per area whose rules cover it.
 
@@ -83,9 +103,30 @@ identifiers, members, childCategories
 
 ```
 identifiers, name, parentGroup, members (computed), variantDimensions,
-instanceType, ageRestriction
+variantValues (non-essential), instanceType, ageRestriction
 ```
 - Plus `vatClass` (non-essential), above
+- `variantValues` is on families too: the values variants (families: the families under the group) take in each dimension that takes its values from a list, as arrays of value keys by qualified name. Read, the lists in effect — its own, else the nearest group's. See [Working with Products → Product Families](working-with/products.md#product-families-variant-containers)
+
+## Image Members
+
+```
+identifiers (key, external ids, url), name, contentUrl (read-only),
+mediaType (read-only, non-essential), width (read-only, non-essential), height (read-only, non-essential),
+data (write-only)
+```
+
+`data` is the content, as a `data:` URL or base64 (JPEG, PNG, WebP, GIF, AVIF, TIFF or SVG, at most 20 MiB); `contentUrl` serves it, with `w`, `h` and `fit` to resize. Reached as `images` on a product node. Scopes `media:read` / `media:write`. See [Working with Products → Images](working-with/products.md#images).
+
+## File Members
+
+```
+identifiers (key, external ids, url), name, mediaType, contentUrl (read-only),
+data (write-only), accessControl ('Public', 'Signed', 'Private') (non-essential),
+expiresAt (non-essential), verified (non-essential), verifiedAt (read-only, non-essential)
+```
+
+Reached only as `files` on a product node and `attachments` on an agent; there is no `/v1/files`. A file that nothing holds any more is deleted. See [Working with Products → Files](working-with/products.md#files).
 
 ---
 
@@ -195,8 +236,11 @@ tradeOrderItemEffects (non-essential), return (non-essential)
 identifiers, supplierAgent, supplierContacts, primarySupplierContact,
 customerAgent, customerContacts, primaryCustomerContact, supplierId, customerId,
 defaultDeliveryTerm, defaultPaymentTerm, defaultCurrency, groups, intervalStart,
-intervalEnd, acceptedMembershipTerms, acceptedPromotionalMaterial, creditAllowed, allowsBackOrder
+intervalEnd, acceptedMembershipTerms, acceptedPromotionalMaterial, creditAllowed, allowsBackOrder,
+supplierIsManufacturer
 ```
+
+`supplierIsManufacturer` (boolean): "Indicates if the supplier manufactures for the customer, e.g. a factory that a supplier uses. Such a supplier is listed among the customer's manufacturers (Fabriker), and changes to the link are logged in the activity history of both." See [Working with Assortments → Suppliers and Manufacturers as Owners](working-with/assortments.md#suppliers-and-manufacturers-as-owners).
 
 ---
 
@@ -267,8 +311,10 @@ transactions, transactionItems
 ## Assortment Context Members
 
 ```
-owner (agent), articleNumber, primarySupplier (company), discontinued
+owner (agent), articleNumber, primarySupplier (company, non-essential), discontinued (non-essential)
 ```
+
+A context with only `owner` puts the node in that owner's assortment. `primarySupplier` is who the owner buys the node from; on a context owned by one of your suppliers it is the factory that supplier makes it at. `~with(assortmentContexts~with(primarySupplier))` on the product includes it. See [Working with Assortments](working-with/assortments.md#editing-a-context).
 
 ## User Members
 

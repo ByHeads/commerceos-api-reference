@@ -32,6 +32,8 @@ A discount rule defines **when** and **how** discounts apply. Key properties:
 | `ignoresProductMaxDiscount` | Boolean. If true, this rule is exempt from the product max discount cap (the rule's own minimum resulting price still applies). See [Discount Caps and Vouchers](#discount-caps-and-vouchers). |
 | `coupon` | Optional precondition. When set, the rule fires only if the cart presents a code that resolves to one of the coupons in `coupon.include` (and not in `coupon.exclude`). Without this field, the rule is automatic — it fires whenever its other conditions match. See [Example 17: Coupon-Bound Rule](#example-17-coupon-bound-rule-activated-only-by-a-code) and [Discount Coupons](./discount-coupons.md) for full coupon mechanics. |
 | `reason` | A reference to explain why the discount was applied (shown on receipts). |
+| `identifiers` | External identifiers under your own namespaced key (`com.example.id`), like any other resource; the examples use them in every path. |
+| `labels` | "The labels assigned to this discount rule." The same assigned-labels member as on orders, products and agents: inline on create, `/labels` as a sub-resource, `~where(labels/<scheme>=<id>)` to filter. See [Labels on a Rule](#labels-on-a-rule). |
 
 ```bash
 # List all discount rules
@@ -85,6 +87,49 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/discount-rules/
 **What fails:** a single-bound patch that inverts the window against the stored counterpart — e.g. setting `start` to September while the stored `end` is still May — is rejected with `400` and `The end date, if specified, must be greater than the start date.`, and the rule is left unchanged. Send both bounds together instead.
 
 The same `time` semantics apply to [surcharge rules](./surcharge-rules.md#update-a-surcharge-rule). See [Resource Patterns → Validity Window (`time`)](../../reference/resource-patterns.md#validity-window-time).
+
+---
+
+## Labels on a Rule
+
+A discount rule carries `labels`, the same member as orders, products and agents. A label applies to discount rules when its `applicableOnlyTo` names `DiscountRule`; a label restricted to other types is refused on a rule, as on every other resource.
+
+```bash
+# A label for discount rules
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/labels" \
+  -H "Content-Type: application/json" \
+  -d '{"identifiers": {"com.example.labelId": "campaign-ss26"}, "title": "SS26 campaign", "applicableOnlyTo": ["DiscountRule"]}'
+
+# Inline on create
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/discount-rules" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "identifiers": {"com.example.id": "ss26-tees"},
+    "name": "SS26 tees",
+    "seller": {"include": [{"identifiers": {"com.example.id": "ourcompany"}}]},
+    "currency": {"include": [{"identifiers": {"currencyCode": "SEK"}}]},
+    "includesTax": true,
+    "items": {"everything": {"includeAll": true}},
+    "effects": [{"@type": "percentage discount rule effect", "items": ["everything"], "percentage": "10"}],
+    "labels": [{"identifiers": {"com.example.labelId": "campaign-ss26"}}]
+  }'
+
+# Read, add, remove — the sub-resource pattern of every labelled resource
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/discount-rules/com.example.id=ss26-tees/labels"
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/discount-rules/com.example.id=ss26-tees/labels" \
+  -H "Content-Type: application/json" \
+  -d '{"identifiers": {"com.example.labelId": "needs-review"}}'
+curl -X DELETE -u ":banana" "https://example.app.heads.com/api/v1/discount-rules/com.example.id=ss26-tees/labels/com.example.labelId=needs-review"
+
+# Every rule of the campaign; labels are not in the default body
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/discount-rules~where(labels/com.example.labelId=campaign-ss26)"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/discount-rules/com.example.id=ss26-tees~with(labels)"
+
+# A label whose applicableOnlyTo does not cover discount rules — including one with an empty applicableOnlyTo — is refused, 400:
+#   details: "Label 'Clearance product' is not applicable for objects of this type"
+```
+
+See [Labels](labels.md) for the label resource itself.
 
 ---
 

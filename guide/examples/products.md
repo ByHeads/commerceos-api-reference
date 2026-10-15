@@ -228,7 +228,23 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/product-familie
 curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/product-families/com.myapp.familyId=tshirt-basic" \
   -H "Content-Type: application/json" \
   -d '{"variantDimensions": null}'
+
+# Which values the variants come in, for a dimension whose property takes its values from a list.
+# A key the list does not have yet is added to it as a new value, so a feed need not register sizes first
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/product-families/com.myapp.familyId=tshirt-basic" \
+  -H "Content-Type: application/json" \
+  -d '{"variantValues": {"Apparel::size": ["S", "M", "L"], "Apparel::color": ["Red", "Black"]}}'
+
+# Read the lists in effect (its own, else the nearest group's). Not in the default body
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/product-families/com.myapp.familyId=tshirt-basic~with(variantValues)"
+
+# Fall back to the group's list for one dimension: null or [] clears the family's own
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/product-families/com.myapp.familyId=tshirt-basic" \
+  -H "Content-Type: application/json" \
+  -d '{"variantValues": {"Apparel::size": null}}'
 ```
+
+> `variantValues` names only dimensions whose property takes its values from a list. A free-text property is refused: `400` `Property 'Apparel::color' does not take its values from a list.` A list equal to the one the family gets from its group is not stored.
 
 ### Creating Variant Products
 
@@ -321,6 +337,32 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/products/com.my
 # curl -X PATCH ... -d '{"instanceProperties": {"invalid::prop": "value"}}'
 ```
 
+### Tenant-Defined Attributes
+
+`attributes` carries a product's values for the attributes of products the tenant has defined, keyed by qualified name (`Product::season`). It is not `instanceProperties`: those belong to the instance type, these to the product.
+
+```bash
+# Write some; the attributes left out are untouched
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/products/com.myapp.sku=tshirt-basic-s-red" \
+  -H "Content-Type: application/json" \
+  -d '{"attributes": {"Product::season": "SS26", "Product::material": "cotton", "Product::weightGrams": 180}}'
+
+# Clear one with null
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/products/com.myapp.sku=tshirt-basic-s-red" \
+  -H "Content-Type: application/json" \
+  -d '{"attributes": {"Product::material": null}}'
+
+# Read them back. Not in the default body
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/products/com.myapp.sku=tshirt-basic-s-red~with(attributes)"
+
+# Refused, 400: a name no attribute has (or one without the Product:: prefix)
+#   details: "Attribute 'Product::colour' not found."
+# Refused, 400: a non-numeric string for a number attribute
+#   details: "Value for <what> must be a numeric string or a number."
+```
+
+A text, number or boolean attribute takes a value of that kind. An attribute that takes its values from a list takes the **key** of a value, and a key the list does not have yet is added as a new value.
+
 ---
 
 ## Product Groups (Hierarchical Organizers)
@@ -376,6 +418,12 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/product-groups/
   -d '{
     "variantDimensions": "Apparel::size, Apparel::color"
   }'
+
+# variantValues on a group ARE inherited: the values families in this group take, for every
+# family under it that lists nothing of its own for the dimension
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/product-groups/com.myapp.groupId=apparel" \
+  -H "Content-Type: application/json" \
+  -d '{"variantValues": {"Apparel::size": ["XS", "S", "M", "L", "XL"]}}'
 ```
 
 ### VAT Class Inheritance
@@ -473,13 +521,13 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/products/com.mya
 
 ## Images
 
-> **Note:** Images only have `identifiers.url` — no `altText` or `sortOrder` fields. Display order is determined by insertion order.
+An image either refers to a URL (`identifiers.url`) or carries its content, sent as `data`, which CommerceOS stores and serves at `contentUrl`. There are no `altText` or `sortOrder` fields; display order is insertion order. Writes need `media:write`.
 
 ```bash
 # Get product's images
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/products/com.myapp.sku=SKU-001/images"
 
-# Add image to product (use identifiers.url only)
+# Add image to product by URL (CommerceOS fetches it when it is shown)
 curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/products/com.myapp.sku=SKU-001/images" \
   -H "Content-Type: application/json" \
   -d '{"identifiers": {"url": "https://example.com/images/product-001.jpg"}}'
@@ -489,8 +537,55 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/products/com.mya
   -H "Content-Type: application/json" \
   -d '{"identifiers": {"url": "https://example.com/images/product-001-back.jpg"}}'
 
-# Remove image by URL
+# Add an image with content, under your own identifier: a data: URL or bare base64,
+# JPEG, PNG, WebP, GIF, AVIF, TIFF or SVG, at most 20 MiB
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/products/com.myapp.sku=SKU-001/images" \
+  -H "Content-Type: application/json" \
+  -d '[{"identifiers": {"com.myapp.imageId": "SKU-001-front"}, "name": "front.png", "data": "iVBORw0KGgoAAAANSUhEUgAAABQAAAAK…"}]'
+# [{"@type": "image", "identifiers": {…, "com.myapp.imageId": "SKU-001-front"}, "name": "front.png",
+#   "contentUrl": "https://example.app.heads.com/images/7e267ff8f5517a12580a81900410f8ae.png"}]
+
+# mediaType, width and height come from the content; ask for them
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/products/com.myapp.sku=SKU-001/images/com.myapp.imageId=SKU-001-front~withAll"
+# …, "mediaType": "image/png", "width": 20, "height": 10
+
+# Fetch the content. The extension picks the format; w and h (at most 2000) resize, fit says how
+curl -o thumb.png "https://example.app.heads.com/images/7e267ff8f5517a12580a81900410f8ae.png?w=10"
+curl -o thumb.webp "https://example.app.heads.com/images/7e267ff8f5517a12580a81900410f8ae.webp?w=10&h=10&fit=contain"
+
+# Remove image by URL, or by your identifier
 curl -X DELETE -u ":banana" "https://example.app.heads.com/api/v1/products/com.myapp.sku=SKU-001/images/url=https%3A%2F%2Fexample.com%2Fimages%2Fproduct-001.jpg"
+curl -X DELETE -u ":banana" "https://example.app.heads.com/api/v1/products/com.myapp.sku=SKU-001/images/com.myapp.imageId=SKU-001-front"
+```
+
+### Files
+
+Documents — datasheets, manuals, certificates — are files, held as `files` on a product node (and as `attachments` on an agent, see [Organization](organization.md#companies)). There is no `/v1/files` collection: a file is reached through what holds it, and one that nothing holds any more is deleted.
+
+```bash
+# Attach a datasheet whose link expires after a day (accessControl Signed; Public is the default, Private has no link)
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/products/com.myapp.sku=SKU-001/files" \
+  -H "Content-Type: application/json" \
+  -d '[{"identifiers": {"com.myapp.fileId": "SKU-001-datasheet"}, "name": "datasheet.pdf",
+        "data": "data:application/pdf;base64,JVBERi0xLjQK…", "accessControl": "Signed"}]'
+# [{"@type": "file", "identifiers": {…}, "name": "datasheet.pdf", "mediaType": "application/pdf",
+#   "contentUrl": "https://example.app.heads.com/files/0dbd032a60177a2cb9aef44603b061ae?exp=1792191867&sig=…"}]
+
+# A file that refers to a URL instead of carrying content
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/products/com.myapp.sku=SKU-001/files" \
+  -H "Content-Type: application/json" \
+  -d '[{"identifiers": {"url": "https://example.com/docs/SKU-001-manual.pdf"}, "name": "manual.pdf"}]'
+
+# Everything about the files: accessControl, expiresAt, verified, verifiedAt
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/products/com.myapp.sku=SKU-001/files~withAll"
+
+# The product with its files and images
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/products/com.myapp.sku=SKU-001~with(files,images)"
+
+# Take a file off the product. Held by nothing else, it is deleted and its identifier is free again
+curl -X DELETE -u ":banana" "https://example.app.heads.com/api/v1/products/com.myapp.sku=SKU-001/files/com.myapp.fileId=SKU-001-datasheet"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/products/com.myapp.sku=SKU-001/files"
+# []
 ```
 
 ---
@@ -592,15 +687,23 @@ For which assortment a store uses, where a new product lands and what makes it s
 - Property names must follow `Type::property` format
 - Unknown property names return **400 Bad Request**
 - Clear by setting to `null`
+- **`variantValues`** is an object of arrays: `{"Apparel::size": ["S", "M"]}`, only for dimensions whose property takes its values from a list. A group's lists are inherited by the families under it; a new key becomes a new list value
+
+### Tenant-Defined Attributes
+- `attributes` on a product: `{"Product::season": "SS26"}`, by the attribute's qualified name; `null` clears one, attributes left out are untouched
+- A list attribute takes a value **key**; an unknown key is added to the list
+- Unknown attribute names, and a non-numeric string for a number attribute, return **400 Bad Request**
 
 ### Instance Properties
 - **Write-only**: reads currently return `{}`
 - Property names must exist and follow `Type::property` format
 - Only `string`, `number`, `boolean` values are supported
 
-### Images
-- Only `identifiers.url` exists — NO `altText` or `sortOrder` fields
-- Display order determined by insertion order
+### Images and Files
+- An image refers to a URL (`identifiers.url`) or carries content (`data`, write-only); `contentUrl` serves it, with `w`, `h` and `fit` to resize
+- NO `altText` or `sortOrder` fields; display order determined by insertion order
+- Files live under a product's `files` (and an agent's `attachments`); a file nothing holds is deleted
+- Both need `media:read` / `media:write`
 
 ### Lookups
 - **GTIN/PLU Lookup**: Use `~where(gtin=...)~first`, NOT direct indexer

@@ -24,6 +24,11 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/people/com.myapp.
 # Get person's customer relationships
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/people/com.myapp.customerId=CUST-001/customerRelations"
 
+# The currency the person keeps their books in: their own preferredCurrency, else null (a person has no organization above)
+# Read-only, not in a plain read
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/people/com.myapp.customerId=CUST-001~with(functionalCurrency,preferredCurrency)"
+# …, "functionalCurrency": null, "preferredCurrency": null
+
 # Create a person (fullName is auto-derived from givenName + familyName)
 # personalNumber is optional but recommended for Swedish/Nordic contexts
 curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/people" \
@@ -95,6 +100,36 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/companies" \
     "organizationNumber": "556123-4567"
   }'
 
+# A supplier abroad with no street address: an address with only countryCode is a real address.
+# Every address member is optional; this is what places the supplier in a VAT area
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/companies" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "identifiers": {"com.myapp.supplierId": "SUP-SE-001"},
+    "name": "Nordic Textiles AB",
+    "addresses": {"main": {"countryCode": "SE"}}
+  }'
+# "addresses": {"@type": "agent addresses", "main": {"@type": "address", "countryCode": "SE"}}
+
+# Find companies by the country of their main address (the value unquoted)
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/companies~where(addresses/main/countryCode=SE)~just(identifiers,name)"
+
+# Attach a document to a company: a certificate with an expiry, marked as checked.
+# attachments holds files; accessControl is Public unless set (Signed: a link that expires after a day; Private: no link)
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/companies/com.myapp.supplierId=SUP-SE-001/attachments" \
+  -H "Content-Type: application/json" \
+  -d '[{"identifiers": {"com.myapp.fileId": "SUP-SE-001-iso-9001"}, "name": "iso-9001.pdf",
+        "data": "data:application/pdf;base64,JVBERi0xLjQK…", "expiresAt": "2027-12-31T00:00:00Z", "verified": true}]'
+# [{"@type": "file", "identifiers": {…}, "name": "iso-9001.pdf", "mediaType": "application/pdf",
+#   "contentUrl": "https://example.app.heads.com/files/42a9e810877335d3b5cd8b5e0423b65c"}]
+
+# The rest of the file's members; verifiedAt was recorded when verified was set
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/companies/com.myapp.supplierId=SUP-SE-001/attachments~withAll"
+# …, "accessControl": "Public", "expiresAt": "2027-12-31T00:00:00.000Z", "verified": true, "verifiedAt": "2026-10-15T23:04:27.905Z"
+
+# Remove it. A file nothing holds any more is deleted, and its identifier is free again
+curl -X DELETE -u ":banana" "https://example.app.heads.com/api/v1/companies/com.myapp.supplierId=SUP-SE-001/attachments/com.myapp.fileId=SUP-SE-001-iso-9001"
+
 # Create company with parent (subsidiary)
 # The parent is named by external identifier or by database key (identifiers.key)
 curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/companies" \
@@ -140,6 +175,11 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stores/com.heads.
 # Get store's stock roots (warehouses/stock places)
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stores/com.heads.seedID=store1/stockRoots"
 
+# The currency the store keeps its books in: its own preferredCurrency, else the nearest one up the
+# organization (the store's owner, then the company's parent), else null. Read-only; change it through preferredCurrency
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stores/com.heads.seedID=store1~with(functionalCurrency,preferredCurrency,owner)"
+# …, "functionalCurrency": {"@type": "currency", "identifiers": {…, "currencyCode": "SEK"}}, …
+
 # Create a store (uses "owner" not "parent" for ownership relationship)
 # The owner is named by external identifier or by database key (identifiers.key).
 # A store created without "owner" is outside the organization and uses its own assortment.
@@ -183,10 +223,12 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/stores/com.myap
 # List all agents (people, companies, stores combined)
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/agents"
 
-# Filter agents by type
+# Filter agents by type. A customer group is an agent too, and reads with "@type": "customer group"
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/agents~where(@type=person)"
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/agents~where(@type=company)"
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/agents~where(@type=store)"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/agents/com.myapp.groupId=wholesale~just(identifiers,name,memberMoniker)"
+# {"@type": "customer group", "identifiers": {…}, "name": "Wholesale", "memberMoniker": "Wholesaler"}
 
 # Get agent by database key
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/agents/key=abc123def456"
@@ -200,6 +242,12 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/agents/com.heads.
 
 # Get agent's labels
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/agents/com.heads.seedID=ourcompany/labels"
+
+# Get agent's attachments (contracts, certificates); the same files as under /companies/{id}/attachments
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/agents/com.heads.seedID=ourcompany/attachments"
+
+# The currency any agent keeps its books in (people, companies, stores, systems, /v1/me and /v1/us)
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/agents/com.heads.seedID=ourcompany/functionalCurrency"
 ```
 
 ---
@@ -211,6 +259,9 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/agents/com.heads.
 - **External IDs**: Use reverse domain notation for namespacing (e.g., `com.myapp.customerId`)
 - **Person fullName**: The `fullName` field is auto-derived from `givenName` + `familyName`. When both are set, `fullName = "${givenName} ${familyName}"`. When setting a person, you typically provide `givenName` and `familyName`; `fullName` is computed automatically.
 - **Person personalNumber**: Optional field for personal identification numbers (e.g., Swedish personnummer). Not required for creation, but useful for identification in Nordic contexts.
+- **`functionalCurrency`**: read-only on every agent, not in a plain read (`~with(functionalCurrency)` or `/functionalCurrency`). "The currency the agent keeps its books in: its own `preferredCurrency`, else the nearest one up its organization (a store's `owner`, a company's `parent`); null when none is set. Change it through `preferredCurrency`." A write to it answers `200` and changes nothing.
+- **Addresses**: every member of an address is optional, and nothing is validated beyond `countryCode` being an ISO 3166-1 alpha-2 code (an empty string is `400 failed coercion`). An address reads back with the members it has, so `{"countryCode": "SE"}` reads as `{"@type": "address", "countryCode": "SE"}`, is found by `~where(addresses/main/countryCode=SE)`, and places a supplier in a VAT area (see [Working with VAT](../../reference/working-with/vat.md#the-model-in-brief)). An address whose every member is empty reads as no address (`null`).
+- **Attachments**: `attachments` on any agent holds files (`name`, `mediaType`, `data`, `accessControl`, `contentUrl`, `expiresAt`, `verified`, `verifiedAt`); a file nothing holds any more is deleted. Scopes `media:read` / `media:write`. The members are described under [Products → Files](../../reference/working-with/products.md#files).
 
 ### Relationship Setters (parent/owner)
 
@@ -230,7 +281,7 @@ The `parent` setter on companies and the `owner` setter on stores accept a refer
 
 ### Customer Groups and Trade Relationships
 
-For customer group management (creating groups, assigning customers, using groups with discount rules), see:
+A customer group is a type of agent: it reads with `"@type": "customer group"` under `/v1/agents` as well as `/v1/customer-groups`, carries `name`, `addresses` and `contactMethods` like any other agent, and can be created through `POST /v1/agents` with that `@type`. For customer group management (creating groups, assigning customers, using groups with discount rules), see:
 - [Working with Customers — Customer Groups](../../reference/working-with/customers.md#customer-groups)
 - [Configuration — Customer Groups](./configuration.md#customer-groups)
 - [Discount Rules — Buyer Conditions](./discount-rules.md#customer-groups-and-buyer-conditions)

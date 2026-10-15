@@ -96,7 +96,7 @@ PATCH /v1/stores/com.example.storeId=N1            # move a store to another com
 | A store created without `owner` has no owner, also when the key has a node | It is outside the tree and uses its own assortment |
 | Moving a store to another company | Changes the owner it follows at once |
 
-> **Read the reference back.** A `parent` or `owner` whose identifier matches nothing is not refused. The write answers `200`, a nameless agent is created, and the company or store hangs under it. Check that the response names the agent you meant. An identifier key that is not [exactly three segments](../overview.md#a-malformed-identifier-key-is-discarded-not-rejected) is one way to get there: the key is dropped, and the reference then matches nothing.
+> **Read the reference back.** A `parent` or `owner` whose identifier matches nothing is not refused. The write answers `200`, a nameless agent is created, and the company or store hangs under it. Check that the response names the agent you meant. An identifier key that is not [exactly three segments](../overview.md#a-malformed-identifier-key-is-refused) does not get there: the whole request is refused with `400 failed coercion` and nothing is stored.
 
 ### The rule
 
@@ -280,6 +280,7 @@ POST  /v1/products/com.example.sku=P1/assortmentOwners             # add without
 
 | Fact | Detail |
 |---|---|
+| A context with only `owner` puts the product in that owner's assortment | No `articleNumber` is needed, on create, in a product `PATCH` and on `POST …/assortmentContexts` alike. The context reads back with `owner` only |
 | A `PATCH` on a context of an owner that does not have the product adds the product to that owner | |
 | Arrays in a product `PUT` or `PATCH` body only add, for both members | Owners left out stay. `"assortmentOwners": []` in such a body changes nothing |
 | The owner in a path can be an external identifier or the database key | |
@@ -294,9 +295,11 @@ POST  /v1/products/com.example.sku=P1/assortmentOwners             # add without
 |---|---|
 | Product create | The response shows the owner the store uses |
 | `POST …/assortmentContexts` | The response shows the store as `owner` and no `articleNumber`. The data is on the owner the store uses |
-| `GET …/assortmentContexts/{store}` | `200` with `owner` only. The owner's id returns the data |
+| `GET …/assortmentContexts/{store}` | `200 null`: the store has no context of its own. The owner's id returns the data |
 
-> **Current behaviour.** An unknown owner identifier creates a nameless agent and assigns the product to it, `200`. `GET` the owner first, or read the product's `assortmentOwners` back. [Scopes](#traps) has what a narrower key gets. This may change.
+`GET /v1/products/{id}/assortmentContexts/{agent}` for any agent that does not have the product answers `200 null`.
+
+> **Current behaviour.** An unknown owner identifier creates a nameless agent and assigns the product to it, `200`; given with `@type` and `name`, the agent is created with that name together with its relation. `GET` the owner first, or read the product's `assortmentOwners` back. [Scopes](#traps) has what a narrower key gets. This may change.
 
 ### Groups, families, categories and brands
 
@@ -538,7 +541,7 @@ PATCH /v1/products/com.example.sku=P1/assortmentContexts/com.example.companyId=N
 |---|---|---|
 | `owner` | agent | The address of the context. Cannot be changed |
 | `articleNumber` | string | The owner's own number for the node. `null` clears it |
-| `primarySupplier` | company | Who this owner buys the node from. `null` clears it |
+| `primarySupplier` | company | Who this owner buys the node from. `null` clears it. On a context owned by one of your suppliers it is the factory that supplier makes the node at — see [Suppliers and Manufacturers as Owners](#suppliers-and-manufacturers-as-owners). Not in the default projection of the context: `~with(assortmentContexts~with(primarySupplier))` on the product, or `~with(primarySupplier)` on the sub-resource |
 | `discontinued` | boolean | A flag per owner |
 
 | Fact | Detail |
@@ -626,6 +629,8 @@ GET /v1/products/{id}~just(name,assortmentOwners~just(name),assortmentContexts~j
 
 - Our number, the distributor's number, and a third context without a number: the manufacturer was given the product's family, so the product is covered there
 - `primarySupplier` on your context names who you buy from. Setting it does not put the product into the supplier's assortment and creates no supplier relation
+- `primarySupplier` on a **supplier's** context — the owner is one of your suppliers — is the factory that supplier makes the product at, and is what CommerceOS proposes as the manufacturer on new purchase order rows to that supplier. Writing it there is how an integration sets a supplier's factory for a product. The factory must be a supplier of that supplier whose trade relationship carries `supplierIsManufacturer: true` ("Indicates if the supplier manufactures for the customer, e.g. a factory that a supplier uses. Such a supplier is listed among the customer's manufacturers (Fabriker), and changes to the link are logged in the activity history of both"), and be among your `manufacturerRelations`. The relationship flag says the supplier is a manufacturer at all; the context says which factory makes this product. The row's manufacturer itself is not exposed on the order
+- `primarySupplier` is not an essential of the context: `GET /v1/products/{key}~with(assortmentContexts)` leaves it out, `~with(assortmentContexts~with(primarySupplier))` includes it
 - Filter by owner when reading, and never replace the owner list with your own companies only; see [Removing a product](#removing-a-product-from-an-assortment)
 - Supply relations themselves are in [Purchasing](purchasing.md)
 

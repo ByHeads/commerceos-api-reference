@@ -70,13 +70,14 @@ Agents  ↔  Trade Relationships (supplier ↔ customer)
 
 ## Agent Types
 
-CommerceOS uses three agent types:
+CommerceOS uses four agent types for customers and suppliers (a fifth, `system`, is the platform's own):
 
 | Type | Collection | Description |
 |------|------------|-------------|
 | `person` | `/v1/people` | Individual customers or contacts |
 | `company` | `/v1/companies` | Business organizations |
 | `store` | `/v1/stores` | Retail locations, warehouses |
+| `customer group` | `/v1/customer-groups` | A segment of customers, owned by an agent — see [Customer Groups](#customer-groups) |
 
 All agents share these common members:
 - `identifiers` - External IDs (namespaced)
@@ -89,6 +90,8 @@ All agents share these common members:
 - `assortmentOwner` / `assortment` / `assortmentRoots` - Which assortment the agent uses and what is in its own (see [Assortments](assortments.md))
 - `timeline` - Receipt history
 - `preferredCurrency` - Default currency
+- `functionalCurrency` - The currency the agent keeps its books in (read-only, derived from `preferredCurrency` up the organization)
+- `attachments` - Documents such as contracts or certificates (files)
 
 ---
 
@@ -107,6 +110,8 @@ All agents share these common members:
 | `languages` | array | ISO 639-1 language codes |
 | `vatId` | string | VAT identification number |
 | `preferredCurrency` | reference | Default currency |
+| `functionalCurrency` | reference (read-only) | "The currency the agent keeps its books in: its own `preferredCurrency`, else the nearest one up its organization (a store's `owner`, a company's `parent`); null when none is set. Change it through `preferredCurrency`." Not in a plain read: `~with(functionalCurrency)` or `/functionalCurrency`. A write to it answers `200` and changes nothing |
+| `attachments` | array | Files attached to the agent: `name`, `mediaType`, `data` (write-only content), `accessControl` (`Public`, `Signed`, `Private`), `contentUrl`, `expiresAt`, `verified`, `verifiedAt`. `/v1/agents/{id}/attachments`; a file nothing holds any more is deleted. Scopes `media:read` / `media:write`. See [Products → Files](products.md#files) for the members |
 | `labels` | array | Custom labels |
 
 ### Person-Specific Fields
@@ -404,14 +409,28 @@ All agents share a structured address pattern with named slots.
 
 ### Address Fields
 
-| Field | Required | Description |
-|-------|----------|-------------|
-| `line1` | Yes | Street name and number |
-| `line2` | No | Additional info (apt, suite) |
-| `postalCode` | Yes | Postal/ZIP code |
-| `cityName` | Yes | City name |
-| `regionName` | No | State/province/region |
-| `countryCode` | Yes | ISO 3166-1 alpha-2 |
+Every member is optional. Nothing is validated beyond `countryCode` being an ISO 3166-1 alpha-2 code — an empty string there is refused with `400 failed coercion` (path `:0/addresses/main/countryCode`).
+
+| Field | Description |
+|-------|-------------|
+| `line1` | Street name and number |
+| `line2` | Additional info (apt, suite) |
+| `postalCode` | Postal/ZIP code |
+| `cityName` | City name |
+| `regionName` | State/province/region |
+| `countryCode` | ISO 3166-1 alpha-2 |
+
+An address reads back with the members it has. A country-only address is a real address: `{"countryCode": "SE"}` reads as `{"@type": "address", "countryCode": "SE"}`, is found by `~where(addresses/main/countryCode=SE)` (the value unquoted), and is enough to place a supplier in a VAT area — see [Working with VAT](vat.md#the-model-in-brief). An address whose every member is empty (`{"line1": ""}`) is accepted at `200` and reads as no address (`null`).
+
+```bash
+# A supplier abroad, no street address
+POST /v1/companies
+[{"identifiers": {"com.example.supplierId": "SUP-SE-001"}, "name": "Nordic Textiles AB",
+  "addresses": {"main": {"countryCode": "SE"}}}]
+# -> "addresses": {"@type": "agent addresses", "main": {"@type": "address", "countryCode": "SE"}}
+
+GET /v1/companies~where(addresses/main/countryCode=SE)~just(identifiers,name)
+```
 
 ### Reading Addresses
 
@@ -726,6 +745,8 @@ Organize customers into groups for pricing, promotions, or segmentation. Custome
 
 #### Customer Group Fields
 
+A customer group is a type of agent. It has four members of its own and inherits the rest from `agent`:
+
 | Field | Type | Description |
 |-------|------|-------------|
 | `identifiers` | object | Namespaced external IDs |
@@ -734,24 +755,46 @@ Organize customers into groups for pricing, promotions, or segmentation. Custome
 | `owner` | reference | The agent (company) that owns this group |
 | `members` | array | Trade relationships in this group (read via expansion) |
 
+Inherited from `agent`, optional on write and left out of a default read unless asked for with `~with(…)`: `nationality`, `languages`, `vatId`, `addresses`, `contactMethods`, `labels`, `customerRelations`, `supplierRelations`, `customerGroups`, `preferredCurrency`, `functionalCurrency`, `attachments`, `timeline`, `stockRoots`, `assortment`, `assortmentOwner`, `assortmentRoots` and the other [common agent fields](#common-agent-fields). `GET /v1/customer-groups/properties/declared` lists them all. The group reads with `"@type": "customer group"` — under `/v1/customer-groups`, and under `/v1/agents`, where `~where(name=~Wholesale)` finds it among the people, companies and stores.
+
 #### Creating a Customer Group
 
-> **Note:** The `owner` setter for customer groups uses `Agent.fromKey()` and requires `identifiers.key` (the database key).
+The `owner` is named by external identifier or by database key (`identifiers.key`), like any agent reference.
 
 ```bash
-# Step 1: Get the owning company's database key
-GET /v1/companies/com.example.companyId=OUR-COMPANY/identifiers/key
-# Response: c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6  (32-char hex string)
-
-# Step 2: Create the group with owner using database key
+# Create the group
 POST /v1/customer-groups
 {
   "identifiers": {"com.example.groupId": "EMPLOYEE-GROUP"},
   "name": "Employees",
   "memberMoniker": "Employee",
-  "owner": {"identifiers": {"key": "c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6"}}
+  "owner": {"identifiers": {"com.example.companyId": "OUR-COMPANY"}}
 }
+
+# With the agent members a group may carry
+POST /v1/customer-groups
+{
+  "identifiers": {"com.example.groupId": "WHOLESALE"},
+  "name": "Wholesale",
+  "memberMoniker": "Wholesaler",
+  "owner": {"identifiers": {"com.example.companyId": "OUR-COMPANY"}},
+  "vatId": "SE556677889901",
+  "contactMethods": {"email": "wholesale@example.com"},
+  "addresses": {"main": {"line1": "123 Test Street", "postalCode": "12345", "cityName": "Stockholm", "countryCode": "SE"}}
+}
+GET /v1/customer-groups/com.example.groupId=WHOLESALE~with(addresses,contactMethods,vatId)
+
+# The same group through the agents collection, with its type
+GET /v1/agents/com.example.groupId=WHOLESALE
+# -> {"@type": "customer group", "identifiers": {…}, "name": "Wholesale", "memberMoniker": "Wholesaler", "owner": {…}}
+
+# Or create it there, naming the type
+POST /v1/agents
+[{"@type": "customer group", "identifiers": {"com.example.groupId": "STAFF"}, "name": "Staff",
+  "memberMoniker": "Staffer", "owner": {"identifiers": {"com.example.companyId": "OUR-COMPANY"}}}]
 ```
+
+Scopes are unchanged: `supply-chains:write` to write; `supply-chains:read` or `customers:read` to read (a `PATCH` under a read scope answers `200` and changes nothing).
 
 Common group patterns:
 
@@ -762,16 +805,16 @@ POST /v1/customer-groups
   "identifiers": {"com.example.groupId": "VIP-CUSTOMERS"},
   "name": "VIP Customers",
   "memberMoniker": "VIP",
-  "owner": {"identifiers": {"key": "<company-database-key>"}}
+  "owner": {"identifiers": {"com.example.companyId": "OUR-COMPANY"}}
 }
 
 # Wholesale customer group
 POST /v1/customer-groups
 {
-  "identifiers": {"com.example.groupId": "WHOLESALE"},
+  "identifiers": {"com.example.groupId": "WHOLESALE-BUYERS"},
   "name": "Wholesale Buyers",
   "memberMoniker": "Wholesaler",
-  "owner": {"identifiers": {"key": "<company-database-key>"}}
+  "owner": {"identifiers": {"com.example.companyId": "OUR-COMPANY"}}
 }
 ```
 
@@ -1425,8 +1468,10 @@ GET /v1/prices~with(buyers)~take(10)
 ### Address Considerations
 
 - All address fields are stored as provided (no normalization)
-- Country code validation uses ISO 3166-1 alpha-2
+- Every address member is optional; an address with only `countryCode` is a real address, and the one that places a supplier in a VAT area. `nationality` plays no part in that
+- Country code validation uses ISO 3166-1 alpha-2 (an empty string is `400 failed coercion`)
 - Postal code format is not validated (varies by country)
+- An address whose every member is empty reads as `null`
 
 ### GDPR Considerations
 

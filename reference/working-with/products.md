@@ -151,7 +151,10 @@ GET /v1/products~where(status=Pending)~orderBy(createdAt:desc)~take(100)
 | `designatedStockPlaces` | array | Preferred stocking locations |
 | `categories` | array | Category assignments |
 | `labels` | array | Custom tags |
-| `images` | array | Product images |
+| `images` | array | Product images, by URL or with content stored in CommerceOS — see [Images](#images) |
+| `files` | array | Documents attached to the product, such as datasheets; content stored in CommerceOS — see [Files](#files) |
+| `attributes` | object | The product's values for the tenant-defined attributes of products, by qualified name (`Product::season`) — see [Tenant-Defined Attributes](#tenant-defined-attributes) |
+| `autoGtin` | boolean | Whether the product gets a GTIN from the buyer's own GS1 series when an order for it is approved; read, the setting in effect (own or inherited) — see [Getting a GTIN from your own series](#getting-a-gtin-from-your-own-series) |
 | `createdAt` | datetime | Creation timestamp (read-only) |
 | `createdBy` | reference | Creator agent (read-only) |
 | `notesForPicking` | string | Warehouse picking notes |
@@ -325,6 +328,35 @@ GET /v1/products/com.example.sku=PRODUCE-001~with(plu)
 
 > **Note:** GTIN is essential (returned by default), but PLU requires `~with(plu)` to include.
 
+### Getting a GTIN from your own series
+
+A tenant that owns a GS1 company prefix registers it as a GS1 series (`/v1/gs1-series`, `codeType` `GTIN13`). A product can then be given a code from that series automatically, the first time an order for it is approved, instead of being created with one. The switch is `autoGtin`, a member of every product node:
+
+> Whether this product, or the products in this group or family, get a GTIN from the buyer's own GS1 series when an order for them is approved: read, the setting in effect (its own, else the nearest ancestor's; null when neither has one); written, the node's own setting, cleared with null.
+
+```bash
+# Switch it on for a whole family; the products under it inherit the setting
+PATCH /v1/product-families/com.example.familyId=TSHIRT-FAMILY
+{"autoGtin": true}
+
+# Read the setting in effect on a product under it. Not in the default read
+GET /v1/products/com.example.sku=TSHIRT-M-BLUE~with(autoGtin)
+# -> "autoGtin": true          (inherited from the family)
+
+# Opt one product out, and back in to the inherited setting
+PATCH /v1/products/com.example.sku=TSHIRT-M-BLUE
+{"autoGtin": false}
+PATCH /v1/products/com.example.sku=TSHIRT-M-BLUE
+{"autoGtin": null}
+
+# What the series will issue next, without advancing it
+GET /v1/gs1-series~with(nextCode)
+```
+
+What happens at approval: `tryApprove` (and `tryFulfill` on a `New`, `Reserved` or `Unreserved` order) takes the next codes from the GTIN-13 series of the buyer's assortment owner and adds one to `gtin` on each flagged product on the rows being approved. A product that already carries a code from the series is skipped, and so is a cancelled row. When the series cannot cover the demand the approval is refused with `400` saying how many numbers the series is short, and nothing is approved. `nextCode` on the series likewise skips codes a product already carries. The approval side is described under [Approve Order](orders.md#approve-order-tryapprove).
+
+The member is not in the default product body: ask with `~with(autoGtin)` or `/autoGtin`. A `PATCH` response leaves it out for the same reason; read it back.
+
 ---
 
 ## Product Variants and Instance Types
@@ -360,6 +392,36 @@ POST /v1/products
   "status": "Active"
 }
 ```
+
+### Tenant-Defined Attributes
+
+A tenant can define its own attributes of products in the back office — a season, a material, a collection. `attributes` on a product carries the product's values for them, keyed by the attribute's qualified name:
+
+> The values this product has for the tenant-defined attributes of products, by the attribute's qualified name (e.g. `Product::season`). A text, number or boolean attribute takes a value of that kind, and one that takes its values from a list takes the key of a value; a tenant-defined list gets a key it does not have yet as a new value. Null clears an attribute, and attributes left out are untouched.
+
+```bash
+# Write two attributes; the others the product has stay as they are
+PATCH /v1/products/com.example.sku=TSHIRT-M-BLUE
+{"attributes": {"Product::season": "SS26", "Product::weightGrams": 180}}
+
+# Clear one
+PATCH /v1/products/com.example.sku=TSHIRT-M-BLUE
+{"attributes": {"Product::season": null}}
+
+# Read them. Not in the default body
+GET /v1/products/com.example.sku=TSHIRT-M-BLUE~with(attributes)
+```
+
+A list attribute takes the **key** of one of its values, and a key the list does not have yet is added to the list as a new value — a catalogue feed can write a season it has not registered first. The member is distinct from `instanceProperties`, which are the properties of the product's instance type (`Apparel::size`), not attributes of the product.
+
+Refusals, all `400` with the text under `details`:
+
+| Request | `details` |
+|---|---|
+| A name no attribute has, or a name without the `Product::` prefix | `Attribute '<name>' not found.` |
+| A non-numeric string for a number attribute | `Value for <what> must be a numeric string or a number.` |
+
+The read-only twin under `products:read` answers the same values; a write under that scope changes nothing.
 
 ### Mobile Device Setup
 
@@ -569,6 +631,29 @@ POST /v1/products
 GET /v1/product-families/com.example.familyId=IPHONE-16~with(variants)
 ```
 
+**Which values the variants take.** For a dimension whose property takes its values from a list, `variantValues` on the family says which of the list's values this family's variants come in, as arrays of value keys by the dimension's qualified name. A group carries the same member for the families under it:
+
+> The values variants in this family take in each dimension that takes its values from a list, as arrays of value keys by the dimension's qualified name (e.g. `{ "Product::size": ["S", "M"] }`). Read, the lists in effect: its own, or else those of the nearest group above that lists any. Written, its own list for each dimension given; a list equal to the one it gets from the group above is not stored, and an empty array or null clears it. A tenant-defined list gets a key it does not have yet as a new value.
+
+```bash
+# The sizes and colours this family comes in
+PATCH /v1/product-families/com.example.familyId=TSHIRT-FAMILY
+{"variantValues": {"Apparel::size": ["S", "M", "L"], "Apparel::color": ["Black", "White"]}}
+
+# A group's lists apply to every family under it that lists nothing of its own
+PATCH /v1/product-groups/com.example.groupId=APPAREL
+{"variantValues": {"Apparel::size": ["XS", "S", "M", "L", "XL"]}}
+
+# Read the lists in effect. Not in the default body
+GET /v1/product-families/com.example.familyId=TSHIRT-FAMILY~with(variantValues)
+
+# Back to the group's list
+PATCH /v1/product-families/com.example.familyId=TSHIRT-FAMILY
+{"variantValues": {"Apparel::size": null}}
+```
+
+A value key the list does not have yet is added to the list, so a feed can send a new size without defining it first. A dimension whose property is free text has no list: naming it is refused with `400` `Property '<name>' does not take its values from a list.`, and a name no property has, or one without its type prefix, is `400` as well. Both members have read-only twins under `products:read`.
+
 ### Product Groups (Hierarchical)
 
 Groups organize products in a tree structure:
@@ -755,22 +840,95 @@ DELETE /v1/products/com.example.sku=PROD-001/labels/com.example.labelId=sale
 
 ### Images
 
-Images are identified by URL only. Properties like `altText` and `sortOrder` are not supported, and index-based updates (`/images/0`) are not available.
+An image either refers to a URL, from which CommerceOS fetches it when it is shown, or has content stored in CommerceOS, sent as `data`. An image is keyed by `identifiers.url` or by an external identifier. Properties like `altText` and `sortOrder` are not supported, and index-based updates (`/images/0`) are not available.
+
+| Member | Access | Description |
+|---|---|---|
+| `identifiers` | read/write | `key`, external identifiers, and `url` for an image that refers to a URL |
+| `name` | read/write, essential | The file name |
+| `data` | write-only | The content, as a `data:` URL or as base64: a JPEG, PNG, WebP, GIF, AVIF, TIFF or SVG image of at most 20 MiB. Sets `mediaType`, `width` and `height` |
+| `mediaType` | read-only | The media type, such as `image/jpeg`, from the content |
+| `width`, `height` | read-only | The size in pixels, when known |
+| `contentUrl` | read-only, essential | Where CommerceOS serves the image. The extension picks the format (`png`, `jpeg`, `webp`, `gif`); the `w` and `h` query parameters (at most 2000) resize it, and `fit` (`cover`, `contain`, `fill`, `inside`, `outside`) says how |
 
 ```bash
 # Get product images
 GET /v1/products/com.example.sku=PROD-001/images
 
-# Add image (URL-only payload via identifiers)
+# Add an image that refers to a URL
 POST /v1/products/com.example.sku=PROD-001/images
 { "identifiers": { "url": "https://cdn.example.com/products/prod-001.jpg" } }
+
+# Add an image with content, under your own identifier
+POST /v1/products/com.example.sku=PROD-001/images
+[{ "identifiers": { "com.example.imageId": "prod-001-front" }, "name": "front.png",
+   "data": "data:image/png;base64,iVBORw0KGgo…" }]
+# -> [{"@type": "image", "identifiers": {…, "com.example.imageId": "prod-001-front"}, "name": "front.png",
+#      "contentUrl": "https://example.app.heads.com/images/7e267ff8f5517a12580a81900410f8ae.png"}]
+
+# The size and media type come from the content
+GET /v1/products/com.example.sku=PROD-001/images/com.example.imageId=prod-001-front~withAll
+# -> …, "mediaType": "image/png", "width": 20, "height": 10
+
+# Fetch it: the extension converts, w/h/fit resize
+GET https://example.app.heads.com/images/7e267ff8f5517a12580a81900410f8ae.png?w=10        # a 10 x 5 PNG
+GET https://example.app.heads.com/images/7e267ff8f5517a12580a81900410f8ae.webp?w=10&h=10&fit=contain
 
 # Get product with images
 GET /v1/products/com.example.sku=PROD-001~with(images)
 
-# Delete image by URL
+# Delete image by URL, or by your identifier
 DELETE /v1/products/com.example.sku=PROD-001/images/url=https%3A%2F%2Fcdn.example.com%2Fproducts%2Fprod-001.jpg
+DELETE /v1/products/com.example.sku=PROD-001/images/com.example.imageId=prod-001-front
 ```
+
+- `data` is accepted as a `data:` URL or as bare base64. Sending it again replaces the content; it is never returned
+- `contentUrl` is absolute when the API's configuration has a public base URL, else a path (`/images/<key>.png`). An image that refers to a URL gets one too; an image with neither content nor URL has none
+- Content that is not one of the image types, is empty, or is above 20 MiB is refused with `400`, as is `data` that is neither a data URL nor base64
+- Images need the `media:read` / `media:write` scopes beside the product's own
+
+### Files
+
+A file is a document — a datasheet, a certificate — attached to a product node or to an agent. It is reached only there: `files` on a product, family, group or category (`/v1/products/{key}/files`) and `attachments` on an agent (`/v1/agents/{key}/attachments`, see [Working with Customers](customers.md)). There is no `/v1/files` collection. A file either refers to a URL or has content stored in CommerceOS, sent as `data`.
+
+| Member | Access | Description |
+|---|---|---|
+| `identifiers` | read/write | `key`, external identifiers, and `url` for a file that refers to a URL |
+| `name` | read/write, essential | The file name |
+| `mediaType` | read/write, essential | The media type, such as `application/pdf`. Sending `data` sets it to the one a `data:` URL or this member states, else the one the name's extension implies, else the one the content reveals |
+| `data` | write-only | The content, as a `data:` URL or as base64, at most 20 MiB. CommerceOS stores it and serves it at `contentUrl` |
+| `accessControl` | read/write | Who can fetch the content at `contentUrl`: `Public` (anyone), `Signed` (holders of a link that expires) or `Private` (nobody). `Public` unless set |
+| `contentUrl` | read-only, essential | Where CommerceOS serves the stored content. A `Signed` file's link expires after a day; a `Private` file has none |
+| `expiresAt` | read/write | When the document stops being valid, for example a certificate |
+| `verified` | read/write | Whether the document has been checked. Setting it records `verifiedAt` |
+| `verifiedAt` | read-only | When the document was last marked as verified |
+
+```bash
+# Attach a datasheet whose link expires
+POST /v1/products/com.example.sku=PROD-001/files
+[{ "identifiers": { "com.example.fileId": "prod-001-datasheet" }, "name": "datasheet.pdf",
+   "data": "data:application/pdf;base64,JVBERi0xLjQK…", "accessControl": "Signed" }]
+# -> [{"@type": "file", "identifiers": {…}, "name": "datasheet.pdf", "mediaType": "application/pdf",
+#      "contentUrl": "https://example.app.heads.com/files/0dbd032a60177a2cb9aef44603b061ae?exp=1792191867&sig=…"}]
+
+# The rest of the members
+GET /v1/products/com.example.sku=PROD-001/files~withAll
+# -> …, "accessControl": "Signed", "verified": false
+
+# The product with its documents and images
+GET /v1/products/com.example.sku=PROD-001~with(files,images)
+
+# Take the file off the product
+DELETE /v1/products/com.example.sku=PROD-001/files/com.example.fileId=prod-001-datasheet
+POST /v1/products/com.example.sku=PROD-001/files/remove
+[{ "identifiers": { "com.example.fileId": "prod-001-datasheet" } }]
+```
+
+- **A file that nothing holds any more is deleted.** Removing it from its last product or agent deletes it and its content; the old `contentUrl` stops serving, `files` reads `[]`, and the identifier can be used again for a new file. A file still held elsewhere stays
+- `files/add` adds, `files/remove` removes the ones listed, `files/replace` keeps the files it lists and removes the rest
+- A `Signed` link without its signature, or after it expires, is refused; a `Private` file has no `contentUrl` at all. A file without stored content has none either
+- Receipts, exports and shipping labels are not files; they are never reachable this way
+- Files need the `media:read` / `media:write` scopes beside the product's own
 
 ---
 

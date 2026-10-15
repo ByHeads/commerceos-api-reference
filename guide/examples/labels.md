@@ -141,6 +141,7 @@ Labels use the **same pattern** across all entity types — only the base URL ch
 |----------|-------------------|------------------|-------------------|
 | Trade orders | `/v1/trade-orders` | `/v1/trade-orders/{id}/labels` | Priority, fulfillment channel, origin |
 | Receipts | `/v1/receipts` | `/v1/receipts/{id}/labels` | Audit flags, return tracking |
+| Discount rules | `/v1/discount-rules` | `/v1/discount-rules/{id}/labels` | Campaign, owner team, review state — see [Discount Rules → Labels on a Rule](discount-rules.md#labels-on-a-rule) |
 | Shipment orders | `/v1/shipment-orders` | `/v1/shipment-orders/{id}/labels` | Carrier, urgency, warehouse zone |
 | People | `/v1/people` | `/v1/people/{id}/labels` | VIP, lead status, customer segment |
 | Companies | `/v1/companies` | `/v1/companies/{id}/labels` | Preferred supplier, partner tier |
@@ -322,10 +323,11 @@ Use Heidi type names in `applicableOnlyTo`:
 | Trade orders | `TradeOrder` |
 | Shipment orders | `ShipmentOrder` |
 | Receipts | `Receipt` |
+| Discount rules | `DiscountRule` |
 | People | `person` |
 | Companies | `company` |
 | Stores | `store` |
-| Products | `product` |
+| Products | `Product` |
 | Product families | `product family` |
 | Product categories | varies by category type |
 | Users | `user` |
@@ -481,5 +483,6 @@ When configuring sync webhooks with `~with(labels)` expansion, downstream system
 
 - [Product label examples](products.md#labels) — Creating and assigning labels to products
 - [Order label examples](../../reference/working-with/orders.md#labels) — Labeling trade orders
+- [Discount rule label examples](discount-rules.md#labels-on-a-rule) — Labeling discount rules
 - [Customer/supplier label examples](../../reference/working-with/customers.md#labels) — Labeling people and companies
 - [Resource patterns](../../reference/resource-patterns.md) — Label add/remove semantics on all resources

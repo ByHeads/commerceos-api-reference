@@ -192,7 +192,7 @@ That is the same 48 values as the tables above. It reads as one run per system, 
 400  error: Invalid data format. A value could not be coerced to the expected target type.
 ```
 
-Note that string arrives under `error` rather than `details` — this refusal is a `failed coercion` and carries no `details` member at all. The member is still named, in the body: it carries a `failedCoercions` list whose `path` is `/unit`. See [Error Types](../../reference/overview.md#error-types).
+Note that string arrives under `error` rather than `details` — this refusal is a `failed coercion` and carries no `details` member at all. The member is still named, in the body: it carries a `failedCoercions` list whose `path` is `/unit`. See [Error Types](../../reference/overview.md#error-types). The same `failed coercion` is what refuses an external identifier key that is not a namespaced key (`com.example.units.id`, `sku`): the `path` is then `:0/identifiers/^<key>` and nothing is stored — see [A Malformed Identifier Key Is Refused](../../reference/overview.md#a-malformed-identifier-key-is-refused).
 
 ---
 
