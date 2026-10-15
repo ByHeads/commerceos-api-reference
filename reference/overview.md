@@ -110,7 +110,7 @@ curl -u ":MySecretKey" example.app.heads.com/api/v1/scopes
 ["products:read", "products:write", "labels:write"]
 ```
 
-The list arrives already expanded. A key granted one of the broad legacy scopes gets the fine-grained names that scope stands for, and the legacy name itself does not appear in the answer: `read:api` reports the fixed set of read scopes it covers, and `write:api` reports every fine-grained scope there is. [Scope names](credentials.md#scope-names) has both expansions in full.
+The list arrives already expanded. A key granted one of the broad legacy scopes gets the fine-grained names that scope stands for, and the legacy name itself does not appear in the answer: `read:api` reports the fixed set of read scopes it covers, and `write:api` reports every fine-grained scope there is. [Scope names](credentials.md#scope-names) has both expansions in full. One consequence worth knowing: `read:api` does **not** reach `/v1/context` — the config panels and key-value stores an integration reads — while `write:api` does, because it holds `admin`. A client-credentials token never carries a scope its OAuth2 client does not hold: the token endpoint narrows the request to the client's scopes and the response's `scope` says what was granted ([Working with the Configuration Store → Scopes](working-with/configuration-store.md#scopes)).
 
 **This is the only way to ask the question.** No status code separates a read-only resource from its writable twin — `GET /v1/products` is a `200` under `products:read` and under `products:write` alike, and a write that lands on the read-only twin is *also* a `200`, one that persists nothing ([gotcha 41](common-gotchas.md#41-a-write-under-a-read-only-scope-is-a-silent-200)). So no amount of probing endpoints tells you whether this key may write products. This endpoint says so directly, in one request, without touching any data.
 
@@ -200,13 +200,16 @@ The API is organized around resource families like Agents, Products, Orders, Inv
 | **pos.carts** / **pos.supervisor** | What a till is doing: a terminal's session, its active and parked carts and their lines (`pos.carts:read`, `pos.carts:write`), and the supervisor's control of a self-checkout lane (`pos.supervisor:write`, no read half). See [POS Carts](working-with/pos-carts.md). |
 | **prices** | Price definitions, validity windows, and currency-scoped pricing. |
 | **supply-chains** | Trade relationships, delivery terms, and payment terms between agents. Delivery terms are also readable under `logistics:read`. |
-| **users** | User accounts and credentials for access and identity. `users:read` is read-only and covers users plus local, retail and Entra ID credentials; **there is no `users:write`** — every write, and everything to do with roles and permissions, needs `admin`. `admin:read` reads users, systems, OAuth2 clients and every credential collection with secrets masked. See [Users → Scopes](users.md#scopes). |
+| **users** | User accounts and credentials for access and identity. `users:read` is read-only and covers users plus local, retail and Entra ID credentials; **there is no `users:write`** — every write, and everything to do with roles and permissions, needs `admin`. See [Users → Scopes](users.md#scopes). |
+| **admin** / **admin:read** | "Administrative access to system management, and read and write access to every config panel and key-value store under /v1/context, secrets in clear; creating or deleting a panel or store needs config (restricted)." `admin:read`: "Read access to users, systems, OAuth2 clients, credential sets, and every config panel and key-value store under /v1/context; secrets stay masked (restricted)." `admin` is part of `write:api`; `read:api` does not include `admin:read`. See [Working with the Configuration Store](working-with/configuration-store.md#scopes). |
+| **`<name>:read`** / **`<name>:write`** | One config panel or key-value store, by its namespaced name (`com.example.carrier:read`): the integration's own scope, reaching the panel's values or the store's keys under `/v1/context`. `:write` reads in clear and writes; `:read` reads only. Neither creates or deletes the panel or store. See [Working with the Configuration Store](working-with/configuration-store.md). |
+| **enrollment:read** | "Read access to device enrollment token metadata. Secrets are never returned." Lists `/v1/enrollment-tokens` with the agents they belong to, without the secret. |
 | **retail** | Receipts, payment methods, payment cards/means, Z/X and cash register reports, return reasons, and mobile device/plans. See [`receipts.md`](receipts.md) for BI/analytics usage. |
 | **geo** | Currencies, languages, countries, and cities for localization. |
 | **media** | Images and other media assets attached to products and agents. |
 | **integrations** | Payment, shipment, wallet, loyalty and EPI integrations with their configurations. `integrations` is the single full-access scope; `integrations:read` lists them without the configuration bodies. |
 | **links** | Shortened links. |
-| **config** | System settings and serial number sequences. |
+| **config** | System settings and serial number sequences; config panels (`/v1/config-panels`) and key-value stores (`/v1/key-value-stores`) — the administrator's routes that create, read, write and delete them. See [Configuration examples → Config Panels](../guide/examples/configuration.md#config-panels). |
 | **advanced** | Mapped types and sync webhooks for custom data transformations and integrations. See [`mapped-types.md`](mapped-types.md), [`mapped-types-dry-run.md`](mapped-types-dry-run.md), and [`sync-webhooks.md`](sync-webhooks.md). |
 
 > **Note:** Scopes control what API clients can access. Every `:write` scope has a `:read` twin that exposes the same collections read-only. `me`, `advanced` and `config` have no read variant; `integrations` and `admin` have restricted ones. See [Credentials → Every write scope has a read twin](credentials.md#every-write-scope-has-a-read-twin) for the full table, and your OAuth2 client configuration for assigned scopes.
@@ -244,38 +247,37 @@ That last row is the one worth planning around. Reversing a domain with a countr
 
 **Where the shape is enforced, and where it is not.** `~orderBy` and `~distinctBy` reject a key outside the shape with a `400` — `Invalid sort key 'identifiers/com.example.orders.id': field not found`, and `Invalid distinct key …` respectively. The message reads as "you have no such identifier" when it means "that is not a key I will accept", so count the segments before going to look for the data. `~where` and `~just` take a key of any shape at `200` and pass it through without complaint, so a key that reads fine in a filter can still be a `400` in a sort. See [what you can sort on](operators-catalog.md#orderbyselectordesc) for both sides of that line. On a **write**, the shape decides whether the key is stored at all — which is the half that costs the most, and is next.
 
-### A Malformed Identifier Key Is Discarded, Not Rejected
+### A Malformed Identifier Key Is Refused
 
-A key outside the shape, sent in a request **body**, is silently dropped. The write succeeds with a `200`, everything else in the payload lands, and the key is simply not there. Measured on `POST`, `PATCH` and `PUT` alike:
+A key outside the shape, sent in a request **body**, fails the whole request: `400` typed `failed coercion`, naming the key, and nothing is stored — the rest of the payload does not land either. The same on `POST`, `PATCH` and `PUT`, on the record's own `identifiers` and on a reference inside it:
 
 ```bash
 POST /v1/products
 [{"identifiers": {"com.example.sku": "W-1", "com.example.orders.id": "ORD-1"}, "name": "Widget"}]
-→ 200  {"identifiers": {"key": "…", "com.example.sku": "W-1"}, "name": "Widget", …}
-                                     ↑ com.example.orders.id is gone
+→ 400 {"@type": "failed coercion",
+       "error": "Invalid data format. A value could not be coerced to the expected target type.",
+       "targetType": "product",
+       "failedCoercions": [{
+         "success": false,
+         "path": ":0/identifiers/^com.example.orders.id",
+         "targetType": "namespaced key",
+         "inputValue": "com.example.orders.id",
+         "message": "The key 'com.example.orders.id' is not a valid namespaced key",
+         "inputType": "string"}],
+       "suggestion": "Check 'failedCoercions' above. …"}
+
+POST /v1/products
+[{"identifiers": {"com.example.sku": "W-2"}, "name": "Widget", "brand": {"identifiers": {"com.example": "B"}}}]
+→ 400   "path": ":0/brand/identifiers/^com.example"
 ```
 
-**The consequence is not "an attribute went missing".** Identifiers are what an upsert matches an incoming record against, so a write whose *only* identifier is malformed has nothing to recognise itself by on the next run — it creates a new record every time:
+The `path` follows the body's shape: `:0/…` is the first element of an array body, a single-object `PATCH` of one record reads `/identifiers/^com.example`, and a reference's key sits under the reference's member name. Branch on `targetType: "namespaced key"` and the `^`-prefixed key in `path` rather than on the message.
 
-```bash
-3 × POST [{"identifiers": {"com.example.orders.id": "DUP-1"}, "name": "Dup Probe"}]    → 3 products
-3 × POST [{"identifiers": {"com.example.ordersid":  "DUP-2"}, "name": "Dup Control"}]  → 1 product
-```
+**Why this is the right answer.** Identifiers are what an upsert matches an incoming record against. A write whose *only* identifier is malformed has nothing to recognise itself by on the next run — if it were stored without the key, a scheduled sync that retries would create a new record every time. Refusing the request keeps the retry idempotent: fix the key, send again, and the record is created once.
 
-One character apart. For a scheduled sync that retries, the first form is unbounded growth rather than a lost field.
+**In a URL segment the same key does not route.** `PUT /v1/key-value-stores/com.test` and `GET /v1/products/com.example.orders.id=ORD-1` are `404` — the segment is not recognised as an identifier at all — where the identical key in a body is the `400` above. Position decides which you get; neither stores anything.
 
-**A lookup will not tell you.** Asking for the record back by the key you sent is a `404` — the same answer as "not created yet" — so a client polling for its own write never learns the identifier was refused:
-
-```bash
-GET /v1/products/com.example.orders.id=ORD-1   # 404  malformed key
-GET /v1/products/com.example.nope=ORD-1        # 200  null — well formed, nothing carries it
-```
-
-The two *are* distinguishable, just not in a way that names the write as the cause. **The check that works is to read the identifiers back off the write's own response** and confirm the key is present before treating it as assigned — the response body above already shows the difference, at no extra request.
-
-**In a URL segment the same key behaves differently.** A malformed key in a path does not route at all, so `PUT /v1/key-value-stores/com.test` is a `404` where the identical key in a body is a silent `200`. Position, not payload, decides which you get.
-
-**One resource rejects it instead, and only one.** [`sync-webhooks`](sync-webhooks.md#per-webhook-configuration-store) validates the keys of its `secrets` and `variables` maps and answers `400` naming the offending key, failing the whole request and persisting nothing — so a payload mixing valid and invalid keys lands none of it. Every other resource in the API, `identifiers` on all of them included, takes the lenient path above. Treat the webhook behaviour as the exception rather than the rule.
+**Not every string-keyed map is this strict.** Dynamic properties on a record, `localized text` and headers still drop a key outside their key type without a word. `identifiers` — on every resource, and on every reference — is the one that refuses. Full grammar: [namespaced key](primitives.md#namespaced-key).
 
 ### Adding an Identifier to an Object You Can Only Find by Another One
 

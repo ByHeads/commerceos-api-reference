@@ -539,6 +539,24 @@ The same approach applies to other collections — substitute `/v1/trade-orders/
 
 Invalid timestamps return a 404 error response (not an empty array).
 
+## Every key at once: `/keys`
+
+Every top-level collection answers `GET /v1/{collection}/keys` with a JSON array of the database keys of all its objects — "The database keys of all product objects in the set." — in the same order as the listing, so it agrees with `/count` and with `GET /v1/{collection}`, and every key resolves back as `GET /v1/{collection}/{key}`.
+
+```bash
+GET /v1/products/keys
+→ ["551c2a7cf0d570810526609b70b35195", "0a93a8c1514322b856a3bf829ced0496", …]
+
+GET /v1/products/keys/count         # the same number as /v1/products/count
+GET /v1/products/keys~take(100)     # an ordinary array: ~take, ~skip, /0, /-1, ~count all work
+```
+
+- It is the cheap way to sweep a whole collection for reconciliation — a key list is a fraction of the cost of `~just(identifiers)` over the same records. Page the keys with `~skip`/`~take`, then read the records you need by key.
+- **It lists the whole collection only.** After an operator it answers `200 null`, like `/count` does (`/v1/receipts~take(3)/keys` → `null`); for the keys of a filtered subset use `~where(…)~just(identifiers)`.
+- Reachable exactly where `/count` is — the collection's own read scope — and `404` elsewhere. Read-only: `PUT` answers `204` and writes nothing, `PATCH`/`POST` are `400`.
+- Member arrays that are collections in their own right have it too (`/v1/seasons/{id}/subperiods/keys`); ordinary member arrays (`/v1/products/{id}/categories/keys`) and the `before`/`after` windows do not (`404`).
+- `Accept: application/x-ndjson` gives one quoted key per line; `text/csv` is not available for an array of plain values.
+
 ## Performance tips for large exports
 
 - Favor smaller, consistent page sizes (e.g., 100–500 items) and iterate until the last page is smaller than your page size.

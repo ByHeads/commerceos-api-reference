@@ -93,7 +93,7 @@ GET /v1/products~map(com.example.export-format)~take(100)
 - `~with(selectors)` - Add/replace fields on each object.
 - `~withAll` - Include all fields (expands all non-essential fields).
 - `~without(selectors)` - Remove fields.
-- `~just(selectors)` - Keep only specified fields; clears existing subunits first.
+- `~just(selectors)` - Keep only specified fields; clears existing subunits first. On an open object — an `identifiers` node, a config panel, a key-value document, a `localized text` — it answers only what it names: `identifiers~just(key)` leaves the external identifiers out, and a named member without a value is `null`.
 - `~simpleJust(names)` - Keep only given member names (no selector parsing, just property name matching).
 
 **Expansion Examples:**

@@ -237,6 +237,8 @@ When a mapping uses `~map(<name>)`, the named mapping must be present in `siblin
 }
 ```
 
+**A type the sibling declares is kept.** A sibling body with `"'@type'": "'fixed reduction manual discount'"` keeps that `@type` in the resolved output when reached through `~map(<name>)`, as a real send does — the dry-run shows the typed element the webhook would write.
+
 **Self-recursion is allowed.** A mapping named `com.example.node` may include itself in `siblingMappings` and use `~map(com.example.node)` against a child collection — useful for recursive tree structures, provided the input data has a base case.
 
 **Indirect cycles are rejected.** If `A → B → A` (or any longer chain that loops back), the endpoint detects it before resolution begins and returns a 400 with the cycle path:

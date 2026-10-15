@@ -68,7 +68,7 @@ GET /v1/products/com.example.sku=ABC~map(com.example.export)
 **Key behaviors:**
 - Single items return a single mapped object
 - Collections return an array of mapped objects
-- Output automatically strips `@type` annotations
+- Output automatically strips `@type` annotations — unless the mapping body declares one of its own (`"'@type'": "'fixed reduction manual discount'"`), which survives, also when the body is reached as a singleton through `~map(name)` from another mapping and in `POST /v1/mapped-types/dry-run`
 - Only mapped fields appear in output (existing fields not in the mapping are excluded)
 
 See [Operators Reference](operators.md) for more on `~map` and other operators.
@@ -140,7 +140,7 @@ Each element in the array is resolved independently, producing an array of value
 ## Map Operator Behavior
 
 **Settings:**
-- Output removes `@type` annotations
+- Output removes `@type` annotations; a type the body declares itself (`"'@type'": "'<type name>'"`) is kept, so a mapping that produces a typed write body — a discount, a stock entry — names its type this way
 - Spaces inside selectors become concatenation boundaries
 - Output contains only mapped fields (clears existing subunits)
 - No implicit field expansion outside the mapping
@@ -279,7 +279,9 @@ Example from default mapped types:
 "Receipt ID": "$prior/$prior/identifiers/receiptID"
 ```
 
-> **In a sync webhook's `then.set`, these mean something different.** Selectors in a side-effect value are evaluated after delivery, so `$this` is the `out` **response data** and `$prior` is the **source object**. See [`then.set` key routing](sync-webhooks.md#thenset-key-routing).
+> **In a sync webhook's `then.set`, these mean something different.** Selectors in a side-effect value are evaluated after delivery, so `$this` is the `out` **response data** and `$prior` is the **source object**. See [`then.set` key routing](sync-webhooks.md#thenset-key-routing). A member whose selector resolves to `undefined` is left out of the write, at any depth — a nested identifier the response does not carry stays on the record instead of being cleared; `null` clears.
+
+**Config panel members.** `{<panel>/<member>}` in a selector reads a config panel member under the caller's scopes — `{com.example.vendor/tenantCode}`, shorthand for `{api/v1/context/com.example.vendor/tenantCode}`. A missing member resolves to the text `null`; `{<panel>/<member>!}` is strict and fails the resolution. See [Working with the Configuration Store → Placeholders](working-with/configuration-store.md#placeholders).
 
 ### 7) Variables
 

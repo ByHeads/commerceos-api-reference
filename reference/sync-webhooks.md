@@ -71,7 +71,10 @@ GET /v1/sync-webhooks/com.myapp.hookId=product-sync
 |-------|------|-------------|
 | `attempts` | number | Current retry count since last successful run |
 | `maxAttempts` | number | Maximum retry attempts before stopping |
-| `error` | string | Error message from the last failed attempt (system-managed but writable for manual clearing) |
+| `error` | string | Error message from the last failed attempt (system-managed but writable for manual clearing). Set while the webhook retries and when it has parked; cleared by the next success |
+| `lastError` | string (read-only) | "Message of the last failed run — the `error` text at the moment `lastFailed` was stamped. Survives later successful runs; pairs with `lastFailed`. Cleared by `reset` and `catchUp`." In the default read; `null` until the first failure |
+
+**Reading `error`.** An armed `when` with `error` set means the webhook is *retrying*, and the text is the last attempt's message; `when` of `"never"` with `error` set means it has *parked*. A later success clears `error` and `errorDetails` but leaves `lastError` and `lastFailed`, which only `reset` and `catchUp` clear — so `lastFailed > lastSuccess` still says "the last run failed", and `lastError` says why even after the webhook has recovered. `~where(when=never,error)` selects the parked ones only.
 
 These are the only per-webhook retry controls. The retry *timings* — the per-request stale-snapshot budget, the concurrency window, and the recovery cadence — are tenant-wide on the `API config` singleton; see [System Configuration](#system-configuration-v1configapi).
 
@@ -83,37 +86,73 @@ These are the only per-webhook retry controls. The retry *timings* — the per-r
 | `oauth2Client` | object | The OAuth2 client this webhook authenticates as for internal API calls. Its `node` (tenant) and `scopes` define the identity and authorization used when resolving `in` URLs and `then.set` mutations. Required for webhooks that touch internal COS APIs; optional for external-only webhooks. |
 | `verboseLogging` | boolean | Enable detailed logging for debugging |
 
-### Per-webhook Configuration Store
+### Configuration for a webhook: config panels
 
-Two parallel maps hold per-webhook configuration that the webhook's URL templates and `resolveBody` selectors can read at run time:
+A webhook's configuration — API keys, passwords, signing secrets, base URLs, tenant codes, page sizes — lives in a **config panel**: a named configuration document an administrator creates under `/v1/config-panels` with a type schema and the values that fit it, which the back office renders as a form. The webhook reads the panel through `/v1/context/<panel>` with its `oauth2Client`'s scopes, as any integration does. The route, the scopes and the placeholder are in [Working with the Configuration Store](working-with/configuration-store.md); the administrator's routes are in [Configuration examples → Config Panels](../guide/examples/configuration.md#config-panels).
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `secrets` | map of namespaced keys → JSON values | **Sensitive** per-webhook configuration: tokens, passwords, keys. Stored in a separate secret store and **masked as `********` in any API response** — secrets are only ever readable in plaintext by the webhook itself, at execution time, via `{api/v1/context/webhook/secrets/<namespaced.key>}` URL-template lookups or `"api/v1/context/webhook/secrets/<namespaced.key>"` `resolveBody` selectors. |
-| `variables` | map of namespaced keys → JSON values | **Non-sensitive** per-webhook configuration: page sizes, base URLs, tenant codes, region selectors, feature flags. Stored as a regular property and **returned verbatim in API responses — never masked**. |
+There are no `secrets` or `variables` members on a sync webhook. A write that names either answers `200` and stores nothing — the member is undeclared and dropped, as any undeclared member is — so a body that still carries them loses its values silently. Put them in a panel.
 
-Both share the same shape and write semantics:
+One panel for a webhook, created once by an administrator (`config` scope):
 
-- **Keys must be namespaced, and this is the one place in the API that says so out loud.** A key that is not [exactly three dot-separated segments](overview.md#external-identifiers) (e.g. `com.example.tenantCode`) is rejected with a `400` naming it, and the **whole request fails** — a payload mixing valid and invalid keys lands none of it, on either map:
+```bash
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/config-panels" \
+  -H "Content-Type: application/json" \
+  -d '[{
+    "identifiers": {"name": "com.example.vendor"},
+    "title": {"en-US": "Vendor sync"},
+    "schema": {
+      "vendor configuration": {
+        "description": "What the vendor sync needs.",
+        "members": {
+          "apiKey":     {"type": "secret", "description": "The vendor API key.", "requiredOnCreate": true},
+          "tenantCode": {"type": "string", "description": "Our tenant at the vendor."},
+          "pageSize":   {"type": "number", "description": "Items per page."}
+        }
+      }
+    },
+    "configurationType": "vendor configuration",
+    "configuration": {"apiKey": "vk-live-…", "tenantCode": "ACME", "pageSize": 100}
+  }]'
+```
 
-  ```
-  POST /v1/sync-webhooks
-  [{"identifiers": {…}, "secrets": {"com.test.good": "A", "com.example.orders.id": "B"}}]
-  → 400  Invalid secret key 'com.example.orders.id'. Keys must be namespaced — exactly three
-         dot-separated segments (e.g. `com.example.thing`), matching the schema's
-         `namespaced key` type. A fourth segment is rejected just as a missing one is.
-  ```
+Then grant the webhook's `oauth2Client` the panel's scope, `com.example.vendor:read` (or `:write` when a `then.set` must write to it). The webhook reaches the panel in three ways:
 
-  Do not generalise from this. Everywhere else — `identifiers` on every resource, this one included — the same key is [silently discarded at `200`](overview.md#a-malformed-identifier-key-is-discarded-not-rejected), which is the behaviour to design against.
-- **Values can be any JSON** (`dynamic?`).
-- **PATCH merges into the existing map.** PATCHing `{secrets: {a: 1}}` adds key `a`; existing keys stay. Same for `variables`. To clear an entry, set its value to `null` (or use the sub-resource — see below).
-- **Sub-resource:** `/v1/sync-webhooks/{id}/secrets` and `/v1/sync-webhooks/{id}/variables` both support GET / PATCH / PUT (full round-trip).
-- **Inline at create time:** `POST /v1/sync-webhooks` accepts both maps in the request body.
-- **Excluded from default reads.** Neither is part of the default `essential` field set; request them with `~with(secrets,variables)` or `~just(secrets,variables)`.
+| Where | Form | What it reads |
+|---|---|---|
+| A URL template (`in.url`, `out.http.url`), a `resolveBody` selector, a `then.set` target | `{com.example.vendor/tenantCode}` — shorthand for `{api/v1/context/com.example.vendor/tenantCode}`, the panel's route | The member's value, URL-encoded in a URL. A missing member, or a panel the client's scopes do not reach, resolves to the text `null`; `{com.example.vendor/tenantCode!}` is **strict** and fails the resolution with `Placeholder {api/v1/context/com.example.vendor/tenantCode} resolved to nothing (strict)` |
+| A credential: `auth.authorizationHeader`, a `customHeader` value, `auth.basic.username` / `password`, `auth.clientCredentials.client_secret`, `auth.sign.secret`, `receive.pathToken`, `receive.verification.secret` | `com.example.vendor/apiKey` — the bare `<panel>/<member>` form, no braces | The member's value at run time. The stored credential reads back `********`, whatever it names |
+| The credential members above, **in clear** | — | The webhook's client must hold `<panel>:read`, `<panel>:write` or `admin`. A client that reaches the panel only through `admin:read` sees `********`, and the run **stops with a configuration error** naming the scopes that read in clear — `Config panel credential is masked: the webhook's client reads the panel through admin:read; give it <panel>:read or admin` — rather than sending the mask as a credential. A client with no scope on the panel stops with `Config panel credential is missing or not a string` |
 
-Both are reachable from URL templates and `resolveBody` selectors as `{api/v1/context/webhook/secrets/<key>}` and `{api/v1/context/webhook/variables/<key>}` — see [URL Template Variables](#url-template-variables).
+A placeholder in a URL template is not guarded the same way: under `admin:read` alone it interpolates `********`. Give the webhook's client the panel's own scope.
 
-> **When to use which.** Use `secrets` for anything you would not want logged or returned to a non-admin reader (API tokens, basic-auth passwords). Use `variables` for everything else — the values round-trip verbatim, so integrators can read them back to verify configuration.
+The three auth shapes with a panel member, and the signing secret:
+
+```json
+{
+  "auth": {
+    "authorizationHeader": "com.example.vendor/bearerToken"
+  }
+}
+```
+```json
+{
+  "auth": {
+    "customHeader": { "X-API-Key": "com.example.vendor/apiKey" }
+  }
+}
+```
+```json
+{
+  "auth": {
+    "basic": { "username": "com.example.vendor/user", "password": "com.example.vendor/password" },
+    "sign": { "scheme": "standard-webhooks", "secret": "com.example.vendor/signingSecret" }
+  }
+}
+```
+
+`sign.secret`'s own description: "The signing key. Name a config panel member (`com.partner.configuration/signingSecret`) so the key stays vault-encrypted and masked; the webhook's client must hold the panel's scope. Any other value is used as the key itself." The same holds for every credential member: a value that is not a `<panel>/<member>` reference is used literally.
+
+> **Panel members are typed, and the type is checked where the value is used.** A credential must resolve to a string — a `number` member in `authorizationHeader` is a configuration error at run time, not at write. Declare credentials as `secret`, everything else by its type, and keep a `requiredOnCreate` on what the webhook cannot run without, so the administrator's form will not save a panel that would stop the webhook.
 
 ### Operator Methods
 
@@ -123,8 +162,8 @@ The webhook resource exposes a few operator methods callable via POST against th
 |--------|--------|
 | `runOnce` | Trigger a one-shot run. Pass `true` to schedule it ~3 s from now, or a non-negative number `N` to schedule it `N` seconds from now. |
 | `reactivate` | Reactivate a paused or errored webhook by restoring its previous schedule from `lastWhen`. Clears `error` and resets `attempts` to 0. |
-| `reset` | Clear all `last*` timestamps (`last`, `lastStart`, `lastFinished`, `lastSuccess`, `lastFailed`). Forces the next run to behave as a full sync — delta queries that key off `lastStart` (e.g. `{api/v1/context/webhook/lastStart}`) will see no lower bound and re-fetch everything. |
-| `catchUp` | Mark the webhook as if it had just completed a successful run. Sets `last`, `lastStart`, `lastFinished`, and `lastSuccess` to *now*; clears `error`, `attempts`, and `lastFailed`. Use this to activate a webhook on a system with existing historical data without replaying that history. Inverse of `reset`. |
+| `reset` | Clear all `last*` timestamps (`last`, `lastStart`, `lastFinished`, `lastSuccess`, `lastFailed`) and `lastError`. Forces the next run to behave as a full sync — delta queries that key off `lastStart` (e.g. `{api/v1/context/webhook/lastStart}`) will see no lower bound and re-fetch everything. |
+| `catchUp` | Mark the webhook as if it had just completed a successful run. Sets `last`, `lastStart`, `lastFinished`, and `lastSuccess` to *now*; clears `error`, `attempts`, `lastFailed` and `lastError`. Use this to activate a webhook on a system with existing historical data without replaying that history. Inverse of `reset`. |
 | `clearProgress` | Clear any pending resume snapshot in `resumeState`, so the next run starts from page 1. See [Resume After Failure](#resume-after-failure). |
 | `abort` | Stop the run that is executing **right now**. Rejected with `400` when no run is in flight — to stop *future* runs, pause the webhook instead. Cancellation is cooperative and the aborted run does not count as a failure. See [Aborting a Run in Progress](#aborting-a-run-in-progress). |
 
@@ -186,10 +225,15 @@ The `in.url`, `out.url`, and `resolveBody` selectors support template variables 
 | `{api/v1/context/webhook/lastFailed}` | When the previous failed run finished. |
 | `{api/v1/context/webhook/name}` | The webhook's `name`. |
 | `{api/v1/context/webhook/attempts}` | The current attempt count. |
-| `{api/v1/context/webhook/secrets/<namespaced.key>}` | The value of a `secrets` entry by namespaced key. |
-| `{api/v1/context/webhook/variables/<namespaced.key>}` | The value of a `variables` entry by namespaced key. |
 
-Values are URL-encoded automatically.
+**Config panel members:**
+
+| Path | Resolves to |
+|------|-------------|
+| `{<panel>/<member>}` | The value of a config panel member, read under the webhook's client's scopes — `{com.example.vendor/tenantCode}`. Shorthand for `{api/v1/context/<panel>/<member>}`, the panel's route under `/v1/context`; there is no `/configuration/` segment. A missing member, or a panel the scopes do not reach, resolves to the text `null`; a `secret` member under `admin:read` alone resolves to `********`. |
+| `{<panel>/<member>!}` | The same, **strict**: a member that resolves to nothing fails the resolution with `Placeholder {api/v1/context/<panel>/<member>} resolved to nothing (strict)` and the run stops. Use it for anything the request cannot do without. |
+
+Values are URL-encoded automatically. `%7B…%7D` is accepted for `{…}`. See [Configuration for a webhook](#configuration-for-a-webhook-config-panels).
 
 > **Delta sync pattern.** Combine `{api/v1/context/webhook/lastStart}` with a server-side filter to fetch only items modified since the last successful run: `https://api.vendor.example.com/products?modifiedSince={api/v1/context/webhook/lastStart}`. `lastStart` is the canonical delta-sync lower bound; `last` is a legacy alias and should not be used for new integrations. On the first run `lastStart` is empty; design the upstream query so an empty value behaves as "fetch everything", or pre-populate via `catchUp` to start from a known boundary.
 
@@ -214,7 +258,7 @@ Both `in` and `out` use a request object with the following structure:
 | Field | Type | Description |
 |-------|------|-------------|
 | `method` | string | HTTP method (used for `out` only; defaults to `POST` when omitted) |
-| `url` | string | Target URL (API path for `in`, external URL for `out`) |
+| `url` | string | Target URL (API path for `in`, external URL for `out`). Supports `{path}` template variables resolved per item against the unmapped output, the global virtual paths and the webhook context — and "a config panel member can be injected with the bare `{com.partner.panel/member}` shorthand, which expands to `api/v1/context/com.partner.panel/member`, the panel's route under `/v1/context`". See [URL Template Variables](#url-template-variables) |
 | `auth` | object | Authentication configuration (used for `out` only) |
 | `headers` | object | Additional HTTP headers (used for `out` only) |
 | `body` | object | **Ignored** — sync webhooks always send the mapped item as the body |
@@ -324,13 +368,15 @@ Set `fail` on the `out.http` request to declare which statuses skip vs. stop:
 
 ### Authentication Options
 
+Every credential value below may be written literally or as a reference to a config panel member, `<panel>/<member>` — the recommended form for anything secret, since the stored value then reads back `********` and the secret stays in the panel. See [Configuration for a webhook](#configuration-for-a-webhook-config-panels) for the scopes the webhook's client needs.
+
 **Basic Authentication:**
 ```json
 {
   "auth": {
     "basic": {
       "username": "user",
-      "password": "secret"
+      "password": "com.example.vendor/password"
     }
   }
 }
@@ -343,7 +389,7 @@ Set `fail` on the `out.http` request to declare which statuses skip vs. stop:
     "clientCredentials": {
       "tokenUrl": "https://auth.example.com/oauth/token",
       "client_id": "your-client-id",
-      "client_secret": "your-secret",
+      "client_secret": "com.example.vendor/clientSecret",
       "scope": "write:data"
     }
   }
@@ -356,21 +402,37 @@ Set `fail` on the `out.http` request to declare which statuses skip vs. stop:
 ```json
 {
   "auth": {
-    "authorizationHeader": "Bearer static-token"
+    "authorizationHeader": "com.example.vendor/bearerToken"
   }
 }
 ```
+
+The member holds the whole header value, `Bearer …` included.
 
 **Custom Header:**
 ```json
 {
   "auth": {
     "customHeader": {
-      "X-API-Key": "your-api-key"
+      "X-API-Key": "com.example.vendor/apiKey"
     }
   }
 }
 ```
+
+**Request signing** (Standard Webhooks), composable with any of the above:
+```json
+{
+  "auth": {
+    "sign": {
+      "scheme": "standard-webhooks",
+      "secret": "com.example.vendor/signingSecret"
+    }
+  }
+}
+```
+
+Every request is stamped with `webhook-id`, `webhook-timestamp` and `webhook-signature` (`v1,<base64(HMAC-SHA256(key, "{id}.{timestamp}.{body}"))>`) over the exact serialized body; the key is the `whsec_`-prefixed base64 secret decoded to bytes, or the raw bytes of any other secret string. Only `standard-webhooks` is supported.
 
 **Custom Signin (vendor-specific handshake):**
 
@@ -833,6 +895,8 @@ Each transformed item is sent to the external endpoint:
 
 The webhook sends each item as a separate request with `Content-Type: application/json`.
 
+**Spreading a mapped array (`out.http.spread`).** With `"spread": true` the per-input mapped output must be an array, and each element drives its own request: the URL template and the body (or `resolveBody`) are interpolated against that element. After the batch, `then.set` runs once for the source input, with `$this` set to the array of per-element response bodies in input order; an empty mapped array makes no request but still runs `then.set`. A `"stop"` outcome of the `fail` policy on any element aborts the whole batch and `then.set` does not run. This works for an external target and for an internal `api/v1/…` target alike — an internal target receives each element's value as its own write.
+
 ### 4. Apply Post-Sync Actions (`then`)
 
 After successful delivery, the `then.set` object is applied:
@@ -849,6 +913,10 @@ After successful delivery, the `then.set` object is applied:
 ```
 
 This allows you to mark objects as synced or update tracking fields.
+
+**A member that resolves to `undefined` is left out.** Both the write back to the source record and a side-effect write drop every member whose value resolves to `undefined`, at any depth — as a JSON body would, since `undefined` has no JSON form. A nested identifier the `out` answer does not carry is therefore kept on the record rather than cleared. `null` still clears: write `null` on purpose when a member must be unset.
+
+**A `then.set` may write a key-value store.** A side-effect key of `api/v1/context/kv/<store>/<key>` writes the store under the webhook's client's `<store>:write` scope — a cursor, a last-seen id, anything the next run needs. Under `<store>:read` the write is refused and the delivery fails: the run stays pending after one attempt with `You are not authorized to perform this action.`.
 
 #### `then.set` key routing
 
@@ -985,7 +1053,7 @@ Both knobs are **system-wide** on the API configuration (no per-webhook override
 
 When a run finishes with an error — either because the failure wasn't transient, or because the per-request retry budget above was exhausted — the scheduler reschedules the whole webhook:
 
-1. **Error recorded** — The `error` field is set with `"Error while executing: <message>"`.
+1. **Error recorded** — The `error` field is set with `"Error while executing: <message>"`, and stays set while the retries run; `lastFailed` is stamped and `lastError` takes the same text.
 2. **Attempts incremented** — The `attempts` counter increases by 1.
 3. **Retry scheduled** — If `attempts < maxAttempts`:
    - **Transient transactor errors** (stale snapshot, or an escaped optimistic-lock conflict): retry **10 s** later.
@@ -998,7 +1066,7 @@ A sustained contention storm — every per-request retry exhausted, run after ru
 
 On success:
 - `attempts` is reset to **0**
-- `error` is cleared
+- `error` and `errorDetails` are cleared; `lastError` and `lastFailed` are **not** — they keep the last failure until `reset` or `catchUp`
 - `lastStart`, `lastFinished`, and `lastSuccess` are updated
 - If `repeat` is `true`: the webhook reschedules using `when`
 - If `repeat` is `false`: `when` is set to `"never"` (one-time execution complete)
@@ -1179,6 +1247,7 @@ curl -X POST -u ":banana" \
 - **No authorized scopes** - `authorizedScopes` is empty or unset
 - **External endpoint failure** - Non-2xx status from `out.url`
 - **Authentication failure** - Invalid or expired credentials
+- **Masked panel credential** - The webhook's client reads the config panel through `admin:read` only, so a credential member resolves to `********`; the run stops before sending. Give the client `<panel>:read` or `admin`
 - **Invalid `in` query** - Unauthorized scopes or malformed URL
 - **Invalid `when` expression** - URL doesn't return a date-time
 
@@ -1274,6 +1343,8 @@ If no scopes are authorized, the webhook cannot execute.
 
 ### Credential Security
 
+- **Keep credentials in a config panel** - Name them as `<panel>/<member>` in `auth` and type the member `secret`: the webhook reads the value at run time, every API read of the webhook and of the panel outside `/v1/context` shows `********`, and an administrator rotates the key in the back office without touching the webhook. See [Configuration for a webhook](#configuration-for-a-webhook-config-panels)
+- **Give the webhook's client the panel's own scope** - `<panel>:read` reads secrets in clear; a client that reaches the panel only through `admin:read` stops with a configuration error, and a URL placeholder under it interpolates the mask
 - **Never log credentials** - Passwords, secrets, and tokens are masked in logs (`********`)
 - **Use OAuth 2.0** when possible - Tokens are cached and refreshed automatically
 - **Avoid secrets in `in` URLs** - Use authorized scopes instead of embedded credentials
@@ -1407,46 +1478,60 @@ For outgoing requests that require OAuth 2.0 client credentials:
   "auth": {
     "clientCredentials": {
       "tokenUrl": "https://example.com/oauth2/token",
-      "client_id": "REPLACE_WITH_CLIENT_ID",
-      "client_secret": "REPLACE_WITH_CLIENT_SECRET",
+      "client_id": "com.example.vendor/clientId",
+      "client_secret": "com.example.vendor/clientSecret",
       "scope": "webhook.write"
     }
   }
 }
 ```
 
-The webhook automatically fetches and caches access tokens, refreshing them when they expire.
+The webhook automatically fetches and caches access tokens, refreshing them when they expire. `clientId` and `clientSecret` are members of the `com.example.vendor` config panel; the webhook's `oauth2Client` holds `com.example.vendor:read`.
 
-### Per-Webhook Variables in URL Templates
+### Config Panel Members in URL Templates
 
-Per-webhook `variables` (see [Per-webhook Configuration Store](#per-webhook-configuration-store)) let you parameterise URL templates with non-sensitive configuration that varies per environment — base URLs, page sizes, tenant codes, region selectors, feature flags. Values round-trip verbatim, so integrators can read them back to verify configuration.
+A config panel holds the configuration that varies per environment — base URLs, page sizes, tenant codes, region selectors, feature flags — beside the secrets, and a URL template reads a member with `{<panel>/<member>}`. The administrator changes the values in the back office; the webhook picks them up on its next run.
 
 ```bash
-# Set per-environment variables on the webhook
-curl -X PATCH -u ":banana" \
-  "https://example.app.heads.com/api/v1/sync-webhooks/com.example.id=product-sync" \
+# The panel, once (config scope). A typed schema, and the values
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/config-panels" \
   -H "Content-Type: application/json" \
-  -d '{
-    "variables": {
-      "com.example.tenantCode": "ACME",
-      "com.example.pageSize": 100
-    }
-  }'
+  -d '[{
+    "identifiers": {"name": "com.example.vendor"},
+    "schema": {
+      "vendor configuration": {
+        "description": "The vendor sync.",
+        "members": {
+          "apiKey":     {"type": "secret", "description": "Vendor API key.", "requiredOnCreate": true},
+          "tenantCode": {"type": "string", "description": "Our tenant at the vendor."},
+          "pageSize":   {"type": "number", "description": "Items per page."}
+        }
+      }
+    },
+    "configurationType": "vendor configuration",
+    "configuration": {"apiKey": "vk-live-…", "tenantCode": "ACME", "pageSize": 100}
+  }]'
 
-# The webhook's `in.url` references them via the variables lookup
+# The webhook's `in.url` reads the members; the API key goes on a header
 # → resolves to:  https://api.vendor.example.com/products?tenant=ACME&limit=100
 curl -X PATCH -u ":banana" \
   "https://example.app.heads.com/api/v1/sync-webhooks/com.example.id=product-sync" \
   -H "Content-Type: application/json" \
   -d '{
     "in": {
-      "url": "https://api.vendor.example.com/products?tenant={api/v1/context/webhook/variables/com.example.tenantCode}&limit={api/v1/context/webhook/variables/com.example.pageSize}",
-      "method": "GET"
+      "url": "https://api.vendor.example.com/products?tenant={com.example.vendor/tenantCode!}&limit={com.example.vendor/pageSize}",
+      "method": "GET",
+      "auth": {"customHeader": {"X-API-Key": "com.example.vendor/apiKey"}}
     }
   }'
+
+# Change a value later: the administrator's route, or the back office form
+curl -X PUT -u ":banana" "https://example.app.heads.com/api/v1/config-panels/com.example.vendor/configuration/pageSize" \
+  -H "Content-Type: application/json" \
+  -d '250'
 ```
 
-For sensitive values (tokens, passwords) use `secrets` instead — same shape, but masked in API responses.
+`tenantCode` is written strict (`!`): a run without it fails at resolution instead of calling the vendor with `tenant=null`. `pageSize` is not, so a missing value reaches the vendor as `limit=null` — write the strict form for anything the request cannot do without. The webhook's `oauth2Client` holds `com.example.vendor:read`; see [Working with the Configuration Store](working-with/configuration-store.md).
 
 ### Pause and Stop Behavior
 
@@ -1485,6 +1570,8 @@ Aborting on its own is not a pause: the aborted run reschedules on the normal `w
 | Symptom | Cause | Solution |
 |---------|-------|----------|
 | `when` is `"never"` | Webhook stopped due to error or exhausted attempts | Check `error` field, fix the issue, reset `when` |
+| `when` is armed and `error` is set | The webhook is retrying; `error` is the last attempt's message | Read `error` and `errorDetails`; the run will retry on its own until `maxAttempts` |
+| `error` is empty but `lastFailed` is recent | A later run succeeded; the failure's text is kept in `lastError` | Read `lastError` for what went wrong; `reset` or `catchUp` clears it |
 | `next` is in the past | Task queue delay or system restart | The webhook will run on next queue processing |
 | No `authorizedScopes` | Missing or empty scopes | Add required scopes to `authorizedScopes` |
 
@@ -1498,6 +1585,9 @@ Aborting on its own is not a pause: the aborted run reschedules on the normal `w
 | `"Error while getting date for 'when' using URI '{whenUri}': The response was not a date. Result was: {result}. Could be a permissions issue..."` | Invalid `when` expression | Ensure `when` URL returns a date-time value, or check authorized scopes |
 | `"Invalid configuration for client credentials. Missing tokenUrl, client_id"` | Missing OAuth fields | Provide all required fields: `tokenUrl`, `client_id`, `client_secret`, `scope` |
 | `"Invalid configuration for basic auth. Missing password."` | Basic auth without password | Provide the password field |
+| `"Config panel credential is masked: the webhook's client reads the panel through admin:read; give it <panel>:read or admin"` | A credential names a config panel member, and the webhook's `oauth2Client` reaches the panel only through `admin:read`, which masks secrets | Grant the client `<panel>:read` (or `:write`, or `admin`). See [Configuration for a webhook](#configuration-for-a-webhook-config-panels) |
+| `"Config panel credential is missing or not a string"` | A credential names a panel member that does not exist, is not a string, or is on a panel the client's scopes do not reach | Check the member name and type on `/v1/config-panels/<name>~with(schema)` and the client's scopes |
+| `"Placeholder {api/v1/context/<panel>/<member>} resolved to nothing (strict)"` | A strict `{<panel>/<member>!}` placeholder found no value | Set the value on the panel, or drop the `!` to let the text `null` through |
 | `abort` rejected with `400` | No run is in flight — `inFlightSince` is empty or has gone stale | Nothing is running to stop. To prevent *future* runs, pause the webhook (`when: "never"`). See [Aborting a Run in Progress](#aborting-a-run-in-progress) |
 | `"Previous run was aborted by operator request."` in `error` | An operator called `abort` and the run stopped at its next checkpoint | Informational, not a failure — no attempt was consumed and `lastStart` is unchanged. It clears on the next clean run |
 
@@ -1508,7 +1598,7 @@ Aborting on its own is not a pause: the aborted run reschedules on the normal `w
 GET /v1/sync-webhooks/com.myapp.id=my-webhook
 
 # Check specific fields
-GET /v1/sync-webhooks/com.myapp.id=my-webhook~just(error,attempts,last,next,when)
+GET /v1/sync-webhooks/com.myapp.id=my-webhook~just(error,lastError,lastFailed,lastSuccess,attempts,next,when)
 
 # Is a run executing right now, and is an abort pending?
 GET /v1/sync-webhooks/com.myapp.id=my-webhook~just(inFlightSince,abortRequestedAt,error)

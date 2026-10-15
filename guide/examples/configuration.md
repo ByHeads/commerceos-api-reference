@@ -203,13 +203,13 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/payment-methods
 # List discount reasons
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/discount-reasons"
 
-# Create discount reason (no description field supported; use name + active)
+# Create discount reason (no description field supported). A reason is active
+# unless `active` is set to `false`; to inactivate one later, PATCH {"active": false}
 curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/discount-reasons" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"com.myapp.reasonId": "EMPLOYEE"},
-    "name": "Employee Discount",
-    "active": true
+    "name": "Employee Discount"
   }'
 
 # List return reasons
@@ -436,11 +436,118 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/shortened-links"
 
 ---
 
+## Config Panels
+
+A config panel is a named configuration document an administrator keeps for an integration: a **type schema** and the **values** that fit it. The back office renders the schema as a form, so an administrator fills in an integration's settings there — credentials, defaults, mappings — and the integration reads the values through [`/v1/context`](../../reference/working-with/configuration-store.md) with its own token. The administrator's routes below are `/v1/config-panels`, scope `config`.
+
+A panel is a concept: `GET /v1/config-panels` lists, `POST` (or `PUT` at `/v1/config-panels/<name>`) with `identifiers.name` creates, `DELETE` removes; a panel is addressed by its name, by its COS key or by an external identifier. The name is a [namespaced key](../../reference/primitives.md#namespaced-key) such as `com.example.carrier`, and one name is a panel or a key-value store, never both.
+
+```bash
+# Create a panel: a schema of named types, the type the values are an instance of, and the values
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/config-panels" \
+  -H "Content-Type: application/json" \
+  -d '[{
+    "identifiers": {"name": "com.example.carrier"},
+    "title": {"en-US": "Configuration for Example Carrier", "sv-SE": "Konfiguration för Example Carrier"},
+    "documentationUrl": "https://docs.example-carrier.test/commerceos",
+    "schema": {
+      "carrier configuration": {
+        "description": "A carrier integration'"'"'s settings.",
+        "members": {
+          "apiKey": {"type": "secret", "description": "The key the integration sends to the carrier.", "requiredOnCreate": true},
+          "defaultService": {"type": "'"'"'standard'"'"' or '"'"'express'"'"' or '"'"'pickup'"'"'", "description": "The service booked when the order names none."},
+          "sender": {"type": "carrier sender", "title": {"en-US": "Sender", "sv-SE": "Avsändare"}, "description": "The address printed as sender."},
+          "parcels": {"type": "carrier parcel[]?", "description": "Parcel presets."},
+          "since": {"type": "date-time?", "description": "Bookings before this instant are ignored."}
+        }
+      },
+      "carrier sender": {
+        "description": "A postal address.",
+        "members": {"name": {"type": "string", "description": "Sender name."}, "city": {"type": "string", "description": "City."}}
+      },
+      "carrier parcel": {
+        "description": "A parcel preset.",
+        "members": {"weightKg": {"type": "number", "description": "Weight."}}
+      }
+    },
+    "configurationType": "carrier configuration",
+    "configuration": {
+      "apiKey": "k-1",
+      "defaultService": "standard",
+      "sender": {"name": "Shade AB", "city": "Stockholm"},
+      "parcels": [{"weightKg": 2}]
+    }
+  }]'
+# → [{ "@type": "config panel",
+#      "identifiers": { "key": "…", "name": "com.example.carrier" },
+#      "configuration": { "apiKey": "********", "defaultService": "standard", "sender": {…}, "parcels": [{…}] },
+#      "configurationHash": "tEEJCjTFLcZGeeTO3nsYt_HPadK11elfulR-AOlRtfo" }]
+
+# The default read is identifiers, configuration and configurationHash; ask for the rest
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/config-panels/com.example.carrier"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/config-panels/com.example.carrier~with(title,documentationUrl,schema,configurationType)"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/config-panels/com.example.carrier~withAll"
+
+# A well-formed name no panel has is 200 null, the concept convention
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/config-panels/com.example.nothere"
+# → 200  null
+
+# Replace one value and keep its siblings; any depth, and a map entry by its key
+curl -X PUT -u ":banana" "https://example.app.heads.com/api/v1/config-panels/com.example.carrier/configuration/defaultService" \
+  -H "Content-Type: application/json" \
+  -d '"express"'
+curl -X PUT -u ":banana" "https://example.app.heads.com/api/v1/config-panels/com.example.carrier/configuration/sender/city" \
+  -H "Content-Type: application/json" \
+  -d '"Göteborg"'
+
+# A date-time member takes any offset and reads back as the UTC instant
+curl -X PUT -u ":banana" "https://example.app.heads.com/api/v1/config-panels/com.example.carrier/configuration/since" \
+  -H "Content-Type: application/json" \
+  -d '"2026-10-01T02:00:00+02:00"'
+# → "2026-10-01T00:00:00.000Z"
+
+# An array member is stored whole and read with the collection operators; ~first of an empty match is 404
+curl -X PUT -u ":banana" "https://example.app.heads.com/api/v1/config-panels/com.example.carrier/configuration/parcels" \
+  -H "Content-Type: application/json" \
+  -d '[{"weightKg": 2}, {"weightKg": 5}]'
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/config-panels/com.example.carrier/configuration/parcels~where(weightKg=5)~first/weightKg"
+# → 5
+
+# Remove an optional value: DELETE, or PUT null. A requiredOnCreate member cannot be removed
+curl -X DELETE -u ":banana" "https://example.app.heads.com/api/v1/config-panels/com.example.carrier/configuration/since"
+curl -X DELETE -u ":banana" "https://example.app.heads.com/api/v1/config-panels/com.example.carrier/configuration/apiKey"
+# → 400  Missing required config panel member 'apiKey'
+
+# A secret reads back masked here, and a write that carries the mask keeps the stored secret
+curl -X PUT -u ":banana" "https://example.app.heads.com/api/v1/config-panels/com.example.carrier/configuration" \
+  -H "Content-Type: application/json" \
+  -d '{"apiKey": "********", "defaultService": "standard", "sender": {"name": "Shade AB", "city": "Stockholm"}}'
+
+# Projection works as on any typed element
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/config-panels/com.example.carrier~just(title)"
+# → { "@type": "config panel", "title": { "@type": "localized text", "en-US": "…", "sv-SE": "…" } }
+
+# Delete the panel
+curl -X DELETE -u ":banana" "https://example.app.heads.com/api/v1/config-panels/com.example.carrier"
+```
+
+**The element.** `identifiers` (`name`, the COS `key`, any external identifiers; `name` never changes), `title` (a `localized text` — a string is `400`), `documentationUrl` (one absolute http or https URL, else `400 '…' is not an absolute http or https URL`; `null` or a `DELETE` of the member removes it), `schema`, `configurationType` (the type of the schema that `configuration` is an instance of), `configuration` and `configurationHash`. `title` and `documentationUrl` are presentation only — the back office titles the panel with the one and links the other — and neither is part of the hash; the hash changes with the values.
+
+**The schema** is written as the API's own type declarations are: types by name, each `{ "description", "members", "examples"? }`, a member `{ "type", "description", "title"?, "examples"?, "requiredOnCreate"?, "multiline"?, "hidden"?, "sortOrder"? }`. A member's `type` is a type expression over the API's primitive types — `string`, `number`, `boolean`, `date-time`, `secret`, `'a' or 'b'`, a trailing `?` for optional, `[]` for a list — or the name of another type of the panel for a nested object (`"sender": {"type": "carrier sender"}`, a list of them `"carrier parcel[]?"`). A map of free keys is a type with `additionals: { "key", "value" }`. Descriptions and titles take a string (the en-US text) or the text by locale, `{"en-US": "…", "sv-SE": "…"}`. The back office labels a field by its `title`, keeps the `description` behind an info icon and uses the first of `examples` as the placeholder.
+
+**What a schema may not do.** A member without a `description` fails the whole schema (`400 Expected a type schema: a map from type names to their descriptions and members`). No member may be typed `dynamic`, in any type of the panel (`400 The member '<member>' of '<type>' is typed dynamic; a config panel member needs a declared type`) — declare a list of a row type instead and read a row with `…/rows~where(code=…)~first`. A type may not take a name the API already uses (`400 'secret' is a type of the API; a type schema's types need names of their own`). `configurationType` must name a type of the schema.
+
+**Writes.** A write of the element validates the complete resulting panel — `schema`, `configurationType` and `configuration` together — so a body that adds a type, a member and its value is one request. A member the body leaves out keeps its stored value; `configuration` given is replaced whole. Values beside `schema` are `400 Unknown config panel member '<name>': values go under configuration`; an undeclared member under `configuration` is `400 Unknown config panel member '<name>'`, and inside a nested object `400 Unknown member '<name>' of '<type>'`. A map body keyed by name at `PUT /v1/config-panels` is `400`. Members typed `secret` read back `********` on these routes, nested and in lists too; the integration reads them in clear through [`/v1/context`](../../reference/working-with/configuration-store.md#secrets).
+
+**Who reads it.** An integration's OAuth2 client or API key holding `com.example.carrier:read` or `com.example.carrier:write` reaches the values — and only the values — at `/v1/context/com.example.carrier`; `admin:read` reads every panel there with secrets masked and `admin` in clear. Neither creates or deletes a panel: that stays with `config` here. The route, the scopes and the `{com.example.carrier/apiKey}` placeholder for webhooks are in [Working with the Configuration Store](../../reference/working-with/configuration-store.md).
+
+---
+
 ## Key-Value Stores
 
 A key-value store keeps state the schema has no home for: a sync cursor, a feature flag, a small settings document, or the state an integration needs between calls. A store has a name of exactly three dot-separated parts, a [namespaced key](../../reference/primitives.md#namespaced-key) such as `com.example.settings`, and holds keys with any JSON value, no schema, each key written and read apart from the others. Sub-paths of a value can be read, written and deleted individually.
 
-Two routes reach a store. An administrator with the `config` scope creates, lists and deletes stores under `/v1/key-value-stores`, and reads and writes their keys there. A client that holds the store's own scope, `com.example.settings:write` (reads and writes) or `com.example.settings:read` (reads), reaches the keys under `/v1/context/kv/com.example.settings/<key>`: that is the route for an integration, whose OAuth2 client the administrator gives the scope. Nothing else grants it, and the integration cannot create the store itself.
+Two routes reach a store. An administrator with the `config` scope creates, lists and deletes stores under `/v1/key-value-stores`, and reads and writes their keys there. A client that holds the store's own scope, `com.example.settings:write` (reads and writes) or `com.example.settings:read` (reads), reaches the keys under `/v1/context/kv/com.example.settings/<key>`: that is the route for an integration, whose OAuth2 client the administrator gives the scope. Nothing else grants it, and the integration cannot create the store itself — with one exception: installing an [EPI integration](#epi-integrations--configurations) creates the store named by each `<name>:write` scope its client holds where no panel or store has that name. `admin:read` reads every store's keys and `admin` writes them, on the same `/v1/context/kv` route. The integration's side of the route is [Working with the Configuration Store](../../reference/working-with/configuration-store.md#key-value-stores).
 
 ```bash
 # Create a store. PUT with {} creates it, and leaves an existing one as it is
@@ -468,6 +575,10 @@ curl -X DELETE -u ":banana" "https://example.app.heads.com/api/v1/key-value-stor
 The keys, with a token or key that holds `com.example.settings:write`:
 
 ```bash
+# The stores the token reaches, by name
+curl -X GET -H "Authorization: Bearer <token>" "https://example.app.heads.com/api/v1/context/kv"
+# → { "@type": "context key value stores", "com.example.settings": {} }
+
 # A store never lists its keys: keep your own index
 curl -X GET -H "Authorization: Bearer <token>" "https://example.app.heads.com/api/v1/context/kv/com.example.settings"
 # → {}
@@ -514,7 +625,7 @@ curl -X GET -H "Authorization: Bearer <token>" "https://example.app.heads.com/ap
 
 **The name is three parts, and one name is a panel or a store.** `PUT /v1/key-value-stores/com.test` is a `404`: a name of two or four parts does not route at all, unlike the same key in a request body ([namespaced key](../../reference/primitives.md#namespaced-key)). A name that a config panel already holds is a `409` `state conflict`, `A config panel is named com.example.settings`.
 
-**What a store scope can and cannot do.** `com.example.settings:read` alone answers a write with `403` `This key-value store is read-only`. A client with `com.example.settings:write` cannot create or delete the store: `DELETE /v1/context/kv/com.example.settings` is a `403` `Store scopes cannot create or delete stores`, and `/v1/key-value-stores` is a `404` for it. A store the client has no scope for is a `404` on every key, and so is a store nobody has created yet, whatever scope the client holds: create the store first.
+**What a store scope can and cannot do.** `com.example.settings:read` alone answers a write with `403` `This key-value store is read-only`. A client with `com.example.settings:write` cannot create or delete the store: `DELETE /v1/context/kv/com.example.settings` is a `403` `Store scopes cannot create or delete stores`, and `/v1/key-value-stores` is a `404` for it. A store the client has no scope for is a `404` on every key, and so is a store nobody has created yet, whatever scope the client holds: create the store first. `/v1/context/com.example.settings/…` — the store's name directly under the root — is a `404` `No config panel is named com.example.settings`: a namespaced key at the root is a panel's name only, and stores live under `kv`.
 
 ---
 
@@ -671,7 +782,9 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/users" \
 
 # 2b) Create the key-value store for the integration's own state, once. The scope
 # com.example.mock:write on the client above is what lets the integration reach it;
-# leave both out for an integration that keeps no state. The integration cannot create it.
+# leave both out for an integration that keeps no state. The integration cannot create it,
+# but the install in step 3 does, for each <name>:write scope the client holds where no
+# panel or store has the name — so this step is optional when the scope is already granted.
 curl -X PUT -u ":banana" "https://example.app.heads.com/api/v1/key-value-stores/com.example.mock" \
   -H "Content-Type: application/json" \
   -d '{}'

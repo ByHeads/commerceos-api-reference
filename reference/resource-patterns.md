@@ -442,7 +442,7 @@ PUT /v1/people/{key}   {"gdprForgotten": {"@resolveValue": "api/v1/now"}}
 | `PATCH /…/<entity>/<member>` | `200` with the current value — never `204` |
 | bulk `PUT`/`POST`, per element | the existing element at that array position, or `null` when nothing matched |
 
-A **single** `POST` object whose identifiers match an existing element is `409` before `@if` is looked at — use `PUT` for create-if-absent.
+A **single** `POST` object whose identifiers match an existing element is `409` before `@if` is looked at — use `PUT` for create-if-absent. An **array** body is different on every concept, whatever the verb: each element is matched by its identifiers and updated in place when found, so `POST /v1/brands [{"identifiers": {"com.example.id": "x"}, "name": "Second"}]` after a first `POST` with `"First"` answers `200` with the same `identifiers.key` and the record reads `Second`. The single-object `POST` is the create-only form.
 
 A skipped write's payload is **not** validated: `{"@if": "false", "@value": {"title": 123}}` is a `200`. A proceeding one is, and the `failed coercion` names the property (`…/title`), never `@value`.
 
@@ -472,6 +472,7 @@ A skipped write's payload is **not** validated: `{"@if": "false", "@value": {"ti
 
 - **Index objects.** A directive inside `identifiers` is the refusal above; identification is never conditional.
 - **Dynamic targets.** In a key-value store document or a `dynamic` member the object is *data*, not an envelope: `PUT /v1/context/kv/com.example.x/doc {"@value": 1, "@if": "anything"}` stores and reads back exactly `{"@value": 1, "@if": "anything"}`.
+- **Config panel placeholders are substituted first.** `{<panel>/<member>}` in a request path or a body is replaced by the member's value before the body is parsed — `PUT /v1/new {"a": "{com.example.carrier/defaultService}"}` answers `{"a": "standard"}` — so it is text substitution, not a directive. See [Working with the Configuration Store → Placeholders](working-with/configuration-store.md#placeholders).
 
 ### Worth stating
 
@@ -617,6 +618,8 @@ Values are non-essential, so a plain `GET` does not carry them. Ask for one by n
 GET /v1/products/com.example.sku=WIDGET-001~with(com.example.tracking)
 GET /v1/products/com.example.sku=WIDGET-001/com.example.tracking
 ```
+
+**Projection on open objects is exhaustive.** `~just` and `fields=` on an `identifiers` node, on a config panel and on a key-value document answer only what they name: `identifiers~just(key)` leaves every external identifier out unless it is named, an unnamed key is left out, and a named member that has no value is `null`. `~with`, `~without` and `fields=all` behave as before. See [`~just`](operators-catalog.md#justselectors).
 
 **`~withAll` and `fields=all` do not include them**, which is the one place those two do not mean "everything". An audit of what a record carries has to name its dynamic properties explicitly, and the registry is where to get the list.
 
@@ -1051,7 +1054,10 @@ For serialized products (devices, SIM cards), use `instances` instead of `quanti
 |--------|--------|
 | `tryApprove` | Sets order status to `Committed` if currently `New` or `Reserved` |
 | `tryFulfill` | Fulfills all eligible items (commits new/reserved/unreserved items first as needed) and performs a physical move from each item's source to its destination place for physical product instances. |
-| `tryCancel` | Cancels the order if currently `Committed` |
+| `tryCancel` | Cancels the order if currently `Committed` — and only then: on a partly received order (`Committed` + `Fulfilled`) it is a `200` that changes nothing |
+| `cancelRemainder` | Cancels the committed, not yet fulfilled part of every item, e.g. the outstanding remainder of a partly received purchase order; a no-op when nothing is outstanding. Refunds what was paid towards the cancelled units; refused (`400`) while the order is in a POS checkout, or when such a payment was taken in a till, through a payment integration or from a wallet |
+| `cancelItems` | Cancels part of an approved order, per item, to a target `cancelledQuantity`; idempotent and monotone |
+| `reversePayment` | Credits a payment for units released without a refund |
 | `changeInvoiceAddress` | Updates the invoice address (only on `New`/`Reserved` orders) |
 | `changeDeliveryAddress` | Updates the delivery address (only on `New`/`Reserved` orders) |
 | `createPayment` | Creates a payment record (see constraints below) |

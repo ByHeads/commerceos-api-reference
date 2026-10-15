@@ -565,17 +565,17 @@ com-mycompany.erp.id     # Dash in the first segment
 uk.co.acme.customerId    # A co.uk domain reversed is already 3 segments
 ```
 
-**What happens to a key that is not one.** The format is not enforced uniformly, and the two behaviours are worth telling apart before you pick a namespace:
+**What happens to a key that is not one.** Where the key is decides the answer:
 
 | Where the key appears | A key outside the format |
 |---|---|
-| A request **body** (`identifiers`, on any resource) | Silently discarded — `200`, and nothing is stored |
-| A **URL segment** (`/v1/key-value-stores/com.test`, `/v1/products/com.a.b.c=X`) | `404` — the request does not route |
+| A request **body** — `identifiers` on any resource, and on a reference inside it such as `brand: {"identifiers": {…}}` | `400 failed coercion` naming the key; **the whole request fails and nothing is stored** |
+| A **URL segment** (`/v1/key-value-stores/com.test`, `/v1/config-panels/com.test`, `/v1/products/com.a.b.c=X`) | `404` — the request does not route |
+| A config panel's or key-value store's **name**, and the `<name>:read` / `<name>:write` scope built from it | A two- or four-part name does not route (`404`); a scope built from one is not in the catalogue |
 | `~orderBy(identifiers/…)` / `~distinctBy(identifiers/…)` | `400`, naming the key |
 | `~where(identifiers/…)` / `~just(identifiers/…)` | `200`, passed through untouched |
-| `sync-webhooks` `secrets` / `variables` keys | `400`, naming the key — the whole request fails and nothing persists |
 
-The first row is the expensive one: identifiers are what an upsert matches on, so a write whose only identifier is malformed cannot recognise what it wrote last time and creates a fresh record on every retry. See [A Malformed Identifier Key Is Discarded, Not Rejected](overview.md#a-malformed-identifier-key-is-discarded-not-rejected).
+The first row is the one to design for: the refusal carries a `failedCoercions` list whose `path` names the key (`:0/identifiers/^com.example.orders.id` for the first element of an array body, `:0/brand/identifiers/^com.example` for a reference inside it), and because nothing is stored, a retry creates no duplicate. Other string-keyed maps — dynamic properties on a record, localized text, headers — still drop a malformed key; do not generalise from `identifiers`. See [A Malformed Identifier Key Is Refused](overview.md#a-malformed-identifier-key-is-refused).
 
 **Used for:** External identifier keys (the left side of identifier assignments like `com.example.id=123`).
 
@@ -600,7 +600,7 @@ GET /products~where(category=null)
 | **string** | `length`, `lower`/`upper`, `fold`, indexing (`0`, `-1`), ranges (`2..5`), contains (`=~`), concat (`+=`, `+~`), split (`/={separator}`) |
 | **strict string** | Same as string; rejects `""`, whitespace-only, and `"0"` |
 | **url** | Strict string with URL semantics (no validation) |
-| **namespaced key** | Exactly two dots, max 128 chars (e.g., `com.example.id`) |
+| **namespaced key** | Exactly two dots, max 128 chars (e.g., `com.example.id`); a malformed one in `identifiers` is `400 failed coercion` |
 | **number** | `neg`, `abs`, `evn`, arithmetic (`+=`, `-=`, `*=`, `/=`), percent (`+=10%`), rounding (`r{n}` for any n, default `r`=10), formatting (`%c`, `%0{width}d`) |
 | **decimal** | Same as number, with precision preservation |
 | **boolean** | `str`, `int`, `inv`, `assert` (returns null if false) |
