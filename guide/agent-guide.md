@@ -605,7 +605,7 @@ When referencing another object, use the `identifiers` wrapper:
 
 | Method | Behavior |
 |--------|----------|
-| POST | Create new - fails if identifier exists |
+| POST | A single object creates and answers `409` when the identifier exists; an array body matches each item by identifier and updates what it finds, so a bulk `POST` is safe to re-run |
 | PUT | Upsert - create or replace entirely |
 | PATCH | Merge - update only specified fields |
 
@@ -893,7 +893,7 @@ A bulk write commits in chunks of **200 items**, so a failure part-way through l
 
 | Error | Cause | Fix |
 |-------|-------|-----|
-| "Already exists" | Duplicate external ID on POST | Use PUT for upsert, or generate unique ID |
+| "This resource, or a resource with these identifiers, already exists." | A single-object `POST` on a concept collection with an identifier that exists | Send the array body `[{…}]` — a bulk `POST` with a known identifier updates the record in place on every concept — or `PUT`, or a new identifier |
 | "Concurrent modification" | Another process modified data | Re-fetch and retry |
 
 ### 8.4 Common Request Mistakes
@@ -906,7 +906,7 @@ A bulk write commits in chunks of **200 items**, so a failure part-way through l
 | Argument left off an argument-taking operator | `400` for `~take` / `~orderBy` / `~distinctBy` / `~map`; otherwise a silent `200` running the operator with no argument — `~where` filters nothing, `~just` keeps nothing | Supply the argument: `~take(2)`, `~where(status=Active)`, `~just(name)` |
 | Currency as string | 400 | `{"identifiers": {"currencyCode": "SEK"}}` |
 | Wrong reference field | 400 | Stores use `owner` not `parent` |
-| POST vs PUT confusion | 409 or incomplete | POST creates new, PUT upserts |
+| POST vs PUT confusion | 409 or incomplete | A single-object POST creates only (`409` when it exists); an array POST, a PATCH on the collection and PUT update by identifier |
 | Missing @type for polymorphic | 400 | Add `"@type": "person"` when needed |
 
 ### 8.5 Debug Checklist
@@ -923,9 +923,16 @@ When something doesn't work:
    # Check OpenAPI spec for available endpoints
    curl -u ":banana" "https://example.app.heads.com/api/v1/openapi.json"
 
-   # Or query the elements API for schema introspection
+   # Or query the elements API for schema introspection. Every element carries a
+   # title and a description; an enum type lists its values with their titles
    curl -u ":banana" "https://example.app.heads.com/api/v1/elements/types"
    curl -u ":banana" "https://example.app.heads.com/api/v1/elements/properties"
+   curl -u ":banana" "https://example.app.heads.com/api/v1/elements/types/CameraBarcodeScannerDecoder~just(identifiers,enum)"
+
+   # Title an external identifier before any record carries it (namespaced keys only;
+   # GET of a key nobody has defined is 200 null, PATCH on it 404)
+   curl -X PUT -u ":banana" "https://example.app.heads.com/api/v1/elements/properties/Instance::com.myapp.sku" \
+     -H "Content-Type: application/json" -d '{"title": {"en-US": "SKU"}}'
    ```
 
 3. **Referenced objects exist?**
@@ -956,7 +963,7 @@ When something doesn't work:
 | **Body Indicator** | `@` marker in URL path showing where request body targets |
 | **Essential Field** | Field included in default response without expansion |
 | **Non-Essential Field** | Field requiring `~with` or `~withAll` to include |
-| **Upsert** | Create if not exists, update if exists (PUT behavior) |
+| **Upsert** | Create if not exists, update if exists: `PUT`, and every array-body write matched on identifiers |
 | **NDJSON** | Newline-delimited JSON, one object per line |
 
 ---

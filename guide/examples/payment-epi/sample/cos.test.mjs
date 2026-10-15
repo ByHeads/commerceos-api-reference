@@ -41,7 +41,7 @@ test("the store round-trips a value and the configuration answers the context id
         assert.equal(malformed.status, 400, "a malformed body is answered, not thrown");
         assert.match((await malformed.json()).errors[0].message, /JSON/);
         const config = await (await fetch(`${cos.url}/api/v1/context/EPI1`, { headers })).json();
-        assert.deepEqual(config, { "@type": "EPI configuration assignment", configuration: { merchantId: "M-0001", environment: "TEST" }, configurationHash: "GoX_BCsLy-8XeQboK40yk1Aw-S4W43l5zxk4l4XigA0", configurationType: "piggy configuration", schema: { "piggy configuration": { description: "Merchant account at Piggy Bank", members: { merchantId: { type: "string", title: "Merchant id" }, environment: { type: "'TEST' or 'LIVE'", title: "Environment", description: "TEST until go-live" } } } } });
+        assert.deepEqual(config, { "@type": "EPI configuration", identifiers: { contextConfigId: "EPI1" }, configuration: { merchantId: "M-0001", environment: "TEST" }, configurationHash: "GoX_BCsLy-8XeQboK40yk1Aw-S4W43l5zxk4l4XigA0", configurationType: "piggy configuration", schema: { "piggy configuration": { description: "Merchant account at Piggy Bank", members: { merchantId: { type: "string", title: "Merchant id" }, environment: { type: "'TEST' or 'LIVE'", title: "Environment", description: "TEST until go-live" } } } } });
         assert.deepEqual(lines.slice(0, 3), ["POST /oauth2/v1/token 200", "PUT /api/v1/context/kv/com.example.piggy/pay-1 200", "GET /api/v1/context/kv/com.example.piggy/pay-1 200"]);
     } finally {
         await cos.close();

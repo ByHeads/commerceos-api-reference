@@ -3,7 +3,7 @@ openapi: "3.1.0"
 info:
   title: "CommerceOS for payment integrations: the routes that your integration calls"
   version: "1.0.0"
-  description: "The four things a payment integration does on CommerceOS, with the OAuth2 client it received in the install payload: get a token, read the configuration behind a context id, keep its own state in its key-value store, and complete a payment asynchronously. Every call carries Authorization: Bearer <token>, content-type application/json and accept application/json. The scopes of the client bound what it can do; a client created in the back office for an integration has me geo:read orders.sales:write orders.payments:write payment-records:write payment-means:read, and the administrator adds {store}:write for the integration's key-value store. These routes need me, orders.payments:write and that store scope. Other resources, such as payment integrations and payment terminals, are not available to the client. The full CommerceOS API is documented at {cosBaseUrl}/api-docs."
+  description: "The four things a payment integration does on CommerceOS, with the OAuth2 client it received in the install payload: get a token, read the configuration behind a context id, keep its own state in its key-value store, and complete a payment asynchronously. Every call carries Authorization: Bearer <token>, content-type application/json and accept application/json. The scopes of the client bound what it can do; a client created in the back office for an integration has me geo:read orders.sales:write orders.payments:write payment-records:write payment-means:read, and the administrator adds {store}:write for the integration's key-value store. These routes need me, orders.payments:write, payment-records:write and that store scope. Other resources, such as payment integrations and payment terminals, are not available to the client. The full CommerceOS API is documented at {cosBaseUrl}/api-docs."
 tags:
   - name: "Token"
   - name: "Configuration"
@@ -54,7 +54,7 @@ paths:
       tags:
         - "Configuration"
       summary: "The configuration behind a context id"
-      description: "On a contextful call whose X-EPI-Context-Config-Hash you have not seen: read the values an administrator saved against your config schema, in clear, and cache them by configurationHash, which is the header's value. The answer also carries configurationType and the schema as CommerceOS holds it. An id that is not a configuration of your integration answers 200 with the body null, not 404."
+      description: "On a contextful call whose X-EPI-Context-Config-Hash you have not seen: read the values an administrator saved against your config schema, in clear, and cache them by configurationHash, which is the header's value. The answer is the EPI configuration element: identifiers with contextConfigId, configuration, configurationHash, configurationType and the schema as CommerceOS holds it. An id that is not a configuration of your integration answers 404."
       parameters:
         - name: "configId"
           in: "path"
@@ -214,7 +214,7 @@ paths:
       tags:
         - "Payment orders"
       summary: "Add payment records: complete a payment asynchronously"
-      description: "Your provider confirms a payment after the stream dropped, for example through a callback. The order exists once your stream sent Create or Complete; for a key that saw neither, the answer is 400 with details 'Payment order not found.'. A repeat of the identical record on the same order is a no-op, so a repeated callback with the same body is safe; a record that reuses a transactionId with any field changed is refused. When the cashier pays again, CommerceOS finds the order Debited for the amount and attaches it without a new call to your integration."
+      description: "Your provider confirms a payment after the stream dropped, for example through a callback. The order exists once your stream sent Create or Complete; for a key that saw neither, the answer is 400 with details 'Payment order not found.'. The record is written under payment-records:write: with orders.payments:write alone the answer is 200 and nothing is stored. A record's means must name a payment means CommerceOS holds, readable under payment-means:read; otherwise the answer is 400 'Could not establish an identity of type payment means from {...}'. A repeat of the identical record on the same order is a no-op, so a repeated callback with the same body is safe; a record that reuses a transactionId with any field changed is refused. When the cashier pays again, CommerceOS finds the order Debited for the amount and attaches it without a new call to your integration."
       parameters:
         - name: "paymentKey"
           in: "path"
@@ -230,6 +230,7 @@ paths:
       security:
         - oauth2:
             - "orders.payments:write"
+            - "payment-records:write"
       responses:
         "200":
           description: "OK"
@@ -257,8 +258,8 @@ components:
             "orders.payments:write": "Add payment records to a payment order."
             "geo:read": "In the default client. Not needed by these routes."
             "orders.sales:write": "In the default client. Not needed by these routes."
-            "payment-records:write": "In the default client. Not needed by these routes."
-            "payment-means:read": "In the default client. Not needed by these routes."
+            "payment-records:write": "Writes the payment record of PATCH /v1/payment-orders/{paymentKey}: with orders.payments:write alone that call answers 200 and stores nothing."
+            "payment-means:read": "In the default client. Lets a payment record name its means: without it a record with means is 400."
   schemas:
     DecimalDto:
       type: "string"
@@ -321,7 +322,7 @@ components:
           description: "clientSecret from the install payload."
         scope:
           type: "string"
-          description: "scope from the install payload, or the subset you need, space-separated: me, orders.payments:write and the <store>:write scope of your key-value store. A request without scope gets every scope the client holds. A requested scope the client lacks is left out of the token without an error, so read scope in the answer: a missing store scope shows up as 404 on the first state call, not at the token. A scope that does not exist, such as the retired kv, fails the whole request with 400 invalid_scope."
+          description: "scope from the install payload, or the subset you need, space-separated: me, orders.payments:write, payment-records:write and the <store>:write scope of your key-value store. A request without scope gets every scope the client holds. A requested scope the client lacks is left out of the token without an error, so read scope in the answer: a missing store scope shows up as 404 on the first state call, not at the token. A scope that does not exist, such as the retired kv, fails the whole request with 400 invalid_scope."
       required:
         - "grant_type"
         - "client_id"
@@ -346,12 +347,20 @@ components:
         - "access_token"
         - "expires_in"
     ContextConfig:
-      description: "The configuration behind a context id, as an administrator saved it against your config schema, in clear: secret members included. The body is null, with status 200, for an id that is not a configuration of your integration."
+      description: "The configuration behind a context id, as an administrator saved it against your config schema, in clear: secret members included. It is the EPI configuration element of the CommerceOS API. An id that is not a configuration of your integration is 404."
       type: "object"
       properties:
         "@type":
           type: "string"
-          description: "EPI configuration assignment."
+          description: "EPI configuration."
+        identifiers:
+          type: "object"
+          properties:
+            contextConfigId:
+              type: "string"
+              description: "The four-character id of the configuration: the X-EPI-Context-Config-Id of every call that runs under it."
+          additionalProperties: true
+          description: "The identifiers of the configuration: contextConfigId, the CommerceOS key and any external identifiers."
         configuration:
           type: "object"
           additionalProperties: true
@@ -456,7 +465,7 @@ components:
           description: "The items, in CommerceOS API shape. Leave it out for now: a record that carries specification answers 500 Internal server error today, and the same record without it is accepted (verified 2026-09-28). The payment record then has no item rows in the back office."
         means:
           "$ref": "#/components/schemas/PaymentOrderMeans"
-          description: "What paid, in CommerceOS API shape: a singleton is {\"identifiers\":{\"id\":\"Piggy Bank\"}}."
+          description: "What paid, in CommerceOS API shape: a singleton is {\"identifiers\":{\"id\":\"Piggy Bank\"}}. It must name a means CommerceOS holds, and the token must read means (payment-means:read); otherwise the record is 400 'Could not establish an identity of type payment means from {...}'. Without means the payment line shows no card details."
         rawData:
           type: "object"
           description: "Any JSON object."

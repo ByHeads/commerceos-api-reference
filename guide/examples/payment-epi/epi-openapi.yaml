@@ -60,7 +60,7 @@ paths:
       tags:
         - "Lifecycle"
       summary: "The form that an administrator fills in per organization node"
-      description: "An administrator opens the configuration form of your integration on an organization node. The back office renders one field per member and stores the values; your integration reads them back through GET /v1/context/{configId} on the CommerceOS side. Answer members: {} when you need no configuration."
+      description: "CommerceOS reads it at every install, after /install answers 2xx, and again before every configure, and stores the declaration. The back office renders one field per member when an administrator opens the configuration form of your integration on an organization node, and stores the values; your integration reads them back through GET /v1/context/{configId} on the CommerceOS side, where schema and configurationType are what you declared. Answer members: {} when you need no configuration."
       responses:
         "200":
           description: "OK"
@@ -334,7 +334,7 @@ components:
           description: "The OAuth2 client secret. CommerceOS refuses to install an integration whose client has no secret."
         scope:
           type: "string"
-          description: "The scopes of that client, space-separated, as CommerceOS holds them. A client created in the back office for an integration has: me geo:read orders.sales:write orders.payments:write payment-records:write payment-means:read, and the administrator adds <store>:write when the integration keeps state in a key-value store. Send the string back as scope in the token request, or the subset you need: me, orders.payments:write and your store scope. An install changes none of the client's scopes, and a token never carries a scope the client lacks."
+          description: "The scopes of that client, space-separated, as CommerceOS holds them. A client created in the back office for an integration has: me geo:read orders.sales:write orders.payments:write payment-records:write payment-means:read, and the administrator adds <store>:write when the integration keeps state in a key-value store. Send the string back as scope in the token request, or the subset you need: me, orders.payments:write, payment-records:write and your store scope. An install changes none of the client's scopes (it creates the key-value store named by each <name>:write scope the client holds where no panel or store has that name), and a token never carries a scope the client lacks."
       required:
         - "cosBaseUrl"
         - "tokenUrl"

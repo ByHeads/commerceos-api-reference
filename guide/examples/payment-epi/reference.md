@@ -40,7 +40,7 @@ CommerceOS calls these endpoints outside a payment. *Bare* calls carry no contex
 |---|---|---|---|---|
 | `POST {baseUrl}/install` | bare | install payload, below, sent as `text/plain;charset=UTF-8`: parse it as JSON whatever the header says | any 2xx | the `install` action on the integration. On success the status becomes `Active`. A later install usually sends the same client again, and it can carry a new one: always store the client it sends, and drop any cached token |
 | `POST {baseUrl}/uninstall` | bare | empty | any 2xx. A failure is logged and ignored | the `uninstall` action. The status becomes `Inactive` |
-| `GET {baseUrl}/config-schema` | bare | none | your configuration schema, section 4 | an administrator opens the configuration form |
+| `GET {baseUrl}/config-schema` | bare | none | your configuration schema, section 4 | every `install`, after `/install` answers 2xx, and again before every `configure`. CommerceOS stores the declaration; the administrator's form renders it, and the configuration routes show it as `schema` and `configurationType` |
 | `POST {baseUrl}/test` | contextful | none | JSON `true` | the `test` method, once per configured node |
 | `GET {baseUrl}/methods` | contextful | none | `MethodDto[]` | the `configure` action on a configuration |
 | `GET {baseUrl}/terminals` | contextful | none | `TerminalDto[]` | an administrator lists the terminals of a configuration |
@@ -61,9 +61,11 @@ The answer of `GET {baseUrl}/methods` for one method as the Piggy Bank sample se
 `scope` is the space-separated scope list of the OAuth2 client, as CommerceOS holds it. A client that
 the back office creates for an integration has `me geo:read orders.sales:write orders.payments:write payment-records:write payment-means:read`,
 and the administrator adds `<store>:write` when your integration keeps state in a key-value store (section 8). The order of the scopes in
-the string is not fixed: read it as a set. What an integration needs is `me`, `orders.payments:write` and its store scope.
+the string is not fixed: read it as a set. What an integration needs is `me`, `orders.payments:write` with `payment-records:write`
+(section 8), and its store scope.
 Send the string, or that subset, as `scope` in the token request, and read `scope` in the answer: a requested scope that the
-client lacks is left out without an error (section 8). An install changes none of the client's scopes. The `test` method on the API answers
+client lacks is left out without an error (section 8). An install changes none of the client's scopes; it creates the key-value
+store named by each `<name>:write` scope the client holds where no panel or store has that name. The `test` method on the API answers
 `{ integrationName, configurationTests: { "<node name>": "success" | "fail" } }`. A non-2xx or a thrown error is `fail`.
 
 **The payment method record.** `configure` creates one payment method per item of your `GET /methods`
@@ -396,20 +398,21 @@ the client.
 | Call | Scope | Use |
 |---|---|---|
 | `POST {tokenUrl}` | — | client-credentials token. Cache it until `expires_in` |
-| `GET /v1/context/{configId}` | `me` | the configuration for a context id (section 4): `configuration` in clear, `configurationHash`, `configurationType` and `schema`. An id that is not a configuration of yours answers 200 with the body `null` |
+| `GET /v1/context/{configId}` | `me` | the configuration for a context id (section 4), as the `EPI configuration` element: `identifiers` with `contextConfigId`, `configuration` in clear, `configurationHash`, `configurationType` and `schema`. An id that is not a configuration of yours is `404`. The element, its scopes and the key-value route are in [Working with the Configuration Store](../../../reference/working-with/configuration-store.md#epi-configurations) |
 | `GET`, `PUT`, `PATCH`, `DELETE /v1/context/kv/{store}/{key}` | `{store}:write` (`{store}:read` reads only) | your key-value store, for your own state. `store` is its name, three dot-separated parts such as `com.example.piggy`. A Heads administrator creates the store and puts the scope on your client; until both are done, every key answers 404. A write replaces what is at the path, `PATCH` included; a body of `null` deletes; a key never written reads `200 null`. No route lists the keys: `GET /v1/context/kv/{store}` answers `{}` whatever it holds, so keep your own index |
-| `PATCH /v1/payment-orders/{paymentKey}` with `{ "records": [ ... ] }` | `orders.payments:write` | complete an asynchronous payment, for example from a callback of your provider |
+| `PATCH /v1/payment-orders/{paymentKey}` with `{ "records": [ ... ] }` | `orders.payments:write` and `payment-records:write` | complete an asynchronous payment, for example from a callback of your provider. `payment-records:write` is what writes the record: with `orders.payments:write` alone the answer is `200` and nothing is stored, the order stays `New` and `records` stays empty; `payment-records:write` alone is a `404` |
 
 ```bash
 # Token
 curl -X POST "https://example.app.heads.com/oauth2/v1/token" \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "grant_type=client_credentials&client_id=<client id>&client_secret=<client secret>&scope=me%20com.example.piggy:write%20orders.payments:write"
-# → { "access_token": "...", "expires_in": 3600, "scope": "me orders.payments:write com.example.piggy:write", ... }
+  -d "grant_type=client_credentials&client_id=<client id>&client_secret=<client secret>&scope=me%20com.example.piggy:write%20orders.payments:write%20payment-records:write"
+# → { "access_token": "...", "expires_in": 3600, "scope": "me orders.payments:write payment-records:write com.example.piggy:write", ... }
 
 # The configuration for the context id of an incoming call
 curl -X GET -H "Authorization: Bearer <access token>" "https://example.app.heads.com/api/v1/context/EPI1"
-# → { "configuration": { ... }, "configurationHash": "...", "configurationType": "piggy configuration", "schema": { ... } }
+# → { "@type": "EPI configuration", "identifiers": { "contextConfigId": "EPI1", ... }, "configuration": { ... },
+#     "configurationHash": "...", "configurationType": "piggy configuration", "schema": { ... } }
 
 # Your key-value store: write, read, delete
 curl -X PUT -H "Authorization: Bearer <access token>" "https://example.app.heads.com/api/v1/context/kv/com.example.piggy/session-pay-P1" \
@@ -440,7 +443,10 @@ The shape of the record, which members are required, and what CommerceOS does wi
 `transactionId` are in [`commerceos-openapi.yaml`](./commerceos-openapi.yaml), `PaymentOrderRecord`.
 Without `token`, CommerceOS takes the available money for the first action. Leave `specification` out of the record: CommerceOS answers 500 when a record carries it
 (`PaymentOrderRecord`). Send `means` so that the return dialog can show what paid: a record without it
-shows the payment line with no card details.
+shows the payment line with no card details. `means` must name a payment means that CommerceOS holds, and the
+token must be able to read it (`payment-means:read`, in the client the back office creates): otherwise the record is
+`400` `Could not establish an identity of type payment means from {...}` — also for a `payment card` that CommerceOS
+does not hold.
 
 ## 9. Status, actions and decline reasons
 

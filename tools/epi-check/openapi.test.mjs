@@ -140,11 +140,11 @@ test("the CommerceOS document: one scope per operation, the token route on its o
     for (const [path, methods] of Object.entries(cos.paths)) for (const [method, operation] of Object.entries(methods)) {
         if (path === "/oauth2/v1/token") continue;
         assert.equal(operation.security.length, 1, `${method} ${path}`);
-        const [scope] = operation.security[0].oauth2;
-        assert.ok(scopes.includes(scope), `${method} ${path} needs a declared scope, got ${scope}`);
+        for (const scope of operation.security[0].oauth2) assert.ok(scopes.includes(scope), `${method} ${path} needs a declared scope, got ${scope}`);
     }
-    assert.equal(cos.paths["/v1/context/{configId}"].get.security[0].oauth2[0], "me");
-    assert.equal(cos.paths["/v1/payment-orders/{paymentKey}"].patch.security[0].oauth2[0], "orders.payments:write");
+    assert.deepEqual(cos.paths["/v1/context/{configId}"].get.security[0].oauth2, ["me"]);
+    // The record is written under payment-records:write; orders.payments:write alone is a 200 that stores nothing.
+    assert.deepEqual(cos.paths["/v1/payment-orders/{paymentKey}"].patch.security[0].oauth2, ["orders.payments:write", "payment-records:write"]);
     assert.equal(JSON.stringify(cos).includes('"epi"'), false, "no scope named epi exists in CommerceOS");
 });
 

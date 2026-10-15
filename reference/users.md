@@ -65,7 +65,7 @@ GET /v1/users/com.example.userId=U-1
 | `inactive` | `boolean?` | — | Absent when the user is active |
 | `hidden` | `boolean?` | — | Advisory flag; collection reads do not filter on it |
 | `labels` | `label[]` | — | |
-| `config` | `user config?` | — | `darkModeActive`, `preferredLocale` |
+| `config` | `user config?` | — | `darkModeActive` and `preferredLocale`, a locale tag such as `sv-se` or `en-US`; a tag that is not one (`sv_SE`) is `400`. Stored on create and on a `PATCH` of a user that has none — see [Updating a user](#updating-a-user) |
 | `posMode` | `boolean` | — | Whether the account is in POS mode |
 
 Every credential member is documented in [Credentials](credentials.md).
@@ -105,6 +105,8 @@ POST /v1/users
 
 `agent` accepts any agent, not just a person — a store or a company is legitimate for a service account. The reference is resolved by identifier like every other agent reference; see [Agent References Require Nested identifiers](common-gotchas.md#8-agent-references-require-nested-identifiers).
 
+The account's preferences go in the same request when you have them: `"config": { "preferredLocale": "sv-se", "darkModeActive": true }` on the user object is stored on create, exactly as a later `PATCH` stores it.
+
 Credentials and role assignments are attached afterwards, as sub-collections of the user. The whole flow end to end — person, user, credentials, role, permissions, assignment — is walked through in [Provisioning Users and Access](../guide/provisioning-users.md).
 
 ### `identifiers.userId` is assigned by the system
@@ -137,6 +139,8 @@ PATCH /v1/users/com.example.userId=U-1
 
 To change a display name, patch the linked person — not the user.
 
+`preferredLocale` is a locale tag: "The locale tag for the language that the user prefers, e.g. 'en-us' or 'sv-se'. A tag Intl.Locale rejects (such as 'sv_SE') is refused." The refusal is a `400 failed coercion` whose `failedCoercions[].path` is `/config/preferredLocale` (`:0/config/preferredLocale` in an array body), `targetType` `locale`, and nothing is stored. A `PATCH` of `config` on a user that has none stores it, as above — there is no member to create first.
+
 ---
 
 ## Deactivating a user
@@ -168,7 +172,7 @@ GET /v1/users~where(!inactive)~take(100)
 GET /v1/users~where(inactive)~take(100)
 ```
 
-Deactivating does not remove credentials. If the point is to stop a specific login working, delete that credentials record — see [Credentials → Removing a credential](credentials.md#removing-a-credential).
+**A deactivated user's credentials stop working at once, and they are not removed.** Its API keys answer `401`; the token endpoint answers `401 invalid_client` (`"Client authentication failed"`, `"Client has been revoked or is invalid."`) for its OAuth2 clients; and a token issued before the deactivation answers `401` on every request. Setting `inactive` back to `false` brings all of them back, since the records are still there. `hidden` changes nothing about credentials. To stop one login for good while the account stays active, delete that credentials record — see [Credentials → Removing a credential](credentials.md#removing-a-credential).
 
 ---
 
@@ -182,9 +186,9 @@ The API authorizes a request from the **scopes carried by the credential that ma
 | Scope on the credential | What it can reach here |
 |---|---|
 | `users:read` | `GET` on `/v1/users`, `/v1/local-credentials`, `/v1/retail-credentials`, `/v1/entraid-credentials` (plus read-only agents/people/companies/stores) |
-| `admin:read` | `GET` on `/v1/users`, `/v1/systems`, `/v1/oauth2-clients` and all eight credential collections, secrets masked. No roles, permissions, role assignments or auth providers, and no writes. See [Credentials → The two restricted twins](credentials.md#the-two-restricted-twins-integrationsread-and-adminread) |
-| `admin` | Everything in this area, read and write |
-| `read:api` (legacy, broad) | Expands to a fixed set of read scopes, `users:read` among them — but not `admin` |
+| `admin:read` | `GET` on `/v1/users`, `/v1/systems`, `/v1/oauth2-clients` and all eight credential collections, secrets masked; and every config panel and key-value store under `/v1/context`, secrets masked `********`. No roles, permissions, role assignments or auth providers, and no writes. The OpenAPI description: "Read access to users, systems, OAuth2 clients, credential sets, and every config panel and key-value store under /v1/context; secrets stay masked (restricted)." See [Credentials → The two restricted twins](credentials.md#the-two-restricted-twins-integrationsread-and-adminread) and [Working with the Configuration Store → Scopes](working-with/configuration-store.md#scopes) |
+| `admin` | Everything in this area, read and write; and every config panel and key-value store under `/v1/context`, in clear and writable — "Administrative access to system management, and read and write access to every config panel and key-value store under /v1/context, secrets in clear; creating or deleting a panel or store needs config (restricted)." |
+| `read:api` (legacy, broad) | Expands to a fixed set of read scopes, `users:read` among them — but not `admin:read`, and it does not reach `/v1/context` at all |
 | `write:api` (legacy, broad) | Expands to every fine-grained scope, `admin` included |
 
 > **These endpoints are not in the generated OpenAPI spec.** `admin` and `admin:read` are excluded from the published schema, so `/openapi/spec.json` and your tenant's `/api-docs` do not describe the write side of users, credentials, roles or permissions. This documentation is the contract for them.
@@ -195,7 +199,7 @@ The API authorizes a request from the **scopes carried by the credential that ma
 
 - **Don't create a user without an agent.** The account has no name of its own; a user with an empty `agent` cannot be displayed sensibly, and authorization rejects a credential whose user has no holder.
 - **Don't read a user, edit the object, and PUT it back.** Credential secrets read back as a `********` placeholder, and writing that placeholder sets the secret *to those eight characters*. Patch only what you are changing — see [gotcha 33](common-gotchas.md#33-a-read-modify-write-on-credentials-overwrites-the-secret).
-- **Don't treat `DELETE` as a purge.** It deactivates. The user, its identifiers and its credentials all remain — and the response is `{"deletedCount": 1, "info": "Deleted 1 items"}` either way, because the count reports that a setter ran rather than that a record is gone ([What a `DELETE` reports](overview.md#what-a-delete-reports)).
+- **Don't treat `DELETE` as a purge.** It deactivates. The user, its identifiers and its credentials all remain (refused while the account is inactive, working again when it is reactivated) — and the response is `{"deletedCount": 1, "info": "Deleted 1 items"}` either way, because the count reports that a setter ran rather than that a record is gone ([What a `DELETE` reports](overview.md#what-a-delete-reports)).
 - **Don't assume the default representation is complete.** Roles, PIN and scan-token credentials, labels and config all need `~with(...)` or `~withAll`.
 - **Don't expect a user's roles to constrain an API key.** Attaching a narrow role to a user does not narrow what its API key can reach; the key's `scopes` array does that.
 

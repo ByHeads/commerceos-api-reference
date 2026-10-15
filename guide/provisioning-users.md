@@ -117,6 +117,8 @@ curl -X POST -u ":banana" \
   }]'
 ```
 
+The value of an API key belongs to one record: a value that another key already holds is refused with `409` and `details` `Another API key already holds this value.`, on the user's sub-collection and on `/v1/apikey-credentials` alike. Generate a fresh value per key.
+
 The full set of nine types, and what identifies each one, is in the [Credentials reference](../reference/credentials.md#the-nine-types).
 
 ### Two things to get right the first time
@@ -267,7 +269,7 @@ curl -X GET -u ":banana" \
   "https://example.app.heads.com/api/v1/users~where(!inactive)~take(100)"
 ```
 
-Deactivating does not remove credentials. If the point is to stop a specific login working immediately, delete that credentials record too.
+Deactivating refuses every credential of the account at once without removing any of them: an API key answers `401`, the token endpoint answers `401 invalid_client` for the user's OAuth2 clients, and a token issued before the deactivation answers `401`. `{"inactive": false}` brings them all back. To stop one login for good while the account stays active, delete that credentials record.
 
 ---
 

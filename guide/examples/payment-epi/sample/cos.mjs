@@ -78,8 +78,10 @@ export function startCosStandIn({ port = 0, clientId = CLIENT.clientId, clientSe
                 }
             } else if (!tokens.has(/^Bearer (.+)$/.exec(request.headers.authorization ?? "")?.[1])) {
                 answer(401, { errors: [{ message: "A bearer token from POST /oauth2/v1/token is required" }] });
-            } else if (/^GET \/api\/v1\/context\/[^/.]+$/.test(route)) {
-                answer(200, { "@type": "EPI configuration assignment", configuration, configurationHash, configurationType, schema });
+            // The EPI configuration element, for every id: CommerceOS answers 404 for an id that is not a
+            // configuration of the integration; the stand-in has one configuration and answers it behind any id.
+            } else if ((match = /^GET \/api\/v1\/context\/([^/.]+)$/.exec(route))) {
+                answer(200, { "@type": "EPI configuration", identifiers: { contextConfigId: match[1] }, configuration, configurationHash, configurationType, schema });
             // A store lives under /api/v1/context/kv/<store>; a context id (four characters, no dot) sits at the root.
             } else if (/^GET \/api\/v1\/context\/kv\/[^/]+\.[^/]+$/.test(route)) {
                 answer(200, {}); // like CommerceOS: a store never lists its keys

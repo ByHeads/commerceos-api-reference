@@ -32,7 +32,7 @@ const EPI_ROUTES = [
     { method: "post", path: "/uninstall", tag: "Lifecycle", contextful: false, summary: "Uninstall: the integration becomes Inactive", response: "none",
       when: "The administrator runs the uninstall action. Forget the stored client. A failure is logged and ignored." },
     { method: "get", path: "/config-schema", tag: "Lifecycle", contextful: false, summary: "The form that an administrator fills in per organization node", response: "ConfigSchema",
-      when: "An administrator opens the configuration form of your integration on an organization node. The back office renders one field per member and stores the values; your integration reads them back through GET /v1/context/{configId} on the CommerceOS side. Answer members: {} when you need no configuration." },
+      when: "CommerceOS reads it at every install, after /install answers 2xx, and again before every configure, and stores the declaration. The back office renders one field per member when an administrator opens the configuration form of your integration on an organization node, and stores the values; your integration reads them back through GET /v1/context/{configId} on the CommerceOS side, where schema and configurationType are what you declared. Answer members: {} when you need no configuration." },
     { method: "post", path: "/test", tag: "Lifecycle", contextful: true, summary: "Test the configuration of the context", response: "boolean",
       when: "The administrator runs the test method on the integration: one call per configured node. Read the configuration behind the context id, check it against your provider, and answer true. false, an empty body or a non-2xx counts as fail for that node. When you can name the reason, answer a non-2xx with an error body: the administrator sees '<code>: <message>' next to the failed status. false shows no reason." },
     { method: "get", path: "/methods", tag: "Lifecycle", contextful: true, summary: "The payment methods that this configuration offers", response: "MethodDto[]",
@@ -56,7 +56,7 @@ const COS_ROUTES = [
       form: "TokenRequest", response: "TokenResponse",
       when: "Before the first call and after expires_in seconds. Send the form with grant_type client_credentials and the client from the install payload." },
     { method: "get", path: "/v1/context/{configId}", tag: "Configuration", summary: "The configuration behind a context id", scope: "me", response: "ContextConfig",
-      when: "On a contextful call whose X-EPI-Context-Config-Hash you have not seen: read the values an administrator saved against your config schema, in clear, and cache them by configurationHash, which is the header's value. The answer also carries configurationType and the schema as CommerceOS holds it. An id that is not a configuration of your integration answers 200 with the body null, not 404." },
+      when: "On a contextful call whose X-EPI-Context-Config-Hash you have not seen: read the values an administrator saved against your config schema, in clear, and cache them by configurationHash, which is the header's value. The answer is the EPI configuration element: identifiers with contextConfigId, configuration, configurationHash, configurationType and the schema as CommerceOS holds it. An id that is not a configuration of your integration answers 404." },
     { method: "get", path: "/v1/context/kv/{store}/{key}", tag: "Key-value store", summary: "Read a value of your store", scope: "{store}:write", response: "any",
       when: "Your own state, for example a provider session behind a paymentKey, so that a restart of your integration loses nothing. store is the name of your key-value store, three dot-separated parts such as com.example.piggy; a Heads administrator creates it and puts {store}:write on your client ({store}:read reads only). A key never written answers 200 with null, not 404; a store your client has no scope for answers 404. A sub-path of a stored document is addressable on its own: /v1/context/kv/{store}/{key}/state. GET /v1/context/kv/{store} answers {} whatever the store holds: no route lists the keys, so keep your own index. Write the key in the path URL-encoded." },
     { method: "put", path: "/v1/context/kv/{store}/{key}", tag: "Key-value store", summary: "Write a value of your store", scope: "{store}:write", request: "any", response: "any",
@@ -65,8 +65,8 @@ const COS_ROUTES = [
       when: "Identical to PUT. Nothing merges: to change one field, write that field's own sub-path." },
     { method: "delete", path: "/v1/context/kv/{store}/{key}", tag: "Key-value store", summary: "Delete a value of your store", scope: "{store}:write", response: "deleted",
       when: "After the payment is settled and you no longer need the state. The answer is 200 with deletedCount, also for a key that was not there." },
-    { method: "patch", path: "/v1/payment-orders/{paymentKey}", tag: "Payment orders", summary: "Add payment records: complete a payment asynchronously", scope: "orders.payments:write", request: "PaymentOrderPatch", response: "PaymentOrder",
-      when: "Your provider confirms a payment after the stream dropped, for example through a callback. The order exists once your stream sent Create or Complete; for a key that saw neither, the answer is 400 with details 'Payment order not found.'. A repeat of the identical record on the same order is a no-op, so a repeated callback with the same body is safe; a record that reuses a transactionId with any field changed is refused. When the cashier pays again, CommerceOS finds the order Debited for the amount and attaches it without a new call to your integration." },
+    { method: "patch", path: "/v1/payment-orders/{paymentKey}", tag: "Payment orders", summary: "Add payment records: complete a payment asynchronously", scope: ["orders.payments:write", "payment-records:write"], request: "PaymentOrderPatch", response: "PaymentOrder",
+      when: "Your provider confirms a payment after the stream dropped, for example through a callback. The order exists once your stream sent Create or Complete; for a key that saw neither, the answer is 400 with details 'Payment order not found.'. The record is written under payment-records:write: with orders.payments:write alone the answer is 200 and nothing is stored. A record's means must name a payment means CommerceOS holds, readable under payment-means:read; otherwise the answer is 400 'Could not establish an identity of type payment means from {...}'. A repeat of the identical record on the same order is a no-op, so a repeated callback with the same body is safe; a record that reuses a transactionId with any field changed is refused. When the cashier pays again, CommerceOS finds the order Debited for the amount and attaches it without a new call to your integration." },
 ];
 
 const ref = name => ({ $ref: `#/components/schemas/${name}` });
@@ -105,7 +105,7 @@ function cosOperation(route) {
     const operation = { tags: [route.tag], summary: route.summary, description: route.when, ...(route.servers ? { servers: route.servers } : {}), ...(parameters.length ? { parameters } : {}) };
     if (route.form) operation.requestBody = { required: true, content: { "application/x-www-form-urlencoded": { schema: ref(route.form) } } };
     if (route.request) operation.requestBody = { required: true, content: json(route.request === "any" ? {} : ref(route.request)) };
-    operation.security = route.scope === null ? [] : [{ oauth2: [route.scope] }];
+    operation.security = route.scope === null ? [] : [{ oauth2: [].concat(route.scope) }];
     operation.responses = { ...responseOf(route.response), "4XX": COS_ERROR_RESPONSE };
     return operation;
 }
@@ -173,7 +173,7 @@ export function buildCosDocument(schemaDoc = loadSchema()) {
         info: {
             title: "CommerceOS for payment integrations: the routes that your integration calls",
             version: "1.0.0",
-            description: "The four things a payment integration does on CommerceOS, with the OAuth2 client it received in the install payload: get a token, read the configuration behind a context id, keep its own state in its key-value store, and complete a payment asynchronously. Every call carries Authorization: Bearer <token>, content-type application/json and accept application/json. The scopes of the client bound what it can do; a client created in the back office for an integration has me geo:read orders.sales:write orders.payments:write payment-records:write payment-means:read, and the administrator adds {store}:write for the integration's key-value store. These routes need me, orders.payments:write and that store scope. Other resources, such as payment integrations and payment terminals, are not available to the client. The full CommerceOS API is documented at {cosBaseUrl}/api-docs.",
+            description: "The four things a payment integration does on CommerceOS, with the OAuth2 client it received in the install payload: get a token, read the configuration behind a context id, keep its own state in its key-value store, and complete a payment asynchronously. Every call carries Authorization: Bearer <token>, content-type application/json and accept application/json. The scopes of the client bound what it can do; a client created in the back office for an integration has me geo:read orders.sales:write orders.payments:write payment-records:write payment-means:read, and the administrator adds {store}:write for the integration's key-value store. These routes need me, orders.payments:write, payment-records:write and that store scope. Other resources, such as payment integrations and payment terminals, are not available to the client. The full CommerceOS API is documented at {cosBaseUrl}/api-docs.",
         },
         tags: [{ name: "Token" }, { name: "Configuration" }, { name: "Key-value store", description: "Your integration's own state, under /v1/context/kv/{store}/{key}. The store is created by a Heads administrator; the scope {store}:write is written with the store's name, for example com.example.piggy:write." }, { name: "Payment orders" }],
         servers: [{ url: "{cosBaseUrl}/api", variables: { cosBaseUrl: { default: "https://example.app.heads.com", description: "cosBaseUrl from the install payload" } } }],
@@ -189,8 +189,8 @@ export function buildCosDocument(schemaDoc = loadSchema()) {
                         "orders.payments:write": "Add payment records to a payment order.",
                         "geo:read": "In the default client. Not needed by these routes.",
                         "orders.sales:write": "In the default client. Not needed by these routes.",
-                        "payment-records:write": "In the default client. Not needed by these routes.",
-                        "payment-means:read": "In the default client. Not needed by these routes.",
+                        "payment-records:write": "Writes the payment record of PATCH /v1/payment-orders/{paymentKey}: with orders.payments:write alone that call answers 200 and stores nothing.",
+                        "payment-means:read": "In the default client. Lets a payment record name its means: without it a record with means is 400.",
                     } } },
                 },
             },

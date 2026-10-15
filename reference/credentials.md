@@ -4,7 +4,7 @@ A **credential** is one way for a [user](users.md) to prove who they are. A user
 
 There are nine credential types. They differ in what identifies the record and what secret (if any) the API stores.
 
-> **Every write here needs the `admin` scope.** `users:read` grants read-only access to local, retail and Entra ID credentials and nothing else. `admin:read` reads all eight credential collections and OAuth2 clients, secrets masked, and cannot write either; see [The two restricted twins](#the-two-restricted-twins-integrationsread-and-adminread). There is no `users:write`. See [Users → Scopes](users.md#scopes).
+> **Every write here needs the `admin` scope.** `users:read` grants read-only access to local, retail and Entra ID credentials and nothing else. `admin:read` reads all eight credential collections and OAuth2 clients, secrets masked, and cannot write either; see [The two restricted twins](#the-two-restricted-twins-integrationsread-and-adminread). Both scopes also reach every config panel and key-value store under `/v1/context` — `admin` in clear, `admin:read` masked; see [Working with the Configuration Store → Scopes](working-with/configuration-store.md#scopes). There is no `users:write`. See [Users → Scopes](users.md#scopes).
 
 ---
 
@@ -195,7 +195,19 @@ POST /v1/users/com.example.userId=U-1/apikeyCredentials
 
 **Capture the key value when you write it.** The API never hands it back, so if the value is lost the credential has to be replaced with a new one.
 
+**One value, one record.** An API key value belongs to a single credentials record. Creating a key with a value another record holds, or changing a key to one, is a `409` `state conflict` with `details` `Another API key already holds this value.` — on `/v1/users/{user}/apikeyCredentials` and on `/v1/apikey-credentials` alike. Writing a record's own value again is a `200` no-op. The value is masked on every read, so `~where(apiKey=…)` cannot find the holder: pick a new value instead.
+
+```bash
+POST /v1/users/com.example.userId=U-2/apikeyCredentials
+[{ "identifiers": { "com.example.keyId": "second" }, "apiKey": "a-value-another-record-holds", "scopes": ["products:read"] }]
+→ 409 { "@type": "state conflict", "error": "The request conflicts with the current state of the resource.", "details": "Another API key already holds this value." }
+```
+
 **A key with no usable scope cannot authenticate.** The request fails as unauthorized rather than as forbidden, which reads like a bad key rather than a bad scope list — check `scopes` before you suspect the value.
+
+**Unknown or malformed scope names on a key are dropped at use.** The record stores `scopes` as written, `GET /v1/scopes` under that key answers the names the API knows and nothing else, and a key whose list holds only unknown names is refused as unauthorized — the same `401` as a bad value. `["enrollment:read", "nonsense:read"]` reads back as written and answers `["enrollment:read"]` at `/v1/scopes`; `["nonsense:read"]` alone is a `401` on every request.
+
+**A deactivated user's keys answer `401`.** The key stays on the record and works again when the user is reactivated — see [Users → Deactivating a user](users.md#deactivating-a-user).
 
 #### Scope names
 
@@ -203,13 +215,15 @@ POST /v1/users/com.example.userId=U-1/apikeyCredentials
 
 | Kind | Values |
 |---|---|
-| Read | `org:read`, `geo:read`, `suppliers:read`, `customers:read`, `supply-chains:read`, `users:read`, `products:read`, `prices:read`, `prices.sales:read`, `surcharges:read`, `pos:read`, `pos.carts:read`, `retail:read`, `logistics:read`, `trade-records:read`, `payment-means:read`, `labels:read`, `stock:read`, `media:read`, `wallet:read`, `deliveries:read`, `returns:read`, `orders.sales:read`, `orders.payments:read`, `discounts.system:read`, `discounts.manual:read`, `periods:read`, `payment-records:read`, `shipment-records:read`, `links:read`, `prices.purchase:read`, `integrations:read`, `admin:read` |
+| Read | `org:read`, `geo:read`, `suppliers:read`, `customers:read`, `supply-chains:read`, `users:read`, `products:read`, `prices:read`, `prices.sales:read`, `surcharges:read`, `pos:read`, `pos.carts:read`, `retail:read`, `logistics:read`, `trade-records:read`, `payment-means:read`, `labels:read`, `stock:read`, `media:read`, `wallet:read`, `deliveries:read`, `returns:read`, `orders.sales:read`, `orders.payments:read`, `discounts.system:read`, `discounts.manual:read`, `periods:read`, `payment-records:read`, `shipment-records:read`, `links:read`, `prices.purchase:read`, `integrations:read`, `admin:read`, `enrollment:read` |
 | Write | `geo:write`, `supply-chains:write`, `products:write`, `prices:write`, `discounts.system:write`, `discounts.manual:write`, `surcharges:write`, `pos:write`, `pos.carts:write`, `pos.supervisor:write`, `retail:write`, `receipts:write`, `pos-slips:write`, `logistics:write`, `payment-records:write`, `shipment-records:write`, `trade-records:write`, `orders.sales:write`, `orders.payments:write`, `labels:write`, `stock:write`, `periods:write`, `media:write`, `wallet:write`, `links:write`, `deliveries:write`, `returns:write` |
-| Other | `me`, `advanced`, `config`, `integrations`, `admin` |
+| Other | `me`, `advanced`, `config`, `integrations`, `admin`; `<name>:read` and `<name>:write` for one config panel or key-value store by name |
 
 `orders.sales:read` and `orders.payments:read` read trade orders, order items and payment orders without opening any write: see [Every write scope has a read twin](#every-write-scope-has-a-read-twin). `deliveries:*` and `returns:*` are not part of `logistics:*` or `read:api`.
 
 `pos.carts:read`, `pos.carts:write` and `pos.supervisor:write` open a terminal's session, its active and parked carts and the supervisor's control of a self-checkout lane: see [Working with POS Carts → Scopes](working-with/pos-carts.md#scopes).
+
+**`<name>:read` and `<name>:write` name one config panel or key-value store** by its namespaced name — `com.example.carrier:write`, `com.example.settings:read`: exactly three dot-separated parts, no dash in the first, at most 128 characters — and reach its values or keys under `/v1/context`. `:write` reads in clear and writes; `:read` reads only (`403 This config panel is read-only` / `403 This key-value store is read-only` on a write). Neither creates or deletes the panel or store; that stays with `config` on `/v1/config-panels` and `/v1/key-value-stores`. `admin:read` reads every panel and store under `/v1/context` with secrets masked, `admin` reads in clear and writes, and `read:api` does not reach `/v1/context` at all (`404`). There is no `kv` scope: a token request naming it is `400 invalid_scope`. See [Working with the Configuration Store → Scopes](working-with/configuration-store.md#scopes).
 
 **The scope set for a receiving integration** — one that books supplier deliveries against purchase orders — is `deliveries:write`, `orders.sales:write`, `suppliers:read`, `products:read` and `geo:read`. Add `stock:read` to verify stock, `returns:write` for supplier returns, and `config` to set up the numbering serials. Two consequences of the missing `orders:read`: `orders` on a delivery reads `[]` without `orders.sales:write`, even for a key that only reads, and a create from an order fails to find it; the other way round, `deliveries` on an order reads `[]` without `deliveries:read`. See [Working with Purchasing → Scopes](working-with/purchasing.md#scopes).
 
@@ -217,8 +231,8 @@ A few `:write` scopes include their own read side rather than sitting beside it,
 
 Two broad legacy scopes are also accepted, and they do not mean what their names suggest:
 
-- **`read:api`** expands to a fixed set of read scopes — `org:read`, `geo:read`, `suppliers:read`, `supply-chains:read`, `users:read`, `products:read`, `prices:read`, `pos:read`, `retail:read`, `stock:read`, `media:read`, `surcharges:read` and `pos.carts:read`. It is not "every `:read` scope": `customers:read`, `prices.sales:read`, `logistics:read`, `trade-records:read`, `payment-means:read`, `labels:read` and `wallet:read` are **not** included, so those collections stay out of reach for a `read:api` key. Neither are `orders.sales:read`, `orders.payments:read`, `discounts.system:read`, `discounts.manual:read`, `periods:read`, `payment-records:read`, `shipment-records:read`, `links:read`, `prices.purchase:read`, `integrations:read` and `admin:read`. `GET /v1/trade-orders` under `read:api` is a `404`. List them explicitly if you need them.
-- **`write:api`** expands to **every** fine-grained scope, `admin` included. A key created with it can create users, set passwords and define roles.
+- **`read:api`** expands to a fixed set of read scopes — `org:read`, `geo:read`, `suppliers:read`, `supply-chains:read`, `users:read`, `products:read`, `prices:read`, `pos:read`, `retail:read`, `stock:read`, `media:read`, `surcharges:read` and `pos.carts:read`. It is not "every `:read` scope": `customers:read`, `prices.sales:read`, `logistics:read`, `trade-records:read`, `payment-means:read`, `labels:read` and `wallet:read` are **not** included, so those collections stay out of reach for a `read:api` key. Neither are `orders.sales:read`, `orders.payments:read`, `discounts.system:read`, `discounts.manual:read`, `periods:read`, `payment-records:read`, `shipment-records:read`, `links:read`, `prices.purchase:read`, `integrations:read` and `admin:read`. `GET /v1/trade-orders` under `read:api` is a `404`, and so is `/v1/context`. List them explicitly if you need them.
+- **`write:api`** expands to **every** fine-grained scope, `admin` included. A key created with it can create users, set passwords and define roles, and it reads and writes every config panel and key-value store under `/v1/context`, secrets in clear.
 
 Grant the narrowest set that works. A key that only reads the catalogue should carry `products:read` and nothing else.
 
@@ -258,6 +272,8 @@ Every `:write` scope has a `:read` twin that exposes the same collections read-o
 | `media:write` | `media:read` | |
 | `wallet:write` | `wallet:read` | |
 | `links:write` | `links:read` | |
+| `enrollment:write` | `enrollment:read` | "Read access to device enrollment token metadata. Secrets are never returned." |
+| `<name>:write` | `<name>:read` | one config panel or key-value store under `/v1/context`; see [Working with the Configuration Store → Scopes](working-with/configuration-store.md#scopes) |
 | `integrations` | `integrations:read` | restricted: see [below](#the-two-restricted-twins-integrationsread-and-adminread) |
 | `admin` | `admin:read` | restricted: see [below](#the-two-restricted-twins-integrationsread-and-adminread) |
 
@@ -282,7 +298,8 @@ Each opens the collections below at their usual paths. The `find` methods work a
 | `pos.carts:read` | No collection of its own. It opens the `session`, `cart`, `parkedCarts` and `resumableCarts` members of `pos-terminals`, read-only, and gives a key without a `pos:*` scope a read-only `pos-terminals`. Unlike the others in this table, `read:api` carries it |
 | `prices.purchase:read` | `prices`, limited to the price rules that name the key's organization, or one above it, among the `buyers`. It is the buyer-side counterpart of `prices.sales:read`. A key without a `node` lists none |
 | `integrations:read` | `payment-integrations`, `shipment-integrations`, `wallet-integrations`, `native-wallet-integrations`, `loyalty-integrations`, `epi-integrations`, `epi-configurations`, `wallet-providers` |
-| `admin:read` | `users`, `systems`, `oauth2-clients`, `local-credentials`, `retail-credentials`, `mobile-credentials`, `bankid-credentials`, `entraid-credentials`, `pin-credentials`, `scan-token-credentials`, `apikey-credentials` |
+| `enrollment:read` | `enrollment-tokens`, each with the `orgNode` it belongs to, without the secret |
+| `admin:read` | `users`, `systems`, `oauth2-clients`, `local-credentials`, `retail-credentials`, `mobile-credentials`, `bankid-credentials`, `entraid-credentials`, `pin-credentials`, `scan-token-credentials`, `apikey-credentials`; and every config panel and key-value store under `/v1/context`, secrets masked (`/v1/config-panels` and `/v1/key-value-stores` stay `404`) |
 
 In the back office's scope picker and in the OpenAPI scopes table each scope in this table carries the name of its write twin (Sales Orders, Payment Orders, System Discounts, Manual Discounts, Trade Periods, Payment Records, Shipment Records, Links, Integrations, Administration). `prices.purchase:read` is Purchase Pricing.
 
@@ -293,7 +310,7 @@ In the back office's scope picker and in the OpenAPI scopes table each scope in 
 | `stock:read` | `stock-places`, `stock-transactions`, `stock-adjustments`, `stock-adjustment-items`, `stock-adjustment-reasons`, `stocks`, `stock-placement-rules`, `stock-entries`, `stock-counts`, `stock-count-items`, `stock-count-observations`, `stock-count-records`, `stock-count-record-items`, `stock-transfers`, `stock-transfer-items`, `stock-transfer-records`, `stock-transfer-record-items` |
 | `logistics:read` | `picking-orders`, `picking-order-items`, `picking-records`, `shipment-orders`, `shipment-order-items`, `supply-routes`, `delivery-terms`, `incoterm-delivery-terms` and the eleven Incoterm code collections from `exw-delivery-terms` to `ddp-delivery-terms` |
 | `products:read` | the catalogue, `product-package-classes`, `age-restrictions`, `age-restriction-overrides`, `hazard-classes`, `dangerous-goods`, `commodity-codes`, `hs-codes`, `cn-codes`, `taric-codes`, `hts-codes`, `brands`, `batches`, `gs1-series` |
-| `pos:read` | terminals, profiles, functions, devices, `pos-tiles`, `pos-tile-sets`, `pos-function-tiles`, `pos-product-tiles`, `templates`, `printers` and the printer type collections, `currency-denominations` |
+| `pos:read` | terminals, profiles, functions, devices, `pos-tiles`, `pos-tile-sets`, `pos-function-tiles`, `pos-product-tiles`, `templates`, `printers` and the printer type collections, `barcode-scanners`, `serial-barcode-scanners`, `esc-pos-usb-printers`, `currency-denominations` |
 | `customers:read` | customers, and `customer-groups`: the groups of the key's own organization |
 
 ##### What a request under a read twin answers
@@ -331,9 +348,10 @@ GET /v1/epi-configurations~take(1)~with(configurationHash)
 # integrations       → the same plus configuration
 ```
 
-**`admin:read`** lists users, systems, OAuth2 clients and all eight credential collections.
+**`admin:read`** lists users, systems, OAuth2 clients and all eight credential collections, and reads every config panel and key-value store under `/v1/context`. Its description: "Read access to users, systems, OAuth2 clients, credential sets, and every config panel and key-value store under /v1/context; secrets stay masked (restricted)." Its write twin's: "Administrative access to system management, and read and write access to every config panel and key-value store under /v1/context, secrets in clear; creating or deleting a panel or store needs config (restricted)."
 
 - **Secrets are masked**, as on every read: an OAuth2 client's `secret` and an API key's `apiKey` read `"********"`, and so do `password`, `pin` and `token`.
+- **`/v1/context` reads masked.** `GET /v1/context/<panel>` answers the panel's values with every `secret` member as `********`, `GET /v1/context/kv/<store>/<key>` the stored value; a write on either is `403` read-only. The administrator's routes `/v1/config-panels` and `/v1/key-value-stores` stay `404` — they belong to `config`. `admin` reads the same in clear and writes. See [Working with the Configuration Store → Scopes](working-with/configuration-store.md#scopes).
 - `scopes`, `grants`, `redirectURIs`, the lifetimes and `isConfidential` read normally, so an audit can list what every key and client may do.
 - **Not opened:** roles, permissions, role assignments, auth providers and `/v1/admin`. `GET /v1/user-roles`, `/v1/user-permissions`, `/v1/user-role-assignments`, `/v1/auth-providers` and `/v1/admin` are a `404` under it, and so are `/v1/agents` and `/v1/people`.
 - Writes change nothing: a `PATCH` of `scopes` on another key answers `200` with the credential echoed and the key's scopes are as they were; a `DELETE` answers `deletedCount: 0`.
@@ -431,13 +449,49 @@ POST /v1/users/com.example.userId=U-1/oauth2Clients
 | `clientID` (identifier) | The `client_id` used in OAuth2 exchanges |
 | `secret` | The client secret. Write-only — reads return `********` |
 | `grants` | The grant types the client may use, e.g. `client_credentials` |
-| `scopes` | The scopes the client may request — same names as [API-key scopes](#scope-names) |
+| `scopes` | The scopes the client may request — same names as [API-key scopes](#scope-names). **A token is capped to them**: the token endpoint narrows the request to the scopes the client holds and the response's `scope` says what was granted; see [Tokens, scopes and introspection](#tokens-scopes-and-introspection) |
 | `redirectURIs` | Whitelisted redirect URIs, for flows that redirect |
 | `isConfidential` | Whether the client is confidential |
-| `accessTokenLifetimeSeconds` / `refreshTokenLifetimeSeconds` | Token lifetimes |
+| `accessTokenLifetimeSeconds` / `refreshTokenLifetimeSeconds` | Token lifetimes. A client created without them mints access tokens of 3600 s and refresh tokens of 2592000 s; the members read back `0` until set |
 | `node` | The organizational node the client acts within. It decides where new products land, as for an [API key](#api-key-credentials); see [The default owner on create](working-with/assortments.md#the-default-owner-on-create) |
 
 Using the resulting token is covered in [Overview → Authentication](overview.md#authentication). External Payment Integrations have their own client requirements — see [EPI Integrations & Configurations](../guide/examples/configuration.md#epi-integrations--configurations).
+
+#### Tokens, scopes and introspection
+
+```bash
+# A client-credentials token
+curl -X POST "https://example.app.heads.com/oauth2/v1/token" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "grant_type=client_credentials&client_id=erp-integration&client_secret=<secret>&scope=products:read"
+# → { "access_token": "…", "token_type": "Bearer", "expires_in": 3600, "scope": "products:read" }
+```
+
+**A client-credentials token carries only the scopes its client holds.** The token endpoint narrows the request to them (RFC 6749 § 3.3) and the response's `scope` says what was granted, so read it:
+
+| `scope` in the token request | Answer |
+|---|---|
+| `me products:read`, both held | `200`, `"scope": "me products:read"` |
+| `me products:write` — `products:write` not held | `200`, `"scope": "me"`: the unheld scope is dropped silently, and its collections are `404` for the token |
+| `products:write` only, not held | `200`, `"scope": ""` — and the API answers `401` to that token on every request |
+| none | `200` with every scope the client holds |
+| `me kv` | `400 invalid_scope`, `"error_details": "Check the \`kv\` scope(s)"` — there is no `kv` scope |
+| a name outside the catalogue | `400 invalid_scope` naming it; the whole request is refused |
+
+A scope cut from the client disappears from the tokens it mints next. A client under a deactivated user mints nothing — `401 invalid_client`, `"Client has been revoked or is invalid."` — and a token it issued before answers `401`; see [Users → Deactivating a user](users.md#deactivating-a-user).
+
+```bash
+# Introspect a token (RFC 7662): client authentication plus the token
+curl -X POST "https://example.app.heads.com/oauth2/v1/introspect" \
+  -u "erp-integration:<secret>" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "token=<access token>"
+# → { "active": true, "scope": "products:read", "client_id": "erp-integration", "token_type": "access_token",
+#     "exp": 1792109041, "nbf": 1792105441, "iat": 1792105441, "jti": "…" }
+# → { "active": false }   an expired token, or one this server did not issue
+```
+
+The client authenticates with HTTP Basic or with `client_id` and `client_secret` in the form; without either the answer is `400 invalid_request` (`"Check the \`client_id\` parameter"`), and a wrong secret or a deactivated user's client is `401 invalid_client`. Any client of the server can introspect any of its tokens. Send only what the token endpoint gave you: a value that is not a token at all is `500 server_error`, `"Invalid JWT"`, not `active: false`. Introspection reads the token's own claims and expiry — a token whose user has since been deactivated still introspects `active: true` while the API answers `401` to it, so the API's answer is the authority. The discovery document at `/oauth2/v1/.well-known/openid-configuration` names `token_endpoint` and `introspection_endpoint`.
 
 ---
 
@@ -498,6 +552,7 @@ GET /v1/entra-id-auth-providers~withAll
 - **Don't create credentials at the root collection and expect someone to be able to sign in.** An unattached credential belongs to no user. Post to the user's sub-collection.
 - **Don't create PIN, scan-token or API-key credentials without a namespaced identifier.** Those types have no login principal to address them by, so without one you can only reach the record by database key.
 - **Don't grant `write:api` to a key that only needs to read products.** It expands to every scope, `admin` included.
+- **Don't reuse an API key value across records.** The second write is a `409`, and a value two records held anyway authenticates as neither.
 
 ---
 

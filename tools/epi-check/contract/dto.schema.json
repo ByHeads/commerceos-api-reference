@@ -28,7 +28,7 @@
         "clientSecret": { "type": "string", "description": "The OAuth2 client secret. CommerceOS refuses to install an integration whose client has no secret." },
         "scope": {
           "type": "string",
-          "description": "The scopes of that client, space-separated, as CommerceOS holds them. A client created in the back office for an integration has: me geo:read orders.sales:write orders.payments:write payment-records:write payment-means:read, and the administrator adds <store>:write when the integration keeps state in a key-value store. Send the string back as scope in the token request, or the subset you need: me, orders.payments:write and your store scope. An install changes none of the client's scopes, and a token never carries a scope the client lacks."
+          "description": "The scopes of that client, space-separated, as CommerceOS holds them. A client created in the back office for an integration has: me geo:read orders.sales:write orders.payments:write payment-records:write payment-means:read, and the administrator adds <store>:write when the integration keeps state in a key-value store. Send the string back as scope in the token request, or the subset you need: me, orders.payments:write, payment-records:write and your store scope. An install changes none of the client's scopes (it creates the key-value store named by each <name>:write scope the client holds where no panel or store has that name), and a token never carries a scope the client lacks."
         }
       },
       "required": ["cosBaseUrl", "tokenUrl", "clientId", "clientSecret", "scope"],
@@ -604,7 +604,7 @@
         "client_secret": { "type": "string", "description": "clientSecret from the install payload." },
         "scope": {
           "type": "string",
-          "description": "scope from the install payload, or the subset you need, space-separated: me, orders.payments:write and the <store>:write scope of your key-value store. A request without scope gets every scope the client holds. A requested scope the client lacks is left out of the token without an error, so read scope in the answer: a missing store scope shows up as 404 on the first state call, not at the token. A scope that does not exist, such as the retired kv, fails the whole request with 400 invalid_scope."
+          "description": "scope from the install payload, or the subset you need, space-separated: me, orders.payments:write, payment-records:write and the <store>:write scope of your key-value store. A request without scope gets every scope the client holds. A requested scope the client lacks is left out of the token without an error, so read scope in the answer: a missing store scope shows up as 404 on the first state call, not at the token. A scope that does not exist, such as the retired kv, fails the whole request with 400 invalid_scope."
         }
       },
       "required": ["grant_type", "client_id", "client_secret"]
@@ -621,10 +621,18 @@
       "required": ["access_token", "expires_in"]
     },
     "ContextConfig": {
-      "description": "The configuration behind a context id, as an administrator saved it against your config schema, in clear: secret members included. The body is null, with status 200, for an id that is not a configuration of your integration.",
+      "description": "The configuration behind a context id, as an administrator saved it against your config schema, in clear: secret members included. It is the EPI configuration element of the CommerceOS API. An id that is not a configuration of your integration is 404.",
       "type": "object",
       "properties": {
-        "@type": { "type": "string", "description": "EPI configuration assignment." },
+        "@type": { "type": "string", "description": "EPI configuration." },
+        "identifiers": {
+          "type": "object",
+          "properties": {
+            "contextConfigId": { "type": "string", "description": "The four-character id of the configuration: the X-EPI-Context-Config-Id of every call that runs under it." }
+          },
+          "additionalProperties": true,
+          "description": "The identifiers of the configuration: contextConfigId, the CommerceOS key and any external identifiers."
+        },
         "configuration": {
           "type": "object",
           "additionalProperties": true,
@@ -707,7 +715,7 @@
           "items": { "$ref": "#/$defs/PaymentOrderSpecificationItem" },
           "description": "The items, in CommerceOS API shape. Leave it out for now: a record that carries specification answers 500 Internal server error today, and the same record without it is accepted (verified 2026-09-28). The payment record then has no item rows in the back office."
         },
-        "means": { "$ref": "#/$defs/PaymentOrderMeans", "description": "What paid, in CommerceOS API shape: a singleton is {\"identifiers\":{\"id\":\"Piggy Bank\"}}." },
+        "means": { "$ref": "#/$defs/PaymentOrderMeans", "description": "What paid, in CommerceOS API shape: a singleton is {\"identifiers\":{\"id\":\"Piggy Bank\"}}. It must name a means CommerceOS holds, and the token must read means (payment-means:read); otherwise the record is 400 'Could not establish an identity of type payment means from {...}'. Without means the payment line shows no card details." },
         "rawData": { "type": "object", "description": "Any JSON object." },
         "consumerPrintout": { "type": "string", "description": "Receipt text for the customer copy." },
         "merchantPrintout": { "type": "string", "description": "Receipt text for the merchant copy." }

@@ -113,7 +113,8 @@ node play.mjs 10.04 --cos
 
 The first three lines are the configuration round trip: the bank fetches a token with the client it
 received at install, reads the configuration behind the context id, checks it against its own
-`config-schema`, and answers `true` to `/test`.
+`config-schema`, and answers `true` to `/test`. The element behind that read, its scopes and the
+key-value route are in [Working with the Configuration Store](../../reference/working-with/configuration-store.md#epi-configurations).
 
 ## 3. What you build
 
@@ -130,7 +131,7 @@ makes back. Generate a server stub from the first and a client from the second w
 |---|---|---|
 | `POST /install` | bare | any 2xx. The body holds the OAuth2 client that your integration uses to call CommerceOS back |
 | `POST /uninstall` | bare | any 2xx |
-| `GET /config-schema` | bare | your configuration schema: the fields that an administrator fills in per organization node, as named types (reference, section 4) |
+| `GET /config-schema` | bare | your configuration schema: the fields that an administrator fills in per organization node, as named types (reference, section 4). CommerceOS reads it at every install, after `/install` answers 2xx, and again before every `configure` |
 | `POST /test` | contextful | JSON `true` |
 | `GET /methods` | contextful | the payment methods that you offer, `MethodDto[]`. `configure` copies them into method records; the administrator adds the rest (reference, section 2) |
 | `GET /terminals` | contextful | the terminals that this configuration knows, `TerminalDto[]` |
@@ -273,10 +274,12 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/users" \
     }]
   }'
 
-# The key-value store for the integration's own state (reference, section 8), created once. The
-# scope com.example.piggy:write on the client above is what lets the integration reach it; an
-# integration that keeps no state needs neither. The integration cannot create the store itself,
-# and install changes none of the client's scopes.
+# The key-value store for the integration's own state (reference, section 8). The scope
+# com.example.piggy:write on the client above is what lets the integration reach it; an
+# integration that keeps no state needs neither. The install in step 3 creates the store for
+# every <name>:write scope the client holds where no panel or store has that name, so this
+# request is needed only when the store must exist before the install. The integration cannot
+# create it, and install changes none of the client's scopes.
 curl -X PUT -u ":banana" "https://example.app.heads.com/api/v1/key-value-stores/com.example.piggy" \
   -H "Content-Type: application/json" \
   -d '{}'
@@ -451,7 +454,7 @@ paths. Use `/v1/payment-integrations` for a payment provider, and `/v1/epi-integ
 | EPI | External Partner Interface: the Heads specification of the HTTP calls between CommerceOS and an integration. You build an integration that follows it |
 | payment integration | the CommerceOS record of one provider: a name, a `baseUrl`, a status, and its payment methods |
 | EPI configuration | the values of one integration on one organization node, for example a merchant id. The form comes from your configuration schema, `/config-schema` |
-| key-value store | the place for your integration's own state on CommerceOS, `/v1/context/kv/<store>/<key>`, named like `com.example.piggy` and created by a Heads administrator, who gives your client the scope `com.example.piggy:write` |
+| key-value store | the place for your integration's own state on CommerceOS, `/v1/context/kv/<store>/<key>`, named like `com.example.piggy`. A Heads administrator gives your client the scope `com.example.piggy:write`, and the install creates the store of that name (or the administrator does, beforehand) |
 | context | the three headers on a contextful call. They name the configuration that the call runs under |
 | organization node | a company, a store or another level of the organization tree. A configuration on a node applies to the nodes below it |
 | payment order | what CommerceOS wants paid: an amount, a currency, a payer and a payee. Its key is the `paymentKey` of the stream call |

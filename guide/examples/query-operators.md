@@ -308,6 +308,26 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/elements/properti
 
 # Get all methods across all types
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/elements/methods"
+
+# One type. An enum type lists its values under "enum", each with its title in every language
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/elements/types/CameraBarcodeScannerDecoder~just(identifiers,enum)"
+# → {"enum": {"Auto": {"title": {"en-US": "Auto (recommended)", "sv-SE": "Auto (rekommenderas)", …}}, "Native": {…}, …}}
+
+# Every element carries a title and a description: "An explanation of the element for
+# its users; a field shows it in a tooltip beside its label"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/elements/properties/AboutPage::greeting~just(identifiers,title,description)"
+
+# Title an external identifier before any record carries it, so the back office shows
+# the title instead of the raw key. Only a namespaced key (exactly three dot-separated
+# parts) can be defined this way; a key of another shape is a 200 null no-op.
+curl -X PUT -u ":banana" "https://example.app.heads.com/api/v1/elements/properties/Instance::com.myapp.promotionCode" \
+  -H "Content-Type: application/json" \
+  -d '{"title": {"en-US": "Promotion code", "sv-SE": "Kampanjkod"}}'
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/elements/properties/Instance::com.myapp.promotionCode"
+# → {"@type": "property", "identifiers": {"elemId": "Instance::com.myapp.promotionCode"}, "name": "com.myapp.promotionCode", "title": {…}, "published": false}
+# A record posted afterwards with "identifiers": {"com.myapp.promotionCode": "6789"} carries it,
+# and /v1/<collection>/com.myapp.promotionCode=6789 resolves. GET of a key nobody has
+# defined is 200 null (not 404); PATCH on it is 404.
 ```
 
 For detailed resource schemas, use the OpenAPI specification:

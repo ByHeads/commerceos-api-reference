@@ -37,6 +37,25 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/users" \
     "agent": {"identifiers": {"com.myapp.personId": "PERSON-001"}}
   }'
 
+# Create a user with its preferences in the same request. preferredLocale is a
+# locale tag (sv-se, en-US, nb-NO); "sv_SE" is refused with 400 failed coercion
+# and nothing is stored.
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/users" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "identifiers": {"com.myapp.userId": "USER-002"},
+    "agent": {"identifiers": {"com.myapp.personId": "PERSON-002"}},
+    "config": {"preferredLocale": "sv-se", "darkModeActive": true}
+  }'
+
+# Preferences on an existing user. A PATCH of config on a user that has none stores it.
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/users/com.myapp.userId=USER-001" \
+  -H "Content-Type: application/json" \
+  -d '{"config": {"preferredLocale": "nb-no"}}'
+
+# config is not in the default representation: ask for it
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/users/com.myapp.userId=USER-001~just(identifiers,config)"
+
 # Update user (change linked agent or credentials)
 # To change a user's display name, update the linked person instead
 curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/users/com.myapp.userId=USER-001" \
@@ -50,7 +69,9 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/users/com.myapp
 
 # Delete user (deactivates the user, does not purge)
 # Note: DELETE deactivates the user (sets inactive) but does not remove the record.
-# Subsequent GET by key still resolves the user (with inactive status).
+# Subsequent GET by key still resolves the user (with inactive status). While it is
+# inactive its API keys answer 401 and its OAuth2 clients get invalid_client from the
+# token endpoint; {"inactive": false} brings them back.
 curl -X DELETE -u ":banana" "https://example.app.heads.com/api/v1/users/com.myapp.userId=USER-001"
 
 # Everything on the account — a plain GET shows NO roles, and no PIN or
@@ -124,7 +145,9 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/users/com.myapp.
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/users/com.myapp.userId=USER-001~with(pinCredentials,scanTokenCredentials)"
 
 # API key. You supply the value — the API does not generate one, and no read
-# ever returns it. Capture it now or the credential has to be replaced.
+# ever returns it. Capture it now or the credential has to be replaced. The value
+# must be new: one another record holds is refused with 409
+# "Another API key already holds this value."
 curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/users/com.myapp.userId=USER-001/apikeyCredentials" \
   -H "Content-Type: application/json" \
   -d '[{
@@ -333,7 +356,9 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/users/com.heads.s
 
 # Create OAuth2 client for user.
 # "scopes" takes the same fine-grained scope names as an API key —
-# see reference/credentials.md#scope-names. "secret" is write-only.
+# see reference/credentials.md#scope-names. "secret" is write-only. A token
+# never carries a scope the client lacks. Lifetimes left out default to
+# 3600 s (access) and 2592000 s (refresh) and read back 0 until set.
 curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/users/com.heads.seedID=admin/oauth2Clients" \
   -H "Content-Type: application/json" \
   -d '{
@@ -348,6 +373,21 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/users/com.heads.
 
 # Delete OAuth2 client
 curl -X DELETE -u ":banana" "https://example.app.heads.com/api/v1/users/com.heads.seedID=admin/oauth2Clients/key=client-key"
+
+# A client-credentials token. Read "scope" in the answer: a requested scope the
+# client lacks is dropped silently, a request naming only unheld scopes gets
+# "scope": "" (and 401 on every API call), a name outside the catalogue is 400 invalid_scope.
+curl -X POST "https://example.app.heads.com/oauth2/v1/token" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "grant_type=client_credentials&client_id=my-integration-client&client_secret=generate-a-long-random-value-here&scope=products:read"
+# → {"access_token": "...", "token_type": "Bearer", "expires_in": 3600, "scope": "products:read"}
+
+# Introspect a token (RFC 7662): client authentication plus the token.
+# {"active": true, ...claims} for a live token, {"active": false} for an expired one.
+curl -X POST "https://example.app.heads.com/oauth2/v1/introspect" \
+  -u "my-integration-client:generate-a-long-random-value-here" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "token=<access token>"
 ```
 
 ---
