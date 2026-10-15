@@ -95,6 +95,8 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/trade-orders" \
 
 > **See:** [Trade Orders with Serial-Tracked Items](./product-instances-tracking.md#43-trade-orders-with-serial-tracked-items)
 
+To cancel one unit of a serialised line after approval, name it: `{"cancelItems": {"items": [{"identifiers": {…}, "productInstance": {"serialNumber": "SN-AX6K-00001"}}]}}` cancels that instance if it is `Committed` and leaves the rest of the line alone — see [Working with Orders → Cancel Items](../../reference/working-with/orders.md#cancel-items-cancelitems).
+
 ---
 
 ## 4. Read Back Instance Data

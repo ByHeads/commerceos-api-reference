@@ -117,17 +117,31 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/trade-orders/co
   -d '{"tryApprove": true}'
 
 # Order actions - cancel order (use tryCancel, not cancel). Only a wholly Committed order is
-# cancelled; on a partly fulfilled one this is a 200 that changes nothing
+# cancelled; on a partly fulfilled one this is a 200 that changes nothing. The money paid towards the
+# cancelled units is credited back on its payments; 400 when that refund has to be made in the POS
 curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-2024-001/actions" \
   -H "Content-Type: application/json" \
   -d '{"tryCancel": true}'
 
-# Order actions - fulfill the order (commits eligible items first, then moves the goods)
+# Order actions - cancel the open rest of a partly fulfilled or partly received order
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-2024-001/actions" \
+  -H "Content-Type: application/json" \
+  -d '{"cancelRemainder": true}'
+
+# Order actions - cancel one line to a target: at least 1 unit of this line is Cancelled afterwards.
+# Idempotent and monotone; the same body again changes nothing
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-2024-001/actions" \
+  -H "Content-Type: application/json" \
+  -d '{"cancelItems": {"items": [{"identifiers": {"com.myapp.lineId": "ORD-2024-001-2"}, "cancelledQuantity": "1"}]}}'
+
+# Order actions - fulfill the order (commits eligible items first, then moves the goods off the
+# seller's stock and its place and onto the buyer's)
 curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-2024-001/actions" \
   -H "Content-Type: application/json" \
   -d '{"tryFulfill": true}'
 
-# Order actions - create payment (requires currency and methodId from /v1/payment-methods)
+# Order actions - create payment (requires currency and methodId from /v1/payment-methods).
+# Without amount it pays what is still owed on the order; a second bare call is 400 "Nothing to pay"
 curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-2024-001/actions" \
   -H "Content-Type: application/json" \
   -d '{
@@ -136,6 +150,18 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/trade-orders/co
       "transactionId": "TXN-001",
       "currency": {"identifiers": {"currencyCode": "SEK"}},
       "method": {"identifiers": {"methodId": "com.heads.cash"}}
+    }
+  }'
+
+# Order actions - reverse part of a payment, for units cancelled or returned without a credit.
+# Referenced to the payment by method + transactionId; amount defaults to everything reversible
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/trade-orders/com.myapp.orderId=ORD-2024-001/actions" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "reversePayment": {
+      "payment": {"identifiers": {"processorsId": {"method": {"identifiers": {"methodId": "com.heads.cash"}}, "id": "TXN-001"}}},
+      "transactionId": "REFUND-001",
+      "timestamp": "2024-01-20T10:30:00Z"
     }
   }'
 
@@ -958,6 +984,10 @@ The stores the cashier may pick and the labels the tile applies are configured o
 - **Shipments**: `POST /v1/shipment-orders` returns an identifier shell with the body dropped. There is no `createShipment` trade order action. `tryFulfill` never creates one. `release` is the only write a shipment order takes
 - **Purchasing**: Receiving against a purchase order and returning to a supplier are separate documents — see [Working with Purchasing](../../reference/working-with/purchasing.md)
 - **createPayment requires currency**: The `createPayment` action requires a `currency` field; omitting it throws "Currency not found."
+- **createPayment pays what is owed**: Without `amount` the payment is what is still owed on the listed `items` or on the whole order; an `amount` beyond that is `400` "Amount exceeds the unpaid amount (<n>)." and a bare call on a paid order is `400` "Nothing to pay: nothing is owed on the listed items."
+- **Refunds**: a cancellation (`tryCancel`, `cancelRemainder`, `cancelItems`) or a `fulfillReturn` credits the released units' money back on their payments by itself, and is `400` when that payment was taken in a till, through a payment integration or from a wallet. `reversePayment` refunds units released without such a credit. A negative `createPayment` is an unreferenced payout that does not settle against the order — see [Refund Processing](../../reference/working-with/orders.md#refund-processing)
+- **One seller per order**: `sellers` with two stores is `400` "Several parties given; a trade needs exactly one." — create one order per selling store. A seller with several stock roots is refused the same way
+- **Logical stocks on a line**: `sellerStock` / `buyerStock` on an item pick which of the seller's or buyer's stocks the line is sold from or received into (`"sellerStock": {"identifiers": {…}}` in the create body; `null` = the default stock); `~with(sellerStock,buyerStock)` to read them, `409` to change one once the line is no longer `New` — see [Which logical stock a line uses](../../reference/working-with/orders.md#which-logical-stock-a-line-uses-sellerstock-and-buyerstock)
 - **Till orders**: the delivery mode of an order placed at the till is on the line's `deliveryAddresses` (`[]` = collect in the line's `seller` store, one address = ship there), never on the order-level list, which is a union. The till's open carts are `New` orders without a `suppliersId` — filter with `~where(identifiers/suppliersId)`
 - **Payment methods**: Use `methodId` from `/v1/payment-methods` (e.g., `methodId: "com.heads.cash"`, `methodId: "com.heads.card"`)
 - **Click-and-collect**: Use `POST /v1/trade-orders` with `reservedUntil` for in-store pickup orders. The system reserves stock, creates a picking order, and schedules automatic release.

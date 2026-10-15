@@ -93,7 +93,7 @@ Receiving          In-Stock            Reserved           Shipped
 
 ### How `owner` Works
 
-The `owner` field on a stock place is a **computed property**, not a stored field. It is derived from `StockOwner.forNearestRoot(place)` — the system finds the agent whose `stockRoots` collection includes this place or one of its parents.
+The `owner` field on a stock place is a **computed property**, not a stored field. It is derived from the nearest stock root: the system finds the agent whose `stockRoots` collection includes this place or one of its parents.
 
 **When you set `owner` on a stock place:**
 - The system removes the place from the old owner's `stockRoots` (if any)
@@ -193,7 +193,7 @@ Company Stock Roots
 | `owner` | AgentRef | No | Agent owning the stock place (**computed**, not stored; see note below) |
 | `parent` | StockPlaceRef | No | Parent location in hierarchy |
 
-> **Note:** Stock places can be created without an `owner`. The `owner` field is a **computed property** derived from `StockOwner.forNearestRoot(place)` — it finds the agent whose `stockRoots` includes this place or a parent.
+> **Note:** Stock places can be created without an `owner`. The `owner` field is a **computed property** derived from the nearest stock root — the agent whose `stockRoots` includes this place or a parent.
 >
 > **Setting `owner`:** When you set `owner` on a stock place, the system manipulates the agent's `stockRoots` collection (removes from old owner, adds to new owner). The canonical relationship is `agent.stockRoots → stock place`.
 >
@@ -355,7 +355,7 @@ POST /v1/stock-places
 }
 ```
 
-> **Note:** When you add a parent stock place to an agent's `stockRoots`, all child places inherit ownership via `StockOwner.forNearestRoot()`. You don't need to set `owner` on each child — the system walks up the parent chain to find the nearest stock root.
+> **Note:** When you add a parent stock place to an agent's `stockRoots`, all child places inherit ownership from the nearest stock root. You don't need to set `owner` on each child — the system walks up the parent chain to find the nearest stock root.
 
 ### Store Stock Locations
 
@@ -906,7 +906,7 @@ Shipment orders track physical delivery of products. Over the API they are read 
 
 No write on the API creates a shipment order:
 
-- **`tryFulfill` does not create one.** It fulfils the order directly: the order reads `Fulfilled`, the sold units leave the seller's stock, and the order's `shipments` stay empty. The physical count at the source place moves only when the buyer has a destination place — see [gotcha 57](../common-gotchas.md#57-tryfulfill-leaves-physicalquantity-alone-unless-the-buyer-has-a-place).
+- **`tryFulfill` does not create one.** It fulfils the order directly: the order reads `Fulfilled`, the sold units leave the seller's stock and its stock root's place, and the order's `shipments` stay empty. `physicalQuantity` at the seller's place goes down by the fulfilled quantity for every buyer — a person with no address included, since a buyer without a stock root or an address gets a stock root made for it — see [gotcha 57](../common-gotchas.md#57-tryfulfill-moves-physicalquantity-from-the-sellers-place-to-the-buyers).
 - **`POST /v1/shipment-orders` does not build a shipment from your body.** Posting explicit fields (`sender`, `receiver`, `source`, `items`, …) creates an identifier shell only — the body is dropped, and the resulting resource carries none of the values you sent.
 - **`createShipment` is not a trade order action.** Sending `{"createShipment": true}` is dropped: `200`, no shipment order. Outbound goods are booked as a delivery on `/v1/deliveries`.
 
@@ -1497,7 +1497,7 @@ POST /v1/shipment-orders/@find
    }
    ```
 
-   > **Note:** `owner` is optional when the stock place is owned via `stockRoots`. The system infers the owner from `StockOwner.forNearestRoot(place)`.
+   > **Note:** `owner` is optional when the stock place is owned via `stockRoots`. The system infers the owner from the nearest stock root above the place.
 
 2. **Transfer to storage:**
    ```bash
@@ -1809,7 +1809,7 @@ POST /v1/stock-adjustments  # Second request (may fail)
 | 4 | Release shipment (decrements stock) |
 | 5 | (External: fulfillment/tracking via integrations) |
 
-`tryFulfill` fulfils the order without a shipment order: the seller's stock is debited at fulfilment and there is nothing to release. The physical count at the source place moves only when the buyer has a destination place — see [gotcha 57](../common-gotchas.md#57-tryfulfill-leaves-physicalquantity-alone-unless-the-buyer-has-a-place) and [Where Shipment Orders Come From](#where-shipment-orders-come-from).
+`tryFulfill` fulfils the order without a shipment order: the seller's stock and its stock root's place are debited at fulfilment, the units land on the buyer's place, and there is nothing to release — see [gotcha 57](../common-gotchas.md#57-tryfulfill-moves-physicalquantity-from-the-sellers-place-to-the-buyers) and [Where Shipment Orders Come From](#where-shipment-orders-come-from). A delivery's `approve` and a return's `fulfill` move the physical units the same way, so a stock entry or a stocktake after a goods receipt books nothing: the place quantity follows fulfilments and returns.
 
 ### Instance Tracking
 

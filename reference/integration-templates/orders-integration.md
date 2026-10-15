@@ -95,7 +95,7 @@ Trade order status is a read-only string array that reflects the current state o
 └─────┬─────┘                └───────────┘
       │
       └─── tryFulfill ─────────────────► ┌───────────┐
-                                         │ Fulfilled │  seller's stock debited; no shipment order
+                                         │ Fulfilled │  units leave the seller's stock and place; no shipment order
                                          └───────────┘
 ```
 
@@ -107,10 +107,10 @@ Trade order status is a read-only string array that reflects the current state o
 |--------|-------------|-------------------|
 | `New` | Just created, awaiting approval | `tryApprove`, `tryFulfill`, `createPayment`, `createWalletPayment`, `changeDeliveryAddress`, `changeInvoiceAddress` |
 | `Reserved` | Stock reserved (via `reservedUntil`) | `tryApprove`, `tryFulfill`, `createPayment`, `createWalletPayment`, `changeDeliveryAddress`, `changeInvoiceAddress` |
-| `Committed` | Approved, ready for fulfillment | `tryFulfill`, `createPayment`, `createWalletPayment`, `tryCancel` |
+| `Committed` | Approved, ready for fulfillment | `tryFulfill`, `createPayment`, `createWalletPayment`, `tryCancel`, `cancelRemainder`, `cancelItems`, `reversePayment` |
 | `Cancelled` | Order cancelled | (terminal state) |
 
-> **Note:** `tryCancel` only works on `Committed` orders. Address changes are only allowed on `New` or `Reserved` orders.
+> **Note:** `tryCancel` only works on an order that is wholly `Committed`; a partly fulfilled order takes `cancelRemainder` (the open rest of every line) or `cancelItems` (a target per line). Address changes are only allowed on `New` or `Reserved` orders.
 
 **Item-Level Status:**
 Each item has `statusDetails`, one row per phase the line is split across, each carrying the quantity in that phase — so a line of 3 with 2 delivered reads `[{"quantity":"2","status":"Fulfilled"},{"quantity":"1","status":"Committed"}]`. This is what makes partial fulfilment measurable rather than just visible: the order-level `status` array tells you *which* phases are in play, and only `statusDetails` tells you how much is in each. See [Per-Line Status Breakdown](../working-with/orders.md#per-line-status-breakdown-statusdetails).
@@ -120,9 +120,12 @@ Each item has `statusDetails`, one row per phase the line is split across, each 
 | Action | Description |
 |--------|-------------|
 | `tryApprove` | Approve the order (New → Committed) |
-| `tryFulfill` | Fulfills all eligible items (committing `New`, `Reserved` and `Unreserved` items first as needed) and performs a physical move from each item's source to its destination place for physical product instances |
-| `tryCancel` | Cancel the order |
-| `createPayment` | Record a payment against the order |
+| `tryFulfill` | Fulfills all eligible items (committing `New`, `Reserved` and `Unreserved` items first as needed) and moves the physical units from each item's source place to its destination place |
+| `tryCancel` | Cancel the order; the money paid towards the cancelled units is credited back on its payments, or the call is refused when that refund belongs in the POS |
+| `cancelRemainder` | Cancel the committed, not yet fulfilled part of every item |
+| `cancelItems` | Cancel part of an approved order, per item, to a target `cancelledQuantity` |
+| `createPayment` | Record a payment against the order; `amount` defaults to what is still owed |
+| `reversePayment` | Refund part of a payment, referenced to that payment, for units released without a credit |
 | `createWalletPayment` | Create a payment using a wallet (gift card, store credit, voucher) |
 | `commitReturn` | Commit a customer return for one or more items |
 | `fulfillReturn` | Fulfill a previously-committed return |
@@ -601,7 +604,7 @@ PATCH /v1/trade-orders/com.acme.order-id=WEB-2024-123456/actions
 }
 ```
 
-`tryFulfill` fulfills every eligible item — committing `New`, `Reserved` and `Unreserved` items first as needed — and, for physical product instances, performs a physical move from each item's source place to its destination place.
+`tryFulfill` fulfills every eligible item — committing `New`, `Reserved` and `Unreserved` items first as needed — and, for physical product instances, moves the units from each item's source place to its destination place: the sold units leave the seller's stock and its stock root's place and land on the buyer's place (its stock root, else the place of its main or delivery address, else a stock root made for the buyer). A web customer with no address is no exception: `physicalQuantity` at the seller's stock root goes down by the fulfilled quantity.
 
 ### Shipment Orders
 
@@ -1031,7 +1034,7 @@ For high-traffic events (flash sales, Black Friday):
 
 ### Pre-Launch
 
-- [ ] **Identifier namespace** — Confirm namespace (e.g., `com.acme.order-id`), and that every key is **exactly three** dot-separated segments — a malformed key is dropped at `200` and the order is re-created on every run ([why](../overview.md#a-malformed-identifier-key-is-discarded-not-rejected))
+- [ ] **Identifier namespace** — Confirm namespace (e.g., `com.acme.order-id`), and that every key is **exactly three** dot-separated segments — a malformed key is refused with `400 failed coercion`; nothing is stored, so a retry creates no duplicate ([why](../overview.md#a-malformed-identifier-key-is-refused))
 - [ ] **Field mapping** — Document external → CommerceOS mapping
 - [ ] **Product setup** — All products exist with prices
 - [ ] **Customer setup** — Customer records exist or create on first order
@@ -1049,7 +1052,7 @@ For high-traffic events (flash sales, Black Friday):
 - [ ] **Create order** — Basic order creation works
 - [ ] **Add payment** — Payment recording works
 - [ ] **Approve order** — Status transitions correctly
-- [ ] **Fulfil order** — `tryFulfill` fulfils eligible items and debits the seller's stock; the physical count moves only when the buyer has a destination place
+- [ ] **Fulfil order** — `tryFulfill` fulfils eligible items; the sold units leave the seller's stock and its stock root's place
 - [ ] **Cancel order** — Cancellation works
 
 ### Go-Live
@@ -1172,7 +1175,7 @@ PATCH /v1/trade-orders/com.acme.order-id=PAYMENT-FLOW-001/actions
 ### Complete Fulfillment Flow
 
 ```bash
-# Fulfill the order: eligible lines are fulfilled and the seller's stock is debited. No shipment order is created
+# Fulfill the order: eligible lines are fulfilled, the units leave the seller's stock and its place. No shipment order is created
 PATCH /v1/trade-orders/com.acme.order-id=PAYMENT-FLOW-001/actions
 {
   "tryFulfill": true
@@ -1221,27 +1224,46 @@ GET /v1/trade-orders/com.acme.order-id=COMPLETE-ORDER-001/shipments
 
 ### Cancel Order
 
+A cancellation credits the money paid towards the cancelled units back on each of their payments by itself. It is refused with `400`, cancelling nothing, when such a payment was taken in a till, goes through a payment integration or came from a wallet — the refund is then made in the POS, or onto the wallet first (see [the refund gate](../working-with/orders.md#cancel-order-trycancel)).
+
 ```bash
+# The whole order, while it is wholly Committed
 PATCH /v1/trade-orders/com.acme.order-id=CANCEL-THIS-ORDER/actions
 {
   "tryCancel": true
+}
+
+# The open rest of a partly fulfilled order
+PATCH /v1/trade-orders/com.acme.order-id=PARTLY-SHIPPED/actions
+{
+  "cancelRemainder": true
+}
+
+# One line, to a target: at least 1 of this line Cancelled afterwards (idempotent — send the cumulative count on every poll)
+PATCH /v1/trade-orders/com.acme.order-id=PARTLY-SHIPPED/actions
+{
+  "cancelItems": {
+    "items": [{ "identifiers": {"com.acme.line-id": "WEB-2024-123456-2"}, "cancelledQuantity": "1" }]
+  }
 }
 ```
 
 ### Refund Payment
 
+Units released without a credit — cancelled or returned through another channel — are refunded with `reversePayment`, referenced to the payment and idempotent on the refund's own `transactionId`; `amount` defaults to everything reversible on that payment:
+
 ```bash
 PATCH /v1/trade-orders/com.acme.order-id=REFUND-ORDER/actions
 {
-  "createPayment": {
+  "reversePayment": {
+    "payment": {"identifiers": {"processorsId": {"method": {"identifiers": {"methodId": "com.heads.card"}}, "id": "TXN-001"}}},
     "transactionId": "REFUND-001",
-    "timestamp": "2024-12-16T10:00:00Z",
-    "method": {"identifiers": {"methodId": "com.heads.card"}},
-    "currency": {"identifiers": {"currencyCode": "SEK"}},
-    "amount": -299.00
+    "timestamp": "2024-12-16T10:00:00Z"
   }
 }
 ```
+
+A bare `reversePayment` after a cancellation that already credited the units is `400` `Nothing to reverse: no unit paid by this payment has been cancelled or returned.` A negative `createPayment` is an unreferenced payout that does not settle against the order; it is not a refund of a recorded payment. See [Refund Processing](../working-with/orders.md#refund-processing).
 
 ---
 

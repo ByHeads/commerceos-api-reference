@@ -99,6 +99,8 @@ The logical side tells you _who owns what_ and _in what capacity_. The physical 
 | **Stock Transfer** | A document representing movement between logical stocks | A transfer order |
 | **Stock Transfer Record** | The immutable, posted result of a stock transfer action | The posted transfer journal |
 
+A trade order line names the logical stock it is sold from and received into: `sellerStock` and `buyerStock` on the item, defaulting to the seller's and the buyer's default stock. A demo unit sold from the demo stock, or a consignment unit received into the consignment stock, is a line with that stock set — see [Working with Orders → Which logical stock a line uses](../../reference/working-with/orders.md#which-logical-stock-a-line-uses-sellerstock-and-buyerstock). The physical side follows the trade on its own: fulfilling a sale takes the units off the seller's stock root, approving a delivery puts them onto the receiver's.
+
 ---
 
 ## Part 2: Setting Up Inventory Infrastructure
@@ -771,6 +773,8 @@ Each stock count item has these computed fields:
   "product": { "identifiers": { "com.example.sku": "TSHIRT-RED-M" }, "name": "T-Shirt Red M" },
   "place": { "identifiers": { "com.example.id": "stockholm-store" } },
   "counted": true,
+  "settled": false,
+  "excluded": false,
   "expectedQuantity": "45",
   "countedQuantity": "44",
   "overageQuantity": "0",
@@ -790,7 +794,9 @@ Each stock count item has these computed fields:
 
 | Field | Description |
 |-------|-------------|
-| `counted` | Whether any observations have been recorded |
+| `counted` | Whether any observations have been recorded — or whether approval settled the line (see `settled`) |
+| `settled` | "Whether this line's zero was posted by approval settlement rather than counted by someone. `counted` is true on such a line. A settled line with `expectedQuantity` 0 was never looked at and left stock untouched; a settled line with a non-zero `expectedQuantity` is a write-off whose stock was adjusted to zero." |
+| `excluded` | "Whether this line was excluded from the count, so approval left its stock untouched. The line and whatever was counted on it stay on the count." |
 | `expectedQuantity` | System's stock level, captured as a snapshot at the time of the first count |
 | `countedQuantity` | Total from the most recent observation(s) |
 | `overageQuantity` | Positive variance (counted more than expected) |
@@ -812,6 +818,23 @@ The stock count moves through statuses as observations are recorded:
 | `Approved` | Finalized; stock count records have been generated |
 
 The status transitions are managed by the system as observations are added and the count is approved. When a stock count is approved, it generates **stock count records** — the immutable, posted adjustments that actually change stock levels.
+
+**What approval does to the lines nobody counted.** Approving a count registers every uncounted line that expects nothing as counted with zero, and the approval dialog's write-off does the same to the uncounted lines that expect stock. Both then read `counted: true` and `countedQuantity "0"`; `settled` is the only member that tells either from a zero someone actually counted, and `expectedQuantity` tells the two settled cases apart. Both members are read-only, in the default body of a stock count item (`~with(items)` carries them; a new line reads `"settled": false, "excluded": false`), and present under the read-only stock scope too.
+
+| Line | `counted` | `settled` | `excluded` | `expectedQuantity` | `countedQuantity` | Stock |
+|---|---|---|---|---|---|---|
+| Settled, nothing expected | `true` | `true` | `false` | `"0"` | `"0"` | untouched |
+| Write-off | `true` | `true` | `false` | `"7"` | `"0"` | adjusted to zero |
+| Hand-counted zero | `true` | `false` | `false` | `"0"` | `"0"` | adjusted if it differed |
+| Excluded | as counted | — | `true` | — | as counted | untouched |
+
+A consumer that sets absolute stock levels from a count keeps every line someone looked at and every write-off, and drops the settled no-stock lines and the excluded ones:
+
+```bash
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-counts/com.example.id=count-2026-q1/items~where(counted=true,!excluded)~either(!settled,expectedQuantity!=0)"
+```
+
+`~where(counted=true,!settled)` alone is not the recipe: it drops the write-offs and leaves the consumer at the old quantity while CommerceOS holds zero. An `excluded` line stays in `items` with its observations but never adjusts stock; a counted line can be excluded. Counts approved before the members existed read `settled: false` on every line.
 
 ```bash
 # Read the current status
@@ -1764,7 +1787,9 @@ Inherits from `stock transaction` (has `timestamp`, `owner`).
 | `identifiers` | common identifiers | No | No | External identifiers |
 | `product` | product reference | Yes | No | Product being counted |
 | `place` | place reference | Yes | No | Location being counted |
-| `counted` | boolean | — | Yes | Whether observations exist (computed) |
+| `counted` | boolean | — | Yes | Whether observations exist, or approval settled the line (computed) |
+| `settled` | boolean | — | Yes | The line's zero was posted by approval settlement, not counted by someone (see [4.4](#44-approving-a-stock-count)) |
+| `excluded` | boolean | — | Yes | The line was excluded from the count; approval left its stock untouched |
 | `expectedQuantity` | decimal | — | Yes | System stock at first count (snapshot, computed) |
 | `countedQuantity` | decimal | — | Yes | Total from observations (computed) |
 | `overageQuantity` | decimal | — | Yes | Positive variance (computed) |
@@ -1939,6 +1964,10 @@ Inherits from `stock transaction` (has `timestamp`, `owner`).
 - **A bare `{ "key": "…" }` object is not a reference.** Anywhere you point at an existing item — `sender`, `receiver`, `senderStock`, `product`, `parent` — the reference must be `{ "identifiers": { "key": "…" } }` (or an external id inside `identifiers`). A bare `{ "key": … }` silently resolves to a *new* placeholder object instead of failing, which on a stock transfer surfaces as the puzzling "between different agents" `400` for what looks like the same store on both sides.
 
 - **`expectedQuantity` on stock count items is a snapshot.** It's captured at the time of the first observation, not updated live. Subsequent stock movements won't change it.
+
+- **A settled line reads `counted: true`.** Approval registers the uncounted lines as counted with zero; filter on `settled` and `excluded` before trusting a zero — `~where(counted=true,!excluded)~either(!settled,expectedQuantity!=0)` keeps what someone looked at plus the write-offs. See [4.4](#44-approving-a-stock-count).
+
+- **A stock count after a goods receipt or a sale finds the goods already moved.** Delivery approval and `tryFulfill` write the place ledger themselves, so the count's `expectedQuantity` already reflects them and a stock entry echoing the shelf writes nothing.
 
 - **Even with matching quantities, instance-level variances can exist.** A stock count item might show `expectedQuantity: 3` and `countedQuantity: 3`, but still have shortage and overage instances if different serial numbers were found.
 

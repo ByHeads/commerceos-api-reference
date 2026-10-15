@@ -89,21 +89,20 @@ Trade orders represent sales or purchase transactions between agents. Orders tra
 └────┬─────┘
      │ tryApprove
      ▼
-┌───────────┐    tryCancel    ┌───────────┐
-│ Committed │ ───────────────►│ Cancelled │
-└─────┬─────┘                 └───────────┘
+┌───────────┐  tryCancel / cancelRemainder  ┌───────────┐
+│ Committed │ ─────── cancelItems ─────────►│ Cancelled │
+└─────┬─────┘                               └───────────┘
       │
       │ fulfill
       ▼
-┌───────────┐◄────────────────────┐
-│ Fulfilled │                     │ cancelReturn
-└─────┬─────┘                     │
-      │                           │
-      │ commitReturn              │
-      ▼                           │
-┌─────────────────┐               │
-│ ReturnCommitted │───────────────┘
-└────────┬────────┘
+┌───────────┐
+│ Fulfilled │
+└─────┬─────┘
+      │ commitReturn
+      ▼
+┌─────────────────┐   cancelReturn   ┌─────────────────┐
+│ ReturnCommitted │─────────────────►│ ReturnCancelled │
+└────────┬────────┘                  └─────────────────┘
          │ fulfillReturn
          ▼
 ┌─────────────────┐
@@ -121,8 +120,9 @@ Trade orders represent sales or purchase transactions between agents. Orders tra
 | `Committed` | Approved via `tryApprove` | Fulfilled, Cancelled |
 | `Fulfilled` | Fully delivered to customer | ReturnCommitted (via `commitReturn`) |
 | `Cancelled` | Order cancelled | (terminal) |
-| `ReturnCommitted` | Return committed | ReturnFulfilled (via `fulfillReturn`), Fulfilled (via `cancelReturn`) |
+| `ReturnCommitted` | Return committed | ReturnFulfilled (via `fulfillReturn`), ReturnCancelled (via `cancelReturn`) |
 | `ReturnFulfilled` | Return completed | (terminal) |
+| `ReturnCancelled` | Return called off; the line is neither `Fulfilled` nor `New`, so it cannot be returned again | (terminal) |
 
 > **Note:** Orders can have multiple statuses simultaneously. For example, a partially fulfilled order may show both `Committed` and `Fulfilled` statuses for different line items.
 
@@ -204,7 +204,7 @@ Both members are read-only. To see what produced each move — which action, whe
 | `currency` | CurrencyRef | Yes | Transaction currency |
 | `items` | OrderItem[] | Yes | Line items (non-empty array) |
 
-**Two numbers the platform puts into `identifiers`.** Besides your own namespaced identifiers, an order can carry `identifiers.customersId` — the customer's number for the order — and `identifiers.suppliersId` — the supplier's. Each is issued on creation when the party is one of your own agents under the root organization node and `/v1/config/root-order` names a serial for it: `incomingTradeOrderSerial` for `customersId` (your purchase order number), `outgoingTradeOrderSerial` for `suppliersId` (your sales order number). Both are indexes — `GET /v1/trade-orders/customersId=PO-00001` — and both are **read-only**: a `PATCH` on either is a `200` that changes nothing. The top-level `customersId` / `suppliersId` members (non-essential) carry the same number with its `owner`. See [Working with Purchasing → Your Purchase Order Number](purchasing.md#your-purchase-order-number-identifierscustomersid).
+**Two numbers the platform puts into `identifiers`.** Besides your own namespaced identifiers, an order can carry `identifiers.customersId` — the customer's number for the order — and `identifiers.suppliersId` — the supplier's. Each is issued on creation when the party is one of your own agents under the root organization node and `/v1/config/root-order` names a serial for it: `incomingTradeOrderSerial` for `customersId` (your purchase order number), `outgoingTradeOrderSerial` for `suppliersId` (your sales order number). Both are indexes — `GET /v1/trade-orders/customersId=PO-00001`. Inside `identifiers` they are read-only: a `PATCH` on `identifiers.customersId` is a `200` that changes nothing. **To set or change one, write the top-level member** — `customersId.id` or `suppliersId.id` — on `POST` or `PATCH`: "Set suppliersId.id or customersId.id when creating or updating an order; owner is derived from the order's supplier or customer." The member and the identifier are the same value: an order created with `"customersId": {"id": "PO-7"}` reads `identifiers.customersId "PO-7"` with the customer as `owner`; after `PATCH {"customersId": {"id": "PO-8"}}` the identifier reads `"PO-8"`, the owner is unchanged, and the old value no longer finds the order (`GET /v1/trade-orders/customersId=PO-7` → `200 null`). A non-string `id` is a coercion `400` (`targetType: "strict string"`) and neither id changes. The top-level members are non-essential; `~just(identifiers,customersId,suppliersId)` reads number and owner together. See [Working with Purchasing → Your Purchase Order Number](purchasing.md#your-purchase-order-number-identifierscustomersid).
 
 ### Order Fields (Optional)
 
@@ -266,7 +266,9 @@ An unknown value for either policy is a coercion `400`. The trade relationship c
 | Field | Type | Description |
 |-------|------|-------------|
 | `unitAmountExclVat` | decimal | Manual unit price excluding VAT (see [Manual Unit Amounts](#manual-unit-amounts)) |
-| `deliveryAddresses` | Address[] (at most one) | Where this line ships to. `[]` means the line is collected in the `seller` store; one address means it ships there. Inherits the order's delivery address unless set. Writable on `PATCH /v1/trade-order-items/{key}` while the line is `New` or `Reserved`; ignored once `Committed`; two addresses answer `400`. Non-essential — see [Orders placed at the till](#orders-placed-at-the-till-collect-in-store-and-ship-to-customer) |
+| `deliveryAddresses` | Address[] (at most one) | Where this line ships to. `[]` means the line is collected in the `seller` store and lands on the buyer's own stock root; one address means it ships there. Inherits the order's delivery address unless set. Writable on `PATCH /v1/trade-order-items/{key}` while the line is `New` or `Reserved`; ignored once `Committed`; two addresses answer `400`. Non-essential — see [Orders placed at the till](#orders-placed-at-the-till-collect-in-store-and-ship-to-customer) |
+| `sellerStock` | stock reference | The seller's logical stock the line is sold from. Defaults to the seller's default stock; `null` selects that default again. Must be one of the seller's stocks. Writable while the line is `New`; afterwards `409`. Non-essential — see [Which logical stock a line uses](#which-logical-stock-a-line-uses-sellerstock-and-buyerstock) |
+| `buyerStock` | stock reference | The buyer's logical stock the line is received into, with the same rules as `sellerStock` applied to the `buyer`. A person has a default stock too (`Main`), so it is never empty on a sales order |
 
 ### Order Item Fields (Read-Only)
 
@@ -283,7 +285,31 @@ An unknown value for either policy is a coercion `400`. The trade relationship c
 | `buyer` | agent reference | The customer, per line |
 | `reservedUntil` | datetime or null | When this line's reservation expires. `null` on a pay-later order placed at the till — that reservation does not expire, unlike an API click-and-collect order's |
 
-> **`seller`, `buyer`, `deliveryAddresses` and `reservedUntil` are non-essential on a line.** None of them is in the order's `items` in the default form, with `?fields=all` on the order, or with `~with(items)`. Ask for them by name: `~with(items~with(seller,buyer,deliveryAddresses,statusDetails))`, a `~just(items~just(…))` projection, `GET /v1/trade-orders/{id}/items?fields=all`, or the line itself on `/v1/trade-order-items/{key}`.
+> **`seller`, `buyer`, `deliveryAddresses`, `reservedUntil`, `sellerStock` and `buyerStock` are non-essential on a line.** None of them is in the order's `items` in the default form, with `?fields=all` on the order, or with `~with(items)`. Ask for them by name: `~with(items~with(seller,buyer,deliveryAddresses,statusDetails))`, a `~just(items~just(…))` projection, `GET /v1/trade-orders/{id}/items?fields=all`, or the line itself on `/v1/trade-order-items/{key}`.
+
+#### Which logical stock a line uses: `sellerStock` and `buyerStock`
+
+A store can keep several logical stocks (a sales stock, a demo stock, a consignment stock — see [Stock guide → Part 1](../../guide/examples/stock-inventory-guide.md#part-1-concepts--the-two-dimensional-inventory-model)). `sellerStock` names the one a line is sold from and `buyerStock` the one it is received into; without a choice they are the default stock of the line's `seller` and `buyer`. Set them per item in the create body, or on the line while it is `New`:
+
+```bash
+POST /v1/trade-orders
+[{ …, "items": [{ "product": {"identifiers": {"com.example.sku": "PROD-001"}}, "quantity": "2",
+                  "sellerStock": {"identifiers": {"com.example.warehouseCode": "DEMO"}} }] }]
+
+PATCH /v1/trade-order-items/com.example.itemId=ORD-001-1
+{"sellerStock": null}                                    # back to the seller's default stock
+
+GET /v1/trade-order-items/com.example.itemId=ORD-001-1~with(sellerStock,buyerStock)
+```
+
+| Request | Answer |
+|---|---|
+| A stock of another store or company | `400`, `details` `The sellerStock of a trade order item must be one of the stocks of its seller.` (at creation prefixed with `Error on order item nr <n>: `) |
+| A stock that does not exist, at creation | `400` `Invalid sellerStock match. The stock must match exactly one existing stock`; on an update the "must be one of the stocks" text, and no stock is created |
+| A change once the line is no longer `New` (`Reserved`, `Committed`, …) | `409`, `@type` `state conflict`, `details` `The sellerStock of a trade order item can only be changed while the item is New.`, `info.status` the line's status. Sending the stock the line already has is `200` in any status |
+| `"sellerStock": {"identifiers": {…}, "name": "New name"}` | selects the stock; the stock's own members are left alone |
+
+`buyerStock` follows the same rules with "buyer". A reservation (`reservedUntil`) and an approval hold the units against the named stock, not the default one; the product's `stockLevels` still report per store. Filter lines by stock with `~where(sellerStock/identifiers/<key>=…)` or `~where(sellerStock/name=…)` — the short forms `sellerStock/<key>=…` and `sellerStock/key=…` match nothing, as for `seller`. The members read and write under the order scopes, but the stock resolves only when the key can also read stocks: without `stock:read` both read `null` and a write is a `200` that stores nothing.
 
 ---
 
@@ -355,31 +381,25 @@ Price and quantity are settable while the order is `New`; after `tryApprove` a `
 
 ### Order with Multiple Sellers
 
-When items come from different stores:
+**One seller per order.** Every line of a trade order ships from one place — its seller's stock root — so `sellers` must name exactly one store. A `POST` with two sellers is refused before anything is created, whether or not the lines carry their own `seller`:
 
 ```bash
 POST /v1/trade-orders
-{
-  "identifiers": {"com.example.orderId": "ORD-MULTI"},
-  "supplier": {"identifiers": {"com.example.companyId": "OUR-COMPANY"}},
-  "customer": {"identifiers": {"com.example.customerId": "CUST-001"}},
-  "sellers": [
-    {"identifiers": {"com.example.storeId": "STORE-NORTH"}},
-    {"identifiers": {"com.example.storeId": "STORE-SOUTH"}}
-  ],
-  "currency": {"identifiers": {"currencyCode": "SEK"}},
-  "items": [
-    {
-      "product": {"identifiers": {"com.example.sku": "PROD-001"}},
-      "quantity": 5
-    },
-    {
-      "product": {"identifiers": {"com.example.sku": "PROD-002"}},
-      "quantity": 3
-    }
-  ]
-}
+[{ "identifiers": {"com.example.orderId": "ORD-MULTI"},
+   "supplier": {"identifiers": {"com.example.companyId": "OUR-COMPANY"}},
+   "customer": {"identifiers": {"com.example.customerId": "CUST-001"}},
+   "sellers": [ {"identifiers": {"com.example.storeId": "STORE-NORTH"}},
+                {"identifiers": {"com.example.storeId": "STORE-SOUTH"}} ],
+   "currency": {"identifiers": {"currencyCode": "SEK"}},
+   "items": [ … ] }]
 ```
+
+```json
+400 { "@type": "bad request", "error": "The request was invalid and could not be processed.",
+      "details": "Could not create order: Several parties given; a trade needs exactly one." }
+```
+
+When items come from different stores, create one order per store. The same rule refuses a seller that has **several stock roots**: `400` `details` `Could not create order: <name> has several stock roots; a trade needs exactly one.` — give the selling store one stock root (see [Stock guide → Agent Stock Roots](stock.md#agent-stock-roots)). A multi-seller order can still exist — the till creates one when the cashier picks several stores (see [Orders placed at the till](#orders-placed-at-the-till-collect-in-store-and-ship-to-customer)) — and reads like any other.
 
 ### Setting Addresses After Order Creation
 
@@ -475,7 +495,7 @@ This is a different thing from the [click-and-collect order](#click-and-collect-
 
 #### The delivery mode is on the line, not on the order
 
-Read `deliveryAddresses` on the **item**. `[]` means the line is collected in its `seller` store; one address means it ships from the `seller` store to that address. The four members that matter are non-essential on a line, so name them:
+Read `deliveryAddresses` on the **item**. `[]` means the line is collected in its `seller` store; one address means it ships from the `seller` store to that address. Either way the line has a destination: a shipped line goes to that address as a place, a collected line goes to the buyer's own stock root, which is why a collected order moves `physicalQuantity` at the seller just as a shipped one does (see [Fulfill Order](#fulfill-order-tryfulfill)). The four members that matter are non-essential on a line, so name them:
 
 ```bash
 GET /v1/trade-orders/suppliersId=1000000~just(status,reservedUntil,deliveryAddresses,items~just(identifiers/key,deliveryAddresses,seller~just(name,identifiers/key)))
@@ -569,7 +589,7 @@ PATCH /v1/trade-orders/suppliersId=1000001/actions
 {"tryFulfill": true}
 ```
 
-`200 {"@type": "trade order actions"}`. Read back: `status ["Fulfilled"]`, line Fulfilled, `balanceAmount "0"`, a second trade record with one `Fulfill` action, `pickingOrders []`, `shipments []` — `tryFulfill` raises no shipment order (see [Where Shipment Orders Come From](#where-shipment-orders-come-from)). What `tryFulfill` books against the seller's stock level for a line the till created is being confirmed; read the product's `stockLevels` at the seller store after fulfilment rather than assuming it moved, and count the units out with a stock adjustment if it did not.
+`200 {"@type": "trade order actions"}`. Read back: `status ["Fulfilled"]`, line Fulfilled, `balanceAmount "0"`, a second trade record with one `Fulfill` action, `pickingOrders []`, `shipments []` — `tryFulfill` raises no shipment order (see [Where Shipment Orders Come From](#where-shipment-orders-come-from)). The units leave the line's `seller` stock and its stock root's place and land at the line's delivery address as a place, as for any order (see [Fulfill Order](#fulfill-order-tryfulfill)).
 
 Booking a delivery on `/v1/deliveries` is the alternative, described under [Where Shipment Orders Come From](#where-shipment-orders-come-from); it has not been measured on a till-created order.
 
@@ -579,7 +599,7 @@ Booking a delivery on `/v1/deliveries` is the alternative, described under [Wher
 |---|---|---|
 | API `{"tryCancel": true}` | `Reserved` (pay later, not picked up) | `200`, **nothing changes** — the order stays `Reserved` and the reservation is kept, as the [`tryCancel` preconditions](#cancel-order-trycancel) say |
 | Till, cancel the order or a line | `Reserved` | `status ["Unreserved"]`, line `statusDetails` Unreserved, a second trade record with one `Unreserve` action, a POS slip (`slipKind "order"`, action `Unreserve`), the reservation released from the stock level, `balanceAmount "0"` while `totalAmount` stays |
-| API `{"tryCancel": true}` | `Committed`, paid now, not yet shipped | Not measured. A wholly `Committed` order is cancelled; what happens to the prepayment's `Debited` payment order through the API has not been checked. Do not assume a refund |
+| API `{"tryCancel": true}` | `Committed`, paid now, not yet shipped | **Refused**, `400`, nothing cancelled: the prepayment was taken in a till, and the refund has to be made where the payment was — `details` `The cancellation would refund a payment taken in a till (<method>); do it in the POS, where the refund is documented.` See [the refund gate](#cancel-order-trycancel) |
 | Till | `Committed`, paid now | The till cancels with a refund, referenced to the original payment where the method supports it and otherwise paid out, documented on a receipt (Sweden) or a `prepayment-refund` slip (Norway) |
 
 `Unreserved` is the status of a pay-later till order cancelled at the till. Map it to "cancelled" in an external system, alongside `Cancelled` — see [the orders integration template](../integration-templates/orders-integration.md#status-mapping-to-external-system).
@@ -1118,14 +1138,17 @@ PATCH /v1/trade-orders/{identifier}/actions
 
 | Action | Payload | Effect |
 |--------|---------|--------|
-| `tryApprove` | `true` | Commits the order (reserves stock) |
-| `tryFulfill` | `true` | Fulfills all eligible items (committing `New`, `Reserved` and `Unreserved` items first as needed) and performs a physical move from each item's source to its destination place for physical product instances |
-| `tryCancel` | `true` | Cancels the order (releases reservations) |
+| `tryApprove` | `true` | Commits the order (reserves stock); assigns own GTINs where `autoGtin` asks for them |
+| `tryFulfill` | `true` | Fulfills all eligible items (committing `New`, `Reserved` and `Unreserved` items first as needed) and moves the physical units from each item's source place to its destination place |
+| `tryCancel` | `true` | Cancels a wholly `Committed` order and credits the money paid towards the cancelled units back on their payments; refused when that refund has to be made elsewhere |
+| `cancelRemainder` | `true` | Cancels the committed, not yet fulfilled part of every item — the open remainder of a partly received purchase order; credits as `tryCancel` does |
+| `cancelItems` | `{"items": [...]}` | Cancels part of an approved order, per item, to a target `cancelledQuantity`; credits as `tryCancel` does |
 | `commitReturn` | Return commit object | Commits a return for one or more items (Fulfilled/New → ReturnCommitted) |
-| `fulfillReturn` | Return ref object | Fulfills a previously-committed return (ReturnCommitted → ReturnFulfilled; restocks if `restock=true` at commit) |
-| `cancelReturn` | Return ref object | Cancels a previously-committed return (ReturnCommitted → Fulfilled) |
-| `createPayment` | Payment object | Records a payment against the order |
+| `fulfillReturn` | Return ref object | Fulfills a previously-committed return (ReturnCommitted → ReturnFulfilled; restocks if `restock=true` at commit); credits the returned units' money on their payments |
+| `cancelReturn` | Return ref object | Cancels a previously-committed return (ReturnCommitted → ReturnCancelled; the line cannot be returned again) |
+| `createPayment` | Payment object | Records a payment against the order; `amount` defaults to what is still owed |
 | `createWalletPayment` | Wallet payment object | Creates a payment using a wallet (gift card, store credit, voucher) |
+| `reversePayment` | Reversal object | Refunds part of a payment recorded on the order, referenced to that payment, for units released without a credit |
 | `changeDeliveryAddress` | Address object | Updates delivery address |
 | `changeInvoiceAddress` | Address object | Updates invoice address |
 
@@ -1148,6 +1171,8 @@ PATCH /v1/trade-orders/com.example.orderId=ORD-001/actions
 
 > **Warning:** If stock is insufficient for the requested items, the approval will fail with an error. Check stock availability before attempting to approve.
 
+**Own GTINs on approval.** A product whose `autoGtin` is in effect (its own setting, else the nearest group's or family's) gets a GTIN from the buyer's own GS1 series when an order for it is approved: `tryApprove`, and `tryFulfill` on a `New`, `Reserved` or `Unreserved` order, assign the next codes of the buyer's assortment owner's GTIN-13 series to the flagged products on the rows being approved, skipping codes a product already carries; a cancelled row does not count. When the series cannot cover the demand the action is refused with `400` saying how many numbers the series are short, and nothing is approved. Approving a one-line purchase order for a product with `autoGtin: true` and no GTIN gives it the series' `nextCode` (read `~with(gtin)`), and the series moves on. See [Working with Products → GTIN and PLU Codes](products.md#gtin-and-plu-codes).
+
 ### Cancel Order (tryCancel)
 
 ```bash
@@ -1155,21 +1180,89 @@ PATCH /v1/trade-orders/com.example.orderId=ORD-001/actions
 {"tryCancel": true}
 ```
 
+> Attempts to cancel the entire order. Refunds the money paid towards the cancelled units by recording a Credit on each of their payments, keyed by the cancellation's trade record (see `reversePayment`); refused (400), cancelling nothing, when such a payment was taken in a till, goes through a payment integration or came from a wallet, since the refund then has to be made where the payment was.
+
 **Effects:**
 - Sets status to `Cancelled`
 - Releases stock reservations
+- Credits the money paid towards the cancelled units back on each of their payments: a `Committed` order paid in full with two `createPayment` calls (375 and 125) reads, after `tryCancel`, `status ["Cancelled"]`, `balanceAmount "0"`, and each payment order `creditedAmount` equal to its `limitAmount` with `status ["Credited", "Debited"]`. `creditedAmount` is not in a payment's default body — read `GET /v1/trade-orders/{id}/payments~withAll` or `~with(payments~with(creditedAmount))`
 
 **Preconditions:**
 - Order must have status `Committed` (only committed orders can be cancelled via this action)
 - Orders in `New` or `Reserved` status cannot be cancelled with this action — that includes a pay-later order placed at the till, which is `Reserved` until it is picked up; the till cancels it (see [Cancelling a till order](#cancelling-a-till-order))
 - Orders in `Fulfilled` status cannot be cancelled (use return flow instead)
-- A **partly fulfilled** order (`["Committed", "Fulfilled"]`) is not cancelled either: the action answers `200` and changes nothing. To close the open remainder of a partly received purchase order, set `underdeliveryPolicy: "Cancel"` and approve a short delivery — see [Working with Purchasing → Cancelling, and Closing the Rest of a Partly Received Order](purchasing.md#cancelling-and-closing-the-rest-of-a-partly-received-order)
+- A **partly fulfilled** order (`["Committed", "Fulfilled"]`) is not cancelled either: the action answers `200` and changes nothing. The open remainder is cancelled with [`cancelRemainder`](#cancel-the-remainder-cancelremainder); single lines with [`cancelItems`](#cancel-items-cancelitems)
 
 In every "cannot" case above the response is still `200` — read `status` back. `DELETE /v1/trade-orders/{id}` answers `200` with `deletedCount: 0`; orders are not deletable.
+
+**The refund gate.** `tryCancel`, `cancelRemainder`, `cancelItems` and `fulfillReturn` record a Credit on each payment for the money paid towards the released units. When that money has to be refunded where the payment was taken, the action is refused with `400` and moves nothing. The three texts — `<action>` is `cancellation` or `return`, `<method>` the payment method id:
+
+```
+The <action> would refund a payment taken in a till (<method>); do it in the POS, where the refund is documented.
+The <action> would refund a payment processed by a payment integration (<method>); do it in the POS, where the refund goes through the integration.
+The <action> would refund a wallet payment (<method>); refund it onto the wallet first, with createWalletPayment and action Credit.
+```
+
+The gate is about what can be recorded, not about the method's `supportsReversal` flag: a payment recorded from outside with every flag `false` is credited. Only the payments behind the released units are consulted — an order paid by a till payment and a cash-like one is refused only when the released units were paid by the till payment; cancelling unpaid units credits nothing and is not refused. A payment recorded before `tryApprove` is stranded on a `New` order and attached (and credited) on a `Reserved` one. A line is credited at its incl.-VAT amount, whatever its rate. A wallet-paid return is refused until `createWalletPayment` with action `Credit` has been recorded, and then fulfils without a second credit. `cancelReturn` and `commitReturn` move no money and are not gated. The till-payment and integration refusals are from the API's own text; they cannot be reproduced with payments recorded through the API, since those are neither.
+
+### Cancel the Remainder (cancelRemainder)
+
+> Cancels the committed, not yet fulfilled part of every item, e.g. the outstanding remainder of a partly received purchase order. Refused (400) while the order is in a POS checkout; a no-op when nothing is outstanding. Refunds the money paid towards the cancelled units by recording a Credit on each of their payments, keyed by the cancellation's trade record (see `reversePayment`); refused (400), cancelling nothing, when such a payment was taken in a till, goes through a payment integration or came from a wallet, since the refund then has to be made where the payment was.
+
+```bash
+PATCH /v1/trade-orders/com.example.orderId=PO-1/actions
+{"cancelRemainder": true}
+```
+
+A purchase order of 10 + 5 with 8 of the first line received and approved reads `status ["Committed", "Fulfilled"]`. After `cancelRemainder`: `200`, `status ["Cancelled", "Fulfilled"]`, the first line's `statusDetails` `[{"status": "Cancelled", "quantity": "2"}, {"status": "Fulfilled", "quantity": "8"}]`, the second line `Cancelled 5`, `deliveryDiscrepancy ["None"]`, store stock still 8. One trade record is added, with a `Cancel` action per line (`quantity` 2 and 5). A repeat call, and a call on a `New` order, answer `200` and post no record. A `POST /v1/deliveries` from the order afterwards is `400` `The order has no committed items to deliver.` Compare `tryCancel`, which acts only while the status is `Committed` alone and leaves a partly received order untouched. The `PUT …/actions/cancelRemainder` form with body `true` follows the other actions' pattern. See [Working with Purchasing → Cancelling, and Closing the Rest of a Partly Received Order](purchasing.md#cancelling-and-closing-the-rest-of-a-partly-received-order).
+
+### Cancel Items (cancelItems)
+
+> Cancels part of an approved order, per item: ensures that at least `cancelledQuantity` units of each listed item are Cancelled, taking the shortfall from the item's Committed units and nothing else. Idempotent and monotone: a target at or below what is already cancelled is a no-op, and nothing is ever un-cancelled. Fulfilled, returned, New and Reserved units are never touched; a target they put out of reach is met as far as the Committed units allow and the call still answers 200. Refused (400) while the order is in a POS checkout. Refunds the money paid towards the cancelled units by recording a Credit on each of their payments, keyed by the cancellation's trade record (see `reversePayment`); refused (400), cancelling nothing, when such a payment was taken in a till, goes through a payment integration or came from a wallet, since the refund then has to be made where the payment was.
+
+```bash
+PATCH /v1/trade-orders/com.example.orderId=ORD-001/actions
+{
+  "cancelItems": {
+    "items": [
+      { "identifiers": {"com.example.itemId": "ORD-001-2"}, "cancelledQuantity": "1" }
+    ]
+  }
+}
+```
+
+| Member of each item | Meaning |
+|---|---|
+| `identifiers` | The trade-order item |
+| `cancelledQuantity` | **A target, not a delta:** the number of units of the item that must be `Cancelled` after the call, counting units cancelled earlier. Omitted, it is the item's quantity — cancel everything still `Committed`. A feed can send its cumulative count on every poll; nothing moves after the first |
+| `productInstance` | Restricts the cancellation to one product instance of a serialised line, in the shape the return actions take (`{identifiers, serialNumber?}`); `cancelledQuantity` is then ignored. The instance is cancelled if it is `Committed` and left alone otherwise; an instance that is not on the item answers `400` |
+
+Measured on a `Committed` three-unit line paid in full (unit 125 incl. VAT, cash 375):
+
+| Call | Afterwards |
+|---|---|
+| `cancelledQuantity: "1"` | `200`; line `statusDetails` `[{"status": "Cancelled", "quantity": "1"}, {"status": "Committed", "quantity": "2"}]`, order `status ["Cancelled", "Committed"]`, one new trade record (`Cancel`, `quantity "1"`); the payment order reads `creditedAmount "125"`, `status ["Credited", "Debited"]`; `balanceAmount` stays `"0"` |
+| the same body again | `200`, unchanged, no new trade record, no further credit |
+| `{"identifiers": {…}}` with no target | `200`; the line `Cancelled 3`, the order `["Cancelled"]`, `creditedAmount "375"` |
+| `tryCancel` on the now-cancelled order | `200`, nothing changes |
+
+Read the split back with `GET /v1/trade-orders/{key}~with(items~with(status,statusDetails))`. One trade record per call, none when nothing moves; the order's `status` is the union over its items. Refusals, all `400` with nothing moved — one bad entry fails the whole call:
+
+| Body | `details` |
+|---|---|
+| `items: []` | `cancelItems requires at least one item.` |
+| An item that matches nothing | `Invalid item match — each item must reference an existing trade-order item.` |
+| Another order's item | `Item does not belong to the order.` |
+| A negative target | `Quantity cannot be negative.` |
+| An instance not on the item | `Invalid productInstance — could not resolve to an instance on this item.` |
+| The order is in a live or parked POS checkout | the checkout guard's own text |
+| A refund that has to be made elsewhere | the [refund gate](#cancel-order-trycancel) texts |
 
 ### Create Payment
 
 Records a payment against the order.
+
+> Creates a simplified payment for the order. `amount` defaults to what is still owed on the listed items, or on the whole order; an amount beyond that is refused (400), since the surplus could be settled against nothing. Idempotent on `transactionId` + `method`: if a payment with the same transaction ID already exists under the same payment method, the call is a silent no-op and the other args are ignored — safe to retry.
 
 ```bash
 PATCH /v1/trade-orders/com.example.orderId=ORD-001/actions
@@ -1195,9 +1288,16 @@ PATCH /v1/trade-orders/com.example.orderId=ORD-001/actions
 - Currency must exist
 - Any items included in the payload must belong to the order
 
-**Default behavior:**
-- If `amount` is omitted, defaults to the sum of all order items
-- If `items` is provided, amount defaults to sum of specified items only
+**Default amount: what is still owed.** Without `amount`, the payment is what is still owed on the listed `items`, or on the whole order when `items` is omitted — not the lines' amounts. On an order of two lines, 125 and 375 incl. VAT (`balanceAmount "-500"`):
+
+| Call | Answer |
+|---|---|
+| `createPayment` with `items: [the 375 line]`, no `amount` | `200`; the payment order's `limitAmount "375"`, `balanceAmount "-125"` |
+| a bare `createPayment` (no `items`, no `amount`) | `200`; `limitAmount "125"`, `balanceAmount "0"` |
+| a third bare `createPayment` | `400` `Nothing to pay: nothing is owed on the listed items.` |
+| an explicit `amount` beyond what is owed (`"200"` against the 125 still open) | `400` `Amount exceeds the unpaid amount (125).`, nothing recorded |
+
+A negative `amount` is not capped: it records an **unreferenced payout** — a payment order of its own, `limitAmount "50"`, `status ["Debited"]` for `amount: "-50"` — that does not settle against the order: the order's `payments` and `balanceAmount` do not change, and the payout's payment order has no related trade orders. To refund money that was paid towards released units, use the cancel actions, `fulfillReturn` or [`reversePayment`](#reverse-a-payment-reversepayment) instead. Other refusals, all `400` with nothing recorded: `Currency not found.` for an unknown currency, `Order item not found.` for an unknown item (the same text in `createWalletPayment`); an unpriced line with an explicit amount is refused as well, since nothing is owed on it.
 
 **Retry and idempotency:**
 
@@ -1215,6 +1315,50 @@ This makes `createPayment` safe to retry after a network blip or partial-success
 
 > **Note:** This contract covers `createPayment` only. The sibling `createWalletPayment` action has its own semantics and is not covered here.
 
+### Reverse a Payment (reversePayment)
+
+> Refunds part of a payment recorded on the order, referenced to that payment: records a Credit on the payment order, visible as its `creditedAmount` and a `Credited` status, and settles it against the order's ledger. What can be reversed is the part of the payment that paid for units no longer bound to goods — Cancelled, or returned and ReturnFulfilled — and not yet credited. The cancel actions and `fulfillReturn` credit their units' money themselves, so this is for units released without that credit. `amount` defaults to all of it. Idempotent on `transactionId` per payment. Refused (400) when nothing is reversible, when `amount` exceeds the reversible remainder, when the payment is not allocated to this order, when its method has a payment integration or is a wallet (reverse it where it was taken, or use `createWalletPayment` with `action: Credit`), and when the payment was taken in a till (reverse it there, so that the refund is documented). Declared last; a request that cancels or returns and also reverses answers 400 with nothing to reverse, and the cancellation is rolled back with it.
+
+```bash
+PATCH /v1/trade-orders/com.example.orderId=ORD-001/actions
+{
+  "reversePayment": {
+    "payment": {
+      "identifiers": {
+        "processorsId": { "method": {"identifiers": {"methodId": "com.heads.card"}}, "id": "TXN-001" }
+      }
+    },
+    "transactionId": "REFUND-001",
+    "timestamp": "2024-12-20T14:00:00Z",
+    "amount": "125"
+  }
+}
+```
+
+| Member | Meaning |
+|---|---|
+| `payment` | The payment to reverse: by `{"identifiers": {"key": "…"}}`, or by its processors id — the `method` and the `transactionId` it was created with |
+| `transactionId` | The reversal's own id, unique per payment. A repeat with the same id is a no-op — a feed that sends its state on every poll must send the provider's refund id, not a fresh one |
+| `timestamp` | When the reversal was made |
+| `amount` | Positive; optional, defaults to everything reversible on the payment |
+
+The Credit lands on the original payment order: its `creditedAmount` rises and its `status` gains `Credited`, readable on `/v1/payment-orders/{key}` and in the order's `payments` (`~withAll`; `creditedAmount` is not in the default body). On a unit released without a credit, a reversal of one 125-unit answers `200` and `creditedAmount "125"`; the same `transactionId` again leaves it unchanged; `amount "250"` with one unit released is `400` `Amount exceeds the reversible amount (125).` The effect is on the payment, not on the order: `balanceAmount` is `"0"` before and after a cancel-and-reverse.
+
+Because `tryCancel`, `cancelRemainder`, `cancelItems` and `fulfillReturn` credit the released units' money themselves, a bare `reversePayment` after any of them is `400` `Nothing to reverse: no unit paid by this payment has been cancelled or returned.` — and `{"cancelItems": …, "reversePayment": …}` in one `PATCH` answers the same `400` with the cancellation rolled back. Refusals, all `400`, nothing moved:
+
+| `details` | When |
+|---|---|
+| `Payment not found.` | `payment` matches nothing |
+| `Payment is not allocated to this order.` | another order's payment, or one recorded before `tryApprove`, which never attaches |
+| `Nothing to reverse: no unit paid by this payment has been cancelled or returned.` | nothing is reversible |
+| `Reversal amount must be positive.` | `amount` ≤ 0 |
+| `Amount exceeds the reversible amount (<n>).` | `amount` beyond the reversible remainder |
+| `Use createWalletPayment with direction Credit to refund onto a wallet.` | the payment's method is a wallet |
+| `reversePayment is not supported for payment methods associated with an integration; reverse the payment where it was taken.` | the method has a payment integration |
+| `This payment was taken in a till; reverse it there so that the refund is documented.` | the payment was taken in a till |
+
+The payment method's `supportsReversal` and `supportsOutgoing` flags do not gate: a payment recorded from outside with every flag `false` reverses.
+
 ### Fulfill Order (tryFulfill)
 
 ```bash
@@ -1224,9 +1368,17 @@ PATCH /v1/trade-orders/com.example.orderId=ORD-001/actions
 
 **Effects:**
 - Fulfills every eligible item on the order, committing `New`, `Reserved` and `Unreserved` items first as needed
-- For physical product instances, performs a physical move from each item's source place to its destination place
+- For physical product instances, moves the units from each item's source place to its destination place: the sold units leave the seller's stock **and its stock root's place**, and land on the buyer's place. Every line carries both places — an item inherits its order's `source` and `destination`, an item whose seller or buyer changes gets that party's place — and a party's place is its stock root, else the place of its main or delivery address, else a stock root created for it on the spot. A sale of 2 to a person with no address and no stock root therefore reads `physicalQuantity` 7 before and **5** after at the seller's stock root, and the person then has a stock root of their own. `availableQuantity` at the seller moves at approval (7 → 5 for the 2 reserved), `physicalQuantity` at fulfilment
 - Lines that are not eligible are left where they are, so a partly fulfilled order keeps both statuses (see [Status Behavior](#status-behavior))
-- On a **purchase order** it receives everything ordered into the customer store's stock with no delivery document — the shortcut for goods that arrived exactly as ordered. See [Working with Purchasing](purchasing.md#receive-everything-without-a-document-tryfulfill)
+- On a **purchase order** it receives everything ordered into the customer store's stock and onto its place with no delivery document — the shortcut for goods that arrived exactly as ordered. See [Working with Purchasing](purchasing.md#receive-everything-without-a-document-tryfulfill)
+- No shipment order is created, and a stock entry that echoes the shelf count afterwards writes nothing — the place already reflects the sale (see [Stock Entries](../stock-entries.md#what-physicalquantity-is-measured-against))
+
+```bash
+GET /v1/stock-places/{key}~with(entries)                    # physicalQuantity 7, availableQuantity 7
+PATCH /v1/trade-orders/{id}/actions  {"tryApprove": true}   # 2 sold to a person with no address: 7 / 5
+PATCH /v1/trade-orders/{id}/actions  {"tryFulfill": true}
+GET /v1/stock-places/{key}~with(entries)                    # physicalQuantity 5, availableQuantity 5
+```
 
 ### Change Addresses
 
@@ -1260,18 +1412,17 @@ PATCH /v1/trade-orders/com.example.orderId=ORD-001/actions
 
 ### Action Error Handling
 
-Actions return errors when preconditions aren't met:
+An action that is refused answers `400` with the reason in `details`, and moves nothing:
 
 ```json
 {
-  "error": "OrderNotApprovable",
-  "message": "Order cannot be approved: missing price for item 2",
-  "details": {
-    "itemIndex": 2,
-    "productId": "com.example.sku=PROD-003"
-  }
+  "@type": "bad request",
+  "error": "The request was invalid and could not be processed.",
+  "details": "The cancellation would refund a payment taken in a till (com.heads.card); do it in the POS, where the refund is documented."
 }
 ```
+
+A `tryApprove`, `tryCancel` or `tryFulfill` whose preconditions are not met answers `200` and changes nothing — read `status` back (see each action above). The refusal texts of `cancelItems`, `createPayment` and `reversePayment` are listed under their sections; the [refund gate](#cancel-order-trycancel) texts apply to every action that credits a payment. A `sellerStock` change on a line that is no longer `New` is a `409` `state conflict` with `info.status`.
 
 ---
 
@@ -1406,7 +1557,7 @@ GET /v1/trade-orders/com.example.orderId=ORD-001/shipments
 
 ### Where Shipment Orders Come From
 
-No write on the API creates a shipment order. **`tryFulfill` fulfils the order directly and raises no shipment order** — the order reads `Fulfilled`, the sold units leave the seller's stock, and `GET …/shipments` stays `[]` (the physical count at the source place moves only when the buyer has a destination place, see [gotcha 57](../common-gotchas.md#57-tryfulfill-leaves-physicalquantity-alone-unless-the-buyer-has-a-place)) — and `POST /v1/shipment-orders` does not create a usable shipment: the collection has no `create`, so a body carrying `shipper`, `recipient`, `items` and the rest is **dropped** and all you get back is an identifier shell with none of the fields you sent.
+No write on the API creates a shipment order. **`tryFulfill` fulfils the order directly and raises no shipment order** — the order reads `Fulfilled`, the sold units leave the seller's stock and its stock root's place, and `GET …/shipments` stays `[]` (see [gotcha 57](../common-gotchas.md#57-tryfulfill-moves-physicalquantity-from-the-sellers-place-to-the-buyers)) — and `POST /v1/shipment-orders` does not create a usable shipment: the collection has no `create`, so a body carrying `shipper`, `recipient`, `items` and the rest is **dropped** and all you get back is an identifier shell with none of the fields you sent.
 
 `createShipment` is not a trade order action: sending `{"createShipment": true}` is dropped — `200`, no shipment order. Outbound goods are booked as a delivery on `/v1/deliveries`. What you can do with a shipment order is read it and release it.
 
@@ -1561,7 +1712,7 @@ DELETE /v1/trade-orders/com.example.orderId=ORD-001/labels/com.example.labelId=u
 
 ## Returns and Refunds
 
-Returns are driven by three actions on the trade-order item lifecycle (`commitReturn`, `fulfillReturn`, `cancelReturn`). Money movement is handled separately as a negative `createPayment` — see [Refund Processing](#refund-processing) below.
+Returns are driven by three actions on the trade-order item lifecycle (`commitReturn`, `fulfillReturn`, `cancelReturn`). `fulfillReturn` credits the returned units' money back on their payments itself; `reversePayment` covers units released without that credit — see [Refund Processing](#refund-processing) below.
 
 > **Customer returns, not supplier returns.** These three actions are the tool for a record-level, POS-style **customer** return: no return document, no return number, and restocking into a single stock root. Sending goods back to a **supplier** is a document of its own — `/v1/returns`, with a reason per line, its own numbering and a commit/fulfill cycle that moves stock between the two parties. See [Working with Purchasing → Returns](purchasing.md#returns).
 
@@ -1581,9 +1732,9 @@ Original Order (Fulfilled)
    │ fulfillReturn         │ cancelReturn
    ▼           ▼          │
 ┌─────────────────┐       │
-│ ReturnFulfilled │  ┌────┴──────┐
-└─────────────────┘  │ Fulfilled │ (item is back in original Fulfilled state)
-                     └───────────┘
+│ ReturnFulfilled │  ┌────┴────────────┐
+└─────────────────┘  │ ReturnCancelled │ (the line is neither Fulfilled nor New: it cannot be returned again)
+                     └─────────────────┘
 ```
 
 ### Committing a Return
@@ -1658,7 +1809,7 @@ Each item entry accepts an optional `productInstance` field for IMEI-tracked or 
 
 ### Fulfilling a Return
 
-`fulfillReturn` is the completion step: items move from `ReturnCommitted` to `ReturnFulfilled`. If `returnParameters.restock` was `true` at commit-time and the product instance is a `PhysicalObject`, stock is moved back into the returnee's place as part of the same transaction. The `returnParameters` themselves are not re-supplied here — they were locked in at commit-time.
+`fulfillReturn` is the completion step: items move from `ReturnCommitted` to `ReturnFulfilled`. If `returnParameters.restock` was `true` at commit-time and the product instance is a `PhysicalObject`, stock is moved back into the returnee's place as part of the same transaction; a return that does not restock still hands the goods back, into an anonymous account rather than the returnee's place. The `returnParameters` themselves are not re-supplied here — they were locked in at commit-time. The action also refunds the money paid towards the returned units by recording a Credit on each of their payments, keyed by the return's trade record, and is refused (`400`, returning nothing) when such a payment was taken in a till, goes through a payment integration or came from a wallet — the [refund gate](#cancel-order-trycancel).
 
 ```bash
 PATCH /v1/trade-orders/com.example.orderId=ORD-001/actions
@@ -1679,7 +1830,9 @@ The per-item shape supports the same optional `productInstance` selector as `com
 
 ### Cancelling a Return
 
-`cancelReturn` reverses a committed return: items move from `ReturnCommitted` back to `Fulfilled`. Use it when the customer changes their mind before the return is fulfilled, or when the return is rejected at receiving (for example, the goods returned don't match what was committed).
+`cancelReturn` calls off a committed return: items move from `ReturnCommitted` to `ReturnCancelled`. Use it when the customer changes their mind before the return is fulfilled, or when the return is rejected at receiving (for example, the goods returned don't match what was committed).
+
+> Cancels a previously-committed return; moves items from ReturnCommitted to ReturnCancelled. A line in that state is neither Fulfilled nor New, so it cannot be returned again.
 
 ```bash
 PATCH /v1/trade-orders/com.example.orderId=ORD-001/actions
@@ -1696,7 +1849,7 @@ PATCH /v1/trade-orders/com.example.orderId=ORD-001/actions
 - Each referenced item must currently be in `ReturnCommitted`.
 - Each item must belong to the order in the URL.
 
-The per-item shape supports the same optional `productInstance` selector as `commitReturn`.
+The per-item shape supports the same optional `productInstance` selector as `commitReturn`. Afterwards the line reads `statusDetails [{"status": "ReturnCancelled", "quantity": "2"}]` and the order `status ["ReturnCancelled"]`; a second `commitReturn` on it is `400` `Cannot commit return — item (or specified instance) is not in Fulfilled or New state.` The seller's place is untouched: the units left it at fulfilment and a cancelled return does not bring them back. `cancelReturn` moves no money.
 
 ### Validation and Error Behaviour
 
@@ -1712,20 +1865,22 @@ All preflight checks happen before any state mutation. A bad item in a batch fai
 
 ### Refund Processing
 
-The return actions only handle state transitions and stock movement. Money is moved separately by recording a negative payment against the order:
+A cancellation (`tryCancel`, `cancelRemainder`, `cancelItems`) or a `fulfillReturn` refunds the released units' money itself: it records a Credit on each payment behind those units, keyed by its own trade record, and the payment order reads `creditedAmount` with `status ["Credited", "Debited"]`. When the payment was taken in a till, goes through a payment integration or came from a wallet, the action is refused instead and the refund has to be made where the payment was — see [the refund gate](#cancel-order-trycancel).
+
+[`reversePayment`](#reverse-a-payment-reversepayment) is for units released **without** that credit — cancelled or returned through another channel, or before the credit existed on the order. It credits the named payment for the part that paid for `Cancelled` or `ReturnFulfilled` units and is not yet credited:
 
 ```bash
 PATCH /v1/trade-orders/com.example.orderId=ORD-001/actions
 {
-  "createPayment": {
+  "reversePayment": {
+    "payment": {"identifiers": {"processorsId": {"method": {"identifiers": {"methodId": "com.heads.card"}}, "id": "TXN-001"}}},
     "transactionId": "REFUND-001",
-    "timestamp": "2024-12-20T14:00:00Z",
-    "method": {"identifiers": {"methodId": "com.heads.card"}},
-    "currency": {"identifiers": {"currencyCode": "SEK"}},
-    "amount": -248.75
+    "timestamp": "2024-12-20T14:00:00Z"
   }
 }
 ```
+
+A negative `createPayment` is still accepted, but it is an **unreferenced payout**: a payment order of its own that does not settle against the order — the order's `payments` and `balanceAmount` do not change, and the payout's payment order has no related trade orders. Use it only for money that is not a refund of a recorded payment.
 
 ---
 
@@ -1905,12 +2060,20 @@ GET /v1/trade-orders/com.example.orderId=ORD-001/items/count
 
 ### Action-Specific Errors
 
-| Action | Error | Cause |
+All `400`, the text in `details`, nothing moved:
+
+| Action | `details` | Cause |
 |--------|-------|-------|
-| `tryApprove` | `OrderNotApprovable` | Order not in valid state |
-| `tryApprove` | `MissingPrice` | Item has no applicable price |
-| `tryCancel` | `OrderNotCancellable` | Order already fulfilled |
-| `createPayment` | `InvalidAmount` | Amount exceeds remaining balance |
+| `tryApprove` | `<n>` numbers short (the series cannot cover the demand) | `autoGtin` products need more codes than the buyer's GS1 series hold |
+| `tryCancel`, `cancelRemainder`, `cancelItems`, `fulfillReturn` | `The <cancellation\|return> would refund a payment taken in a till (<method>); do it in the POS, where the refund is documented.` and the two sibling texts | The refund has to be made where the payment was ([refund gate](#cancel-order-trycancel)) |
+| `tryCancel`, `cancelRemainder`, `cancelItems` | the POS checkout guard's text | The order is in a live or parked POS checkout |
+| `cancelItems` | `cancelItems requires at least one item.`, `Item does not belong to the order.`, `Quantity cannot be negative.`, … | See [Cancel Items](#cancel-items-cancelitems) |
+| `createPayment` | `Amount exceeds the unpaid amount (<n>).` | Explicit `amount` beyond what is still owed |
+| `createPayment` | `Nothing to pay: nothing is owed on the listed items.` | A bare call on a fully paid order or lines |
+| `createPayment`, `createWalletPayment` | `Currency not found.`, `Order item not found.` | Unknown currency or item |
+| `reversePayment` | `Nothing to reverse: …`, `Amount exceeds the reversible amount (<n>).`, … | See [Reverse a Payment](#reverse-a-payment-reversepayment) |
+| `commitReturn` | `Cannot commit return — item (or specified instance) is not in Fulfilled or New state.` | The line is `ReturnCancelled`, `Committed`, … |
+| `POST /v1/trade-orders` | `Could not create order: Several parties given; a trade needs exactly one.`, `Could not create order: <name> has several stock roots; a trade needs exactly one.` | Two sellers, or a seller with several stock roots |
 
 ### Handling Errors
 
@@ -2051,7 +2214,7 @@ GET /v1/trade-orders/com.example.orderId=ORD-001~with(status,items.unitAmountInc
    PATCH /v1/trade-orders/com.example.orderId=ORD-001/actions
    {"tryFulfill": true}
    ```
-   The order reads `Fulfilled` and the sold units leave the seller's stock. The physical count at the source stock place (`physicalQuantity`) moves only when the buyer has a destination place: a stock root, or a main or delivery address. A sale to a customer with neither leaves `physicalQuantity` where it was. No shipment order is created by this action.
+   The order reads `Fulfilled`, and the sold units leave the seller's stock and its stock root's place: `physicalQuantity` at the source goes down by the fulfilled quantity and the units land on the buyer's place (its stock root, else its main or delivery address, else a stock root made for the buyer). No shipment order is created by this action.
 
 **Checkpoint:** Orders progress through Committed → Fulfilled.
 
@@ -2061,24 +2224,26 @@ GET /v1/trade-orders/com.example.orderId=ORD-001~with(status,items.unitAmountInc
 
 > **Note:** Customer returns are driven by the `commitReturn`, `fulfillReturn` and `cancelReturn` actions — see [Returns and Refunds](#returns-and-refunds). Supplier returns are documents on `/v1/returns` — see [Working with Purchasing](purchasing.md#returns).
 
-1. **Issue refunds:**
-   ```bash
-   PATCH /v1/trade-orders/com.example.orderId=ORD-001/actions
-   {
-     "createPayment": {
-       "transactionId": "REFUND-001",
-       "timestamp": "2024-12-20T14:00:00Z",
-       "method": {"identifiers": {"methodId": "com.heads.card"}},
-       "currency": {"identifiers": {"currencyCode": "SEK"}},
-       "amount": -12487.50
-     }
-   }
-   ```
-
-2. **Handle cancellations:**
+1. **Handle cancellations** — a cancellation credits the money paid towards the cancelled units back on their payments by itself; a partly fulfilled order takes `cancelRemainder` or `cancelItems`:
    ```bash
    PATCH /v1/trade-orders/com.example.orderId=ORD-002/actions
    {"tryCancel": true}
+
+   PATCH /v1/trade-orders/com.example.orderId=ORD-003/actions
+   {"cancelItems": {"items": [{"identifiers": {"com.example.itemId": "ORD-003-2"}, "cancelledQuantity": "1"}]}}
+   ```
+   Expect `400` with the [refund gate](#cancel-order-trycancel) text when the payment behind the cancelled units was taken in a till, through a payment integration or from a wallet — then the refund is made there.
+
+2. **Refund units released without a credit** with `reversePayment`, referenced to the payment:
+   ```bash
+   PATCH /v1/trade-orders/com.example.orderId=ORD-001/actions
+   {
+     "reversePayment": {
+       "payment": {"identifiers": {"processorsId": {"method": {"identifiers": {"methodId": "com.heads.card"}}, "id": "TXN-001"}}},
+       "transactionId": "REFUND-001",
+       "timestamp": "2024-12-20T14:00:00Z"
+     }
+   }
    ```
 
 **Checkpoint:** Refunds and cancellations operational.
@@ -2320,7 +2485,7 @@ PATCH /v1/trade-orders/com.example.orderId=ORD-MOBILE-2024-001/actions
 ### Step 7: Fulfill
 
 ```bash
-# Fulfill the order: eligible lines are fulfilled and the seller's stock is debited. No shipment order is created
+# Fulfill the order: eligible lines are fulfilled, the units leave the seller's stock and its place. No shipment order is created
 PATCH /v1/trade-orders/com.example.orderId=ORD-MOBILE-2024-001/actions
 {"tryFulfill": true}
 ```

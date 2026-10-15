@@ -63,7 +63,7 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustment
 
 > **Important: How `owner` works on stock places**
 >
-> The `owner` field on a stock place is a **computed property**, not a stored field. It's derived from `StockOwner.forNearestRoot(place)` — finding the agent whose `stockRoots` collection includes this place (or a parent).
+> The `owner` field on a stock place is a **computed property**, not a stored field. It's derived from the nearest stock root — the agent whose `stockRoots` collection includes this place (or a parent).
 >
 > **When you set `owner` on a stock place:**
 > - The system removes the place from the old owner's `stockRoots` (if any)
@@ -282,6 +282,7 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-adjustments
 > - There is **no direction concept here**. A per-entry `direction` is ignored, and the submission's `reason` is recorded for audit without steering the movement — a `Decrease` reason used to raise a level from 4 to 8 simply increases to 8. `physicalQuantity` may also be **negative**: it's a signed absolute level, so `-5` drives the level to −5 (not "decrease by 5") and a later `5` recovers it. Direction only applies to the delta-based `/v1/stock-adjustments`.
 > - `availableQuantity` on an entry is accepted for back-compat parity with the legacy `PATCH /v1/stock-places/<key>` nested-array shape but is **informational only** — it does not steer effective stock separately from `physicalQuantity`.
 > - Every `/v1/stock-entries` POST emits a stock-adjustment record. Don't double-bookkeep against `/v1/stock-adjustments` or you'll count the same movement twice.
+> - **Goods received on an approved delivery, and goods sold with `tryFulfill`, are already on the place.** Approval and fulfilment write the place ledger themselves, so an echo of the shelf count after a goods receipt (8 received, 8 echoed) lands as a submission with `items: []` and changes nothing. Send stock entries for what the shelf shows, not for what a trade just moved — see [Stock Entries → What `physicalQuantity` is measured against](../../reference/stock-entries.md#what-physicalquantity-is-measured-against).
 
 ---
 

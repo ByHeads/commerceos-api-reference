@@ -174,8 +174,18 @@ GET /v1/trade-orders/com.example.orderId=PO-1~just(identifiers,customersId,suppl
 
 - **It is an index.** `GET /v1/trade-orders/customersId=PO-00001` → `200`, the order.
 - **`identifiers.suppliersId` is the supplier's number.** It is issued from `outgoingTradeOrderSerial` when the *supplier* is one of your own agents — a sales order, an internal order. For an external supplier it stays absent.
-- **Both are read-only.** `PATCH { "identifiers": { "customersId": "MY-PO-7" } }`, and the same for `suppliersId`, answer `200` and change nothing. To record the supplier's order confirmation number use `suppliersReference` (free text, writable at any time) or an identifier in your own namespace.
-- The top-level `customersId` / `suppliersId` members carry the same number together with its `owner`. They are non-essential; `identifiers` is the place to read the number from.
+- **Inside `identifiers` they are read-only; set them through the top-level member.** `PATCH { "identifiers": { "customersId": "MY-PO-7" } }`, and the same for `suppliersId`, answer `200` and change nothing. Your own number goes in `customersId.id`, on create or on `PATCH` — "Set suppliersId.id or customersId.id when creating or updating an order; owner is derived from the order's supplier or customer":
+
+  ```bash
+  POST /v1/trade-orders
+  [{ "identifiers": { "com.example.orderId": "PO-1" }, …, "customersId": { "id": "MY-PO-7" }, "suppliersId": { "id": "SUP-4711" } }]
+
+  PATCH /v1/trade-orders/com.example.orderId=PO-1
+  { "customersId": { "id": "MY-PO-8" } }
+  ```
+
+  The member and the identifier are one value: after the `PATCH`, `identifiers.customersId` reads `"MY-PO-8"`, `customersId.owner` is still the receiving store, `GET /v1/trade-orders/customersId=MY-PO-8` finds the order and the old number no longer does (`200 null`). The supplier's confirmation number can go in `suppliersId.id` the same way — the owner is then the supplier — or in `suppliersReference` (free text). A non-string `id` is a coercion `400` and neither id changes.
+- The top-level `customersId` / `suppliersId` members carry the number together with its `owner`. They are non-essential; `identifiers` is the place to read the number from, and `~just(identifiers,customersId,suppliersId)` reads both.
 
 **The three serials** that number purchasing documents all sit on `/v1/config/root-order`:
 
@@ -270,21 +280,20 @@ The finder returns `{ "modifiedTag": …, "results": […] }` like every finder;
 
 `DELETE /v1/trade-orders/{id}` answers `200 { "deletedCount": 0, "info": "Nothing happened" }` on a `New` and on a `Committed` order alike; orders are not deletable.
 
-**Closing the remainder** of a partly received order is done with the underdelivery policy, not with `tryCancel`:
+**Closing the remainder** of a partly received order is `cancelRemainder` — "Cancels the committed, not yet fulfilled part of every item, e.g. the outstanding remainder of a partly received purchase order. Refused (400) while the order is in a POS checkout; a no-op when nothing is outstanding.":
 
 ```
-# PO-1: 10 ordered, 8 received and approved. status ["Committed", "Fulfilled"]
-PATCH /v1/trade-orders/com.example.orderId=PO-1          { "underdeliveryPolicy": "Cancel" }      → 200
-POST  /v1/deliveries  [{ "identifiers": { "com.example.deliveryId": "GR-CLOSE" },
-                         "order": { "identifiers": { "com.example.orderId": "PO-1" } } }]           → 200, one line: expected 2, received 0
-PATCH /v1/deliveries/com.example.deliveryId=GR-CLOSE/actions   { "approve": true }                  → 200
+# PO-1: 10 + 5 ordered, 8 of the first line received and approved. status ["Committed", "Fulfilled"]
+PATCH /v1/trade-orders/com.example.orderId=PO-1/actions   { "cancelRemainder": true }   → 200 { "@type": "trade order actions" }
 ```
 
-Result: order `status: ["Cancelled", "Fulfilled"]`, `deliveryDiscrepancy: ["None"]`, the line's `statusDetails` `[{ "quantity": "2", "status": "Cancelled" }, { "quantity": "8", "status": "Fulfilled" }]`, store stock still 8, and a further `POST /v1/deliveries` from the order is `400` `"The order has no committed items to deliver."` Setting the policy at order creation gives the same end state on the first short delivery. See [gotcha 54](../common-gotchas.md#54-trycancel-on-a-partly-received-order-is-a-silent-200).
+Result: order `status: ["Cancelled", "Fulfilled"]`, `deliveryDiscrepancy: ["None"]`, the first line's `statusDetails` `[{ "quantity": "2", "status": "Cancelled" }, { "quantity": "8", "status": "Fulfilled" }]`, the untouched second line `Cancelled`, store stock still 8, one new trade record with a `Cancel` action per line, and a further `POST /v1/deliveries` from the order is `400` `"The order has no committed items to deliver."` A repeat call, and a call on a `New` order, answer `200` and post no record. Money paid towards the cancelled units is credited back on its payments, and the action is refused when that refund has to be made in the POS — the [refund gate](orders.md#cancel-order-trycancel); a purchase order paid through the API is not affected. To cancel the open units of one line only, use [`cancelItems`](orders.md#cancel-items-cancelitems) with the line and a `cancelledQuantity`.
+
+The underdelivery policy still closes a remainder as a side effect of receiving: with `underdeliveryPolicy: "Cancel"` on the order, approving a short delivery cancels what it did not bring (`"Cancel"` set at order creation gives the same end state on the first short delivery). Use the policy when the shortfall is known at receipt time; use `cancelRemainder` when the decision comes later. See [gotcha 54](../common-gotchas.md#54-trycancel-on-a-partly-received-order-is-a-silent-200).
 
 ### Receive Everything Without a Document: `tryFulfill`
 
-`PATCH /v1/trade-orders/com.example.orderId=PO-1/actions { "tryFulfill": true }` on a `Committed` purchase order → `200`; the order reads `["Fulfilled"]`, `deliveryDiscrepancy: ["None"]`, `deliveries: []`, and the store's stock goes 0 → 10. A later `POST /v1/deliveries` from it is `400` `"The order has no committed items to deliver."`
+`PATCH /v1/trade-orders/com.example.orderId=PO-1/actions { "tryFulfill": true }` on a `Committed` purchase order → `200`; the order reads `["Fulfilled"]`, `deliveryDiscrepancy: ["None"]`, `deliveries: []`, and the store's stock goes 0 → 10 — the stock level and the `physicalQuantity` at the store's stock root alike, so a stock entry echoing the shelf afterwards writes nothing. A later `POST /v1/deliveries` from it is `400` `"The order has no committed items to deliver."`
 
 It is the shortcut for goods that arrived exactly as ordered and need no paperwork:
 
@@ -305,6 +314,8 @@ Five requests take a purchase order from approved to received, and a sixth sends
 PATCH /v1/trade-orders/com.example.orderId=PO-1/actions
 {"tryApprove": true}
 ```
+
+A product with `autoGtin` in effect and no GTIN gets one from your own GS1 series at this step; the approval is refused when the series cannot cover the demand (see [Working with Orders → Approve Order](orders.md#approve-order-tryapprove)).
 
 **2. Create a delivery from the order.** One delivery item is created per committed line, with `expectedQuantity` equal to the quantity ordered and `quantity` (received) at `0`:
 
@@ -330,7 +341,7 @@ PATCH /v1/deliveries/com.example.deliveryId=GR-1/actions
 { "approve": true }
 ```
 
-The delivery's status becomes `["Delivered"]`; the 8 units land in the receiver's stock (`GET /v1/products/com.example.sku=WIDGET~with(stockLevels)` shows them); the order line becomes 8 `Fulfilled` and keeps the remaining 2 `Committed`, because the default `underdeliveryPolicy` is `"LeaveOpen"`. A second `POST /v1/deliveries` from the same order picks up only what is still committed — create it only **after** this one is approved (see [Safe Receiving](#safe-receiving)).
+The delivery's status becomes `["Delivered"]`, `actualArrivalTime` is stamped (the receiver is your own store), and the 8 units land in the receiver's stock and on its stock root's place (`GET /v1/products/com.example.sku=WIDGET~with(stockLevels)` shows `totalQuantity "8"`, `GET /v1/stock-places/{root}~with(entries)` `physicalQuantity "8"`); the order line becomes 8 `Fulfilled` and keeps the remaining 2 `Committed`, because the default `underdeliveryPolicy` is `"LeaveOpen"`. A second `POST /v1/deliveries` from the same order picks up only what is still committed, and is refused while this one is still open (see [Safe Receiving](#safe-receiving)).
 
 **5. Return something.** Create a return from the delivered delivery (or from the fulfilled order), give each line a `quantity` and a `reason`, then execute it:
 
@@ -408,6 +419,16 @@ Extra `items` are for lines the shape did **not** bring in: unreferenced product
 | Bare, no `receiver` (same pattern for `sender`) | `A receiver is required.` |
 | A line with neither `product` nor `orderItem` | `A delivery item must reference a product or an order item.` |
 | A negative `quantity` | rejected |
+| Bare, a party with several stock roots | `Could not add delivery item: <name> has several stock roots; a trade needs exactly one.` — the goods need one place to land on |
+
+**One open delivery per order row.** `POST /v1/deliveries` with `order` or `orderItems`, and `POST /v1/deliveries/{key}/items` with `orderItem`, are **refused** while the committed order row already sits on a delivery that is not yet approved; the body's `details` names the open delivery by its number (`receiversId`):
+
+```json
+{ "@type": "internal error", "error": "Internal server error.",
+  "details": "Order row Widget is already on open delivery #GR-1." }
+```
+
+With `order`, the whole request is refused if **any** committed row of the order is on an open delivery — pick the free rows with `orderItems` instead: with WIDGET on open `GR-1`, `{ "order": PO-1 }` is refused and `{ "orderItems": [the GADGET line] }` is `200`. Once the first delivery is approved, the remainder of a partly received row goes on a new delivery, expecting ordered − delivered. Rows cannot be added to a delivery once any of its rows is approved — `409` `Items can only be added while the delivery is New.`
 
 ### A Receipt in One Request
 
@@ -441,7 +462,7 @@ POST /v1/deliveries
 | `POST [{ "identifiers": { "com.example.deliveryId": "GR-1" }, "order": {…PO-1…} }]` twice | one — the second `POST` is an update of `GR-1` and adds no lines |
 | `POST [{ "identifiers": { "com.example.deliveryId": "GR-1" }, "sender", "receiver", "currency", "items": [{ "orderItem": …, "quantity": "8" }] }]` twice while `GR-1` is `New` | one — with the line **a second time**: `200`, the same delivery, two lines of 8 |
 | the one-request receipt, same body with `"actions": { "approve": true }`, twice | one, `Delivered` — the replay is `400` `Items can only be added while the delivery is New.` and changes nothing; the `approve` in the body is a no-op on a `Delivered` delivery |
-| `POST [{ "order": {…PO-1…} }]` once more, without identifiers | two — a second `New` delivery expecting the same 10 |
+| `POST [{ "order": {…PO-1…} }]` once more, without identifiers, while `GR-1` is `New` | still one — refused, `details` `Order row Widget is already on open delivery #GR-1.` |
 
 After a timeout on a body with inline `items`, read the delivery before you resend:
 
@@ -453,11 +474,9 @@ Compare `status` and the number of lines with what you sent, and resend only wha
 
 A delivery created without an identifier of your own cannot be retried safely, and the duplicate it leaves behind is exactly the situation the warning below is about.
 
-> **Warning: keep at most one `New` delivery per order line.** Approve a delivery before creating the next one from the same order; the next one then expects only what is still open.
+> **One `New` delivery per order line — the API enforces it.** A second delivery that names an order row already on an open delivery is refused with `Order row <product> is already on open delivery #<number>.` (see [Creating a Delivery](#creating-a-delivery)), so two open deliveries can no longer expect the same units. Approve a delivery before creating the next one from the same order; the next one then expects only what is still open. A `POST [{ "order": {…PO-1…} }]` without an identifier of your own is refused for the same reason while `GR-1` is open, instead of creating a duplicate.
 >
-> Two `New` deliveries created from the same order both expect the same units. With 6 counted on `GR-1` and 4 on `GR-2`, approving `GR-1` puts 6 into stock — and flips `GR-2` to `status: ["Delivered"]`, still showing `quantity "4"`, **without it having been approved**. Approving `GR-2` afterwards is a `200` that does nothing: stock stays at 6, the order reads `["Committed", "Fulfilled"]` with 6 `Fulfilled` and 4 `Committed`. The 4 units counted on `GR-2` never reach stock, and its document says `Delivered`. With both counted at 10 the effect is the same: stock 10, not 20, both `Delivered`.
->
-> If a second one was created by mistake, empty it while it is `New` — its lines can be removed (see [What Can Be Changed, and When](#what-can-be-changed-and-when)). See [gotcha 52](../common-gotchas.md#52-two-open-deliveries-on-one-order-line-share-the-same-units).
+> If a delivery was created by mistake, empty it while it is `New` — its lines can be removed (see [What Can Be Changed, and When](#what-can-be-changed-and-when)) — and the rows are free for the next one. See [gotcha 52](../common-gotchas.md#52-a-second-open-delivery-on-an-order-row-is-refused).
 
 **Count first. `approve` is final for the document, whatever the counts are.**
 
@@ -496,7 +515,7 @@ The essential members are `identifiers`, `timestamp`, `sender`, `receiver`, `cur
 | `destinationAddress` | address | Read/write, at any time. |
 | `carrier` | agent | Read/write, at any time. |
 | `estimatedDepartureTime`, `estimatedArrivalTime` | date-time | Read/write, at any time. |
-| `actualDepartureTime`, `actualArrivalTime` | date-time | Read-only — stamped by `registerDeparture` / `registerArrival` (see [Delivery Actions](#delivery-actions)). |
+| `actualDepartureTime`, `actualArrivalTime` | date-time | Read-only — stamped by `registerDeparture` / `registerArrival`, or by `approve` (see [Delivery Actions](#delivery-actions)): "The actual time the goods arrived (ATA); stamped via the registerArrival action, or on approval when the receiver is in the organization hierarchy under the root organization." and "The actual time the goods departed (ATD); stamped via the registerDeparture action, or on approval when the sender, but not the receiver, is in the organization hierarchy under the root organization." |
 | `labels` | label[] | As on trade orders — see [Labels](orders.md#labels). |
 | `orders` | trade order[] | The orders this delivery delivers against. |
 
@@ -584,7 +603,7 @@ PATCH /v1/deliveries/{identifier}/actions
 
 | Action | Payload | Effect | Errors |
 |---|---|---|---|
-| `approve` | `true` | Posts the received quantities: the units move into the receiver's stock and status becomes `["Delivered"]`. Idempotent once `Delivered`. What happens to a shortfall is the order's `underdeliveryPolicy`: `"Cancel"` auto-cancels the undelivered remainder (the order then reads `["Fulfilled", "Cancelled"]`); `"LeaveOpen"` (default) leaves it `Committed` for a later delivery. | `409` when a line received more than was ordered and the order's `overdeliveryPolicy` is `"Reject"` — nothing moves and status stays `["New"]`. `409` on a mixed status. `400` on a delivery with no items. |
+| `approve` | `true` | Posts the received quantities: the units move into the receiver's stock **and onto the receiver's place** (its stock root), and status becomes `["Delivered"]`; a stock count or a stock entry afterwards finds them there, so an echo of the shelf count writes nothing. Unless already registered, stamps `actualArrivalTime` when the receiver is in the organization hierarchy under the root organization, otherwise `actualDepartureTime` when the sender is; neither when no party is. Idempotent once `Delivered`. What happens to a shortfall is the order's `underdeliveryPolicy`: `"Cancel"` auto-cancels the undelivered remainder (the order then reads `["Fulfilled", "Cancelled"]`); `"LeaveOpen"` (default) leaves it `Committed` for a later delivery. | `409` when a line received more than was ordered and the order's `overdeliveryPolicy` is `"Reject"` — nothing moves and status stays `["New"]`. `409` on a mixed status. `400` on a delivery with no items. |
 | `registerArrival` | `true` or an ISO 8601 timestamp | Stamps `actualArrivalTime` (`true` means now). No stock effect. | `400` on an unparsable timestamp |
 | `registerDeparture` | `true` or an ISO 8601 timestamp | Stamps `actualDepartureTime`. No stock effect. | `400` on an unparsable timestamp |
 
@@ -778,6 +797,8 @@ A trade order carries a set of purchasing members. All are non-essential — fet
 | `overdeliveryPolicy` | `"Accept"` \| `"Warn"` \| `"Reject"` | What approving a surplus delivery does with it. Reads `"Accept"` when never set; `"Warn"` behaves as `"Accept"` through the API |
 
 Read-only: `deliveryDiscrepancy` (`string[]`, the same values as a delivery's `discrepancy`; filterable), `deliveries` and `returns` (the documents raised against the order). An unknown policy value is a coercion `400`. The trade relationship between supplier and customer carries defaults for the two policies in the back office, but they are not exposed on `/v1/trade-relationships`; through the API the order is the only place a policy is set, and an order created without them reads `LeaveOpen` / `Accept`.
+
+**Manufacturers.** The trade relationship does carry `supplierIsManufacturer` (`boolean`, non-essential — `~with(supplierIsManufacturer)`): "Indicates if the supplier manufactures for the customer, e.g. a factory that a supplier uses. Such a supplier is listed among the customer's manufacturers (Fabriker), and changes to the link are logged in the activity history of both." `PATCH /v1/trade-relationships/{key} { "supplierIsManufacturer": true }` → `200`, and the flag reads `true`. Which factory a supplier makes a given product at is `primarySupplier` on the product's assortment context owned by that supplier: there it is the supplier the owner buys the product from, and when the owner is one of your suppliers it is the factory, proposed as the manufacturer on new purchase order rows to that supplier. Writing it on a supplier-owned context is how an integration sets a supplier's factory for a product; the factory must be a supplier of that supplier (`supplierIsManufacturer`) and among your manufacturer relationships. It is not in the context's default projection — `~with(assortmentContexts~with(primarySupplier))`. The order row's manufacturer itself is not exposed by the API. See [Assortments](assortments.md).
 
 The full order field reference is in [Working with Orders → Field Reference](orders.md#field-reference).
 

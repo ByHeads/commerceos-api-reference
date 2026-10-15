@@ -113,6 +113,8 @@ An action's `type` is one of eight values, matching the order lifecycle:
 
 `type`, `quantity` and `amount` are essential on an action. `product`, `currency`, `tradeOrderItemEffects` and `return` need `~with`. `return` — carrying `reason`, `restock` and `complaint` — is present only on a `FulfillReturn`.
 
+Each cancel action on the order posts one record per call: `tryCancel` and `cancelRemainder` a `Cancel` action per line with the quantity that moved (2 and 5 for a 10 + 5 order with 8 received), `cancelItems` a `Cancel` of what moved on the listed lines — and none when nothing moved, so a repeated `cancelItems` target or a second `cancelRemainder` adds no record. The record is also what the credit on the order's payments is keyed by: the money paid towards the cancelled or returned units is credited on each payment under that record (see [Working with Orders → Refund Processing](working-with/orders.md#refund-processing)). A `Fulfill` action on a physical product moves the units between the places of the item's source and destination as well — the place ledger behind `physicalQuantity` follows the record.
+
 `tradeOrderItemEffects` is the join back to the order: each effect names the `affectedItem` and how much of it the action moved (`affectedQuantity`, `affectedAmount`).
 
 > The same effects hang off a POS slip's own `actions[]`, which is the flat route to them when you are starting from the slip rather than from the record — `tradeRecords/*items/*actions/*tradeOrderItemEffects/*affectedItem` and `actions/*tradeOrderItemEffects/*affectedItem` answer with the same data. See [POS Slips](../guide/examples/pos.md#pos-slips).
