@@ -438,11 +438,9 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/shortened-links"
 
 ## Key-Value Stores
 
-> **Availability:** ships after v26.2.2.
-
 A key-value store keeps state the schema has no home for: a sync cursor, a feature flag, a small settings document, or the state an integration needs between calls. A store has a name of exactly three dot-separated parts, a [namespaced key](../../reference/primitives.md#namespaced-key) such as `com.example.settings`, and holds keys with any JSON value, no schema, each key written and read apart from the others. Sub-paths of a value can be read, written and deleted individually.
 
-Two routes reach a store. An administrator with the `config` scope creates, lists and deletes stores under `/v1/key-value-stores`, and reads and writes their keys there. A client that holds the store's own scope, `com.example.settings:write` (reads and writes) or `com.example.settings:read` (reads), reaches the keys under `/v1/context/com.example.settings/<key>`: that is the route for an integration, whose OAuth2 client the administrator gives the scope. Nothing else grants it, and the integration cannot create the store itself.
+Two routes reach a store. An administrator with the `config` scope creates, lists and deletes stores under `/v1/key-value-stores`, and reads and writes their keys there. A client that holds the store's own scope, `com.example.settings:write` (reads and writes) or `com.example.settings:read` (reads), reaches the keys under `/v1/context/kv/com.example.settings/<key>`: that is the route for an integration, whose OAuth2 client the administrator gives the scope. Nothing else grants it, and the integration cannot create the store itself.
 
 ```bash
 # Create a store. PUT with {} creates it, and leaves an existing one as it is
@@ -471,52 +469,52 @@ The keys, with a token or key that holds `com.example.settings:write`:
 
 ```bash
 # A store never lists its keys: keep your own index
-curl -X GET -H "Authorization: Bearer <token>" "https://example.app.heads.com/api/v1/context/com.example.settings"
+curl -X GET -H "Authorization: Bearer <token>" "https://example.app.heads.com/api/v1/context/kv/com.example.settings"
 # → {}
 
 # Store a document. The answer echoes the body
-curl -X PUT -H "Authorization: Bearer <token>" "https://example.app.heads.com/api/v1/context/com.example.settings/config" \
+curl -X PUT -H "Authorization: Bearer <token>" "https://example.app.heads.com/api/v1/context/kv/com.example.settings/config" \
   -H "Content-Type: application/json" \
   -d '{"n": 1, "nested": {"a": "b"}, "list": [1, 2, 3]}'
 
 # Read the whole document back, or one sub-path
-curl -X GET -H "Authorization: Bearer <token>" "https://example.app.heads.com/api/v1/context/com.example.settings/config"
-curl -X GET -H "Authorization: Bearer <token>" "https://example.app.heads.com/api/v1/context/com.example.settings/config/nested/a"
+curl -X GET -H "Authorization: Bearer <token>" "https://example.app.heads.com/api/v1/context/kv/com.example.settings/config"
+curl -X GET -H "Authorization: Bearer <token>" "https://example.app.heads.com/api/v1/context/kv/com.example.settings/config/nested/a"
 # → "b"
 
 # Write one leaf. Siblings and ancestors are left alone: the document now reads nested.a = "c"
-curl -X PUT -H "Authorization: Bearer <token>" "https://example.app.heads.com/api/v1/context/com.example.settings/config/nested/a" \
+curl -X PUT -H "Authorization: Bearer <token>" "https://example.app.heads.com/api/v1/context/kv/com.example.settings/config/nested/a" \
   -H "Content-Type: application/json" \
   -d '"c"'
 
 # PATCH does the same as PUT: the document is now {"m": 2}
-curl -X PATCH -H "Authorization: Bearer <token>" "https://example.app.heads.com/api/v1/context/com.example.settings/config" \
+curl -X PATCH -H "Authorization: Bearer <token>" "https://example.app.heads.com/api/v1/context/kv/com.example.settings/config" \
   -H "Content-Type: application/json" \
   -d '{"m": 2}'
 
 # An array body is stored whole, and the operators read it like a collection
-curl -X PUT -H "Authorization: Bearer <token>" "https://example.app.heads.com/api/v1/context/com.example.settings/list" \
+curl -X PUT -H "Authorization: Bearer <token>" "https://example.app.heads.com/api/v1/context/kv/com.example.settings/list" \
   -H "Content-Type: application/json" \
   -d '[{"a": 1}, {"a": 2}, {"a": 3}]'
-curl -X GET -H "Authorization: Bearer <token>" "https://example.app.heads.com/api/v1/context/com.example.settings/list~count"   # → 3
-curl -X GET -H "Authorization: Bearer <token>" "https://example.app.heads.com/api/v1/context/com.example.settings/list?limit=1"  # → [{"a": 1}]
+curl -X GET -H "Authorization: Bearer <token>" "https://example.app.heads.com/api/v1/context/kv/com.example.settings/list~count"   # → 3
+curl -X GET -H "Authorization: Bearer <token>" "https://example.app.heads.com/api/v1/context/kv/com.example.settings/list?limit=1"  # → [{"a": 1}]
 
 # Remove a key: DELETE, or PUT with a body of null
-curl -X DELETE -H "Authorization: Bearer <token>" "https://example.app.heads.com/api/v1/context/com.example.settings/config"
+curl -X DELETE -H "Authorization: Bearer <token>" "https://example.app.heads.com/api/v1/context/kv/com.example.settings/config"
 # → { "deletedCount": 1, "info": "Deleted 1 items" }
 
 # A key never written, or deleted, answers 200 null, not 404
-curl -X GET -H "Authorization: Bearer <token>" "https://example.app.heads.com/api/v1/context/com.example.settings/config"
+curl -X GET -H "Authorization: Bearer <token>" "https://example.app.heads.com/api/v1/context/kv/com.example.settings/config"
 # → 200  null
 ```
 
-**A write replaces what is at the path — nothing merges.** This is the rule to hold on to. `PATCH /v1/context/com.example.settings/config` with `{"m": 2}` replaces the whole document with `{"m": 2}`; `PUT .../config/nested` with `{"b": 2}` replaces `nested` entirely. To update one field, write that field's own leaf.
+**A write replaces what is at the path — nothing merges.** This is the rule to hold on to. `PATCH /v1/context/kv/com.example.settings/config` with `{"m": 2}` replaces the whole document with `{"m": 2}`; `PUT .../config/nested` with `{"b": 2}` replaces `nested` entirely. To update one field, write that field's own leaf.
 
 **`null` deletes.** `PUT` with a body of `null` answers `200 null` and the key is gone, the same as `DELETE`.
 
 **The name is three parts, and one name is a panel or a store.** `PUT /v1/key-value-stores/com.test` is a `404`: a name of two or four parts does not route at all, unlike the same key in a request body ([namespaced key](../../reference/primitives.md#namespaced-key)). A name that a config panel already holds is a `409` `state conflict`, `A config panel is named com.example.settings`.
 
-**What a store scope can and cannot do.** `com.example.settings:read` alone answers a write with `403` `This key-value store is read-only`. A client with `com.example.settings:write` cannot create or delete the store: `DELETE /v1/context/com.example.settings` is a `403` `Store scopes cannot create or delete stores`, and `/v1/key-value-stores` is a `404` for it. A store the client has no scope for is a `404` on every key, and so is a store nobody has created yet, whatever scope the client holds: create the store first.
+**What a store scope can and cannot do.** `com.example.settings:read` alone answers a write with `403` `This key-value store is read-only`. A client with `com.example.settings:write` cannot create or delete the store: `DELETE /v1/context/kv/com.example.settings` is a `403` `Store scopes cannot create or delete stores`, and `/v1/key-value-stores` is a `404` for it. A store the client has no scope for is a `404` on every key, and so is a store nobody has created yet, whatever scope the client holds: create the store first.
 
 ---
 

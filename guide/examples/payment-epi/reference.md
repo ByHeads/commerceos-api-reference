@@ -16,8 +16,6 @@ server stub and a client from them.
 Open them in any OpenAPI viewer (`npx @redocly/cli preview-docs guide/examples/payment-epi/epi-openapi.yaml`),
 or generate a server stub from the first and a client from the second.
 
-> **Availability:** the configuration schema of section 4, the context hash of section 3 and the key-value store of section 8 as described here ship after v26.2.2.
-
 This page holds what a schema cannot: the order of calls, what the cashier sees, the ledger effect
 of each action, and what CommerceOS does when a stream drops. A JSON example under an HTML comment
 is a fixture of the conformance tool `epi-check` that Heads runs against your endpoint; the comment
@@ -398,8 +396,8 @@ the client.
 | Call | Scope | Use |
 |---|---|---|
 | `POST {tokenUrl}` | — | client-credentials token. Cache it until `expires_in` |
-| `GET /v1/context/config/{configId}` | `me` | the configuration for a context id (section 4): `configuration` in clear, `configurationHash`, `configurationType` and `schema`. An id that is not a configuration of yours answers 200 with the body `null` |
-| `GET`, `PUT`, `PATCH`, `DELETE /v1/context/{store}/{key}` | `{store}:write` (`{store}:read` reads only) | your key-value store, for your own state. `store` is its name, three dot-separated parts such as `com.example.piggy`. A Heads administrator creates the store and puts the scope on your client; until both are done, every key answers 404. A write replaces what is at the path, `PATCH` included; a body of `null` deletes; a key never written reads `200 null`. No route lists the keys: `GET /v1/context/{store}` answers `{}` whatever it holds, so keep your own index |
+| `GET /v1/context/{configId}` | `me` | the configuration for a context id (section 4): `configuration` in clear, `configurationHash`, `configurationType` and `schema`. An id that is not a configuration of yours answers 200 with the body `null` |
+| `GET`, `PUT`, `PATCH`, `DELETE /v1/context/kv/{store}/{key}` | `{store}:write` (`{store}:read` reads only) | your key-value store, for your own state. `store` is its name, three dot-separated parts such as `com.example.piggy`. A Heads administrator creates the store and puts the scope on your client; until both are done, every key answers 404. A write replaces what is at the path, `PATCH` included; a body of `null` deletes; a key never written reads `200 null`. No route lists the keys: `GET /v1/context/kv/{store}` answers `{}` whatever it holds, so keep your own index |
 | `PATCH /v1/payment-orders/{paymentKey}` with `{ "records": [ ... ] }` | `orders.payments:write` | complete an asynchronous payment, for example from a callback of your provider |
 
 ```bash
@@ -410,14 +408,14 @@ curl -X POST "https://example.app.heads.com/oauth2/v1/token" \
 # → { "access_token": "...", "expires_in": 3600, "scope": "me orders.payments:write com.example.piggy:write", ... }
 
 # The configuration for the context id of an incoming call
-curl -X GET -H "Authorization: Bearer <access token>" "https://example.app.heads.com/api/v1/context/config/EPI1"
+curl -X GET -H "Authorization: Bearer <access token>" "https://example.app.heads.com/api/v1/context/EPI1"
 # → { "configuration": { ... }, "configurationHash": "...", "configurationType": "piggy configuration", "schema": { ... } }
 
 # Your key-value store: write, read, delete
-curl -X PUT -H "Authorization: Bearer <access token>" "https://example.app.heads.com/api/v1/context/com.example.piggy/session-pay-P1" \
+curl -X PUT -H "Authorization: Bearer <access token>" "https://example.app.heads.com/api/v1/context/kv/com.example.piggy/session-pay-P1" \
   -H "Content-Type: application/json" -d '{ "providerSessionId": "S-123", "state": "pending" }'
-curl -X GET -H "Authorization: Bearer <access token>" "https://example.app.heads.com/api/v1/context/com.example.piggy/session-pay-P1"
-curl -X DELETE -H "Authorization: Bearer <access token>" "https://example.app.heads.com/api/v1/context/com.example.piggy/session-pay-P1"
+curl -X GET -H "Authorization: Bearer <access token>" "https://example.app.heads.com/api/v1/context/kv/com.example.piggy/session-pay-P1"
+curl -X DELETE -H "Authorization: Bearer <access token>" "https://example.app.heads.com/api/v1/context/kv/com.example.piggy/session-pay-P1"
 ```
 
 Read `scope` in the token answer. A requested scope that your client lacks is left out without an

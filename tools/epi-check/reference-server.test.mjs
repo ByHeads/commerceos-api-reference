@@ -44,7 +44,7 @@ test("once installed, test reads the configuration behind the context id through
         const call = hash => fetch(`${own.url}/test`, { method: "POST", headers: { ...jsonHeaders, "x-epi-context-config-hash": hash } }).then(r => r.json());
         await fetch(`${own.url}/install`, { method: "POST", body: JSON.stringify({ cosBaseUrl: cos.url, tokenUrl: `${cos.url}/oauth2/v1/token`, ...CLIENT, scope: "me" }) });
         assert.equal(await call("hash-1"), true);
-        assert.deepEqual(lines, ["POST /oauth2/v1/token 200", "GET /api/v1/context/config/AB12 200"]);
+        assert.deepEqual(lines, ["POST /oauth2/v1/token 200", "GET /api/v1/context/AB12 200"]);
         assert.equal(await call("hash-2"), false, "the hash CommerceOS answers is not the one in the header");
         await fetch(`${own.url}/install`, { method: "POST", body: JSON.stringify({ cosBaseUrl: cos.url, tokenUrl: `${cos.url}/oauth2/v1/token`, clientId: "nobody", clientSecret: "x", scope: "me" }) });
         assert.equal(await call("hash-1"), false, "no token, no configuration");

@@ -143,7 +143,7 @@ test("the CommerceOS document: one scope per operation, the token route on its o
         const [scope] = operation.security[0].oauth2;
         assert.ok(scopes.includes(scope), `${method} ${path} needs a declared scope, got ${scope}`);
     }
-    assert.equal(cos.paths["/v1/context/config/{configId}"].get.security[0].oauth2[0], "me");
+    assert.equal(cos.paths["/v1/context/{configId}"].get.security[0].oauth2[0], "me");
     assert.equal(cos.paths["/v1/payment-orders/{paymentKey}"].patch.security[0].oauth2[0], "orders.payments:write");
     assert.equal(JSON.stringify(cos).includes('"epi"'), false, "no scope named epi exists in CommerceOS");
 });

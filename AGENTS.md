@@ -55,7 +55,7 @@ commerceos-api-reference/
 │   └── creating-skills.md        # How to create Claude skills
 ├── reference/
 │   ├── overview.md               # API basics, auth, endpoints
-│   ├── upgrading-to-26-2-2.md    # What changed for clients written against an older release; the one page that names versions
+│   ├── upgrading-to-26-2-3.md    # What changed for clients written against an older release; the one page that names versions
 │   ├── users.md                  # User accounts and lifecycle
 │   ├── credentials.md            # The nine credential types, auth providers
 │   ├── user-roles.md             # Roles, permissions, role assignments

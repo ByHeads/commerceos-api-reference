@@ -136,7 +136,7 @@ test("a healthy reference integration through the stub passes every scenario, C1
         assert.deepEqual(byId(result, "C1").steps.map(s => s.result), ["pass", "pass", "pass", "pass"]);
         assert.deepEqual(lab.stub.seen.map(r => r.method), ["GET", "POST", "GET", "GET"]);
         // L2 was real: the reference server read its configuration through the stub with the installed client.
-        assert.deepEqual(lab.stub.callbacks, ["POST /oauth2/v1/token 200", "GET /api/v1/context/config/CF00 200"]);
+        assert.deepEqual(lab.stub.callbacks, ["POST /oauth2/v1/token 200", "GET /api/v1/context/CF00 200"]);
         // P7 shows the cancel call once, after the PUT that opened the stream. Every key carries the run id.
         assert.deepEqual(byId(result, "P7").calls.map(c => `${c.method} ${c.path}`), [`PUT /payments/pay-${RUN_ID}-P7`, `POST /payments/pay-${RUN_ID}-P7/cancel`]);
         // E1 posts to a key no stream ever used; E2 gets its Fail as a 200 stream; H1 strips the headers.
@@ -268,12 +268,12 @@ test("--node picks the named configuration, and the integration is called with t
         assert.equal(result.exitCode, 0);
         assert.equal(result.meta.node, "Second");
         // The reference server's /test read the configuration behind the context id the tool sent.
-        assert.deepEqual(lab.stub.callbacks, ["POST /oauth2/v1/token 200", "GET /api/v1/context/config/BBBB 200"]);
+        assert.deepEqual(lab.stub.callbacks, ["POST /oauth2/v1/token 200", "GET /api/v1/context/BBBB 200"]);
     });
     await withLab({ integration: { nodes } }, async lab => {
         const result = await runOn(lab, { out: join(scratch, "node-first") });
         assert.equal(result.meta.node, "First");
-        assert.deepEqual(lab.stub.callbacks, ["POST /oauth2/v1/token 200", "GET /api/v1/context/config/AAAA 200"]);
+        assert.deepEqual(lab.stub.callbacks, ["POST /oauth2/v1/token 200", "GET /api/v1/context/AAAA 200"]);
     });
     await withLab({ integration: { nodes } }, async lab => {
         const result = await runOn(lab, { out: join(scratch, "node-third"), node: "Third" });

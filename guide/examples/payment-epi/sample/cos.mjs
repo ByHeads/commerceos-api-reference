@@ -1,6 +1,6 @@
 // A CommerceOS stand-in for the calls that a payment integration makes back (contract reference, section 8):
 // the token endpoint, the configuration behind a context id, the integration's key-value store under
-// /api/v1/context/{store}/{key}, and the completion of a payment order. In memory, node:http only, no
+// /api/v1/context/kv/{store}/{key}, and the completion of a payment order. In memory, node:http only, no
 // install. It is not CommerceOS: it answers the shapes of the reference so that both directions run on one laptop.
 //
 //   node cos.mjs                        # at http://localhost:8790 (COS_PORT to change)
@@ -46,7 +46,7 @@ function readBody(request) {
 
 /**
  * Starts the stand-in. `clientId` and `clientSecret` are the OAuth2 client of the install payload;
- * `configuration`, `configurationHash`, `configurationType` and `schema` are what GET /api/v1/context/config/{id}
+ * `configuration`, `configurationHash`, `configurationType` and `schema` are what GET /api/v1/context/{id}
  * answers for every id. The hash defaults to the real one, SHA-256 of the configuration's JSON in URL-safe base64,
  * which is also what CommerceOS sends in X-EPI-Context-Config-Hash.
  * Returns `{ url, store, close }`: `store` maps "store/key" to the stored JSON.
@@ -78,12 +78,12 @@ export function startCosStandIn({ port = 0, clientId = CLIENT.clientId, clientSe
                 }
             } else if (!tokens.has(/^Bearer (.+)$/.exec(request.headers.authorization ?? "")?.[1])) {
                 answer(401, { errors: [{ message: "A bearer token from POST /oauth2/v1/token is required" }] });
-            } else if (/^GET \/api\/v1\/context\/config\/[^/]+$/.test(route)) {
+            } else if (/^GET \/api\/v1\/context\/[^/.]+$/.test(route)) {
                 answer(200, { "@type": "EPI configuration assignment", configuration, configurationHash, configurationType, schema });
-            // A store name has three dot-separated parts (com.example.piggy), so it never collides with `config`.
-            } else if (/^GET \/api\/v1\/context\/[^/]+\.[^/]+$/.test(route)) {
+            // A store lives under /api/v1/context/kv/<store>; a context id (four characters, no dot) sits at the root.
+            } else if (/^GET \/api\/v1\/context\/kv\/[^/]+\.[^/]+$/.test(route)) {
                 answer(200, {}); // like CommerceOS: a store never lists its keys
-            } else if ((match = /^(GET|PUT|PATCH|DELETE) \/api\/v1\/context\/([^/]+\.[^/]+)\/([^/]+)$/.exec(route))) {
+            } else if ((match = /^(GET|PUT|PATCH|DELETE) \/api\/v1\/context\/kv\/([^/]+\.[^/]+)\/([^/]+)$/.exec(route))) {
                 const id = `${match[2]}/${decodeURIComponent(match[3])}`;
                 if (match[1] === "DELETE") { store.delete(id); answer(200, { deletedCount: 1, info: "Deleted 1 items" }); }
                 // Like CommerceOS: a key never written, or deleted, answers 200 with null, not 404.

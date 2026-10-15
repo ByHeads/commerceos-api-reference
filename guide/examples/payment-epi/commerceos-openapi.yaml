@@ -8,7 +8,7 @@ tags:
   - name: "Token"
   - name: "Configuration"
   - name: "Key-value store"
-    description: "Your integration's own state, under /v1/context/{store}/{key}. The store is created by a Heads administrator; the scope {store}:write is written with the store's name, for example com.example.piggy:write."
+    description: "Your integration's own state, under /v1/context/kv/{store}/{key}. The store is created by a Heads administrator; the scope {store}:write is written with the store's name, for example com.example.piggy:write."
   - name: "Payment orders"
 servers:
   - url: "{cosBaseUrl}/api"
@@ -49,7 +49,7 @@ paths:
             "application/json":
               schema:
                 "$ref": "#/components/schemas/CosErrorBody"
-  "/v1/context/config/{configId}":
+  "/v1/context/{configId}":
     get:
       tags:
         - "Configuration"
@@ -77,12 +77,12 @@ paths:
             "application/json":
               schema:
                 "$ref": "#/components/schemas/CosErrorBody"
-  "/v1/context/{store}/{key}":
+  "/v1/context/kv/{store}/{key}":
     get:
       tags:
         - "Key-value store"
       summary: "Read a value of your store"
-      description: "Your own state, for example a provider session behind a paymentKey, so that a restart of your integration loses nothing. store is the name of your key-value store, three dot-separated parts such as com.example.piggy; a Heads administrator creates it and puts {store}:write on your client ({store}:read reads only). A key never written answers 200 with null, not 404; a store your client has no scope for answers 404. A sub-path of a stored document is addressable on its own: /v1/context/{store}/{key}/state. GET /v1/context/{store} answers {} whatever the store holds: no route lists the keys, so keep your own index. Write the key in the path URL-encoded."
+      description: "Your own state, for example a provider session behind a paymentKey, so that a restart of your integration loses nothing. store is the name of your key-value store, three dot-separated parts such as com.example.piggy; a Heads administrator creates it and puts {store}:write on your client ({store}:read reads only). A key never written answers 200 with null, not 404; a store your client has no scope for answers 404. A sub-path of a stored document is addressable on its own: /v1/context/kv/{store}/{key}/state. GET /v1/context/kv/{store} answers {} whatever the store holds: no route lists the keys, so keep your own index. Write the key in the path URL-encoded."
       parameters:
         - name: "store"
           in: "path"

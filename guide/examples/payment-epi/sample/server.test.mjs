@@ -40,7 +40,7 @@ test("a .04 payment records its session in its store with a bearer token, then c
         assert.deepEqual(steps[1].result.transactions[0].actions, ["Authorize", "Debit"]);
         await new Promise(resolve => setTimeout(resolve, 100));
         // The stand-in answers 200 only with its own bearer token, so two 200 lines prove the token flow.
-        assert.deepEqual(lines.filter(line => line.startsWith("PUT ")), ["PUT /api/v1/context/com.example.piggy/pay-9 200", "PUT /api/v1/context/com.example.piggy/pay-9 200"]);
+        assert.deepEqual(lines.filter(line => line.startsWith("PUT ")), ["PUT /api/v1/context/kv/com.example.piggy/pay-9 200", "PUT /api/v1/context/kv/com.example.piggy/pay-9 200"]);
         assert.deepEqual(cos.store.get("com.example.piggy/pay-9"), { sessionId: "PB-1", state: "settled" });
     } finally {
         await piggy.close();
@@ -59,7 +59,7 @@ test("POST /test reads the configuration through the context id, caches it by ha
         await fetch(`${piggy.url}/install`, { method: "POST", headers: context, body: JSON.stringify({ ...install, cosBaseUrl: cos.url }) });
         assert.equal(await (await fetch(`${piggy.url}/test`, { method: "POST", headers: context })).json(), true);
         assert.equal(await (await fetch(`${piggy.url}/test`, { method: "POST", headers: context })).json(), true);
-        assert.equal(lines.filter(line => line.startsWith("GET /api/v1/context/config/EPI1")).length, 1, "the second call is served from the hash cache");
+        assert.equal(lines.filter(line => line.startsWith("GET /api/v1/context/EPI1")).length, 1, "the second call is served from the hash cache");
         await fetch(`${piggy.url}/install`, { method: "POST", headers: context, body: JSON.stringify({ ...install, cosBaseUrl: bad.url, tokenUrl: `${bad.url}/oauth2/v1/token` }) });
         const headers = { ...context, "X-EPI-Context-Config-Hash": "h2" };
         const failed = await fetch(`${piggy.url}/test`, { method: "POST", headers });

@@ -2,7 +2,7 @@
 
 This guide is the playbook for VAT (Value Added Tax) in CommerceOS: the VAT classes, areas and rules that decide what a line is taxed by, prices that include VAT, how products get their class, and how VAT is reported on receipts and Z reports.
 
-> **Coming from an older release?** VAT used to be configured as rates on products. [Upgrading to 26.2.2](../upgrading-to-26-2-2.md) lists what changed and what to write instead.
+> **Coming from an older release?** VAT used to be configured as rates on products. [Upgrading to 26.2.3](../upgrading-to-26-2-3.md) lists what changed and what to write instead.
 
 ---
 
@@ -957,7 +957,7 @@ The loaf and the novel share one group: same area, treatment and rate. When the 
 
 ## Related Guides
 
-- [Upgrading to 26.2.2](../upgrading-to-26-2-2.md) - What changed for integrations written against an older release
+- [Upgrading to 26.2.3](../upgrading-to-26-2-3.md) - What changed for integrations written against an older release
 - [Products](products.md) - `vatClass` on products, families and groups
 - [Prices](prices.md) - `includesTax`, net and gross prices, price selection
 - [Surcharge Rules](../../guide/examples/surcharge-rules.md) - Deposits and fees, with `includesTax` on a fixed amount

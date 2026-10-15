@@ -24,7 +24,7 @@ CommerceOS requires a provider's payment id to be unique per method for all time
 
 ## Both directions on one laptop
 
-The bank records a waiting `.04` session in its key-value store on CommerceOS, `/v1/context/com.example.piggy/<payment key>` (reference, section 8).
+The bank records a waiting `.04` session in its key-value store on CommerceOS, `/v1/context/kv/com.example.piggy/<payment key>` (reference, section 8).
 Without CommerceOS that write fails, and the server logs `state pay-... not written`. `--cos` starts
 `cos.mjs` inside the play script and installs the bank against it: a token endpoint, the configuration
 behind a context id (`merchantId` and `environment`, which the bank's `/test` reads back and checks), the store,

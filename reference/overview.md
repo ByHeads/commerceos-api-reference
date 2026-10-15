@@ -12,7 +12,7 @@ This reference explains how to integrate with CommerceOS at a practical level. I
 
 **Scope:** This reference covers HTTP usage, authentication, query operators, content negotiation, and common patterns. For endpoint schemas and model definitions specific to your deployment, use your tenant's `/api-docs`.
 
-**Version:** This reference is written for release 26.2.2 and later. If your tenant runs an older release, [Upgrading to 26.2.2](upgrading-to-26-2-2.md) lists what changed.
+**Version:** This reference is written for release 26.2.3 and later. If your tenant runs an older release, [Upgrading to 26.2.3](upgrading-to-26-2-3.md) lists what changed.
 
 **Navigation ladder:**
 1. **Start here** - This overview for API basics and authentication

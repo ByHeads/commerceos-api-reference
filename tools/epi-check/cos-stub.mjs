@@ -3,7 +3,7 @@
 // It plays both halves of CommerceOS on one URL. The four read routes the tool uses (the integration
 // record, `test`, `assignedTerminals`, the EPI configuration list) are answered here, under Basic auth
 // with the key; everything else, which is what an installed integration calls back (the token endpoint,
-// `GET /api/v1/context/config/{id}`, the integration's key-value store, payment-order completion), is forwarded to the
+// `GET /api/v1/context/{id}`, the integration's key-value store, payment-order completion), is forwarded to the
 // sample's CommerceOS stand-in (guide/examples/payment-epi/sample/cos.mjs). The tool imports that file
 // instead of keeping a copy: the sample folder must stay self-contained for a partner who copies it.
 //

@@ -20,7 +20,7 @@ This is a **high-level reference, example database and cookbook-style guide** fo
 
 The one exception is the payment EPI: CommerceOS calls *your* service there, so no running instance can document it. Its contract ships here as two OpenAPI 3.1 documents, next to a tutorial, a sample integration and a conformance tool. See [Build a payment integration](guide/examples/payment-epi.md).
 
-**Version.** This reference describes the CommerceOS API as of release **26.2.2**. Older releases differ in places; for one of those, use the documentation your tenant serves (`/api/docs` on the instance) and [Upgrading to 26.2.2](reference/upgrading-to-26-2-2.md) for what changed.
+**Version.** This reference describes the CommerceOS API as of release **26.2.3**. Older releases differ in places; for one of those, use the documentation your tenant serves (`/api/docs` on the instance) and [Upgrading to 26.2.3](reference/upgrading-to-26-2-3.md) for what changed.
 
 ---
 
@@ -82,7 +82,7 @@ commerceos-api-reference/
 │   └── creating-skills.md        # How to create Claude skills
 ├── reference/                    # API reference documentation
 │   ├── overview.md               # API basics, auth, endpoints
-│   ├── upgrading-to-26-2-2.md    # What changed for clients written against an older release
+│   ├── upgrading-to-26-2-3.md    # What changed for clients written against an older release
 │   ├── users.md                  # User accounts and lifecycle
 │   ├── credentials.md            # The nine credential types, auth providers
 │   ├── user-roles.md             # Roles, permissions, role assignments

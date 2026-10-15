@@ -60,7 +60,7 @@ paths:
       tags:
         - "Lifecycle"
       summary: "The form that an administrator fills in per organization node"
-      description: "An administrator opens the configuration form of your integration on an organization node. The back office renders one field per member and stores the values; your integration reads them back through GET /v1/context/config/{configId} on the CommerceOS side. Answer members: {} when you need no configuration."
+      description: "An administrator opens the configuration form of your integration on an organization node. The back office renders one field per member and stores the values; your integration reads them back through GET /v1/context/{configId} on the CommerceOS side. Answer members: {} when you need no configuration."
       responses:
         "200":
           description: "OK"
@@ -281,14 +281,14 @@ components:
       required: true
       schema:
         type: "string"
-      description: "The four-character id of the EPI configuration that this call runs under. Look the values up with GET /v1/context/config/{configId} on CommerceOS."
+      description: "The four-character id of the EPI configuration that this call runs under. Look the values up with GET /v1/context/{configId} on CommerceOS."
     ConfigHash:
       name: "X-EPI-Context-Config-Hash"
       in: "header"
       required: true
       schema:
         type: "string"
-      description: "A SHA-256 of the configuration values, URL-safe base64, 43 characters: the configurationHash that GET /v1/context/config/{configId} answers. A changed configuration has a new value, so it is your cache key."
+      description: "A SHA-256 of the configuration values, URL-safe base64, 43 characters: the configurationHash that GET /v1/context/{configId} answers. A changed configuration has a new value, so it is your cache key."
     DebugInfo:
       name: "X-EPI-Debug-Info"
       in: "header"

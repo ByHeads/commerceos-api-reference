@@ -106,7 +106,7 @@ export function startPiggyServer({ port = 0, now = () => new Date(), waitMs = 30
         const id = request.headers["x-epi-context-config-id"];
         const hash = request.headers["x-epi-context-config-hash"];
         if (hash && configByHash.has(hash)) return configByHash.get(hash);
-        const response = await fetch(cosApi(`/context/config/${encodeURIComponent(id)}`), { headers: { authorization: await bearer(), accept: "application/json" }, signal: AbortSignal.timeout(2000) });
+        const response = await fetch(cosApi(`/context/${encodeURIComponent(id)}`), { headers: { authorization: await bearer(), accept: "application/json" }, signal: AbortSignal.timeout(2000) });
         if (!response.ok) throw new Error(`config ${response.status}`);
         // The answer also carries configurationType and schema, the form the administrator filled in; the bank needs neither.
         const { configuration = {}, configurationHash } = await response.json();
@@ -127,7 +127,7 @@ export function startPiggyServer({ port = 0, now = () => new Date(), waitMs = 30
         if (!installation?.cosBaseUrl) return;
         try {
             const headers = { authorization: await bearer(), "content-type": "application/json", accept: "application/json" };
-            const response = await fetch(cosApi(`/context/${STORE}/${encodeURIComponent(paymentKey)}`), { method: "PUT", headers, body: JSON.stringify(state), signal: AbortSignal.timeout(2000) });
+            const response = await fetch(cosApi(`/context/kv/${STORE}/${encodeURIComponent(paymentKey)}`), { method: "PUT", headers, body: JSON.stringify(state), signal: AbortSignal.timeout(2000) });
             log(`state ${paymentKey} ${response.status}`);
         } catch (error) {
             log(`state ${paymentKey} not written: ${error.message} from ${installation.tokenUrl}`);

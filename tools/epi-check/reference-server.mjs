@@ -134,7 +134,7 @@ export function startReferenceServer({ port = 0, now = () => new Date("2026-01-0
             if (!token.ok) return false;
             const { access_token } = await token.json();
             const configId = request.headers["x-epi-context-config-id"];
-            const config = await fetch(`${installation.cosBaseUrl}/api/v1/context/config/${encodeURIComponent(configId)}`, { headers: { authorization: `Bearer ${access_token}`, accept: "application/json" } });
+            const config = await fetch(`${installation.cosBaseUrl}/api/v1/context/${encodeURIComponent(configId)}`, { headers: { authorization: `Bearer ${access_token}`, accept: "application/json" } });
             if (!config.ok) return false;
             return (await config.json())?.configurationHash === request.headers["x-epi-context-config-hash"];
         } catch {

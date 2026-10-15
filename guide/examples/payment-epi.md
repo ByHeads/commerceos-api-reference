@@ -11,8 +11,6 @@ This page gets you from nothing to a working integration in one sitting. The con
 
 > **See also:** [Examples Index](../examples.md) | [Configuration](./configuration.md) § EPI Integrations
 
-> **Availability:** your configuration schema as named types with `secret` members, and your key-value store under `/v1/context/<store>`, ship after v26.2.2. The [reference](./payment-epi/reference.md) names the sections.
-
 ---
 
 ## 1. The picture
@@ -101,16 +99,16 @@ call to it shows as a `[cos]` line:
 ```bash
 node play.mjs 10.04 --cos
 # [cos] POST /oauth2/v1/token 200
-# [cos] GET /api/v1/context/config/EPI1 200
+# [cos] GET /api/v1/context/EPI1 200
 # Test: true
 # Method com.example.piggy (Piggy Bank)
 # → Wait {"message":"Waiting for the customer's phone","params":["PB-mv3ru4gr-1"]}
 #   tap:    curl -X POST http://localhost:8787/piggy/tap/PB-mv3ru4gr-1
 # [cos] POST /oauth2/v1/token 200
-# [cos] PUT /api/v1/context/com.example.piggy/pay-1791720017198 200
+# [cos] PUT /api/v1/context/kv/com.example.piggy/pay-1791720017198 200
 # → Complete {...}
 # [cos] POST /oauth2/v1/token 200
-# [cos] PUT /api/v1/context/com.example.piggy/pay-1791720017198 200
+# [cos] PUT /api/v1/context/kv/com.example.piggy/pay-1791720017198 200
 ```
 
 The first three lines are the configuration round trip: the bank fetches a token with the client it
@@ -185,7 +183,7 @@ async function readConfig(request) {
     const id = request.headers["x-epi-context-config-id"];
     const hash = request.headers["x-epi-context-config-hash"];
     if (hash && configByHash.has(hash)) return configByHash.get(hash);
-    const response = await fetch(cosApi(`/context/config/${encodeURIComponent(id)}`), { headers: { authorization: await bearer(), accept: "application/json" }, signal: AbortSignal.timeout(2000) });
+    const response = await fetch(cosApi(`/context/${encodeURIComponent(id)}`), { headers: { authorization: await bearer(), accept: "application/json" }, signal: AbortSignal.timeout(2000) });
     if (!response.ok) throw new Error(`config ${response.status}`);
     const { configuration = {}, configurationHash } = await response.json();
     configByHash.set(configurationHash ?? hash, configuration);
@@ -424,7 +422,7 @@ Heads certifies your installed integration with the tool in `--cos` mode, throug
 - [ ] A request your integration cannot take on the stream route is a 200 stream with one `Fail` step, never a non-2xx: CommerceOS discards the body there (reference, section 7).
 - [ ] A repeated `PUT` for a completed `paymentKey` answers the same `processorsId` and the same transactions, and `processorsId` is unique for all time.
 - [ ] `POST /test` answers per node: it reads the configuration of the context id and checks it.
-- [ ] State lives in your key-value store on CommerceOS, under `/v1/context/<store>`, or in your database, never only in memory.
+- [ ] State lives in your key-value store on CommerceOS, under `/v1/context/kv/<store>`, or in your database, never only in memory.
 - [ ] A restart never loses a charge: you keep a list of the payments that have a provider session and no outcome, and on start you stop each open one at the provider and complete each charged one with `PATCH /v1/payment-orders/{key}` (reference § 11).
 - [ ] Each provider outcome maps to one step, and two causes never share a step (reference § 5, "When a real provider owns the outcome").
 - [ ] You know which refunds your provider allows for each merchant. Where it cannot refund without the card, your method declares `supports.reversal: false` with `supports.outgoing: true`, and the *Refund* action becomes a refund with the card (flows § 3).
@@ -453,7 +451,7 @@ paths. Use `/v1/payment-integrations` for a payment provider, and `/v1/epi-integ
 | EPI | External Partner Interface: the Heads specification of the HTTP calls between CommerceOS and an integration. You build an integration that follows it |
 | payment integration | the CommerceOS record of one provider: a name, a `baseUrl`, a status, and its payment methods |
 | EPI configuration | the values of one integration on one organization node, for example a merchant id. The form comes from your configuration schema, `/config-schema` |
-| key-value store | the place for your integration's own state on CommerceOS, `/v1/context/<store>/<key>`, named like `com.example.piggy` and created by a Heads administrator, who gives your client the scope `com.example.piggy:write` |
+| key-value store | the place for your integration's own state on CommerceOS, `/v1/context/kv/<store>/<key>`, named like `com.example.piggy` and created by a Heads administrator, who gives your client the scope `com.example.piggy:write` |
 | context | the three headers on a contextful call. They name the configuration that the call runs under |
 | organization node | a company, a store or another level of the organization tree. A configuration on a node applies to the nodes below it |
 | payment order | what CommerceOS wants paid: an amount, a currency, a payer and a payee. Its key is the `paymentKey` of the stream call |
