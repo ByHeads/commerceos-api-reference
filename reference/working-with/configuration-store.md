@@ -154,7 +154,7 @@ curl -H "Authorization: Bearer <token>" "https://example.app.heads.com/api/v1/co
 
 ## EPI Configurations
 
-A payment integration reads its own configuration at `GET /v1/context/<contextConfigId>` with its own token (scope `me`), and an administrator's `admin` or `admin:read` credential reads any. The answer is the **EPI configuration element**: `identifiers` (with `contextConfigId`), `integration`, `node`, `configuration`, `configurationHash`, `schema` and `configurationType`.
+A payment integration reads its own configuration at `GET /v1/context/<contextConfigId>` with its own token (scope `me`), and an administrator's `admin` or `admin:read` credential reads any. The answer is the **EPI configuration element**. Under the integration's own token it carries `identifiers` (with `contextConfigId`), `schema`, `configurationType`, `configuration` and `configurationHash`. `configuration` is left out while the administrator has not saved values yet, so read it as optional. `integration` and `node` are relations into `/v1/epi-integrations` and `/v1/agents`, and appear only for a caller whose scopes reach those collections as well (an administrator's key).
 
 ```bash
 curl -H "Authorization: Bearer <token>" "https://example.app.heads.com/api/v1/context/Ab_9"
@@ -163,8 +163,6 @@ curl -H "Authorization: Bearer <token>" "https://example.app.heads.com/api/v1/co
 {
   "@type": "EPI configuration",
   "identifiers": { "@type": "EPI configuration identifiers", "key": "…", "contextConfigId": "Ab_9" },
-  "integration": { "…": "…" },
-  "node": { "…": "…" },
   "configuration": { "merchantId": "m-1", "apiKey": "k-1" },
   "configurationHash": "tEEJCjTFLcZGeeTO3nsYt_HPadK11elfulR-AOlRtfo",
   "schema": { "…": "…" },
@@ -172,7 +170,7 @@ curl -H "Authorization: Bearer <token>" "https://example.app.heads.com/api/v1/co
 }
 ```
 
-- `configuration` is in clear for the integration that owns it and under `admin`; masked under `admin:read`. `configurationHash` is in the default answer and is the value CommerceOS sends as `X-EPI-Context-Config-Hash`; compare the two before re-reading.
+- `configuration` is in clear for the integration that owns it and under `admin`; masked under `admin:read`; absent until the administrator has saved values (the sample reads it as `const { configuration = {} } = …`). `configurationHash` is in the default answer and is the value CommerceOS sends as `X-EPI-Context-Config-Hash`; compare the two before re-reading.
 - The owning integration and `admin` write `configuration` there, **whole**: `PUT …/configuration` with the complete object (a `********` keeps the stored secret). A member left out is gone.
 - Creating, deleting or reassigning a configuration on this route is `403 Context scopes cannot create, delete or reassign EPI configurations`; that stays with the `integrations` scope on `/v1/epi-configurations`.
 - Another integration's id is `404`. `/v1/context/config` and `/v1/context/config/<id>` are `404`.

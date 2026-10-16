@@ -877,7 +877,7 @@ GET https://example.app.heads.com/images/7e267ff8f5517a12580a81900410f8ae.webp?w
 # Get product with images
 GET /v1/products/com.example.sku=PROD-001~with(images)
 
-# Delete image by URL, or by your identifier
+# Take an image off the product, by URL or by your identifier (the image itself stays)
 DELETE /v1/products/com.example.sku=PROD-001/images/url=https%3A%2F%2Fcdn.example.com%2Fproducts%2Fprod-001.jpg
 DELETE /v1/products/com.example.sku=PROD-001/images/com.example.imageId=prod-001-front
 ```
@@ -885,6 +885,7 @@ DELETE /v1/products/com.example.sku=PROD-001/images/com.example.imageId=prod-001
 - `data` is accepted as a `data:` URL or as bare base64. Sending it again replaces the content; it is never returned
 - `contentUrl` is absolute when the API's configuration has a public base URL, else a path (`/images/<key>.png`). An image that refers to a URL gets one too; an image with neither content nor URL has none
 - Content that is not one of the image types, is empty, or is above 20 MiB is refused with `400`, as is `data` that is neither a data URL nor base64
+- **Removing an image unlinks it.** `DELETE …/images/{id}` and `images/remove` take the image off the product; the image and its identifier stay, and a later add with the same identifier links the same image again. A file is different: one that nothing holds any more is deleted — see [Files](#files)
 - Images need the `media:read` / `media:write` scopes beside the product's own
 
 ### Files

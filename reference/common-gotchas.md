@@ -2261,9 +2261,9 @@ Related: [Stock and Inventory Guide → Approving a Stock Count](../guide/exampl
 
 ---
 
-## 96. `checkoutId` Is `null` on Imported Receipts and on Receipts From Before the Member Existed
+## 96. `checkoutId` Is Left Out of Imported Receipts and of Receipts From Before the Member Existed
 
-Every document of one POS finalize shares a `checkoutId`, and a receipt's `checkoutSiblings` lists the other receipts of that checkout. Two kinds of receipt have none: a receipt imported with `POST /v1/receipts` (the import stores no `checkoutId`, and `PATCH`/`PUT` cannot set one — the member is read-only) and a receipt created before the member existed. On both, `checkoutId` reads `null`, `checkoutSiblings` is `[]`, and `…/checkoutSiblings~where(type=Return)~first/payments` is `200 null`. Treat the id as nullable in a feed that mixes till receipts with imported history, and do not read an empty `checkoutSiblings` as "a lone sale" — it is also what an imported return answers.
+Every document of one POS finalize shares a `checkoutId`, and a receipt's `checkoutSiblings` lists the other receipts of that checkout. Two kinds of receipt have none: a receipt imported with `POST /v1/receipts` (the import stores no `checkoutId`, and `PATCH`/`PUT` cannot set one — the member is read-only) and a receipt created before the member existed. On both, the `checkoutId` key is left out of the default body — a path read (`…/checkoutId`) or a projection (`~just(identifiers,checkoutId)`) answers `null` — `checkoutSiblings` is `[]`, and `…/checkoutSiblings~where(type=Return)~first/payments` is `200 null`. Treat the key as optional, not only nullable, in a feed that mixes till receipts with imported history, and do not read an empty `checkoutSiblings` as "a lone sale" — it is also what an imported return answers.
 
 Related: [Receipts → Receipts of One Checkout](receipts.md#receipts-of-one-checkout-checkoutid-and-checkoutsiblings).
 
@@ -2287,7 +2287,7 @@ Related: [gotcha 40](#40-a-malformed-identifier-key-fails-the-whole-request), [P
 
 ## 99. A `file` Is Reachable Only Through Its Holder
 
-A file (a datasheet, a certificate, a contract) has no collection of its own. It is reached as `files` on a product node or `attachments` on an agent, and it is created there. Removing a file from its last holder deletes it — its identifier can then be used again — unless the file carries an external identifier, in which case it stays reachable by that identifier. A deleted file's `contentUrl` stops serving. Receipts, exports and shipping labels are never reachable as files.
+A file (a datasheet, a certificate, a contract) has no collection of its own. It is reached as `files` on a product node or `attachments` on an agent, and it is created there. Removing a file from its last holder deletes it — its identifier can then be used again — unless the file carries an external identifier, in which case it stays reachable by that identifier. A deleted file's `contentUrl` stops serving. An image is not deleted the same way: `…/images/remove` and `DELETE …/images/{id}` only unlink it, the image and its identifier stay, and a later add with the same identifier links the same image again. Receipts, exports and shipping labels are never reachable as files.
 
 Related: [Working with Products → Files](working-with/products.md#files), [Working with Products → Images](working-with/products.md#images).
 

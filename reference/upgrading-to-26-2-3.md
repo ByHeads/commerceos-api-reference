@@ -36,6 +36,7 @@ The token endpoint narrows the request to the scopes the client holds; the respo
 - `createPayment` defaults `amount` to what is still owed and refuses more: `400 Amount exceeds the unpaid amount (<n>).`, `400 Nothing to pay: nothing is owed on the listed items.`. `Currency not found.` and `Order item not found.` are `400` (one was a `500`, the other another text).
 - `cancelReturn` leaves the line as `ReturnCancelled`; it cannot be returned again.
 - `suppliersId.id` and `customersId.id` are written on `POST` and `PATCH` (they used to be accepted and ignored).
+- An order created with its own number no longer consumes one from the serial: the owner's order serial issues a number only for an order created without `suppliersId.id` / `customersId.id`.
 
 See [Working with Orders → Order Actions](working-with/orders.md#order-actions).
 
@@ -60,7 +61,8 @@ With `autoGtin` set on a product (or inherited from its family or group), `tryAp
 
 ### A8. POS profiles and carts
 
-- A value outside the vocabulary of `showProductFamiliesAs`, `scoStartScreen`, `scoReceiptMode`, `receiptOptions`, a tile set's `layout` or a tile's `defaultDisplayMode` is `400 Invalid value '…' for '<member>'. Expected '…' or '…'.` (it used to be a stored `200`).
+- A value outside the vocabulary of `showProductFamiliesAs`, `scoStartScreen`, `scoReceiptMode` or `receiptOptions` is `400 Invalid value '…' for '<member>'. Expected '…' or '…'.` (it used to be a stored `200`).
+- A value outside the vocabulary of a tile set's `layout` or a tile's `defaultDisplayMode`, both enums, is a `400` that names the enum: `Invalid value '…' for enum 'PosTileSetLayout'. Expected 'Grid' or 'List'.`, `… for enum 'ProductDisplayMode'. Expected 'Grid' or 'List'.`
 - Every setting of a POS profile, tile set, product tile and terminal is a declared member, with a `pos:read` twin; tile placement is `layout` with `row`/`column` (see [POS Profiles](../guide/examples/pos.md#pos-profiles)). New `separateOrderCheckout`.
 - A cart `visibility` outside its three values is `400` (was `500`); `resumeCart` of a cart parked for another terminal of the store is `409`; adding a line to a self-checkout that waits for the payment method is `409` (was `201`); `resumableCarts` lists parked carts only.
 
@@ -75,7 +77,7 @@ With `autoGtin` set on a product (or inherited from its family or group), `tryAp
 
 ### A11. Receipts
 
-`checkoutId` is in every default receipt body, `null` on receipts created before the member existed and on imported receipts; `checkoutSiblings` (`~with`) lists the other receipts of the same checkout; `restock` (`~with`) on a return line says whether the units went back into stock. A strict consumer adds the column. See [Receipts → Receipts of One Checkout](receipts.md#receipts-of-one-checkout-checkoutid-and-checkoutsiblings).
+`checkoutId` is in the default body of a till receipt, and left out of the body of a receipt created before the member existed or imported with `POST /v1/receipts` (a path read or a projection answers `null`); `checkoutSiblings` (`~with`) lists the other receipts of the same checkout; `restock` (`~with`) on a return line says whether the units went back into stock. A strict consumer adds the column as optional. See [Receipts → Receipts of One Checkout](receipts.md#receipts-of-one-checkout-checkoutid-and-checkoutsiblings).
 
 ### A12. Stock count items
 
@@ -87,7 +89,7 @@ A duplicate API key value is `409 Another API key already holds this value.`; a 
 
 ### A14. `then.set` on a sync webhook
 
-A `then.set` write drops members whose value resolves to `undefined`, at any depth, as a JSON body does — a nested identifier the answer leaves out is kept instead of cleared. `null` still clears. `lastError` keeps the last failure's message after later successes, and a retrying webhook keeps its `error` between attempts.
+A `then.set` write drops members whose value resolves to `undefined`, at any depth, as a JSON body does — a nested identifier the answer leaves out is kept instead of cleared. `null` still clears, and so does a top-level key written without `?` that cannot be resolved. `lastError` keeps the last failure's message after later successes, and a retrying webhook keeps its `error` between attempts.
 
 ### A15. Deliveries
 

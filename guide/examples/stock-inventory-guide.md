@@ -24,7 +24,7 @@ A comprehensive guide to managing inventory in CommerceOS — from zero knowledg
   - [3.5 Reading Stock Levels](#35-reading-stock-levels)
   - [3.6 Reading Adjustment History](#36-reading-adjustment-history)
 - [Part 4: Stock Counts — Physical Inventory](#part-4-stock-counts--physical-inventory)
-  - [4.1 Creating a Stock Count](#41-creating-a-stock-count)
+  - [4.1 Finding a Stock Count](#41-finding-a-stock-count)
   - [4.2 Recording Observations](#42-recording-observations)
   - [4.3 Reviewing Variances](#43-reviewing-variances)
   - [4.4 Approving a Stock Count](#44-approving-a-stock-count)
@@ -648,82 +648,33 @@ A `stock count` represents the process of physically counting inventory. Unlike 
 
 The stock count lifecycle is: **New → Ongoing → Completed → Approved**.
 
-### 4.1 Creating a Stock Count
+### 4.1 Finding a Stock Count
+
+A stock count and its lines are created in the back office — the count request flow or the quick count — not through the API. `owner`, `stock` and `items` on a count, and `parent`, `product` and `place` on a line, are read-only; `POST /v1/stock-counts` and `POST /v1/stock-count-items` are not a way to start a count. The API reads the counts and their lines, and records the observations (see [4.2](#42-recording-observations)).
 
 ```bash
-# Create a stock count for Q1 2026 at the Stockholm store
-curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-counts" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "identifiers": { "com.example.id": "count-2026-q1" },
-    "owner": { "identifiers": { "com.example.storeId": "stockholm" } },
-    "items": [
-      {
-        "identifiers": { "com.example.id": "count-item-tshirt-red" },
-        "product": { "identifiers": { "com.example.sku": "TSHIRT-RED-M" } },
-        "place": { "identifiers": { "com.example.id": "stockholm-store" } }
-      },
-      {
-        "identifiers": { "com.example.id": "count-item-tshirt-blue" },
-        "product": { "identifiers": { "com.example.sku": "TSHIRT-BLUE-L" } },
-        "place": { "identifiers": { "com.example.id": "stockholm-store" } }
-      },
-      {
-        "identifiers": { "com.example.id": "count-item-jeans" },
-        "product": { "identifiers": { "com.example.sku": "JEANS-BLACK-32" } },
-        "place": { "identifiers": { "com.example.id": "stockholm-store" } }
-      }
-    ]
-  }'
+# The counts in progress at the Stockholm store, with their lines
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-counts~where(status=Ongoing)~with(items)"
+
+# One count and its lines
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-counts/com.example.id=count-2026-q1~with(items)"
+
+# The lines of a count, with the product and place of each
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/stock-counts/com.example.id=count-2026-q1/items~with(product,place)"
 ```
 
-The stock count starts with status `"New"`. Each item specifies the product and stock place to be counted.
-
-You can optionally target a specific logical stock with the `stock` field:
-
-```bash
-# Count only consignment stock
-curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-counts" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "identifiers": { "com.example.id": "count-consignment-2026-q1" },
-    "owner": { "identifiers": { "com.example.storeId": "stockholm" } },
-    "stock": { "identifiers": { "com.example.id": "consignment-stock" } },
-    "items": [
-      {
-        "identifiers": { "com.example.id": "count-consignment-item-1" },
-        "product": { "identifiers": { "com.example.sku": "PARTNER-HANDBAG-A" } },
-        "place": { "identifiers": { "com.example.id": "stockholm-store" } }
-      }
-    ]
-  }'
-```
-
-You can also add items to an existing stock count after creation:
-
-```bash
-# Add a new item to an existing stock count
-curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-count-items" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "identifiers": { "com.example.id": "count-item-hoodie" },
-    "parent": { "identifiers": { "com.example.id": "count-2026-q1" } },
-    "product": { "identifiers": { "com.example.sku": "HOODIE-GRAY-L" } },
-    "place": { "identifiers": { "com.example.id": "stockholm-store" } }
-  }'
-```
+A count starts with status `"New"`. Each line names the product and the stock place to be counted, and `stock` on the count names the logical stock when the count is limited to one. The examples below name the count `com.example.id=count-2026-q1` and its lines `com.example.id=count-item-…`; substitute the keys of the count you found.
 
 ### 4.2 Recording Observations
 
-Observations are the actual counts made by staff. Multiple people can count the same item — each observation is recorded separately.
+Observations are the actual counts made by staff. Multiple people can count the same item — each observation is recorded separately. An observation is posted on the line it belongs to, `POST /v1/stock-count-items/{key}/observations`; the line is the path, not a member of the body.
 
 ```bash
 # First counter counts 43 units of T-Shirt Red M
-curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-count-observations" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-count-items/com.example.id=count-item-tshirt-red/observations" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "obs-tshirt-red-counter1" },
-    "parent": { "identifiers": { "com.example.id": "count-item-tshirt-red" } },
     "counter": { "identifiers": { "com.example.userId": "anna" } },
     "instances": [
       { "quantity": 43 }
@@ -731,11 +682,10 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-count-obse
   }'
 
 # Second counter recounts and finds 44 units
-curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-count-observations" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-count-items/com.example.id=count-item-tshirt-red/observations" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "obs-tshirt-red-counter2" },
-    "parent": { "identifiers": { "com.example.id": "count-item-tshirt-red" } },
     "counter": { "identifiers": { "com.example.userId": "erik" } },
     "instances": [
       { "quantity": 44 }
@@ -750,7 +700,7 @@ Each observation records:
 | Field | Type | Description |
 |-------|------|-------------|
 | `identifiers` | common identifiers | External identifiers for the observation |
-| `parent` | stock count item reference | Which item this observation belongs to |
+| `parent` | stock count item reference (read-only) | The line the observation belongs to — the line in the path when it is posted |
 | `counter` | agent reference | The user/agent who made the observation |
 | `quantity` | decimal (read-only) | Computed from `instances` |
 | `instances` | product instances | The counted product instances (with quantity) |
@@ -1406,11 +1356,10 @@ To record observations with tracking data:
 
 ```bash
 # Count observation with serial numbers
-curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-count-observations" \
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/stock-count-items/com.example.id=count-item-iphones/observations" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": { "com.example.id": "obs-phones-counter1" },
-    "parent": { "identifiers": { "com.example.id": "count-item-iphones" } },
     "counter": { "identifiers": { "com.example.userId": "anna" } },
     "instances": [
       { "quantity": 1, "serialNumber": "353456789012345" },
@@ -1772,21 +1721,21 @@ Inherits from `stock transaction` (has `timestamp`, `owner`).
 
 | Field | Type | Required on Create | Read-Only | Description |
 |-------|------|--------------------|-----------|-------------|
-| `identifiers` | common identifiers | Yes | No | External identifiers |
+| `identifiers` | common identifiers | — | No | External identifiers |
 | `id` | string | — | Yes | System-generated ID |
-| `owner` | agent reference | Yes | No | Store being counted |
-| `stock` | stock reference | No | No | Logical stock being counted |
+| `owner` | agent reference | — | Yes | Store being counted (set when the count is created in the back office) |
+| `stock` | stock reference | — | Yes | Logical stock being counted |
 | `status` | string[] | — | Yes | Current status: New, Ongoing, Completed, Approved |
-| `items` | stock count item[] | Yes | No | Items to count |
+| `items` | stock count item[] | — | Yes | The lines, created with the count in the back office |
 | `records` | stock count record[] | — | No | Generated records after approval |
 
 ### Stock Count Item
 
 | Field | Type | Required on Create | Read-Only | Description |
 |-------|------|--------------------|-----------|-------------|
-| `identifiers` | common identifiers | No | No | External identifiers |
-| `product` | product reference | Yes | No | Product being counted |
-| `place` | place reference | Yes | No | Location being counted |
+| `identifiers` | common identifiers | — | No | External identifiers |
+| `product` | product reference | — | Yes | Product being counted |
+| `place` | place reference | — | Yes | Location being counted |
 | `counted` | boolean | — | Yes | Whether observations exist, or approval settled the line (computed) |
 | `settled` | boolean | — | Yes | The line's zero was posted by approval settlement, not counted by someone (see [4.4](#44-approving-a-stock-count)) |
 | `excluded` | boolean | — | Yes | The line was excluded from the count; approval left its stock untouched |
@@ -1985,9 +1934,10 @@ Inherits from `stock transaction` (has `timestamp`, `owner`).
 | `/v1/stock-adjustments` | GET, POST, PATCH | Inventory corrections |
 | `/v1/stock-adjustment-items` | GET, POST | Individual adjustment items |
 | `/v1/stock-adjustment-reasons` | GET, POST, PATCH | Reason codes for adjustments |
-| `/v1/stock-counts` | GET, POST, PATCH | Physical inventory counts |
-| `/v1/stock-count-items` | GET, POST, PATCH | Individual items within a count |
-| `/v1/stock-count-observations` | GET, POST | Count observations by staff |
+| `/v1/stock-counts` | GET | Physical inventory counts (created in the back office) |
+| `/v1/stock-count-items` | GET | Individual items within a count |
+| `/v1/stock-count-items/{id}/observations` | GET, POST | Count observations by staff, on the line |
+| `/v1/stock-count-observations` | GET | All observations |
 | `/v1/stock-count-records` | GET | Immutable count audit trail (read-only) |
 | `/v1/stock-counts/{id}/records` | GET | Records for a specific count |
 | `/v1/stock-transfers` | GET, POST, PATCH | Stock movements between two different logical stocks of the same agent |

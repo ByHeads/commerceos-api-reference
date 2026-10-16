@@ -540,7 +540,7 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/pos-product-til
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/pos-tile-sets/tileId=main~just(layout,renderAllEmptyCells,rows,columns)"
 ```
 
-The three are on the standalone collections `/v1/pos-tile-sets`, `/v1/pos-product-tiles` and `/v1/pos-function-tiles` as well as on a profile's nested `tileSets`, and a `pos:read` key reads them. `defaultDisplayMode` is declared on every tile "only applicable to product tiles": a function tile takes it without a `400`, and it does nothing there. A value outside the vocabulary is a `400` that names it: `Invalid value 'Nonsense' for enum 'PosTileSetLayout'. Expected 'Grid' or 'List'.` on a tile set, `… for enum 'ProductDisplayMode'. Expected 'Grid' or 'List'.` on a product tile.
+The three are on the standalone collections `/v1/pos-tile-sets`, `/v1/pos-product-tiles` and `/v1/pos-function-tiles` as well as on a profile's nested `tileSets`, and a `pos:read` key reads them. `defaultDisplayMode` is declared on every tile "only applicable to product tiles": a function tile takes it without a `400`, and it does nothing there — a `POST` drops it (the tile reads back `null`), a `PATCH` stores it, and the till reads it on product tiles only. A value outside the vocabulary is a `400` that names it: `Invalid value 'Nonsense' for enum 'PosTileSetLayout'. Expected 'Grid' or 'List'.` on a tile set, `… for enum 'ProductDisplayMode'. Expected 'Grid' or 'List'.` on a product tile.
 
 ### How the root tile sets are laid out
 
@@ -638,7 +638,7 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/pos-slips/{key}~j
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/pos-slips/{key}~just(identifiers,slipKind,checkoutId)"
 ```
 
-A slip carries a read-only `checkoutId`: "The identifier of the checkout that produced this slip, shared with the receipts and slips of the same POS finalize. Null on slips created before the member existed." It is the same value as `checkoutId` on the receipts of that finalize, so a slip and the receipt rung up in the same basket can be matched on it. The receipt side — `checkoutId` in every receipt's default body, `checkoutSiblings` for the other receipts of the checkout — is in [Receipts of One Checkout](../../reference/receipts.md#receipts-of-one-checkout-checkoutid-and-checkoutsiblings).
+A slip carries a read-only `checkoutId`: "The identifier of the checkout that produced this slip, shared with the receipts and slips of the same POS finalize. Null on slips created before the member existed." It is the same value as `checkoutId` on the receipts of that finalize, so a slip and the receipt rung up in the same basket can be matched on it. The receipt side — `checkoutId` in a till receipt's default body (left out on imported receipts), `checkoutSiblings` for the other receipts of the checkout — is in [Receipts of One Checkout](../../reference/receipts.md#receipts-of-one-checkout-checkoutid-and-checkoutsiblings).
 
 ### Which order line an action moved (`tradeOrderItemEffects`)
 

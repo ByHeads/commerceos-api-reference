@@ -1178,7 +1178,7 @@ components:
       required:
         - "members"
     ConfigSchema:
-      description: "The answer of GET /config-schema: the types of your configuration, written in the notation of the CommerceOS API's own type declarations, not a JSON Schema. schema is a map of types by name, and configurationType names the one that the administrator fills in for your integration on an organization node; a nested group is a member typed with another type of the map. The back office renders one field per member of the configuration type and stores the values. Your integration reads them back through GET /v1/context/config/{configId}, which also echoes the schema, and validates them in POST /test. A type name may contain spaces and must not be the name of a CommerceOS API type."
+      description: "The answer of GET /config-schema: the types of your configuration, written in the notation of the CommerceOS API's own type declarations, not a JSON Schema. schema is a map of types by name, and configurationType names the one that the administrator fills in for your integration on an organization node; a nested group is a member typed with another type of the map. The back office renders one field per member of the configuration type and stores the values. Your integration reads them back through GET /v1/context/{configId}, which also echoes the schema, and validates them in POST /test. A type name may contain spaces and must not be the name of a CommerceOS API type."
       type: "object"
       properties:
         schema:

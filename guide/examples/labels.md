@@ -33,7 +33,7 @@ Labels are lightweight, colored tags you can attach to entities across the API f
 | `title` | string | Display title of the label |
 | `description` | string (optional) | Longer description of the label's purpose |
 | `color` | string (optional) | Color value — any CSS-parsable string (e.g., `#FF0000`, `red`) |
-| `applicableOnlyTo` | string[] (optional) | Restricts which entity types the label can be applied to. **Must be non-empty** — see [Known Limitations](#known-limitations) |
+| `applicableOnlyTo` | string[] (optional) | Restricts which entity types the label can be applied to. Left out: the label applies to every entity type. **Do not send `[]`** — see [Type Restrictions](#type-restrictions-with-applicableonlyto) |
 | `appliedToCount` | number (read-only) | Number of entities currently using this label |
 | `owner` | agent reference (optional) | The owning agent (organization node). Uses `identifiers.key` for the setter |
 
@@ -311,7 +311,8 @@ Labels can be restricted to specific entity types using `applicableOnlyTo`. When
 ### How it works
 
 - **Set to type names:** Only entities of those types (or subtypes) can receive the label
-- **Empty or absent:** The label is applicable to **nothing** (see [Known Limitations](#known-limitations)) — always specify at least one type
+- **Absent:** The label applies to **every** entity type — a label created without the member reads `["TraitInstance"]`, the root type every entity descends from; naming `TraitInstance` yourself means the same
+- **An explicit `[]`:** stored as given, and the label then applies to **nothing**. Do not send an empty list; leave the member out instead
 - **Error on mismatch:** `"Label 'X' is not applicable for objects of this type"`
 
 ### Type names
@@ -389,7 +390,7 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/labels/com.myap
   -d '{"remove": ["Product", "ProductCategory"]}'
 ```
 
-> Remember that an **empty** `applicableOnlyTo` makes the label applicable to nothing. If `remove` would empty the list, delete the restriction another way (or `PUT` the full intended set) rather than leaving it empty.
+> An explicit **empty** `applicableOnlyTo` makes the label applicable to nothing. If `remove` would empty the list, `PUT` the full intended set — or `PUT ["TraitInstance"]` to lift the restriction and apply the label to everything — rather than leaving it empty.
 
 ---
 

@@ -380,7 +380,8 @@ curl -X DELETE -u ":banana" "https://example.app.heads.com/api/v1/users/com.head
 curl -X POST "https://example.app.heads.com/oauth2/v1/token" \
   -H "Content-Type: application/x-www-form-urlencoded" \
   -d "grant_type=client_credentials&client_id=my-integration-client&client_secret=generate-a-long-random-value-here&scope=products:read"
-# → {"access_token": "...", "token_type": "Bearer", "expires_in": 3600, "scope": "products:read"}
+# → {"access_token": "...", "token_type": "Bearer", "expires_in": 3599, "scope": "products:read"}
+# expires_in is the seconds left when the answer is built (3599 as a rule): cache by it, do not compare it
 
 # Introspect a token (RFC 7662): client authentication plus the token.
 # {"active": true, ...claims} for a live token, {"active": false} for an expired one.

@@ -174,7 +174,7 @@ GET /v1/trade-orders/com.example.orderId=PO-1~just(identifiers,customersId,suppl
 
 - **It is an index.** `GET /v1/trade-orders/customersId=PO-00001` → `200`, the order.
 - **`identifiers.suppliersId` is the supplier's number.** It is issued from `outgoingTradeOrderSerial` when the *supplier* is one of your own agents — a sales order, an internal order. For an external supplier it stays absent.
-- **Inside `identifiers` they are read-only; set them through the top-level member.** `PATCH { "identifiers": { "customersId": "MY-PO-7" } }`, and the same for `suppliersId`, answer `200` and change nothing. Your own number goes in `customersId.id`, on create or on `PATCH` — "Set suppliersId.id or customersId.id when creating or updating an order; owner is derived from the order's supplier or customer":
+- **Inside `identifiers` they are read-only; set them through the top-level member.** `PATCH { "identifiers": { "customersId": "MY-PO-7" } }`, and the same for `suppliersId`, answer `200` and change nothing. Your own number goes in `customersId.id`, on create or on `PATCH` — "Set suppliersId.id or customersId.id when creating or updating an order; owner is derived from the order's supplier or customer. An id given on create is kept, and the owner's order serial issues one only for an order created without." An order created with its own number keeps it and draws none from the serial; without the member, the serial numbers the order. Re-sending the same id with the same body at any status, an approved order included, is `200` and changes nothing:
 
   ```bash
   POST /v1/trade-orders

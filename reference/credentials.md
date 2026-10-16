@@ -464,8 +464,10 @@ Using the resulting token is covered in [Overview → Authentication](overview.m
 curl -X POST "https://example.app.heads.com/oauth2/v1/token" \
   -H "Content-Type: application/x-www-form-urlencoded" \
   -d "grant_type=client_credentials&client_id=erp-integration&client_secret=<secret>&scope=products:read"
-# → { "access_token": "…", "token_type": "Bearer", "expires_in": 3600, "scope": "products:read" }
+# → { "access_token": "…", "token_type": "Bearer", "expires_in": 3599, "scope": "products:read" }
 ```
+
+`expires_in` is the seconds left of the lifetime when the answer is built — `3599` as a rule, not `3600`; cache by it, do not compare it.
 
 **A client-credentials token carries only the scopes its client holds.** The token endpoint narrows the request to them (RFC 6749 § 3.3) and the response's `scope` says what was granted, so read it:
 

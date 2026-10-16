@@ -92,7 +92,7 @@ The same `time` semantics apply to [surcharge rules](./surcharge-rules.md#update
 
 ## Labels on a Rule
 
-A discount rule carries `labels`, the same member as orders, products and agents. A label applies to discount rules when its `applicableOnlyTo` names `DiscountRule`; a label restricted to other types is refused on a rule, as on every other resource.
+A discount rule carries `labels`, the same member as orders, products and agents. A label applies to discount rules when its `applicableOnlyTo` names `DiscountRule` (or an ancestor type, `TraitInstance` included), or when the member was left out on create — such a label applies to everything; a label restricted to other types is refused on a rule, as on every other resource. Do not send `"applicableOnlyTo": []`: an empty list is stored and the label then applies to nothing.
 
 ```bash
 # A label for discount rules

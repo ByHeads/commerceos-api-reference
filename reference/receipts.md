@@ -207,7 +207,7 @@ When building BI exports, use these stable fields as keys:
 | `identifiers.key` | Immutable | Primary key in data warehouse |
 | `identifiers.receiptID` | Immutable | Human-readable identifier |
 | `timestamp` | Immutable | Partitioning, incremental sync |
-| `checkoutId` | Immutable; `null` on receipts created before the member existed and on imported receipts | Grouping the documents of one POS checkout — the Return and the Sale receipt of a return-and-purchase basket share it. See [Receipts of One Checkout](#receipts-of-one-checkout-checkoutid-and-checkoutsiblings) |
+| `checkoutId` | Immutable; left out of the default body on receipts created before the member existed and on imported receipts — a strict consumer treats the key as optional, not only nullable; a path read or a projection answers `null` | Grouping the documents of one POS checkout — the Return and the Sale receipt of a return-and-purchase basket share it. See [Receipts of One Checkout](#receipts-of-one-checkout-checkoutid-and-checkoutsiblings) |
 
 ### Recommended Export Fields
 
@@ -781,7 +781,7 @@ What to expect at the edges:
 |---|---|---|---|
 | one of a return-and-purchase basket | the shared id | the other receipt(s) of the basket | the Return receipt's payments |
 | a lone sale or a lone return | its own id | `[]` | `200 null` |
-| created before the member existed, or imported with `POST /v1/receipts` | `null` | `[]` | `200 null` |
+| created before the member existed, or imported with `POST /v1/receipts` | left out of the default body; `null` from `…/checkoutId` or `~just(identifiers,checkoutId)` | `[]` | `200 null` |
 
 Neither member can be written: `POST /v1/receipts` stores no `checkoutId` for an imported receipt, and `PATCH` and `PUT` leave the member alone.
 
