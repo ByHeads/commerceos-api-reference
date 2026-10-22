@@ -55,7 +55,9 @@ GET /v1/sync-webhooks/com.myapp.hookId=product-sync
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `when` | string | API request URL that returns a date-time for the next run |
+| `when` | string or object | API request URL that returns a date-time for the next run, or an object of time-of-day windows (see [Time-of-day windows](#time-of-day-windows)). Re-read each time the webhook repeats or is unpaused; `"never"` or `null` pauses |
+| `backoff` | boolean or object | Idle backoff for this webhook: `true` uses the API config's parameters, `false` turns it off here, an object of `after`, `factor` and `max` sets its own; absent follows `webhookIdleBackoffEnabled` on `/v1/config/api`. See [Idle backoff](#idle-backoff) |
+| `idleRuns` | number (read-only) | Consecutive successful runs that found nothing to process, which idle backoff works from. A run that finds something, `runOnce`, `reactivate`, `reset`, `catchUp` and a new `when` reset it to 0 |
 | `repeat` | boolean | Whether to reschedule after each successful run |
 | `lastWhen` | string (read-only) | The previous `when` value, cached when `when` is changed or cleared due to errors. Used by [`reactivate`](#operator-methods). |
 | `next` | date-time (read-only) | The next scheduled execution time |
@@ -71,12 +73,12 @@ GET /v1/sync-webhooks/com.myapp.hookId=product-sync
 |-------|------|-------------|
 | `attempts` | number | Current retry count since last successful run |
 | `maxAttempts` | number | Maximum retry attempts before stopping |
-| `error` | string | Error message from the last failed attempt (system-managed but writable for manual clearing). Set while the webhook retries and when it has parked; cleared by the next success |
+| `error` | string | Error message from the last failed attempt (system-managed but writable for manual clearing). Set while the webhook retries and when it has parked; cleared by the next success. Reads `Unreachable: <reason>` while a run that could not reach its target is re-run, which consumes no attempt (see [the unreachable-target retry](#task-scheduler-retry-whole-run)) |
 | `lastError` | string (read-only) | "Message of the last failed run — the `error` text at the moment `lastFailed` was stamped. Survives later successful runs; pairs with `lastFailed`. Cleared by `reset` and `catchUp`." In the default read; `null` until the first failure |
 
 **Reading `error`.** An armed `when` with `error` set means the webhook is *retrying*, and the text is the last attempt's message; `when` of `"never"` with `error` set means it has *parked*. A later success clears `error` and `errorDetails` but leaves `lastError` and `lastFailed`, which only `reset` and `catchUp` clear — so `lastFailed > lastSuccess` still says "the last run failed", and `lastError` says why even after the webhook has recovered. `~where(when=never,error)` selects the parked ones only. A transient conflict (`ECONFLICT`, retried after a 10 s back-off) stamps `error`, `lastError` and `lastFailed` too, so a later transient text can overwrite an earlier `400` text in `lastError`.
 
-These are the only per-webhook retry controls. The retry *timings* — the per-request stale-snapshot budget, the concurrency window, and the recovery cadence — are tenant-wide on the `API config` singleton; see [System Configuration](#system-configuration-v1configapi).
+These are the only per-webhook retry controls; `backoff` paces an idle webhook and is not one of them (see [Idle backoff](#idle-backoff)). The retry *timings* — the per-request stale-snapshot budget, the concurrency window, and the recovery cadence — are tenant-wide on the `API config` singleton; see [System Configuration](#system-configuration-v1configapi).
 
 ### Security & Logging
 
@@ -167,6 +169,8 @@ The webhook resource exposes a few operator methods callable via POST against th
 | `clearProgress` | Clear any pending resume snapshot in `resumeState`, so the next run starts from page 1. See [Resume After Failure](#resume-after-failure). |
 | `abort` | Stop the run that is executing **right now**. Rejected with `400` when no run is in flight — to stop *future* runs, pause the webhook instead. Cancellation is cooperative and the aborted run does not count as a failure. See [Aborting a Run in Progress](#aborting-a-run-in-progress). |
 
+`runOnce`, `reactivate`, `reset` and `catchUp` also reset `idleRuns` to 0, so a webhook stretched by [idle backoff](#idle-backoff) returns to its configured interval.
+
 ```bash
 # Run immediately (well, ~3 s from now).
 curl -X PATCH -u ":banana" \
@@ -194,6 +198,7 @@ curl -X PATCH -u ":banana" \
 | `resumeState` | object (read-only) | The pending resume snapshot, if any. Empty when there's no interrupted run to resume — i.e. either the webhook hasn't run, the last run completed cleanly, or its `out` request isn't marked `idempotent`. When present, contains the strategy that was active and the saved continuation token (`cursor` resolved request fragments, or `linkHeader` / `nextUrl` URL). Use it to diagnose stalled paginated runs; clear with `clearProgress` to force a full restart. See [Resume After Failure](#resume-after-failure). |
 | `inFlightSince` | date-time (read-only) | When the currently-running run claimed the webhook, or empty when no run is in flight. Refreshed as a heartbeat while the run proceeds, so it is the best "is this webhook alive right now?" signal — unlike `last`, which records the *start* of the last attempt and never advances mid-run. Unaffected by `reset` and `catchUp`. How long a stale value keeps the slot locked is governed by `webhookInFlightWindowMs`; see [System Configuration](#system-configuration-v1configapi). |
 | `abortRequestedAt` | date-time (read-only) | When an operator last requested an [`abort`](#aborting-a-run-in-progress), or empty when there is no pending request. A non-empty value means the abort has been recorded but the run has not yet reached the checkpoint where it stops. Consumed (cleared) when the targeted run ends, or when a fresh run claims the slot — so a request can never spill over and cancel a later run. |
+| `idleRuns` | number (read-only) | Consecutive successful runs that found nothing to process, which [idle backoff](#idle-backoff) works from. A run that finds something, `runOnce`, `reactivate`, `reset`, `catchUp` and a new `when` reset it to 0. |
 
 ---
 
@@ -346,7 +351,7 @@ Set `fail` on the `out.http` request to declare which statuses skip vs. stop:
 **Scope and limits:**
 
 - **`out.http` only.** Set on the `in` request or on `out.tds`, `fail` is ignored.
-- **Network-level failures always stop.** Connection refused, DNS resolution failures, request timeouts — anything that prevents an HTTP response from coming back — abort the run regardless of `fail`. The policy is about HTTP status codes, not transport errors.
+- **Network-level failures always stop the run.** Connection refused, DNS resolution failures, request timeouts — anything that prevents an HTTP response from coming back — abort the run regardless of `fail`. The policy is about HTTP status codes, not transport errors. The aborted run is re-run on `webhookUnreachableRetryMs` without consuming an attempt; see [the unreachable-target retry](#task-scheduler-retry-whole-run).
 - **TDS targets always stop.** The `out.tds` writer has no per-item failure granularity.
 - **401 refresh runs first.** For auth schemes that cache credentials (e.g. [`clientCredentials`](#authentication-options), [`customSignin`](#authentication-options)), a `401 Unauthorized` first triggers a one-shot credential refresh + retry. `fail` is only consulted if the *retried* response is still an error.
 
@@ -1006,6 +1011,72 @@ api/v1/config/com.myapp.sync-time/value
 
 The date-time result determines the next execution. If the webhook fails to resolve the schedule, it sets `error` and stops (`when` becomes `"never"`).
 
+### Time-of-day windows
+
+`when` can also be an object. Each key is a time window, its value the schedule URL that applies while the
+window is open; `default` applies while no window is open, `timeZone` names the IANA zone of the wall-clock
+times (the server's zone when absent). The next run is the earliest moment any entry would fire: an open
+window resolves its URL, a closed one contributes its next opening, so polling speeds up at the minute a
+window opens.
+
+```json
+{
+  "when": {
+    "Mo-Fr 08:00-21:00": "api/v1/now/+=0:0:20",
+    "12:00-13:00": "api/v1/now/+=0:0:10",
+    "default": "api/v1/now/+=0:1:0",
+    "timeZone": "Europe/Stockholm"
+  }
+}
+```
+
+- Window keys: `[weekdays ]HH:MM-HH:MM`, one clause of the same grammar as a store's `openingHours`.
+  Weekdays `Mo Tu We Th Fr Sa Su`, ranges `Mo-Fr`, lists `Sa,Su`; none means every day. Plain hyphen, no
+  seconds. Start inclusive, end exclusive; an end before the start wraps past midnight (`22:00-06:00`);
+  `00:00-24:00` is a whole day.
+- Without `default` the webhook does not run outside its windows (`next` shows the next opening).
+- A `GET` echoes the object, and so does `lastWhen` after a pause.
+- An invalid object is refused with `400` before anything is written, the offending key named in the message:
+
+  ```
+  when: 'Monday 08:00-17:00' is neither a window ('[Mo-Fr ]HH:MM-HH:MM', as in a store's openingHours, hyphen between the times), 'default' nor 'timeZone'.
+  when: the window '08:00-08:00' has equal start and end.
+  when: 'Mo-Fr 08:00-21:00' must be a schedule URL (a non-empty string).
+  when: at least one window or 'default' is required.
+  when: unknown time zone 'Mars/Olympus'.
+  ```
+- An entry whose URL does not resolve to a date-time stops the webhook as a plain `when` does, naming
+  the entry.
+- Retries after a failed or unreachable run keep their fixed intervals regardless of windows.
+
+### Idle backoff
+
+A run that selects nothing (or drains an empty inbox) is *idle*. With backoff on, after `after` consecutive
+idle runs each further idle run multiplies the next interval by `factor`, up to `max`; the first run that
+finds something returns to the configured interval. Only `+=` interval rules stretch; cron and absolute
+rules never do, and a window's opening is never delayed.
+
+```json
+{ "backoff": { "after": 3, "factor": 2, "max": "0:10:0" } }
+```
+
+`backoff: true` uses the API config's parameters, `backoff: false` turns it off for this webhook, and an
+absent `backoff` follows `webhookIdleBackoffEnabled` on `/v1/config/api` (default off; parameters
+`webhookIdleBackoffAfter` 3, `webhookIdleBackoffFactor` 2, `webhookIdleBackoffMaxMs` 600000; see
+[System Configuration](#system-configuration-v1configapi)). The read-only `idleRuns` shows the current
+count; a run that finds something, `runOnce`, `reactivate`, `reset`, `catchUp` and a new `when` reset it to 0.
+
+A `backoff` that is not `true`, `false` or an object of `after` (integer ≥ 1), `factor` (number > 1) and
+`max` (`H:M:S`, at least `0:0:1`) is a `400` that leaves the stored value:
+
+```
+`backoff` must be true, false or an object with `after`, `factor` and `max`.
+`backoff.after` must be an integer >= 1.
+`backoff.factor` must be a number > 1.
+`backoff.max` must be an `H:M:S` interval of at least 0:0:1.
+`backoff.<key>` is not a member; use `after`, `factor` and `max`.
+```
+
 ---
 
 ## Execution Semantics
@@ -1019,7 +1090,7 @@ Before execution, the webhook validates that `authorizedScopes` is non-empty. If
 
 ### Schedule Resolution (`when`)
 
-The `when` field is resolved as an API URL that returns a date-time. If resolution fails:
+The `when` field is resolved as an API URL that returns a date-time (each entry of a [window object](#time-of-day-windows) the same way). If resolution fails:
 - An error is recorded with details about the failure
 - `when` is set to `"never"` (webhook stops)
 
@@ -1043,13 +1114,15 @@ The operation retries up to **`internalTooOldMaxRetries`** times (default **50**
 
 **Optimistic-lock conflicts are not retried here.** A conflict (`"The transaction conflicted with another transaction"` in `details`) is auto-retried by the transactor itself on the normal write path; when it does escape — the upsert-PUT-to-a-potential-target case, where auto-retry is off — it goes straight to the task-scheduler layer and takes the fast **10 s** reschedule described below. The `internalTooOld*` knobs have no effect on it.
 
-**External (`http://...`) targets do not engage this retry** — stale-snapshot semantics don't apply across the network. The 401-refresh path on external targets is independent and unaffected by these knobs, as is the unreachable-target retry.
+**External (`http://...`) targets do not engage this retry** — stale-snapshot semantics don't apply across the network. The 401-refresh path on external targets is independent and unaffected by these knobs, as is the [unreachable-target retry](#task-scheduler-retry-whole-run) below.
 
 Both knobs are **system-wide** on the API configuration (no per-webhook override) — see [System Configuration](#system-configuration-v1configapi) for the full set and for tuning examples.
 
 > **Don't disable the retry.** Setting `internalTooOldMaxRetries: 0` reverts to fail-fast, which forces the task-scheduler layer to absorb every transient flake. The scheduler's fast back-off (below) was sized assuming this inner retry catches the common case; bypassing it produces noisier pauses and more `attempts`-counter churn without any throughput gain.
 
 #### Task-scheduler retry (whole run)
+
+A run that cannot reach its target is not a failure: a connection refused, a DNS miss, a connect timeout, a connection reset or lost while the response body was being read, a `502`, `503` or `504` (no other 5xx) or a `429` reschedules the run on a fixed interval, `webhookUnreachableRetryMs` on `/v1/config/api` (default 60 000 ms, one minute), without consuming an attempt, so an outage never parks the webhook. While it retries, `error` reads `Unreachable: <reason>` (`Unreachable: Connection refused when contacting webhook 'out' endpoint 'http://…'`); `attempts`, `maxAttempts`, `lastFailed` and `lastError` are untouched, and `next` is one minute after `lastFinished`. The interval is fixed: neither [time-of-day windows](#time-of-day-windows) nor [idle backoff](#idle-backoff) move it.
 
 When a run finishes with an error — either because the failure wasn't transient, or because the per-request retry budget above was exhausted — the scheduler reschedules the whole webhook:
 
@@ -1255,9 +1328,9 @@ curl -X POST -u ":banana" \
 
 ## System Configuration (`/v1/config/api`)
 
-A handful of sync-webhook timings are **system-wide**, not per-webhook. They live on the `API config` singleton at `GET /v1/config/api` and apply to every webhook on the tenant. There is no per-webhook override — the per-webhook knobs are `maxAttempts`, `repeat`, and `when` ([Retry Configuration](#retry-configuration), [Scheduling](#scheduling)).
+A handful of sync-webhook timings are **system-wide**, not per-webhook. They live on the `API config` singleton at `GET /v1/config/api` and apply to every webhook on the tenant. There is no per-webhook override — the per-webhook knobs are `maxAttempts`, `repeat`, `when` and `backoff` ([Retry Configuration](#retry-configuration), [Scheduling](#scheduling), [Idle backoff](#idle-backoff)).
 
-All four fields are optional numbers. Leaving a field unset (or setting it to `null`) means "use the default"; the defaults are what a healthy deployment should run with, so change them only in response to an observed problem.
+All nine fields are optional: eight numbers and one boolean, `webhookIdleBackoffEnabled`. Leaving a field unset (or setting it to `null`) means "use the default"; the defaults are what a healthy deployment should run with, so change them only in response to an observed problem.
 
 | Field | Unit | Default | Controls |
 |-------|------|---------|----------|
@@ -1265,6 +1338,11 @@ All four fields are optional numbers. Leaving a field unset (or setting it to `n
 | `webhookRecoveryIntervalMs` | ms | `300000` (5 min) | How often the periodic recovery sweep runs. |
 | `internalTooOldMaxRetries` | count | `50` | Per-request retry budget for stale-snapshot (`ETOOOLD`) failures on internal-target calls. |
 | `internalTooOldRetryDelayMs` | ms | `3000` (3 s) | Flat delay between those per-request retries. |
+| `webhookUnreachableRetryMs` | ms | `60000` (1 min) | Cadence for re-running a webhook whose external target is down or unreachable; such runs consume no attempt. |
+| `webhookIdleBackoffEnabled` | boolean | `false` | Idle backoff for every sync webhook that has no `backoff` member of its own. |
+| `webhookIdleBackoffAfter` | count | `3` | Consecutive idle runs before idle backoff stretches the interval for the first time. |
+| `webhookIdleBackoffFactor` | number | `2` | Multiplier per further idle run. |
+| `webhookIdleBackoffMaxMs` | ms | `600000` (10 min) | Cap on an idle-stretched interval. |
 
 ### Concurrency guard — `webhookInFlightWindowMs`
 
@@ -1296,12 +1374,20 @@ These are the two knobs behind the [per-request transient retry](#per-request-tr
 
 Optimistic-lock conflicts are handled elsewhere and are not governed by these knobs — see the [retry section](#per-request-transient-retry-internal-targets).
 
+### Unreachable target — `webhookUnreachableRetryMs`
+
+The cadence for re-running a sync webhook whose external target is down or unreachable. Unreachable runs (connection failure, premature close, gateway 5xx, or rate-limit) reschedule on this fixed interval without consuming the attempts budget, so a prolonged outage never parks the webhook. See [the unreachable-target retry](#task-scheduler-retry-whole-run) for what counts as unreachable and what the webhook reads meanwhile.
+
+### Idle backoff — `webhookIdleBackoff*`
+
+`webhookIdleBackoffEnabled` switches [idle backoff](#idle-backoff) on for every webhook that has no `backoff` of its own; a webhook's `backoff: true` takes the three parameters from here, `backoff: false` opts out, and an object on the webhook overrides them. `webhookIdleBackoffMaxMs` is in milliseconds where a webhook's own `backoff.max` is `H:M:S`.
+
 ### Inspecting and tuning
 
 ```bash
 # Inspect the current sync-webhook timings
 curl -X GET -u ":banana" \
-  "https://example.app.heads.com/api/v1/config/api~just(webhookInFlightWindowMs,webhookRecoveryIntervalMs,internalTooOldMaxRetries,internalTooOldRetryDelayMs)"
+  "https://example.app.heads.com/api/v1/config/api~just(webhookInFlightWindowMs,webhookRecoveryIntervalMs,internalTooOldMaxRetries,internalTooOldRetryDelayMs,webhookUnreachableRetryMs,webhookIdleBackoffEnabled,webhookIdleBackoffAfter,webhookIdleBackoffFactor,webhookIdleBackoffMaxMs)"
 
 # Adjust individual knobs (PATCH leaves every other config field untouched)
 curl -X PATCH -u ":banana" \
@@ -1323,7 +1409,7 @@ curl -X PATCH -u ":banana" \
 
 > **A read never shows `null`.** An unset field reads back as its default, so `GET /v1/config/api` always reports the value actually in force. To tell "explicitly set to the default value" apart from "never set", you'd have to track that yourself — for tuning purposes the two are equivalent. Send `null` to clear an override.
 
-Changes take effect on the **next** run that reads the field: `internalTooOld*` at the start of the next retried operation, `webhookInFlightWindowMs` at the next claim or sweep, and `webhookRecoveryIntervalMs` only after the currently-pending sweep fires.
+Changes take effect on the **next** run that reads the field: `internalTooOld*` at the start of the next retried operation, `webhookInFlightWindowMs` at the next claim or sweep, `webhookRecoveryIntervalMs` only after the currently-pending sweep fires, `webhookUnreachableRetryMs` at the next unreachable run, and the `webhookIdleBackoff*` knobs at the next reschedule.
 
 ---
 

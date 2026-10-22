@@ -138,7 +138,7 @@ All agents share these common members:
 |-------|------|-------------|
 | `owner` | reference | Owning company |
 | `organizationNumber` | string | Store registration number |
-| `openingHours` | string | Opening hours |
+| `openingHours` | string | Opening hours, as clauses `[weekdays ]HH:MM-HH:MM` separated by `;`: `Mo-Fr 10:00-21:00; Sa-Su 10:00-18:00`. Weekdays are two letters (`Mo Tu We Th Fr Sa Su`), ranges `Mo-Fr`, lists `Sa,Su`; three-letter names or a comma between clauses are refused |
 
 ---
 
@@ -339,7 +339,7 @@ POST /v1/stores
   "name": "Mall of Scandinavia",
   "owner": {"identifiers": {"key": "<owner-database-key>"}},
   "organizationNumber": "556123-4567-01",
-  "openingHours": "Mon-Fri 10:00-21:00, Sat-Sun 10:00-18:00",
+  "openingHours": "Mo-Fr 10:00-21:00; Sa-Su 10:00-18:00",
   "addresses": {
     "main": {
       "line1": "Stjärntorget 2",
