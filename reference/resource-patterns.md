@@ -1573,7 +1573,7 @@ Sub-collection: `/payment-orders/{id}/records`
 
 POS resources include terminals, profiles, functions, devices, and printers. Use your tenant's `/api-docs` for the canonical endpoint list.
 
-> **Note:** Device roles and reports endpoints are not currently exposed in the API.
+Device roles, device permissions and device role assignments are collections of their own under the `admin` scope — `/v1/device-roles`, `/v1/device-permissions`, `/v1/device-role-assignments` — mirroring the user-role resources; see [POS Examples → Device roles](../guide/examples/pos.md#device-roles). Reports endpoints are not exposed in the API.
 
 ---
 

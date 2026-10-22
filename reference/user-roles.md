@@ -24,6 +24,8 @@ What an API request may reach is decided by the **scopes on the credential that 
 
 To restrict an integration, edit its [credential's scope list](credentials.md#scope-names). To restrict a person using the applications, edit their roles.
 
+The same holds for **device roles**: `/v1/device-roles`, `/v1/device-permissions` and `/v1/device-role-assignments` govern what a till or kiosk device may do at its organizational node, not what any credential may reach. They mirror the three resources on this page; see [POS Examples → Device roles](../guide/examples/pos.md#device-roles).
+
 ---
 
 ## User permissions
@@ -210,3 +212,4 @@ Give assignments your own namespaced identifier when you create them if an integ
 - [Provisioning Users and Access](../guide/provisioning-users.md) — the end-to-end walkthrough
 - [Users & Authentication Examples](../guide/examples/users.md) — runnable curl
 - [Array Write Operations](resource-patterns.md#array-write-operations) — `add` / `replace` / `remove` on `permissions`
+- [POS Examples → Device roles](../guide/examples/pos.md#device-roles) — the device-side mirror: device roles, device permissions and device role assignments

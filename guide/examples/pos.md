@@ -1,6 +1,6 @@
 # Point of Sale (POS) Examples
 
-Curl examples for POS terminals, carts, sessions, supervisor control, profiles, tile sets, functions, slips, receipts, devices, printers, and payment terminals.
+Curl examples for POS terminals, carts, sessions, supervisor control, profiles, tile sets, functions, slips, receipts, devices, device roles, scanners, printers, and payment terminals.
 
 **Base URL:** `https://example.app.heads.com/api/v1`
 **API Key:** `banana` (passed via Basic Auth with empty username: `-u ":banana"`)
@@ -24,11 +24,13 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/pos-terminals/pos
 # Create a POS terminal
 # Required: identifiers.posTerminalName, associatedNode
 # Optional: profile, status, assignedDevice, receiptPrinter, etc.
+# Optional: posPrefix, the register id - three upper-case letters, set once on create, random when omitted
 # Note: POS terminals do NOT have a `name` field; use identifiers.posTerminalName
 curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/pos-terminals" \
   -H "Content-Type: application/json" \
   -d '{
     "identifiers": {"posTerminalName": "Kassa 2"},
+    "posPrefix": "KAS",
     "status": "Active",
     "profile": {"identifiers": {"posProfileId": "default"}},
     "associatedNode": {"identifiers": {"com.heads.seedID": "store1"}}
@@ -51,7 +53,7 @@ curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/pos-terminals/p
   }'
 
 # None of the printer, template, display or sequence members is in the default body
-# (a plain GET is identifiers, status, profile and associatedNode) - name them
+# (a plain GET is identifiers, status, profile, associatedNode and posPrefix) - name them
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/pos-terminals/posTerminalName=Kassa%202~just(receiptPrinter,receiptTemplate,documentPrinter,documentTemplate,secondaryScreenIndex,customerDisplayScale,receiptSequence,receiptCopySequence)"
 ```
 
@@ -64,6 +66,17 @@ curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/pos-terminals/pos
 | `receiptCopySequence` | serial, read-only | The sequence number for receipt copies printed by the POS terminal; copies carry a sequence of their own. `null` on a new terminal until the till prints its first copy; from then on its own serial, with the prefix `COPY_` in front of the receipt prefix. |
 
 A `pos:read` key reads every one of these, printers and templates included, exactly as a `pos:write` key does. A terminal's `receiptSequence` and `receiptCopySequence` are serials, whose root lies outside the `pos:*` scopes: a key holding only `pos:read` or `pos:write` reads both as `null`, which is indistinguishable from a terminal that has none — the admin key, or a key that also holds the scope serving serials, sees them.
+
+### The register id, `posPrefix`
+
+`posPrefix` is the register's id: three upper-case letters no other terminal holds, which prefix its receipt numbers and name it in audit files (the SAF-T `registerID`). It is in the default read and on the `pos:read` twin. Set once, on create, and issued at random when omitted; a later change answers `409`. A terminal restored with its old prefix after a reset continues the old register's receipt series.
+
+| Request | Answer |
+|---|---|
+| `POST /v1/pos-terminals [{…, "posPrefix": "KAS"}]` | `201`; the receipt series exists from creation, so `/v1/serials/<key>` can set the next receipt number at once |
+| a malformed value (`"ka1"`) | `400 posPrefix is three upper-case letters (A-Z).` |
+| a prefix another terminal holds | `409 The posPrefix 'KAS' belongs to another POS terminal.` |
+| `PATCH` with another value | `409 posPrefix is set when the terminal is created and never changes: it is the register's id in receipts and audit files.` |
 
 ---
 
@@ -846,24 +859,87 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/devices" \
 curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/devices/com.myapp.deviceId=DEV-001" \
   -H "Content-Type: application/json" \
   -d '{"status": "Inactive"}'
+
+# The device's own peripherals: a barcode scanner of any subtype, and a serial printer of its own
+# (serialPrinter: when the device drives a printer of its own rather than a shared one)
+curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/devices/com.myapp.deviceId=DEV-001" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "barcodeScanner": {"identifiers": {"com.myapp.scannerId": "SCAN-001"}},
+    "serialPrinter": {"identifiers": {"com.myapp.printerId": "SERIAL-001"}}
+  }'
 ```
 
-> **Note:** Device roles (`/v1/device-roles`) and a device's role assignments (`~with(roleAssignments)` on a device) are not exposed through the API. This is about **devices** only — *user* role assignments are available, at `/v1/users/{id}/roleAssignments`; see [Roles, Permissions and Assignments](../../reference/user-roles.md).
+### Device roles
+
+A **device role** is a named collection of device permissions that defines what a device may do, such as "Webshop kiosk". A **device permission** is a single capability that can be granted to devices; permissions are grouped into roles, and a role is assigned to a device through a **device role assignment**, which also names the organizational node the role applies in: a kiosk tablet is a webshop kiosk in its own store and nowhere else. The three collections mirror the user-role resources ([Roles, Permissions and Assignments](../../reference/user-roles.md)) and, like them, need the `admin` scope; `admin:read` does not open them. A device role is not a user role, and a device permission is not a user permission, though a device permission also reads on `/v1/authz-permissions` as `@type: "device permission"`. The base seed holds one role, `deviceRoleID` `cos.webshopKiosk` "Webshop kiosk".
+
+| Collection | Identifier | Members |
+|---|---|---|
+| `/v1/device-permissions` | `permissionName` | — |
+| `/v1/device-roles` | `deviceRoleID` | `name`, `permissions` (device permission references) |
+| `/v1/device-role-assignments` | your own external id | `device`, `role`, `node` (essential); `DELETE` removes one |
+
+```bash
+# A permission, a role holding it, and the role on one device in one store
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/device-permissions" \
+  -H "Content-Type: application/json" -d '[{"identifiers": {"permissionName": "com.myapp.kiosk"}}]'
+
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/device-roles" \
+  -H "Content-Type: application/json" \
+  -d '[{"identifiers": {"deviceRoleID": "myapp.kiosk"}, "name": "Kiosk",
+        "permissions": [{"identifiers": {"permissionName": "com.myapp.kiosk"}}]}]'
+
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/device-role-assignments" \
+  -H "Content-Type: application/json" \
+  -d '[{"identifiers": {"com.myapp.assignmentId": "KIOSK-1-kiosk"},
+        "device": {"identifiers": {"com.myapp.deviceId": "KIOSK-1"}},
+        "role":   {"identifiers": {"deviceRoleID": "myapp.kiosk"}},
+        "node":   {"identifiers": {"com.myapp.storeId": "STORE-001"}}}]'
+
+# Read back, and revoke
+curl -u ":banana" "https://example.app.heads.com/api/v1/device-roles/deviceRoleID=myapp.kiosk~with(permissions)"
+curl -u ":banana" "https://example.app.heads.com/api/v1/device-role-assignments~with(device,role,node)"
+curl -X DELETE -u ":banana" "https://example.app.heads.com/api/v1/device-role-assignments/com.myapp.assignmentId=KIOSK-1-kiosk"
+```
+
+An assignment grants the role's permissions to the device at its node, and `DELETE` revokes them. Give assignments your own identifier when you create them, as for user role assignments, so an integration can remove them later.
 
 ### Scanners and the read-only device collections
 
-Barcode scanners live in collections of their own, and a key holding only `pos:read` reads them, as it reads the printers:
+Barcode scanners live in collections of their own, and a key holding only `pos:read` reads them, as it reads the printers. `/v1/barcode-scanners` lists every scanner; each of the five concrete kinds is created through it by `@type`, or through its own collection, and a device links any of them through `barcodeScanner`.
+
+| Collection | `@type` | Members and defaults |
+|---|---|---|
+| `/v1/serial-barcode-scanners` | `serial barcode scanner` | A scanner on a serial port: `port`, `baudRate`, `dataBits`, `stopBits`, `parity`, … |
+| `/v1/hid-barcode-scanners` | `HID barcode scanner` | A scanner connected as a USB or Bluetooth HID keyboard (a "keyboard wedge"); the till tells a scan from typing by the control characters the scanner wraps each code in. `prefix`: the ASCII code sent before each code, e.g. 2 (STX); created without one it gets 2; `null` means no prefix. `suffix`: likewise, 3 (ETX). |
+| `/v1/camera-barcode-scanners` | `camera barcode scanner` | A software scanner that decodes codes from the device's camera; scanning opens the camera as a modal, so it suits tablets and phones. `decoder` (`Auto` picks the browser's BarcodeDetector where it exists and Zbar elsewhere; `Native` forces BarcodeDetector; `Zxing` and `Zbar` force a WASM decoder), `cameraResolution`, `continuousAutofocus` (default `true`), `showInfoPanel`. A decoder or resolution outside the vocabulary is a `400` naming the values. |
+| `/v1/zebra-barcode-scanners` | `Zebra barcode scanner` | Driven through Zebra's scanner SDK, such as the DS2278; such scanners can usually be configured as a HID or a serial scanner instead. |
+| `/v1/dummy-barcode-scanners` | `dummy barcode scanner` | A virtual scanner for testing and development: the till takes the code from a prompt. Not for production tills. |
 
 ```bash
-# Scanners (USB / HID, and serial) - read-only under pos:read, writable under pos:write
+# Every scanner, and one kind - read-only under pos:read, writable under pos:write
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/barcode-scanners"
-curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/serial-barcode-scanners"
+curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/hid-barcode-scanners"
+
+# Create by @type on the base collection; it reads back from both collections
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/barcode-scanners" \
+  -H "Content-Type: application/json" \
+  -d '[{"@type": "HID barcode scanner", "identifiers": {"com.myapp.scannerId": "SCAN-001"}, "name": "Wedge 1"}]'
+# → prefix 2, suffix 3
+
+# A camera scanner created with nothing but a name gets the decoder, resolution and focus defaults
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/camera-barcode-scanners" \
+  -H "Content-Type: application/json" \
+  -d '[{"identifiers": {"com.myapp.scannerId": "CAM-001"}, "name": "Tablet camera"}]'
 
 # ESC/POS USB printers, likewise
 curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/esc-pos-usb-printers"
 ```
 
-A write under `pos:read` is a silent `200`, as for every read-only twin — see [gotcha 41](../../reference/common-gotchas.md#41-a-write-under-a-read-only-scope-is-a-silent-200).
+A `POST /v1/barcode-scanners` without a concrete `@type`, or with the abstract `barcode scanner` itself, is `400 A barcode scanner needs a concrete @type: '…', '…'.` naming the five. `baudRate`, `dataBits` and `stopBits` of a serial scanner or a serial printer created without them read `null` until set, on the `pos:read` twins too.
+
+A write under `pos:read` is a silent `200`, as for every read-only twin — see [gotcha 41](../../reference/common-gotchas.md#41-a-write-under-a-read-only-scope-is-a-silent-200). Each read twin declares the members its writable resource declares: the Zebra label USB printer's twin serves `device` (the lsusb hex pair) and `transport`, as the writable resource does.
 
 ### Enrollment tokens
 
@@ -933,6 +1009,7 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/epson-epos-print
   }'
 
 # Create serial printer
+# skipPreflightCheck: skips the status query (paper, cover) before each print, for printers whose status reporting is unreliable
 curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/serial-printers" \
   -H "Content-Type: application/json" \
   -d '{
@@ -943,9 +1020,18 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/serial-printers"
     "baudRate": 9600,
     "dataBits": 8,
     "stopBits": 1,
-    "parity": "None"
+    "parity": "None",
+    "skipPreflightCheck": false
   }'
+
+# The built-in receipt printer of a Verifone Android payment terminal, driven through the terminal's
+# peripherals service. Only usable when the POS app runs on that terminal; it has no address of its own.
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/verifone-psdk-printers" \
+  -H "Content-Type: application/json" \
+  -d '{"identifiers": {"com.myapp.printerId": "VF-001"}, "name": "Terminal printer"}'
 ```
+
+A serial printer created without `baudRate`, `dataBits` or `stopBits` reads them as `null` until set. A device that drives a printer of its own rather than a shared one links it through `serialPrinter` (see [Devices](#devices)).
 
 ---
 
@@ -984,4 +1070,15 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/payment-terminal
 curl -X PATCH -u ":banana" "https://example.app.heads.com/api/v1/payment-terminals/com.myapp.terminalId=TERM-001" \
   -H "Content-Type: application/json" \
   -d '{"name": "Main Card Terminal"}'
+
+# A serial payment terminal: one the POS machine drives over a serial port (RS-232 or a USB-serial
+# adapter), such as a Nets/Baxi terminal. port names the machine's serial device ('COM4', '/dev/ttyUSB0');
+# baudRate must match the terminal's setting. Created by @type here or on /v1/serial-payment-terminals.
+curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/payment-terminals" \
+  -H "Content-Type: application/json" \
+  -d '[{"@type": "serial payment terminal", "identifiers": {"com.myapp.terminalId": "BAXI-1"},
+        "name": "Baxi 1", "port": "COM4", "baudRate": 9600}]'
+curl -u ":banana" "https://example.app.heads.com/api/v1/serial-payment-terminals/com.myapp.terminalId=BAXI-1~with(port,baudRate)"
 ```
+
+A `pos:read` key reads `/v1/serial-payment-terminals` as it reads the other device collections.
