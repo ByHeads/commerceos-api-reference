@@ -440,7 +440,7 @@ Heads certifies your installed integration with the tool in `--cos` mode, throug
 ## 8. One family, two paths
 
 A payment integration is one kind of EPI integration. Shipment, loyalty and wallet integrations are
-the others, and they share the same base: a `baseUrl`, `install`, `uninstall`, and configurations on
+the others ([the loyalty contract](loyalty-epi.md) has a page of its own), and they share the same base: a `baseUrl`, `install`, `uninstall`, and configurations on
 organization nodes. The API exposes the family at `/v1/epi-integrations` and each kind at its own
 path. A payment integration read through either path returns the same record.
 `/v1/payment-integrations` adds the members that only a payment integration has, such as `methods`

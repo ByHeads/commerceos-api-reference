@@ -58,6 +58,7 @@ commerceos-api-reference/
 │   │   ├── users.md              # User management examples
 │   │   ├── configuration.md      # Settings and config examples
 │   │   ├── payment-epi.md        # Build a payment integration: the tutorial
+│   │   ├── loyalty-epi.md        # Loyalty EPI contract: identify, member search, on-identify, rewards
 │   │   ├── payment-epi/          # The payment EPI contract and its test material
 │   │   │   ├── reference.md      # Contract reference: every call, header, step and error
 │   │   │   ├── flows.md          # Decline, cancel, refund, asynchronous completion, troubleshooting
@@ -164,6 +165,7 @@ commerceos-api-reference/
 | Creating Skills | [`guide/creating-skills.md`](guide/creating-skills.md) |
 | Payment Integration (EPI) | [`guide/examples/payment-epi.md`](guide/examples/payment-epi.md), [`guide/examples/payment-epi/reference.md`](guide/examples/payment-epi/reference.md) |
 | Payment Conformance Tool | [`tools/epi-check/README.md`](tools/epi-check/README.md) |
+| Loyalty Integration (EPI) | [`guide/examples/loyalty-epi.md`](guide/examples/loyalty-epi.md) |
 
 ---
 

@@ -32,6 +32,7 @@ commerceos-api-reference/
 │   │   ├── configuration.md      # System configuration examples
 │   │   ├── payment-epi.md        # Build a payment integration: tutorial
 │   │   ├── payment-epi/          # Contract reference, two OpenAPI 3.1 documents, scenarios, the Piggy Bank sample
+│   │   ├── loyalty-epi.md        # Loyalty EPI contract: identify, member search, on-identify, rewards
 │   │   ├── discount-rules.md     # Discount and pricing rules
 │   │   ├── discount-coupons.md   # Coupon codes that activate discount rules
 │   │   ├── inventory.md          # Stock and inventory management

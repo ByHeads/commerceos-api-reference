@@ -123,6 +123,10 @@ A `then.set` write drops members whose value resolves to `undefined`, at any dep
 - A purchase is `IntraEuSupply` at 0 % when the buyer's organizational ancestors hold the registration in another EU country than the supplier: a store without a VAT number of its own inherits its company's, as the seller side already did. See [Working with VAT](working-with/vat.md#vat-registrations-and-vatid).
 - A new EPI configuration's id never ends in `-`, so `GET /v1/context/<id>~just(configuration)` works on it; an id issued before may, see [gotcha 102](common-gotchas.md#102-an-epi-configuration-id-ending-in---takes-no-path-operator).
 
+### A21. Loyalty EPI
+
+Two capability flags in a provider's `supports`, `search` and `onIdentify`, and the two calls they announce, `POST {baseUrl}/member-search` and `POST {baseUrl}/on-identify`. An integration that declares neither is called as before. See [Loyalty EPI reference](../guide/examples/loyalty-epi.md).
+
 ---
 
 ## Part B: changes in 26.2.2
