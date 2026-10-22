@@ -2309,6 +2309,19 @@ Related: [Working with Products → Images](working-with/products.md#images), [W
 
 ---
 
+## 102. An EPI Configuration Id Ending in `-` Takes No Path Operator
+
+`-~` is a string member in the path grammar, so `GET /v1/context/ab1-~just(configuration)` reads the id as `ab1-~just` and answers `404`. A new EPI configuration's id never ends in `-`; one created on an earlier release may. Read such a configuration without an operator after the id and pick the member client-side:
+
+```bash
+GET /v1/context/ab1-~just(configuration)   → 404   # the id is read as "ab1-~just"
+GET /v1/context/ab1-                        → 200   # the whole element; take configuration from it
+```
+
+Related: [Working with the Configuration Store](working-with/configuration-store.md), [Payment EPI reference § 8](../guide/examples/payment-epi/reference.md#8-calls-from-your-integration-to-commerceos).
+
+---
+
 ## API Response Behaviors
 
 ### Empty Collection Results

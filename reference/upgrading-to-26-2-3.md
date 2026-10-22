@@ -97,11 +97,31 @@ A `then.set` write drops members whose value resolves to `undefined`, at any dep
 
 ### A16. Additive members, for strict consumers
 
-`functionalCurrency` on agents; `attachments` on agents and `files` on product nodes (the new `file` type); `data`, `contentUrl`, `mediaType`, `width`, `height` on images; `attributes` on products and `variantValues` on families and groups; `autoGtin`; `supplierIsManufacturer` on trade relationships; `lastError` on sync webhooks; `separateOrderCheckout` and the other POS profile members; `sellerStock`/`buyerStock` on order items; `labels` on discount rules; `description` on elements; `keys` on every collection (`/v1/products/keys`); the scope `enrollment:read` and the device read twins under `pos:read`. A consumer that rejects unknown members updates its schema.
+`functionalCurrency` on agents; `attachments` on agents and `files` on product nodes (the new `file` type); `data`, `contentUrl`, `mediaType`, `width`, `height` on images; `attributes` on products and `variantValues` on families and groups; `autoGtin`; `supplierIsManufacturer` on trade relationships; `lastError`, `backoff` and `idleRuns` on sync webhooks, and `when` as an object; `separateOrderCheckout` and the other POS profile members; `posPrefix` in a POS terminal's default body; `serialPrinter` on devices; `skipPreflightCheck` on serial printers; `sellerStock`/`buyerStock` on order items; `labels` on discount rules; `description` on elements; `keys` on every collection (`/v1/products/keys`); the scope `enrollment:read` and the device read twins under `pos:read`; the collections `/v1/device-roles`, `/v1/device-permissions`, `/v1/device-role-assignments` (scope `admin`), `/v1/serial-payment-terminals`, `/v1/verifone-psdk-printers` and the scanner subtypes `/v1/hid-`, `/v1/camera-`, `/v1/zebra-` and `/v1/dummy-barcode-scanners`; five `webhook*` fields on `/v1/config/api`. A consumer that rejects unknown members updates its schema.
 
 ### A17. The pre-26.2.2 shapes are accepted, translated and marked deprecated
 
 26.2.3 and later accept two shapes 26.2.2 refused, translated into the current model and marked `deprecated: true` in the OpenAPI document: the old surcharge rule members (`items`, `effects`, `currency.include`) and `/v1/vat-codes`. Write the new shape; the old one is for clients you cannot change yet, and what it cannot express is `400`. Part B says what to write instead.
+
+### A18. Sync webhook scheduling
+
+- `when` takes an object of time-of-day windows beside the URL form; a `GET` echoes it. See [Sync Webhooks → Time-of-day windows](sync-webhooks.md#time-of-day-windows).
+- Idle backoff: `backoff` on the webhook, `idleRuns` read-only, and `webhookIdleBackoffEnabled` (default `false`), `webhookIdleBackoffAfter`, `webhookIdleBackoffFactor`, `webhookIdleBackoffMaxMs` on `/v1/config/api`. Off unless switched on, so nothing changes for an existing webhook. See [Sync Webhooks → Idle backoff](sync-webhooks.md#idle-backoff).
+- A run that cannot reach its external target is re-run on `webhookUnreachableRetryMs` without consuming an attempt. The default changed from 5 minutes to 1 (`300000` → `60000`). See [Sync Webhooks → Task-scheduler retry](sync-webhooks.md#task-scheduler-retry-whole-run).
+
+### A19. Devices and peripherals
+
+- `POST /v1/barcode-scanners` without a concrete `@type`, or with the abstract `barcode scanner` itself, is `400 A barcode scanner needs a concrete @type: '…', '…'.` (it used to create a row of the abstract type that nothing could drive). See [POS Examples → Scanners](../guide/examples/pos.md#scanners-and-the-read-only-device-collections).
+- `baudRate`, `dataBits` and `stopBits` of a serial printer or a serial barcode scanner created without them read `null` until set (they read `0`), on the `pos:read` twins too. A client that read `0` as "unset" sees `null`.
+- `posPrefix` on a POS terminal is set once, on create, and a `PATCH` with another value is `409`. See [POS Examples → The register id](../guide/examples/pos.md#the-register-id-posprefix).
+- Device roles, device permissions and device role assignments are collections under `admin`, so a till's hardware and roles can be collected through the API and restored through it. See [POS Examples → Device roles](../guide/examples/pos.md#device-roles).
+
+### A20. Fixed
+
+- `tryFulfill` on a ship-to-customer order answered `400` with `Thing can't already be in excess at the to account.` in `errorMessage` when the customer had been attached to a till cart after the order's creation and had later returned the product over the till; the order fulfils.
+- A request that created something and then referenced it could answer `400` for its own creation when the database restarted the transaction after a commit conflict: `POST /v1/trade-orders` with `actions.createPayment` naming a line of the same body answered a `400` naming the line. The retried attempt now starts clean and answers `201`. See [Working with Orders → Action-Specific Errors](working-with/orders.md#action-specific-errors).
+- A purchase is `IntraEuSupply` at 0 % when the buyer's organizational ancestors hold the registration in another EU country than the supplier: a store without a VAT number of its own inherits its company's, as the seller side already did. See [Working with VAT](working-with/vat.md#vat-registrations-and-vatid).
+- A new EPI configuration's id never ends in `-`, so `GET /v1/context/<id>~just(configuration)` works on it; an id issued before may, see [gotcha 102](common-gotchas.md#102-an-epi-configuration-id-ending-in---takes-no-path-operator).
 
 ---
 

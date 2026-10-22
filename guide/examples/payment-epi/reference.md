@@ -421,7 +421,7 @@ curl -X GET -H "Authorization: Bearer <access token>" "https://example.app.heads
 curl -X DELETE -H "Authorization: Bearer <access token>" "https://example.app.heads.com/api/v1/context/kv/com.example.piggy/session-pay-P1"
 ```
 
-Read `scope` in the token answer. A requested scope that your client lacks is left out without an
+Read the configuration with nothing after its id: an id issued on an earlier release can end in `-`, and `-~` is read as part of the id, so `/v1/context/ab1-~just(configuration)` is a `404` ([gotcha 102](../../../reference/common-gotchas.md#102-an-epi-configuration-id-ending-in---takes-no-path-operator)). Read `scope` in the token answer. A requested scope that your client lacks is left out without an
 error, so a missing store scope shows up as a 404 on the first state call, not at the token. A
 request without `scope` gets every scope the client holds. A request naming a scope that does not
 exist fails whole with `400 invalid_scope`.

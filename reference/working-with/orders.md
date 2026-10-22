@@ -593,7 +593,7 @@ PATCH /v1/trade-orders/suppliersId=1000001/actions
 {"tryFulfill": true}
 ```
 
-`200 {"@type": "trade order actions"}`. Read back: `status ["Fulfilled"]`, line Fulfilled, `balanceAmount "0"`, a second trade record with one `Fulfill` action, `pickingOrders []`, `shipments []` — `tryFulfill` raises no shipment order (see [Where Shipment Orders Come From](#where-shipment-orders-come-from)). The units leave the line's `seller` stock and its stock root's place and land at the line's delivery address as a place, as for any order (see [Fulfill Order](#fulfill-order-tryfulfill)).
+`200 {"@type": "trade order actions"}`. Read back: `status ["Fulfilled"]`, line Fulfilled, `balanceAmount "0"`, a second trade record with one `Fulfill` action, `pickingOrders []`, `shipments []` — `tryFulfill` raises no shipment order (see [Where Shipment Orders Come From](#where-shipment-orders-come-from)). The units leave the line's `seller` stock and its stock root's place and land at the line's delivery address as a place, as for any order (see [Fulfill Order](#fulfill-order-tryfulfill)). This holds when the customer was attached to the till cart after the order was opened and has since returned goods over the till: the return is booked out of the customer's stock, so the later sale to the same customer fulfils.
 
 Booking a delivery on `/v1/deliveries` is the alternative, described under [Where Shipment Orders Come From](#where-shipment-orders-come-from); it has not been measured on a till-created order.
 
@@ -2074,7 +2074,7 @@ All `400`, the text in `details`, nothing moved:
 | `cancelItems` | `cancelItems requires at least one item.`, `Item does not belong to the order.`, `Quantity cannot be negative.`, … | See [Cancel Items](#cancel-items-cancelitems) |
 | `createPayment` | `Amount exceeds the unpaid amount (<n>).` | Explicit `amount` beyond what is still owed |
 | `createPayment` | `Nothing to pay: nothing is owed on the listed items.` | A bare call on a fully paid order or lines |
-| `createPayment`, `createWalletPayment` | `Currency not found.`, `Order item not found.` | Unknown currency or item |
+| `createPayment`, `createWalletPayment` | `Currency not found.`, `Order item not found.`, `Item does not belong to the order.` | Unknown currency, an item no lookup finds, or a line of another order. A `POST /v1/trade-orders` whose `actions.createPayment` names a line of the same body finds it, also when the database restarts the transaction after a commit conflict |
 | `reversePayment` | `Nothing to reverse: …`, `Amount exceeds the reversible amount (<n>).`, … | See [Reverse a Payment](#reverse-a-payment-reversepayment) |
 | `commitReturn` | `Cannot commit return — item (or specified instance) is not in Fulfilled or New state.` | The line is `ReturnCancelled`, `Committed`, … |
 | `POST /v1/trade-orders` | `Could not create order: Several parties given; a trade needs exactly one.`, `Could not create order: <name> has several stock roots; a trade needs exactly one.` | Two sellers, or a seller with several stock roots |

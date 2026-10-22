@@ -530,7 +530,7 @@ POST /v1/vat-registrations
   "number": "NO999999999MVA"}]
 ```
 
-A sale is identified by the registration for the taxing country of the sale's area, held by the seller or its nearest organizational ancestor, with the home registration as the fallback.
+A sale is identified by the registration for the taxing country of the sale's area, held by the seller or its nearest organizational ancestor, with the home registration as the fallback. The buyer side reads the same way: a purchase is `IntraEuSupply` at 0 % when the buyer is registered in another EU country than the supplier, and the buyer's registrations include its organizational ancestors', so a store without a VAT number of its own inherits its company's.
 
 | Request | Response |
 |---------|----------|
