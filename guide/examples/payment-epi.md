@@ -9,6 +9,13 @@ This page gets you from nothing to a working integration in one sitting. The con
 **Base URL:** `https://example.app.heads.com/api/v1`
 **API Key:** `banana` (passed via Basic Auth with empty username: `-u ":banana"`)
 
+`banana` is the administrator key of the local seed. Most partners get a test environment of their
+own from Heads: a CommerceOS at an address such as `https://<name>.app.heads.com`, and an
+administrator API key for it. Use that address and that key wherever this page says
+`https://example.app.heads.com` and `banana`. The key is for you, at the keyboard: it runs section 5
+and reads the API. Your integration never holds it (section 3). If you have no environment, ask your
+contact at Heads for one, or send the public URL of your integration and Heads runs section 5 for you.
+
 > **See also:** [Examples Index](../examples.md) | [Configuration](./configuration.md) § EPI Integrations
 
 ---
@@ -142,8 +149,10 @@ makes back. Generate a server stub from the first and a client from the second w
 
 Calls go in two directions, and each direction has its own authentication.
 
-**Your integration calls CommerceOS with an OAuth2 client.** Your integration holds no API key. A
-Heads administrator creates a confidential OAuth2 client for the integration and then runs
+**Your integration calls CommerceOS with an OAuth2 client.** Your integration holds no API key: the
+administrator key that Heads gave you with your environment is yours, for section 5 and for reading the
+API, and it never goes into your integration or its configuration. An administrator (you, on your own
+environment, section 5) creates a confidential OAuth2 client for the integration and then runs
 `install`. CommerceOS sends `cosBaseUrl`, `tokenUrl`, `clientId`, `clientSecret` and `scope` in the
 body of `POST /install`. Store them. Your integration gets a client-credentials token from
 `tokenUrl` and sends it as a bearer token on every call to CommerceOS. The client is limited to
@@ -229,12 +238,20 @@ if ((match = /^POST \/payments\/([^/]+)\/transactions$/.exec(route))) {
 
 ## 5. Connect it to CommerceOS
 
-A Heads administrator does these seven steps, with an administrator key. You do not run them
-against a Heads environment: send Heads the public URL of your integration, and Heads installs
-it. They are shown here so that you know which calls reach your integration and when, and so
-that you can run them on a CommerceOS of your own. Each step is one curl, and the order is
-load-bearing: step 3 fails without step 2, and step 7 is what puts your method on the till.
-Replace `https://piggy.example.com/piggy` with the public URL of your integration.
+Run these seven steps yourself, against your test environment from Heads, with your administrator
+key in place of `banana`. Each step is one curl, and the order is load-bearing: step 3 fails without
+step 2, and step 7 is what puts your method on the till. Replace `https://piggy.example.com/piggy`
+with the public URL of your integration: CommerceOS calls it from the internet, so a laptop address
+does not work here. If you have no environment, send Heads the public URL of your integration, and a
+Heads administrator runs the steps for you: your integration receives the client in `POST /install`
+all the same.
+
+Steps 1 to 3 also exist as screens, for an administrator who prefers the back office over curl:
+*Global Settings* → *Integrations* → *Payment*, then *New Integration*, with the name and the base
+URL. On the integration's page, *Create OAuth Client* makes the user and the confidential client of
+step 2 in one press, with the scopes below and a generated secret, and *Install* runs step 3. The
+*Create OAuth Client* button shows only while the integration lacks a valid client. Steps 4 to 7
+stay as curl below.
 
 ```bash
 # 1) Create the payment integration. name and baseUrl are required.
@@ -249,7 +266,9 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/payment-integrat
 ```bash
 # 2) Create a user for the integration, with one confidential OAuth2 client. install fails
 #    without it, because install hands this client to your integration: it is the only
-#    credential that your integration gets. The agent is the integration's database key:
+#    credential that your integration gets. You never copy clientId or secret anywhere by hand:
+#    install sends them. The back office does this step with Create OAuth Client on the
+#    integration's page. The agent is the integration's database key:
 #   curl -X GET -u ":banana" "https://example.app.heads.com/api/v1/payment-integrations/name=Piggy/identifiers/key"
 #   (the answer is a JSON string with its quotes: paste the 32 characters between them)
 # The user identifier can be any identifier of exactly three dot-separated parts, com.<namespace>.<name>,
@@ -343,8 +362,8 @@ curl -X POST -u ":banana" "https://example.app.heads.com/api/v1/pos-profiles/pos
   -d '{"identifiers": {"methodId": "com.example.piggy"}}'
 ```
 
-**Before the first payment on a till.** Two more things are administrator work, and both block
-the first real payment. First the device: in the back office, *Kassa* → *Enheter* (`/cos/devices`),
+**Before the first payment on a till.** Two more things are administrator work, yours on your own
+environment, and both block the first real payment. First the device: in the back office, *Kassa* → *Enheter* (`/cos/devices`),
 pick the store if the page asks for an organization first, open the device that a POS
 terminal is assigned to, and press *Associera*. The button then reads *Avassociera*: that is success.
 It binds **the browser that pressed it** to the device, so press it from the browser that will run
@@ -380,8 +399,9 @@ flowchart LR
 
 A POS terminal and a payment terminal meet only through the same device. There is no direct link
 from a payment terminal to its integration: the link goes through the payment method. Each record in
-the chain has an API resource, see [POS examples](./pos.md). A Heads administrator creates
-these records: ask for a payment terminal when your method requires one. CommerceOS reads `GET /terminals/{terminalId}` on your integration when it creates its record. `assignedTerminals`
+the chain has an API resource, see [POS examples](./pos.md). Create these records on your own
+environment with your administrator key, or ask Heads for a payment terminal when your method
+requires one and you have no environment. CommerceOS reads `GET /terminals/{terminalId}` on your integration when it creates its record. `assignedTerminals`
 on the payment integration does not list terminals: it lists the organization nodes that hold a configuration, and each node carries a `terminals` member that calls your integration.
 
 ## 6. Test amounts
@@ -420,7 +440,7 @@ Heads certifies your installed integration with the tool in `--cos` mode, throug
 
 ## 7. Go live
 
-- [ ] Your endpoint passes [`epi-check`](../../tools/epi-check/README.md), every scenario. While you build, run it on your laptop: `node tools/epi-check/run.mjs --local <your integration base url> --profile <your profile>`, with the values your `/test` checks under `configuration`. Local mode starts a stand-in CommerceOS and installs your integration on it, so point it at a laptop instance, never at the one a CommerceOS installed. Heads certifies with `--cos <cosBaseUrl> --key <apiKey> --integration <name>` against the installed instance. Give `--timeout` at least your longest wait window: the default is thirty seconds.
+- [ ] Your endpoint passes [`epi-check`](../../tools/epi-check/README.md), every scenario. While you build, run it on your laptop: `node tools/epi-check/run.mjs --local <your integration base url> --profile <your profile>`, with the values your `/test` checks under `configuration`. Local mode starts a stand-in CommerceOS and installs your integration on it, so point it at a laptop instance, never at the one a CommerceOS installed. Once section 5 is done on your environment, run `node tools/epi-check/run.mjs --cos <your environment> --key <your administrator key> --integration <name>` yourself: it is the exact command Heads certifies with, against the installed instance. Give `--timeout` at least your longest wait window: the default is thirty seconds.
 - [ ] A contextful call without the three context headers gets a 400 and an error body.
 - [ ] A request your integration cannot take on the stream route is a 200 stream with one `Fail` step, never a non-2xx: CommerceOS discards the body there (reference, section 7).
 - [ ] A repeated `PUT` for a completed `paymentKey` answers the same `processorsId` and the same transactions, and `processorsId` is unique for all time.
@@ -454,7 +474,7 @@ paths. Use `/v1/payment-integrations` for a payment provider, and `/v1/epi-integ
 | EPI | External Partner Interface: the Heads specification of the HTTP calls between CommerceOS and an integration. You build an integration that follows it |
 | payment integration | the CommerceOS record of one provider: a name, a `baseUrl`, a status, and its payment methods |
 | EPI configuration | the values of one integration on one organization node, for example a merchant id. The form comes from your configuration schema, `/config-schema` |
-| key-value store | the place for your integration's own state on CommerceOS, `/v1/context/kv/<store>/<key>`, named like `com.example.piggy`. A Heads administrator gives your client the scope `com.example.piggy:write`, and the install creates the store of that name (or the administrator does, beforehand) |
+| key-value store | the place for your integration's own state on CommerceOS, `/v1/context/kv/<store>/<key>`, named like `com.example.piggy`. The administrator who creates your client (you, on your own environment) gives it the scope `com.example.piggy:write`, and the install creates the store of that name (or the administrator does, beforehand) |
 | context | the three headers on a contextful call. They name the configuration that the call runs under |
 | organization node | a company, a store or another level of the organization tree. A configuration on a node applies to the nodes below it |
 | payment order | what CommerceOS wants paid: an amount, a currency, a payer and a payee. Its key is the `paymentKey` of the stream call |
