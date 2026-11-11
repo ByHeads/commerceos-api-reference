@@ -71,7 +71,7 @@ store named by each `<name>:write` scope the client holds where no panel or stor
 **The payment method record.** `configure` creates one payment method per item of your `GET /methods`
 answer and, on every later `configure`, overwrites ten fields from the DTO: `name`, the three
 `supports`, the two `requires`, and the four `allows`. An omitted `allows` block resets those four to
-`true`, `false`, `false`, `false`. Everything else on the method is set by a Heads administrator in the
+`true`, `false`, `false`, `false`. Everything else on the method is set by an administrator in the
 back office, is never touched by `configure`, and your integration cannot read it. What it does to
 your calls:
 
@@ -124,7 +124,7 @@ on your CommerceOS and sends them. `debugInfo` is the value of the third header:
 
 ## 4. Configuration
 
-`GET {baseUrl}/config-schema` answers your *configuration schema*: the fields that a Heads administrator
+`GET {baseUrl}/config-schema` answers your *configuration schema*: the fields that an administrator
 fills in for your integration on an organization node, for example a merchant id and an
 environment. It is not a JSON Schema. It is written in the notation of the type declarations of
 the CommerceOS API: `schema` is a map of types by name, each with a `description` and `members`,
@@ -399,7 +399,7 @@ the client.
 |---|---|---|
 | `POST {tokenUrl}` | — | client-credentials token. Cache it until `expires_in` |
 | `GET /v1/context/{configId}` | `me` | the configuration for a context id (section 4), as the `EPI configuration` element: `identifiers` with `contextConfigId`, `configuration` in clear (left out until the administrator has saved values — read it as optional), `configurationHash`, `configurationType` and `schema`. An id that is not a configuration of yours is `404`. The element, its scopes and the key-value route are in [Working with the Configuration Store](../../../reference/working-with/configuration-store.md#epi-configurations) |
-| `GET`, `PUT`, `PATCH`, `DELETE /v1/context/kv/{store}/{key}` | `{store}:write` (`{store}:read` reads only) | your key-value store, for your own state. `store` is its name, three dot-separated parts such as `com.example.piggy`. A Heads administrator creates the store and puts the scope on your client; until both are done, every key answers 404. A write replaces what is at the path, `PATCH` included; a body of `null` deletes; a key never written reads `200 null`. No route lists the keys: `GET /v1/context/kv/{store}` answers `{}` whatever it holds, so keep your own index |
+| `GET`, `PUT`, `PATCH`, `DELETE /v1/context/kv/{store}/{key}` | `{store}:write` (`{store}:read` reads only) | your key-value store, for your own state. `store` is its name, three dot-separated parts such as `com.example.piggy`. The administrator who creates your client puts the scope on it, and the install creates the store (tutorial section 5, step 2); until both are done, every key answers 404. A write replaces what is at the path, `PATCH` included; a body of `null` deletes; a key never written reads `200 null`. No route lists the keys: `GET /v1/context/kv/{store}` answers `{}` whatever it holds, so keep your own index |
 | `PATCH /v1/payment-orders/{paymentKey}` with `{ "records": [ ... ] }` | `orders.payments:write` and `payment-records:write` | complete an asynchronous payment, for example from a callback of your provider. `payment-records:write` is what writes the record: with `orders.payments:write` alone the answer is `200` and nothing is stored, the order stays `New` and `records` stays empty; `payment-records:write` alone is a `404` |
 
 ```bash

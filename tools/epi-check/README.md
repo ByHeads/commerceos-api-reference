@@ -8,7 +8,7 @@ It has two modes and one scenario path:
 
 | Mode | For | What is the CommerceOS |
 |---|---|---|
-| `--cos` | certification: Heads, or a partner with access to a Heads instance | the real CommerceOS that installed the integration. The tool creates, installs and configures nothing |
+| `--cos` | a partner with a test environment from Heads, after the tutorial's section 5; Heads runs the same command to certify | the real CommerceOS that installed the integration. The tool creates, installs and configures nothing |
 | `--local` | a partner building on a laptop with no CommerceOS | a stand-in the tool starts. It plays the administrator: installs the integration with its own client, saves the profile's configuration on a node `Local`, reads the methods. Then the run is exactly the `--cos` run against the stand-in |
 
 The contract it checks: [Payment EPI reference](../../guide/examples/payment-epi/reference.md).
